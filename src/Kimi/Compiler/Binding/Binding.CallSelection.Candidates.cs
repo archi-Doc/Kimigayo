@@ -597,8 +597,9 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
-    // applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which the well-formedness of
-    // each default it uses (`defaults`, DefaultSlots) shortens as a written part's does; false when the candidate is inapplicable.
+    // applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which the substituted
+    // well-formedness of each parameter it fills, a default's (`defaults`, DefaultSlots) as an argument's, shortens; false when the
+    // candidate is inapplicable.
     private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
     {
         var call = solution.Call;
@@ -622,30 +623,33 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 15.3.6: a parameter whose argument takes its Type from the call (TakesCallType) has no well-formed Type of its own either,
-        // so its well-formedness, slots substituted, is an upper bound of the meet as a default's is; a written argument's Type is well
-        // formed and gives none.
+        // SPEC 15.6.4 step 3, 15.3.6: the solution satisfies the well-formedness, slots substituted, of every parameter the call fills,
+        // so a covariant slot takes the meet of all its upper bounds. Beside a written argument's own Type, which is well formed, only the
+        // positions that Type does not give are bounds (CollectFilledPremises); a default and a part that takes its Type from the call
+        // (TakesCallType) have none of their own. A slot still unsolved gives no bound: the call fails on that slot.
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if ((defaults.Contains(i) || TakesCallTypeAt(i)) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
+            var argument = ArgumentAt(i);
+            if ((defaults.Contains(i) || argument is not null) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern &&
+                this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } substituted)
             {
-                this.CollectFilledPremises(this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) ?? this.FormedApplication(pattern, solution.SlotOwner, solution.Types), null, inference, call);
+                this.CollectFilledPremises(substituted, argument is null ? null : this.OwnType(argument), inference, call);
             }
         }
 
         return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
 
-        bool TakesCallTypeAt(int parameter)
+        Koto? ArgumentAt(int parameter)
         {
             for (var j = 0; j < call.ArgumentNodes.Count; j++)
             {
-                if (mapping[j] == parameter && this.TakesCallType(call.ArgumentNodes[j]))
+                if (mapping[j] == parameter)
                 {
-                    return true;
+                    return call.ArgumentNodes[j];
                 }
             }
 
-            return false;
+            return null;
         }
     }
 }

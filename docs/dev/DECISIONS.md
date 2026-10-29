@@ -5682,12 +5682,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     where the call determines that position's Type: its pattern names a callee Type parameter or a callee Origin the solve takes from
     bounds rather than an equality with another input (`OpensPosition`, `OriginInference.IsFixed`, `openedArgument`); elsewhere it is
     the Case's own fit, at the payload.
-  - SPEC 15.3.6: a call's solve takes the well-formedness, slots substituted, of each parameter no written Type gives (a default's, an
-    argument's that takes its Type from the call), and a Case construction without an expected Type solves its Origins the same way
-    (`SolveConstructionOrigins`), so a covariant slot takes the meet of all its upper bounds (cx1, cx5, cxc valid; cx2 errs). A written
-    argument adds nothing there: the evidence walk already bounds the solve by its parameter's well-formedness (`InferArgument` ->
-    `CollectInputPremises`), so no solution changes; taking it again, slots substituted, added a redundant operand (an exclusive
-    argument's region met with its referent's Origin) that the old analysis read as a retained Loan (ContentUpdateTest).
+  - SPEC 15.3.6, 15.6.4 step 3 (revision 2 §2, R4-B2): a call's solve satisfies the well-formedness, slots substituted, of every
+    parameter it fills, a default's and each argument's; a Case construction without an expected Type and a value call do the same for
+    their payloads and arguments, through one collector (`CollectFilledPremises` from `SolveLate`, `SolveConstructionOrigins`,
+    `SolveValueCallOrigins`), so a covariant slot takes the meet of all its upper bounds (cx1, cx5, cxc and its written twins r4i, r4a,
+    r4b, r4e, r4f valid, each `_n` twin errs; cx2 errs). Beside a part's own Type (`OwnType`: a written part's bound Type; none for a
+    part that takes its Type from the call or a default) only the positions that Type does not give are bounds, and an exclusive
+    layer's target is the part's own, which the fit makes equal: the set leaves out exactly the operands the part's Type and the fit
+    entail, so the solution is SPEC 15.3.6's. Round 1's reason was wrong: the evidence walk collected over the formed pattern, not the
+    substituted one, so leaving written arguments out changed solutions (r4i). ContentUpdateTest's conflict came from an entailed
+    operand: in `flip(first@uniq, second@uniq)` right's region was met with first's referent Origin, which T's equality and second's
+    well-formed Type entail, and the old analysis read it as a dependency on first's Loan (ContentUpdateTest's
+    `AnExclusiveArgumentsRegionTakesNoOperandItsOwnTypeGives`). The evidence walk's collection over the formed pattern goes (Q3; the
+    planning session's decision of 2026-10-30): it was a second operand source of entailed operands, so the set is now one. It moves no
+    verdict a user sees: the old path's false CallActivationConflict_Kd in AbstractCallReachTest's `again UniqItems` closes (the
+    ContentUpdate cause), and Binding forms no row whose relation the exact solution entails, so OriginRowsTest reads its `$for.iterator`
+    and RepeatedSet `k` fixtures on constructed inputs. No corpus or library program now forms a row at a parentless Use (E1's rule stays;
+    whether another form reaches it is open for the review). A slot still unsolved gives no bound: no fallback to the formed pattern.
   - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
     premise of its body; TypeOrigins forms no occurrence relation for a nested signature's input or result; each value call proves its
     callee's result (`RequireNestedResult`) and, as a named call does, its result Type's constraints (`RequireCallConstraints`).
@@ -5726,7 +5737,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence `contract C` and `get`, now valid; ResultPremiseTest's nested Function
     Type test, its getter's record at the call and `converted` valid) by (A) and (a); AConversionProvesTheImplementationsConditions'
     `premise` form valid by (a); ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall's row beside `m`'s Binding error by the G56
-    answer. MirBorrowsTest's mb27 pins keep dev's record. Kept apart (the owner's (i)): c2bg, c2dg,
+    answer. MirBorrowsTest's mb27 pins move under the planning session's mb27 decision (2026-10-29): 34 -> 33 causes, 27e4888a2ae9's
+    derived conflict goes, one record at the call's result fit (SPEC 15.3.6). Kept apart (the owner's (i)): c2bg, c2dg,
     c2_fnvalue_converted_weaker, c15, p1b.
   - Cost (D-2; 2026-10-30, A edfd4afee, A' a copy, B 3239f9bff, one folder, CPU 2 pinned, tiering off, interleaved): Bind (BindBench
     minima) cold B/A' Hello 1.004, Milestone26 1.010, census (121 programs) 0.987; warm 1.007, 1.005, 0.992 (A'/A up to 1.016); cold

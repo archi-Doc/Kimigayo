@@ -42,7 +42,10 @@ public sealed partial class OriginRowsTest
         "        let t: Option<ref/(ref/i32 during b) during a> = Option.None\n        yield 0\n    else => 0\n" +
         "    public init(p: ref/i32 during a, w: ref/(ref/i32 during b) during a)\n        self.p = p\n";
 
-    // A getter iterating a borrowed sequence (2a0-D's cf/p/accessor-for): its `for` row is the accessor's.
+    // A function iterating a Slice: its `for` is the function's.
+    private const string Total = "func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n";
+
+    // A getter iterating a borrowed sequence (2a0-D's cf/p/accessor-for): its `for` is the accessor's.
     private const string Getter = "struct Wrap {s}\n    public let values: Slice<i32> during s\n    public init(values: Slice<i32> during s) => self.values = values\n" +
         "    public computed first: i32\n        get() -> i32\n            var sum = 0\n            for v in self.values\n                sum = sum + v@follow\n            return sum\n";
 
@@ -143,19 +146,16 @@ public sealed partial class OriginRowsTest
     }
 
     // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
-    // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
-    // a module's top-level statements, a user loop's parentless `$for.iterator` Use, a default's well-formedness at its call in the calling
-    // body (DECISIONS BU-51).
+    // its evaluating body, a getter's, a default as its template, a static initializer, a Field initializer as its layer, a module's
+    // top-level statements, a default's well-formedness at its call in the calling body (DECISIONS BU-51); a parentless Use's below.
     [Theory]
     [InlineData(EnvStoreConsuming, "x@ref", "Closure")]
     [InlineData(EnvStore, "func [x, target]() => store(target, value: x@ref)", "Fn:g")]
-    [InlineData(Getter, "$for.iterator", "Accessor")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "3@ref", "Default:g:0")]
     [InlineData(Pick + "func h(n: i32, f: () -> i32 = func [] () => pick(7@ref, 8@ref)) -> i32 => f()\n", "7@ref", "Closure")]
     [InlineData(Util + "group G\n    public let n: i32 = Util.pick(3@ref, 4@ref)\n", "3@ref", "Static:n")]
     [InlineData(FieldInit, "3@ref", "Layer:S")]
     [InlineData(Pick + "let v = pick(3@ref, 4@ref)\n", "3@ref", "TopLevel")]
-    [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "$for.iterator", "Fn:total")]
     [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", "put2(keep@uniq, short@ref)", "Fn:outer")]
     public void ARowIsTheBodyBindingFormsItIn(string source, string site, string expected)
     {
@@ -166,14 +166,31 @@ public sealed partial class OriginRowsTest
         Assert.All(rows, x => Assert.Equal(expected, Describe(x.Body)));
     }
 
-    // The library's `for` in Slice.contains forms its row at a parentless Use; it is contains' own.
+    // DECISIONS R4-M101 E1 for a parentless Use, a user loop's `$for.iterator`: in a getter it is the accessor's, in a function the
+    // function's. No program forms a row there since G216 (a)'s one operand set (DECISIONS R4-M155; the planning session's decision of
+    // 2026-10-30): Iterator.next's receiver fit relates the iterator's Borrow to itself, which the exact solution entails. So the rule is
+    // read on a constructed input at that Use: the Borrow is a Finite atom of the body that forms it and of no other program body (a MIR
+    // body: the accessor's is its get function's).
+    [Theory]
+    [InlineData(Getter, "Fn:first.Get")]
+    [InlineData(Total, "Fn:total")]
+    public void AParentlessForUseIsTheBodyBindingFormsItIn(string source, string expected)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        var (borrow, use) = IteratorBorrow(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single());
+        var owners = Bodies(c).Where(x => InProgram(x.Key.Decl?.Declaration ?? c.Kotonoha.RootKoto) && Atom(c, x.Key.Body, borrow, use).Kind == OriginAtomKind.Finite);
+        Assert.Equal([expected], owners.Select(static x => Describe(x.Key.Body)));
+    }
+
+    // The library's `for` in Slice.contains has its parentless Use in contains' body, read as above on a constructed input (no row forms
+    // there since R4-M155; the planning session's decision of 2026-10-30).
     [Fact]
     public void TheLibrarysForRowIsItsFunctions()
     {
         var c = SemanticSnapshotTest.Bind("library").Compilation;
-        var rows = Rows(c, true).Where(static x => First(x.Use) == "$for.iterator").ToList();
-        Assert.NotEmpty(rows);
-        Assert.All(rows, x => Assert.Equal("Fn:contains", Describe(x.Body)));
+        var contains = Bodies(c).First(static x => Describe(x.Key.Body) == "Fn:contains" && KotoTree.Walk(x.Key.Decl!.Declaration).OfType<ForKoto>().Any());
+        var (borrow, use) = IteratorBorrow(KotoTree.Walk(contains.Key.Decl!.Declaration).OfType<ForKoto>().Single());
+        Assert.Equal(OriginAtomKind.Finite, Atom(c, contains.Key.Body, borrow, use).Kind);
     }
 
     // DECISIONS R4-M101 E4 (Q1 (a)): a constructor's slice is its own rows, then its layer's, the same in each constructor; the layer's rows
@@ -432,6 +449,10 @@ public sealed partial class OriginRowsTest
     private static string Site(Compilation c, OriginRow row) => First(c.SyntaxOf(row.Site));
 
     private static string First(Koto node) => (node.ToString() ?? string.Empty).Split('\n')[0].Trim();
+
+    // A `for` loop's Borrow of its iterator for `next` (the receiver's adapted Origin) and the parentless Use it is formed at.
+    private static (BoundOrigin Borrow, Koto Use) IteratorBorrow(ForKoto loop)
+        => (loop.Iteration!.Next.CallOf()!.ReceiverOperation.AdaptedType!.Origin!, loop.Iteration.Receiver);
 
     private static bool InProgram(Koto node) => node.CodeContext.SourceDocument?.Path == "Program.kimi";
 

@@ -433,13 +433,13 @@ public sealed partial class Binding
 
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
     // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values.
-    private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
+    private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, InvocationKoto use)
     {
         var inference = this.BeginOriginInference(use, binder);
         for (var i = 0; i < actuals.Length; i++)
         {
             this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
-            this.CollectFilledPremises(parameters.Components[i], null, inference, use);
+            this.CollectFilledPremises(parameters.Components[i], this.OwnType(use.ArgumentNodes[i]), inference, use);
         }
 
         if (binder is FunctionKoto function)
@@ -486,8 +486,11 @@ public sealed partial class Binding
             }
         }
 
+        // Beside `actual`, an exclusive layer's target is the argument's own too: the fit judges its equality (SPEC 15.3.5), and the
+        // argument's Type is well formed, so its stored Origins give no bound the argument does not already satisfy.
         if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
-            pattern.Components.Count != 0 && !this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, visit))
+            pattern.Components.Count != 0 &&
+            !this.VisitStoredPremises(pattern.Components[0], actual is not null && IsExclusive(pattern.Semantics) ? actual.Components[0] : result.Components[0], actual?.Components[0], outer, substituted, visit))
         {
             return false;
         }

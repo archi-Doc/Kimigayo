@@ -94,6 +94,10 @@ public sealed partial class Binding
         return IsAggregateArgument(node) || NeedsEnumContext(node) || node is FunctionKoto { IsAnonymous: true } || this.RecordedFact(node).Kind != ArgumentKind.Typed;
     }
 
+    // The Type a filled part gives of its own, which is well formed: a written part's bound Type; null for a part that takes its Type from
+    // the call (TakesCallType).
+    private BoundType? OwnType(Koto part) => this.TakesCallType(part) ? null : part.BoundType;
+
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
         => this.RecordedFact(KotoHelper.UnwrapParentheses(part)) is { Kind: ArgumentKind.Literal, Default: { } literalDefault } ? literalDefault : null;

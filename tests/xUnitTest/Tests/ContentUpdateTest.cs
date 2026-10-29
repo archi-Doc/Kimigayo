@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Lsp;
 using Xunit;
 
@@ -229,6 +230,21 @@ public class ContentUpdateTest
         var result = DiagnosticCorpus.Check(source);
         Assert.Equal(2, result.Diagnostics.Length);
         Assert.All(result.Diagnostics, static record => Assert.True(record.Code is "ComparisonLoanConflict_Kd" or "CallActivationConflict_Kd"));
+    }
+
+    // SPEC 15.3.6, 15.6.4 step 3 (DECISIONS R4-M155): the call's solve takes the substituted well-formedness of every filled parameter
+    // beside the argument's own Type, and an exclusive layer's target is the argument's own (the fit makes it equal), so it adds no
+    // operand: `right`'s Origin is second's borrow alone. The operand `a` that the argument's Type entails made the old analysis read
+    // second's reservation as dependent on first's Loan (CallActivationConflict_Kd in DependentHandleSlotsKeepIndependentExternalReferences).
+    [Fact]
+    public void AnExclusiveArgumentsRegionTakesNoOperandItsOwnTypeGives()
+    {
+        const string make = "Kimi.Intrinsics.makeObj(View.init(n))";
+        var c = MinimalEmissionTest.Analyze(View + Generic + "func run(n: ref/i32 during a)\n    var first = " + make + "\n    var second = " + make + "\n    flip(first@uniq, second@uniq)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Empty(c.Problems);
+        var flip = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(static call => call.ToString().StartsWith("flip(", StringComparison.Ordinal)).CallOf()!;
+        Assert.All(flip.ArgumentOperations.ToArray(), static operation => Assert.NotEqual(OriginKind.Intersection, operation.ParameterType!.Origin!.Kind));
     }
 
     [Collection<AllocationIsolationCollection>]

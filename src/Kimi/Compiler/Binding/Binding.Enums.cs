@@ -309,15 +309,15 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 15.6.4 step 3: without an expected Type, a construction's Origins are fresh regions solved from their bounds: the
-    // payloads' fits, the well-formedness of every payload Type and the enum's clauses (SolveOriginInference), so that a covariant slot
-    // takes the meet of all its upper bounds.
+    // payloads' fits, the well-formedness of every payload Type beside the payload's own Type, as a call's (SolveLate), and the enum's
+    // clauses (SolveOriginInference), so that a covariant slot takes the meet of all its upper bounds.
     private void SolveConstructionOrigins(Koto use, ReadOnlySpan<Koto> payload, in SlotSolution solution, OriginInference inference)
     {
         for (var i = 0; i < payload.Length; i++)
         {
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } payloadType)
             {
-                this.CollectFilledPremises(payloadType, null, inference, use);
+                this.CollectFilledPremises(payloadType, this.OwnType(solution.Call.ArgumentNodes[i]), inference, use);
             }
         }
 

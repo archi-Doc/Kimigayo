@@ -196,7 +196,9 @@ public partial class OriginRelationDiagnosticTest
     // Probes 2 and 3 (d3 §4.9): j02 wraps put2's position in E's Type argument (as j01n does k's) and errs at the argument (dev accepts it);
     // a Case construction's payload Type that another payload instantiates must be well-formed (cx2 errs at `.None`, dev accepts it), while
     // cx1's slot `s` takes the meet of its upper bounds, the third payload's well-formedness among them (SPEC 15.3.6), so cx1 is valid, as
-    // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4);
+    // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4), and cxc's
+    // written twins r4i, r4a, r4b, r4e and r4f, where a written argument's parameter well-formedness, slots substituted, is a bound too
+    // (design revision 2 §2): each `_n` twin returns `x` at `during p`, which the meet's `short@ref` operand cannot outlive;
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
     [Theory]
@@ -208,6 +210,16 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cx5", "enum W3 {a, s}\n    origin a outlives s\n    Make(ref/i32 during a, ref/i32 during s, Option<ref/(ref/i32 during a) during s>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    let w = W3.Make(short@ref, p, .None)\n    return 0\n", "", null)]
     [InlineData("cxc", "func mk<T>(t: T, x: ref/i32 during s, w: Option<ref/T during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
     [InlineData("cxc2", "func mk(t: ref/i32 during a, x: ref/i32 during s, w: Option<ref/(ref/i32 during a) during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
+    [InlineData("r4i", "func mk<T>(t: T, x: ref/i32 during s, w: Option<ref/T during s>) -> i32\n    return 0\nfunc ok(p: ref/i32, w: Option<ref/(ref/i32 during p) during p>) -> i32\n    let short = 2\n    return mk(short@ref, p, w)\n", "", null)]
+    [InlineData("r4i_n", "func mk<T>(t: T, x: ref/i32 during s, w: Option<ref/T during s>) -> ref/i32 during s\n    return x\nfunc bad(p: ref/i32, w: Option<ref/(ref/i32 during p) during p>) -> ref/i32 during p\n    let short = 2\n    return mk(short@ref, p, w)\n", "UnsatisfiedOriginRelation_Kd mk(short@ref, p, w)", null)]
+    [InlineData("r4a", "func mk<T>(w: Option<ref/T during s>, t: T, x: ref/i32 during s) -> i32\n    return 0\nfunc ok(p: ref/i32, w: Option<ref/(ref/i32 during p) during p>) -> i32\n    let short = 2\n    return mk(w, short@ref, p)\n", "", null)]
+    [InlineData("r4a_n", "func mk<T>(w: Option<ref/T during s>, t: T, x: ref/i32 during s) -> ref/i32 during s\n    return x\nfunc bad(p: ref/i32, w: Option<ref/(ref/i32 during p) during p>) -> ref/i32 during p\n    let short = 2\n    return mk(w, short@ref, p)\n", "UnsatisfiedOriginRelation_Kd mk(w, short@ref, p)", null)]
+    [InlineData("r4b", "func mk<T>(t: T, w: Option<ref/T during s>, x: ref/i32 during s) -> i32\n    return 0\nfunc ok(p: ref/i32, w: Option<ref/(ref/i32 during p) during p>) -> i32\n    let short = 2\n    return mk(short@ref, w, p)\n", "", null)]
+    [InlineData("r4b_n", "func mk<T>(t: T, w: Option<ref/T during s>, x: ref/i32 during s) -> ref/i32 during s\n    return x\nfunc bad(p: ref/i32, w: Option<ref/(ref/i32 during p) during p>) -> ref/i32 during p\n    let short = 2\n    return mk(short@ref, w, p)\n", "UnsatisfiedOriginRelation_Kd mk(short@ref, w, p)", null)]
+    [InlineData("r4e", "func mk<T>(w: ref/T during s, t: T, x: ref/i32 during s) -> i32\n    return 0\nfunc ok(p: ref/i32, w: ref/(ref/i32 during p) during p) -> i32\n    let short = 2\n    return mk(w, short@ref, p)\n", "", null)]
+    [InlineData("r4e_n", "func mk<T>(w: ref/T during s, t: T, x: ref/i32 during s) -> ref/i32 during s\n    return x\nfunc bad(p: ref/i32, w: ref/(ref/i32 during p) during p) -> ref/i32 during p\n    let short = 2\n    return mk(w, short@ref, p)\n", "UnsatisfiedOriginRelation_Kd mk(w, short@ref, p)", null)]
+    [InlineData("r4f", "func mk<T>(t: T, w: ref/T during s, x: ref/i32 during s) -> i32\n    return 0\nfunc ok(p: ref/i32, w: ref/(ref/i32 during p) during p) -> i32\n    let short = 2\n    return mk(short@ref, w, p)\n", "", null)]
+    [InlineData("r4f_n", "func mk<T>(t: T, w: ref/T during s, x: ref/i32 during s) -> ref/i32 during s\n    return x\nfunc bad(p: ref/i32, w: ref/(ref/i32 during p) during p) -> ref/i32 during p\n    let short = 2\n    return mk(short@ref, w, p)\n", "UnsatisfiedOriginRelation_Kd mk(short@ref, w, p)", null)]
     [InlineData("cx2", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W.Make(p, .None)\n    return 0\n", "", null)]
     [InlineData("fn0", "func f(w: Option<ref/(ref/i32 during c) during d>) -> i32\n    return 0\nfunc g() -> i32\n    return f(.None)\n", "", null)]
