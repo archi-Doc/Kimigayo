@@ -8283,6 +8283,28 @@ resumed by R4-M86 (2026-10-20).
   - Cost: src +80/−33 lines (+61/−20 besides comments, 7 of them `JudgeSelectedCall`'s signature wrapped), after the restructuring
     commit before it (Binding.Calls.cs split by responsibility); tests +113/−1.
 
+- **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
+  struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)
+  SPEC 6.4.4, 11.3, 11.3.1.
+  - Reading (the owner, 2026-10-29, verbatim 「含める (推奨)」, choosing 「含める: インスタンス accessor の本体は SPEC 6.4.4 の derived
+    instance body に含める。base.f() は getter/setter でも使える。」): `base.f()` is available in a derived Type's getter and setter.
+    A reading, not a revision: SPEC is unchanged.
+  - Rule: lexical self and the declaring struct are those of the function whose body holds the reference, which bu60's one scope walk
+    answers (`EnclosingFunction(scope)`; a definition's is that of the scope declaring it): a named function, or a custom accessor's
+    executing function, whose symbol publishes the receiver slot (the accessor's `self`), the container and the body. A static
+    accessor has no receiver (11.3.1) and keeps `InvalidBaseCall_Kd`; an anonymous function still needs an explicit `self` capture
+    (`BaseReceiver` ends at the first activation that is not anonymous, none in an accessor's body). Receiver modes are the ordinary
+    call judgment (an exclusive base function from a getter: the method twin's `NoApplicableOverload_Kd`; from a setter: its
+    `Unsupported_Kd`, STATUS' exclusive ObjectCallCompatible limit); an accessor body has no 6.4.5 override evidence (accessors are
+    never virtual, 6.4.1).
+  - Cause: `Binding.BaseCalls` kept its own walk over scope Functions, which an accessor's scopes do not set: a false
+    `InvalidBaseCall_Kd` ("requires a derived instance function") in every getter and setter, on every pipeline. The walk is deleted.
+  - `Binding.ObjectViews.FindObjectErasure` (6.4.5's lexical self of an override body) reads the same `EnclosingFunction`; its own walk is
+    deleted too (review 1, B1), so `BaseReceiver`'s `lexical` has one producer.
+  - Tests: `BaseCallBindingTest`: the native fixture `BaseCallGetter` (a getter, the original default), a setter's and a `[self]`
+    Closure's rows in a getter, the capture-less Closure's reason and the warm getter row fail before; the static accessor's row
+    is their twin.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
