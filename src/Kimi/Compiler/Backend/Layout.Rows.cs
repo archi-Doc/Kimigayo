@@ -7,8 +7,7 @@ namespace Kimi.Compiler.Backend;
 
 // The static rows of Layout (IMPL 21.1.3; plan P7a): scalars, Unit, string, Never, borrows and raw pointers, object and function handles,
 // and until R8 the Slice, Array and Dictionary handle words, each one shared record, which placement (Layout.Placement.cs) reads for a
-// Type that is not placed and code generation reads through Row (the old scalar-value gate too, until the old Emission goes at R6-gen;
-// DECISIONS R5-M148); and an enum's tag (Tag), which placement places.
+// Type that is not placed and code generation reads through Row (DECISIONS R5-M148); and an enum's tag (Tag), which placement places.
 internal sealed partial class Layout
 {
     private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";

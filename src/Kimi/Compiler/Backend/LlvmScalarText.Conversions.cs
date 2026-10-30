@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The conversions of LlvmScalarText (SPEC 4.7.1, 13.5.4, 22.5.2; DECISIONS R5-M17): a conversion's cast, its range checks over its bounds,
-// a floating narrowing's finite test and a position conversion's saturation.
+// and a floating narrowing's finite test.
 
 #pragma warning disable SA1402 // The conversion and bounds records are this writer's inputs.
 
@@ -83,30 +83,6 @@ internal static partial class LlvmScalarText
         output.Write('\n');
         WriteFailure(output, "%overflow", AbortReasons.FloatingConversion, check);
         WriteCast(output, conversion, conversion.Result);
-    }
-
-    // A position conversion (SPEC 4.7.1) has no check: an input isize cannot hold becomes -1, the sign-extended outside test
-    // ORed into the cast without a branch. id names its temporaries.
-    internal static void WritePositionConversion(TextWriter output, in ScalarConversion conversion, int id)
-    {
-        WriteBounds(output, conversion, id);
-        Span<char> name = stackalloc char[NameLength];
-        var cast = Format("%conv", id, name);
-        WriteCast(output, conversion, cast);
-        var outside = WriteOutside(output, conversion.Bounds, id);
-        WriteName(output, "  %mask", id);
-        output.Write(" = sext i1 ");
-        WriteName(output, outside, id);
-        output.Write(" to ");
-        output.Write(conversion.Target);
-        output.Write("\n  ");
-        output.Write(conversion.Result);
-        output.Write(" = or ");
-        output.Write(conversion.Target);
-        output.Write(' ');
-        output.Write(cast);
-        WriteName(output, ", %mask", id);
-        output.Write('\n');
     }
 
     // `result = cast source input to target`, or nothing when the source representation is kept.

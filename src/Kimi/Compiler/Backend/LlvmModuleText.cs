@@ -6,17 +6,17 @@
 // template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations, the overflow and memory
 // intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
 // numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
-// hexadecimal spelling. Both generators write the frame through it (PD2: promoted, never copied; Name came from the old writer with
+// hexadecimal spelling. Code generation writes the frame through it (PD2: promoted, never copied; Name came from the old writer with
 // ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
 // floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons)
 // and the target profile (WindowsProfile).
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
 // runtime template; a floating constant's hexadecimal spelling bits.
-// Invariants: the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; each runtime ABI
+// Invariants: warm writes allocate nothing; each runtime ABI
 // definition marker of a template is spliced exactly once and none is left unexpanded, or the template fails; the text holds no
 // checkout path.
-// Must not take syntax, HIR, Binding internals, EmissionModule or MIR types in its signatures, branch on the generator, or use LINQ.
+// Must not take syntax, HIR, Binding internals or MIR types in its signatures, or use LINQ.
 // Files: the module frame and the runtime templates (this file); the spellings of symbols, numbers, names and floating constants
 // (LlvmModuleText.Spelling.cs).
 
@@ -30,7 +30,7 @@ namespace Kimi.Compiler.Backend;
 /// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.4).</summary>
 internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
 
-/// <summary>Writes the syntax-free module frame of the LLVM text that every generator shares.</summary>
+/// <summary>Writes the syntax-free module frame of the LLVM text.</summary>
 internal static partial class LlvmModuleText
 {
     // Every generated definition carries the same profile attributes (SPEC 21.3.1).
