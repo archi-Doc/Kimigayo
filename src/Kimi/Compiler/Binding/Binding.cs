@@ -187,7 +187,7 @@ public sealed partial class Binding
         // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
-        this.ResetCallContexts();
+        this.functionItemContexts.Clear();
         this.types.ResetViews();
     }
 

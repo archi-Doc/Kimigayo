@@ -235,9 +235,6 @@ public sealed partial class OwnershipBody
         return this.SymbolPlaces.TryGetValue(symbol, out place);
     }
 
-    internal bool TrySymbolPlaceAt(BindingSymbol symbol, int operation, out int place)
-        => this.TrySymbolPlace(symbol, this.DefaultContextAt(operation), out place);
-
     internal int DefaultContextAt(int operation)
     {
         if (this.DefaultContexts is not { Count: > 0 } contexts)

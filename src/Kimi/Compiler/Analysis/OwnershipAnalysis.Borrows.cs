@@ -558,9 +558,9 @@ public sealed partial class OwnershipAnalysis
     }
 
     // A generic integer or generic wrapping integer in a definition body (SPEC 8.7.4): numeric in every instance. Universal
-    // verification accepts it, and each instance plan sees the concrete Scalar.
+    // verification accepts it.
     private bool GenericInteger(Koto source)
-        => this.instance is null && source.BoundType is { } type &&
+        => source.BoundType is { } type &&
         ((type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && this.compilation.Binding.ProvePrimitiveInteger(type, source) == ConstraintProof.Proven) ||
             this.compilation.Binding.IsGenericWrappingInteger(type, source));
 

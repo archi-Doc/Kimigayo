@@ -266,6 +266,33 @@ rules that result from them.
     a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
     CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
     and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
+- **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
+  "Working-time limit", "Repeated reviews" and "Owner decisions").
+  - The owner's draft (verbatim):
+    「・設計作業や実装作業において、エージェントの実働時間が1時間を超えたら、作業を中断する。
+    ・作業内容、課題、今後の予定を記録する。
+    ・記録を元に、作業を小さく検証可能な単位に分けた、具体的な作業計画を作成する。
+    ・オーナーに作業中断を報告し、作業計画の承認を得る。
+    ・"GO"が得られたら、分割した作業を開始する。」
+    The owner approved it with the R4 planning session's additions (「Record revised version」).
+  - Rule: as WORKFLOW states. The additions:
+    - working time is logged by each agent and summed per phase over agents and rounds, without heavy runs and waits;
+    - the stopping steps, with the findings carried over;
+    - the shape of a split unit, and no unit that makes an invalid program valid merging before the unit that
+      rejects it again;
+    - sizing before a unit starts;
+    - every session's agents and the planning session's own design work are covered, and reviews are not.
+  - Amends Q11 in two places. Both keep its counts from resetting across a split.
+    - A split unit inherits the blocking findings its split plan names, so a later finding that repeats an inherited
+      cause shares a cause with it.
+    - A unit that the limit stops after its work has already been split twice under the limit does not converge.
+    Q11's other signals stand.
+  - Reason: large units took long and did not converge. G216 (a) went through five proposal revisions, three
+    implementation reviews and a redesign review round, and G264's option (A) lost its premise only at the SPEC draft's
+    review. Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time, so one hour fits a small unit.
+  - Rejected:
+    - elapsed time: other sessions' builds and heavy runs load the machine;
+    - resetting the clock per fix round: it lets repeated rounds escape the limit.
 
 ## Code rules (2026-10-12)
 
@@ -1152,7 +1179,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
 - **R4-M34** (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
   step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause; its backward ring
-  superseded by R4-M65) MIR dataflow, forward and
+  superseded by R4-M65, its backward clause by R4-M158) MIR dataflow, forward and
   backward. `IMirFlow.Join(target, incoming)` is the transfer's join and says whether the state grew: A1 keeps union (`MirDataflow.Union`),
   A5's Loan sets will join by node union. `MirDataflow.Begin` decides each chain's phase once per body, P1 where `MirReach`'s runtime walk
   from the entry reaches it, else P2, and records each block's predecessor edges; `Forward` keeps R4-M20's phases, and A4 reads
@@ -4799,6 +4826,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and R4-M145 S2 reserved; R4-M140 the last on dev).
   - R4-M148: a Closure contract has no referent stores, so its receiver takes W; a Closure argument a 4.6–4.9 operation calls inside
     itself is composed at the caller through that Closure contract (this family).
+  - Superseded in part under BU-67's reading (2026-10-30, the owner's 「(B)」 on G264 S1): the known false errors above
+    (appendDrop2Ok, clearDrop2Ok, clearDropOk2, clearObjOk) are correct errors by the same whole-holder text of SPEC 15.6; the guard
+    and its removal condition (PLAN G264) stand.
 - **R4-M145 One consumed-by-value rule: ClosureEffects reads the Adjust rule, and a discarded Place's bare acquisition is its plan
   row (consumed-by-value S2)** (2026-10-26; R4's lane A under the owner's design B with the review's C1–C7 (OQ1 (a), 2026-10-25) and
   the owner's discard answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2
@@ -5763,6 +5793,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
     warm 0 B.
   - Open: `Encloses` costs O(distinct (Type, W) of the Place's Type) per use; a per-Place memo, as `ownAt` has, would make it per
     distinct Place (design review 1's N4).
+- **R4-M158 G305, the backward dataflow is the forward one's transpose: a value used on a Never form's assumed continuation is live
+  before the form** (2026-10-30; the R4 planning session's design `r4-notes\g305\design.md` Option 1; Major; the owner, asked whether
+  R4-M34's backward clause may be superseded and the two MirDataflowTest expectations changed, answered 「Okです」 (2026-10-30,
+  verbatim)) SPEC 14.10.3, 15.6, 15.6.7 (PLAN G305).
+  - Cause: `us[take(x@move)] = x@ref`, `take` of Type Never, was accepted on every pipeline. The MIR is right: the Never call's
+    CheckTarget starts the assumed continuation, which uses the secured `x@ref` (SPEC 13.7.1 step 1). A5's holder liveness
+    (`MirDataflow.Backward`) let a P1 chain join only its runtime successors, so a use on the continuation kept nothing live at the
+    Move, and let a P2 chain join every successor, so a use after a P1 join kept a Loan live on a continuation flowing into the join
+    (`if c` { `take("t")`; `consume(x@move)` }; `use(r)`: a MIR-only false error). The backward edges were not the forward ones
+    reversed.
+  - Rule: one edge rule, `MirDataflow.Flows`: a state flows from chain h along edge i into head s where s is P2, or h is P1 and i a
+    runtime edge (SPEC 14.10.3: an assumed continuation continues from its Never form's state, where every check applies; an item with
+    a real incoming path uses only real paths). `Forward`'s phase solve and `Backward`'s `Unwind` both read it; the phase solve keeps
+    its frozen-P1 shortcut. Every Never form of 14.10.3 shares it (a Never call, also in a `defer`, `$abort`, a transfer, `loop`
+    without exit, a diverging operand), and so does every check that reads holder liveness: Loan conflicts and reservations (`k.bump(lose(k@move))`:
+    `CallReservationConflict_Kd`). A Drop on an assumed continuation observes like any other cleanup (SPEC 14.10.3: "Cleanup is
+    checked the same way"; 15.6.6: what destruction may observe must be valid there; its access is R4-M57's one rule `Dropping`,
+    `Observe` where its case Type observes and its A2 group's verdict is not Elide, no group: the case Type alone; R4-M33 superseded
+    R4-M24's "observes nothing"), so `Flows` now also keeps a Loan such a Drop observes live before the Never form:
+    `let g = Guard.init(x@ref)`, `g`'s Type with a `drop`, then `x = "z"` before `take("t")` or inside a `loop` without exit, is an
+    error at the write (it was valid on A5). A4's effect rule (R4-M6a, `MirEffects.Dropped`: a Drop only the checks reach runs no destructor) is
+    unchanged: it concerns what runs.
+  - Supersedes R4-M34's backward clause ("a P1 chain's runtime successors only and a P2 chain's every successor"). Its reason, "uses on
+    continuations never merge into runtime paths", holds for P1 heads, not for a P2 continuation, which by SPEC 14.10.3 continues from
+    its P1 predecessor's state.
+  - Rejected: joining every successor in both phases (false errors where a transfer's continuation flows into a P1 join, and keeps the
+    false error above); a builder use of the secured operands before each diverging terminator (a clause per form, missing uses in
+    later statements, the two directions still disagreeing); a forward set of invalidated Loans checked at the use on the continuation
+    (a second conflict mechanism for one rule).
+  - Tests (each changed expectation SPEC-required and owner-approved): `MirDataflowTest`'s reference rule is the transpose;
+    `CheckOnlyUsesKeepNothingLiveOnRuntimePaths` became `ValuesStayLiveIntoACheckOnlyContinuation` (x read after a `return` is live at
+    the entry; x read after a conditional `return` is live in no block only the checks reach); `MirBorrowsTest`'s
+    `ALoanStaysLiveIntoANeverFormsContinuation` (each Never form above, `defer` and the observing Drop included, an error at its
+    reachable twin's location; valid counterparts, a holder without a `drop` and one moved away before the write among them).
+  - Old path: such forms without an unreachable local use stay accepted until R6-check (STATUS, Unreachable code).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -8454,6 +8519,9 @@ resumed by R4-M86 (2026-10-20).
     `ATransferOperationWritesNoRawLayerOfAnAddedValue` (failing before) and `AWholeValueEscapeKeepsByValueTwinsErringInTheInterim`
     (its default-pipeline source is the ledger's one (b) acceptance program of this entry, `classification.tsv` a5-writes), and
     R5-M129's test re-expected.
+  - Superseded in part by BU-67 (2026-10-30, the owner's 「(B)」 on G264 S1): the interim class and S2's forms are correct errors under SPEC
+    15.6's whole-holder text; rule A is SPEC's rule. Its test is now
+    `MirBorrowsTest.ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn` (R4's 15.6.4 example unit).
 
 - **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
   struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)
@@ -8519,8 +8587,9 @@ resumed by R4-M86 (2026-10-20).
     raw visits being fixed for a contract or an erased signature. A second visit appends the same atoms again, so each such position
     is walked once (`retentionPositions`, cleared with `retentionRawVisits`): the atom list loses duplicates only, which change no
     node, edge or row. bu36's candidate key.
-  - O2, `VisitInlineLayout`. A visit's effect depends on the Type and the container stack. Each container frame (the root and each
-    pushed struct or enum instance) is one query of `layoutParts`, whose stack is fixed. A Tuple or fixed array whose visit closed no
+  - O2, `VisitInlineLayout` (superseded by BU-65, which replaces the walk). A visit's effect depends on the Type and the
+    container stack. Each container frame (the root and each pushed struct or enum instance) is one query of `layoutParts`, whose
+    stack is fixed. A Tuple or fixed array whose visit closed no
     cycle is not visited again in its frame. Every struct or enum instance below it is then finite (skipped) or meets a container on
     the same stack, which adds nothing again, so the skipped revisit is a no-op under dev's rule. `finiteInlineLayouts` is unchanged.
   - Rejected:
@@ -8529,7 +8598,7 @@ resumed by R4-M86 (2026-10-20).
       unreported; (a) would report R2.
     - (b), a global Tuple memo. It would miss C in `struct R {r: C<u8>}; struct C<T> {t: (C<i32>, u8)}`, whose Tuple first closes
       nothing under R's stack.
-    - (c), a declaration-level cycle graph: a redesign.
+    - (c), a declaration-level cycle graph: a redesign (taken by BU-65: G310's exactness needs it).
     - BU-35's (b), one shared walker.
   - Evidence:
     - The probe's every call's and function's retention, Bind's records and BuildMir's counts are identical before and after for
@@ -8724,6 +8793,38 @@ resumed by R4-M86 (2026-10-20).
     keeping the per-read check with a re-entry set (the order-dependent records above); rounds until the limit itself (the cause
     object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
     either sweep order (a four-cycle does under alternation).
+- **BU-61 A projection use is published under its Type and the scope that judges it, `Binding.ProjectionUseOf`; a check that fails
+  only because its Type is a projection rests on the use judged on its own scope chain, at publication (`AddPendingPrerequisite`)**
+  (2026-10-30; PLAN G293's BU part, bu78 fix rounds 1 to 3 on the review's B1 and the re-checks' first findings; the planning session's
+  and the owner's (round 3: 「すべて推奨どおり」) decisions after the addenda `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g293\design.md`
+  A1–A16; class Minor) SPEC 23.1.2.
+  Binding keeps a rejected projection as the binding's Type (R5-M155's (c)), so a capture of it (`[t@move]`, `[t]`) failed with a
+  located Unsupported_Kd without prerequisite, beside the rejection it depends on.
+  - Fact: `BindAssociatedProjection` (Type formation) publishes each projection use under its interned Type and its
+    `ConstraintScope`, the scope whose premise chain its conformance check (`ValidateConformances`' final projection loop) judges it
+    in; the first use per pair is kept (`projectionForms`, cleared with `projectionUses`; reused storage). That check owns the record
+    that rejects it, decided after the bodies, so a reader during the bodies sees the use Unvisited or Resolved and can only name it.
+    One key for every projection: a closed subject needs no other case.
+  - Reader: `Capture`'s environment-Type check takes the use judged on `ConstraintScope(closure)`'s Parent chain, innermost first (the
+    chain whose facts the solver reads, `Supply`), and records it as the closure's part prerequisite with the closure's first failure.
+    No exact key matches: a parameter's or local's Type is formed in the function's or block's scope, the capture sits in the
+    closure's. Innermost first is required: an inner scope's premise (a method clause on its struct's `T`) can validate what an outer
+    formation (the struct's Field) rejects. The walk stops, with no prerequisite, at the first scope that adds premises (its own facts
+    or an Invalid environment) without forming the Type: premises only grow inward, so a use found before any such scope is judged
+    under the capture's own premises and its rejection is the capture's, while one beyond it may be rejected under fewer premises (a
+    Field read in a method whose clause or conditional block validates it: the re-check's q01, q07f). A scope off the chain (a sibling
+    method's, a sibling closure's) is never read. With no use before the stop, no prerequisite is recorded and the record stays
+    direct (a call result, a Field read formed elsewhere or past a premise: an extra record, never a lost one).
+    `AddPendingPrerequisite` keeps the first part whatever its state now (AddPrerequisite drops a part
+    already Resolved), and `UnresolvedPart` reads it at publication: derived when the use was rejected (a parameter, an annotated
+    local, `let u = t`, a primitive, Tuple or Type parameter subject), direct when it resolved (an abstract `T.Tag`). It replaces
+    bu78's `TypeSource` there, which stays only as ConsultTypeSource's mapping for a binding without a Type (G260).
+  - Open: the annotated local's initializer TypeMismatch_Kd (kept by R5-M155) also fails only because the Type names no Type; its fix
+    reads this fact (PLAN G293). Rejected: one use per interned Type (fix round 1: a struct's `T` is shared by methods with different
+    premises, so a sibling's rejection removed a valid scope's independent record, the re-check's r01 and r11); the binding's written
+    Type as the fact (bu78: misses `let u = t` and the primitive and Tuple subjects, whose bindings rest on no failed written part);
+    re-running the conformance proof at the capture (a consumer re-running a check); Binding's null for a rejected projection
+    (R5-M155 (c)).
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (2026-10-30; PLAN G206 (7),
@@ -8782,6 +8883,71 @@ resumed by R4-M86 (2026-10-20).
     copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
+
+- **BU-65 A declaration's finite inline storage is judged on per-node summaries by Tarjan over the edges the walks discover**
+  (2026-10-30; PLAN G310, unit bu76; designs `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g310\design.md`, `design-r1.md`,
+  `design-r2.md`, the review REVISE, re-check 1 REVISE, re-check 2 ACCEPT; the BU planning session's decisions) SPEC 6.2 Finite inline
+  storage: a struct or enum declaration is invalid iff its storage, its own parameters open, reaches the same declaration again, with
+  any Type arguments, through by-value positions (Fields, the base, Case payloads, Tuple and fixed-array elements, the parts a
+  declaration stores inline of its arguments, a projection's as SPEC 8.6.1 completes it). Supersedes BU-55's O2 (a′) and its rejected
+  (c): (c) was rejected as a redesign outside a linearity unit, and exactness now needs it. The instance walk matched cycles by
+  declaration identity and marked an instance finite when its visit added no new member, so its verdicts depended on order and
+  duplicated parts (A/R2/M), rejected a valid program (`R {r: X<D>}; X<T> {t: T}; D {x: X<u8>}`), accepted infinite layouts
+  (`Node {next: Option<Option<Node>>}`, `R {r: C<i32>}; C<T> {t: (C<i32>, u8)}`) and missed declarations reaching themselves through
+  another's growth. Dropping its cut at a repeated non-own declaration makes it infinite under growth, and the only sound cut is the
+  declaration-level fact itself.
+  - Owner: `Binding.InlineLayouts.cs` (moved from Binding.Storage.cs by U0, behaviour unchanged), its contract at the file's head.
+  - Nodes: one per struct or enum declaration, walked and proven in the declaration's scope; one per associated binding,
+    ProjectionSpecification's Type in its subject declaration's terms, keyed by the conformance path it comes from and walked and
+    proven in that path's Scope (SPEC 8.8.2: D + P). ProjectionSpecification publishes the path (ProjectionOutcome.Path; the
+    receiver's ResolveAssociated returns the binding with its path). An inherited path's binding is its source's: the walk resolves the
+    projection again on StoredType(InheritedBase, subject), as ProveConformanceConditions proves an inherited path's conditions.
+  - Summary: the abstract parts a node's storage reaches by value. An instance at a by-value position adds the edge to its declaration
+    and walks that summary under the instance (a projection part rebuilt over substituted components, any other part by PartType); a
+    completed projection adds the edge to its binding's node and walks that summary under the Subject; a builtin output is walked; a
+    pending projection, a parameter, a pair application or target are summary parts.
+  - Judgment: a declaration is invalid iff its strongly connected component has two nodes or more, or it has an edge to itself. Tarjan
+    over the edges the walks discover; a summary is computed before its first read, and every read follows its edge, so dependencies
+    are edges; a cyclic component is re-walked until no summary grows; a re-walk reaching below its root merges into the enclosing
+    component. The result is the least-fixpoint graph's cycles in any declaration order. Only declarations are reported; a cycle of
+    binding nodes alone is its conformance's error (SPEC 8.3.3).
+  - Bound (SPEC 8.3.3): a pending projection is a summary part only when each step's subject is a parameter, a pair target or a
+    projection of one, proven in the node's scope to conform to the step's Contract, a non-recursive one. A recursive Contract's
+    projection never completes for a concrete argument (none conforms), so it adds no edge; an unproven step, or a pending step over a
+    constructed subject, is a dependent of the node's own requirement error. A formable path longer than a node's premises reach repeats
+    a Contract that supplies a conformance of a projection of Self to itself, which makes it recursive, so the summaries are finite and
+    the re-walks end. Recursion is judged by Binding.IsRecursive under the premise supply the proofs read, once per run
+    (RecursiveInStorage), never through TyCtxt.RecursiveContracts' post-Bind memo, which a judgment inside Bind would fix before the
+    source states are final; that memo's contract names this one reader.
+  - Cost (BU-19): each node walk is one query of `layoutParts`, a TypeMemo of the composite parts it met; exact, because a part adds
+    edges and summary parts from the part and the summaries it reads alone, and a component's last round reads fixed summaries. The
+    nodes are pooled across runs: a warm pass allocates nothing.
+  - Evidence: 10,580 programs (75 forms in every declaration order, the review's sets included) give the round-2 prototype's verdicts
+    exactly, default and mir alike; versus dev they differ only on the fixed forms above, their dependents following the cyclic set.
+    Visits are linear (V16 tuple 146/162/178/258 at n = 12/16/20/40 against dev's 432/614/844/2714). Tests: InlineLayoutTest
+    `EveryDeclarationOrderGivesOneVerdict` and the A/R2/M row flipped to M,R2 (SPEC 6.2: R2<T> reaches R2<i32>); TypeDagScalingTest
+    `AnInlineCycleThroughAChainIsLinearInDistinctParts` at n = 40. The diagnostic snapshot shows no difference (its corpus has none of
+    the fixed forms). Cold Bind +2,392 B (Hello) and +2,544 B (Milestone 27), warm 0 B also with binding nodes; no time A/B (heavy
+    runs were registered throughout).
+  - Open: N3, ProjectionSpecification publishing an inherited binding's source path with the base subject, so the walk loses its
+    inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
+    a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
+
+- **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the BU planning
+  session after the owner's answer on G264 S1, verbatim 「(B)」, relayed by R4 and recorded in PLAN on dev 4a9159bc1; supersedes BU-52's
+  interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does not own follows the holder as Loans do), 15.6.4,
+  5.7.
+  - R4's SPEC drafting and its independent review (R4 notes `g264\spec-review-1.md`, `spec-analysis-2.md`) found that part-level raw reach
+    (option (A)) cannot make 15.6.4's `reset()` valid without a call-timing rule that accepts an unsound program (a callee rewriting a raw
+    Field to a fresh allocation and storing through it), so the whole-holder text stays and the example is corrected by R4's SPEC unit.
+  - Under that text the forms BU-52 recorded as the owner's interim (「暫定として認める (推奨)」, widened to the class 「類として認める」), viaOk, viaRefOk,
+    consumeDrop2Ok, via2Ok, deepQOk, enumBOk, optOk, genPLateOk, litDropOk, lit2DropOk, litObjOk and the class's other members, and S2's
+    forms (exIntoOk, exOldOk, exStructScopedOk, arrTup2Ok, and `append`'s source of arrConsumeOk and arrPlainOk) are correct Language
+    errors: MIR's verdict is SPEC's, and BU-52's rule A and its TransferWrites gate are SPEC's rules, not an interim. The owner's quotes
+    stay with BU-52.
+  - No code changes. PLAN G303 (part-level raw reach) closes without implementation and its row goes; no `Own` split per root storage Type
+    is needed. The test names and comments that say "interim" or "flip back" (MirBorrowsTest.Raw.cs, MirBorrowsTest.Referents.cs) change
+    with R4's 15.6.4 example unit.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -9029,6 +9195,7 @@ structure is recorded here by the unit that first implements it.
   for A5 step 1, so the fallback (d) below loses its meaning. Reason: `check` never runs it (`Project.cs:502-515`), and its
   only callers are in the Emission R6-gen deletes. Rejected: (b) a check-only Subst→CallPlan bridge (a transitional structure
   of difficulty 4, +150–200 lines); (d) R6-gen waiting for R4's exit, which stays the fallback if A5 step 1 has not merged by X3.
+  - Amended by R5-M162 (G7): `AnalyzeInstance` is deleted with its callers.
 - **R5-M6 Native deviations at R5's exit** (owner, 2026-10-18; OQ7; extends PLAN10 §12.2's "match or (e)") A native outcome
   of MIR code generation may differ from the legacy run's only as (e) a form not ported under D2, (a) a legacy-wrong outcome
   or (d) an intended change, each with its item, reason and SPEC clause (the plan's examples: the static cycle code at the
@@ -9594,6 +9761,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
     rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
     collector would key a generic closure as closed).
+  - Amended by R5-M162 (G7): `InstantiatesInLegacy` and `GenericThroughSpecialization` are deleted with their reader; the class is
+    the memo's `bool`.
 - **R5-M35 `InstanceCollector`, `CheckedSet` and the code generator selector** (2026-10-18, planning session; plan K1, package K
   §4.3-4.5, §5 and §9, S2-S4 X7, X15, X27, PD4, PD5; under R5-M18) A permanent Backend component, `InstanceCollector`
   (`Backend/Instances/InstanceCollector.cs`, contract entry), owns the checked set of a program version (SPEC 8.15.3, IMPL 21.3.1) and
@@ -9654,6 +9823,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each warm
     rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (A5P's C2: a fact outside R7's shape); a
     comparer modulo Origins (D1's Design B).
+  - Amended by R5-M162 (G7): `Binding.ClosureCall` and its memo are deleted with their readers, `ResetCallContexts` is inlined, and
+    `TyCtxt.StorageSubst`'s Emission readers are gone (its old-analysis and Binding readers stay until R6-check and R7).
 - **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18, planning session; plan P7c, full process,
   `draft/Sketches/R5 P7c/P7c-package.md`; package C §3.5 and §3.13, K §4.3 and §4.8, S2-S4 X18; supersedes R5-M19's static
   `Layout.Of`, and R5-M29's rejected per-compilation instance, its records "shared by every Type, compilation and thread" and its
@@ -10884,6 +11055,7 @@ structure is recorded here by the unit that first implements it.
   (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
   `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
   (once the old Emission is gone nothing calls it, and acceptance never read it).
+  - Amended by R5-M162 (G7): done; `AnalyzeInstance` goes with the instance half it alone reached.
 - **R5-M89 The call rows of MIR code generation, the signature owner and copy slots** (2026-10-21, C lane; plan C3a, package C 3.2 I8,
   3.3 and 3.9, plan 5.6.2, IMPL 21.3.1 and 21.4.7, SPEC 3.5, 14.10.3 and 22.6; the planning session's decisions on C3a's design; under
   R5-M65, R5-M77 and R5-M87)
@@ -11095,6 +11267,8 @@ structure is recorded here by the unit that first implements it.
     gate, roots and mark, not layout); the benchmark copying GenerateMir's steps (a second copy of the gate); a sel-only shape filter
     (a shape allowlist for one interim use); a separate E14b for the comparison.
   - Amended by R5-M160 (G4): the benchmark's old-generator branch is deleted.
+  - Amended by R5-M162 (G7): the check's comparison of the measured IR with `WriteIr` is deleted (stage 6 is `WriteIr`);
+    `CompilerPlanMeasurements` and `InheritanceLifecycleMeasurements` generate through `Analyze()` and `WriteIr`.
 - **R5-M95 The drop glue of MIR code generation, one level per Type (C4a-1)** (2026-10-21, C lane; plan C4a, package C 3.6 and §4's C4a
   row, X3 and X27, PD18; the planning session's decisions on C4a's design and its split; under R5-M18 form 1, R5-M60 and R5-M78)
   - Rows: `DropGlue.Row` gives a closed Type's glue row, which `FunctionCodegen.Glue.cs` writes: a string's calls the runtime release
@@ -12267,6 +12441,8 @@ structure is recorded here by the unit that first implements it.
     - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
     - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).
   - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
+  - Superseded in part by BU-67: under SPEC 15.6 (the owner's 「(B)」, G264 S1, 2026-10-30) litDropOk, lit2DropOk and litObjOk are invalid;
+    MIR's E is the verdict.
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26, C lane; plan
   C9b, package C 3.2, PD2, PD3, PD21, K package 4.5 rows 2 and 6; SPEC 6.4.6, 7.7.4, 8.6.3, 22.5.1, 22.9.2, 22.9.4, 22.10.1, 22.10.2,
   22.10.5; the planning session's go and rulings Q1-Q8 on C9b's design, `c9b-design.md` and `c9b-go.md`; under R5-M18 form 2 (G:format),
@@ -13190,6 +13366,8 @@ structure is recorded here by the unit that first implements it.
     deviation for the P42 rows (R5-M144 (b); keyed by the code generator, which G2 does not switch); a third G1 file for the records.
   - Amended by R5-M160 (G4): S6's rollback has ended. S7's "re-pointed to `Compilation.Emission`" applies only where a test already
     reads `Compilation.Emission`; a pin reaching the old generator through `Compilation.WriteIr`/`Validate` goes with its test.
+  - Amended by R5-M162 (G7): S7's G7 step is done; `StaticScalarEntry`, `LegacyRuntimeHelpers`' formatting requests and
+    `AggregateLayoutPool`'s remaining hooks join G8, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` G9.
 - **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
   g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
   Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
@@ -13511,6 +13689,8 @@ structure is recorded here by the unit that first implements it.
     - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.
   - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites;
     ratchets: ownership bodies 84 → 30, prepared modules 112 → 0, instance reads 1 → 0, failure facts 1 → 0.
+  - Amended by R5-M162 (G7): no reader of `Compilation.Emission` is left, so it is deleted with `LlvmEmitter`; a
+    publication failure's record is `Compilation.ReportPublicationFailure` until G9b.
 - **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, R6-gen; plan §4.9 rows G5 and G6, PD14,
   §5.1 M8; R5-M152 S7; under R5-M12 and R5-M160; the planning session's rulings Q1-Q5 on the unit's census; Major, G:R6-gen-del)
   - Rule: a test that observes the old generator's own representation goes; a rule it stood for stays where MIR code generation
@@ -13541,3 +13721,48 @@ structure is recorded here by the unit that first implements it.
     - keeping VirtualPlanReuseTest's reads for R6-check (they observe no rule of the old analysis).
   - Amends, each with its amendment line: R3-3's `TryPrepare` reads, R4-M13a's R5 and R6 counts, and the G5 clauses of R5-M64,
     R5-M158 and R5-M160.
+  - Amended by R5-M162 (G7): the zeroed rows' members are deleted; the rows stay at limit 0 until G10's zero-reference rows.
+- **R5-M162 The old generator's driver, lowering, plans and instance machinery deleted (R6-gen G7)** (2026-10-30, R6-gen; plan §4.9
+  row G7, §5.1 M4 and M8; R5-M152 S7; design `draft/Sketches/R6-gen/G7-design.md` revision 1 with the planning session's rulings
+  Q1-Q8; under R5-M5, R5-M88, R5-M160 and R5-M161; Major, G:R6-gen-del)
+  - Rule: a component goes with its last caller (S7). Deleted: `LlvmEmitter*`, `BodyLowering*` (37 files), `GenericStoragePlan*`,
+    `ObjectGenerationPlan`, `VirtualGenerationPlan`, `DefaultGenerationPlan`, `CompilerFunctionAdapters` and `NumericArithmetic`
+    (47 files, 13,202 lines) with `Compilation.Emission`, and every member whose callers, readers and writers all lay in them,
+    except members of the files G8 deletes whole and Binding members G9 owns.
+  - Product: no product path has run the old generator since G4. Its one remaining reach, `Project.PublishArtifacts`' publication
+    failure through `LlvmEmitter.ReportFailure`, is `Compilation.ReportPublicationFailure` (`[Transitional("R6-gen")]`, until G9b)
+    with the same record: `GenerationFailed_Kd` at the project with the failure's text, the branch `ReportFailure` took at every
+    call since G4 (no `FailedInstance`, no resource limit). No vocabulary entry.
+  - `src/Benchmark` (Q2, per reader): `CompilerPlanMeasurements`' emission phase times warm MIR generation of each workload, and
+    `InheritanceLifecycleMeasurements` times fresh, edited and warm compilations through generation, so both are re-pointed to
+    `Compilation.Analyze()` and `WriteIr` (the gate needs the program `Analyze` keeps, R5-M94); every workload generates. The
+    pipeline check's comparison of `WriteIr` with itself (stage 6 has been `WriteIr` since G4) is deleted; its instrumentation
+    comparison stays.
+  - The old Analysis's instance half (D5's deletion), what only `AnalyzeInstance` reached: `AnalyzeInstance`, `ClearInstances`,
+    `FailedInstance`, `InstanceStorageLimit`, `ReportInstanceDiagnostics`, the instance state, `Resolve`'s and `Concrete`'s instance
+    branches, the `this.instance` guards, `OwnershipBody.Instance` and `ReportDiagnostics`' instance parameters. The old generator's
+    views of the analysis, read by it alone (Q5): `UsesImport` with its set, `GetBorrowInputState`, `TrySymbolPlaceAt`,
+    `GetElementState`, `IsPathWithin`, `ParameterCount` and `DeclaredResultType`. The Semantics-case substitution in the same file
+    (`Substituting`, the pair-layer helpers) is the old analysis's own and stays until R6-check (SPEC 8.15).
+  - Binding (BU's review; the unit's last commit): the `ClosureCall` bridge and its memo (R5-M36; `ResetCallContexts` inlined),
+    `TyCtxt.InstantiatesInLegacy` and `InstanceClass.GenericThroughSpecialization` (R5-M34; the class is a `bool`), the
+    instance-only parameters of `ReportEffectViolation`, `StartupResult.Function`, and the root helpers `ElementAccess.ReceiverMatches`
+    and `ScalarTypes.IsCharacterValue`. Backend: `AbiParameterKind.PreparedSlot`.
+  - Unit mapping (Q1, Q7): `StaticScalarEntry` (its readers are `EmissionModule.Statics` and `LlvmModuleWriter.Statics`),
+    `LegacyRuntimeHelpers`' formatting requests with their lists and loops, and `AggregateLayoutPool`'s remaining hooks
+    (`IsSealedObjectTarget`, `CollectionDrop`, the `GenericDestructor` field) join G8; `AdtDef.IsOrInherits` and
+    `KimiLibraryCatalog.IsArrayOperation` join G9's list. `AggregateLayoutPool.InstantiateDestructor` goes with its one producer,
+    `GenericStoragePlan.RequireDestructor`.
+  - Records: ARCH's freeze drops BU-24's two exceptions for the old Emission (their code is deleted); its Transitional list gains
+    `ReportPublicationFailure` and loses the bridge and the legacy view; CODEMAP's rows lose the deleted stems; STATUS's generic
+    generation row loses the old generator's per-instance ownership checking.
+  - Shown behavior-preserving against a base Session of dev `70b530151` in the unit's worktree: the diagnostic snapshot and the
+    semantic snapshot (HIR, MIR) equal; every `'*.ll'` fixture's `.ll`, sidecar and native result identical (`compare-fixtures.ps1`);
+    the 40 harnessed milestones and the five CLI harnesses pass.
+  - Ratchets: Emission failure strings 446 → 0 (G9's item, done here); the zeroed rows stay at limit 0 until G10's zero-reference
+    rows (Q3). M4: the Emission's `.cs` lines 18,284 → 5,078 (30 files), the Backend's 14,758 → 14,756.
+  - Rejected: keeping `LlvmEmitter` for `ReportFailure`; an inline record in `Project`; deleting the Benchmark's emission phases (they
+    still time MIR code generation); deleting `OwnershipAnalysis.Instances.cs` whole (its case helpers are the old analysis's own);
+    inlining `GenericStoragePlan.IsGeneric` into `AggregateLayout` (it would keep `InstantiatesInLegacy` past its stage).
+  - Amends, each with its amendment line: R5-M5 and R5-M88 (done), R5-M94, R5-M152 S7, R5-M160 and R5-M161; R5-M34 and R5-M36 with
+    the Binding commit.

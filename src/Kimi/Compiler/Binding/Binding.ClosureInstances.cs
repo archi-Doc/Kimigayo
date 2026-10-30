@@ -6,10 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The old generator's CallPlan of each closure an instance closed, by closure and context, kept until an edit (DECISIONS R5-M36).
-    [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
-    private readonly Dictionary<(BindingSymbol Closure, Subst Context), CallPlan> closureCalls = new();
-
     // The atoms EnclosingAtoms collects, reused by each literal's binding.
     private readonly List<BoundOrigin> enclosingAtoms = new();
 
@@ -89,37 +85,6 @@ public sealed partial class Binding
         }
     }
 
-    // The bridge from a closure's context to the CallPlan the old generator keys the closure's instance by (GenericStoragePlan,
-    // BodyLowering): one per closure and context, so two closures of one instance keep two entries (S2-S4 X10), and the same one at
-    // every request until an edit, so warm generation allocates nothing; null for a closure no instance closed.
-    [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
-    internal CallPlan? ClosureCall(BoundType closure)
-    {
-        if (closure is not { ClosureContext: { } context, Symbol: { } symbol } || BoundClosure.Of(closure) is not { } definition)
-        {
-            return null;
-        }
-
-        if (!this.closureCalls.TryGetValue((symbol, context), out var call))
-        {
-            var result = this.types.Apply(definition.Signature.Components[1], context)!; // Checked when the instance made the context.
-            call = new();
-            call.Set(
-                context.Target,
-                result,
-                null,
-                [],
-                context.Types,
-                declaringType: context.Declaring,
-                origins: context.Origins,
-                inputOrigins: context.Inputs,
-                lengthArguments: context.Lengths);
-            this.closureCalls.Add((symbol, context), call);
-        }
-
-        return call;
-    }
-
     // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it: each closure whose enclosing function is its binder
     // (TyCtxt.EnclosingFunction) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36). One call is one
     // query of the closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure
@@ -180,13 +145,5 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(scratch, clearArray: true);
         }
-    }
-
-    // The call contexts of function items (read by TyCtxt.SubstOfItem and the old generator) and of closures for the old generator, kept
-    // across unchanged passes and revoked by an edit; G7 inlines this with ClosureCall's removal.
-    private void ResetCallContexts()
-    {
-        this.functionItemContexts.Clear();
-        this.closureCalls.Clear();
     }
 }

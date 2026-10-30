@@ -113,10 +113,9 @@ dotnet restore Kimigayo.slnx
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --compiler-pipeline-check
 ```
 
-The check runs every input repeatedly. It verifies nonempty IR and exact agreement
-between the measured stages' IR and the public `Compilation.WriteIr`, agreement with uninstrumented
-fresh compilation, monotonic boundaries and conservation of stage time/allocation
-totals. It has no timing thresholds. Save output under `artifacts/verify/`.
+The check runs every input repeatedly. It verifies nonempty IR from stage 6, the public
+`Compilation.WriteIr`, its agreement with uninstrumented fresh compilation, monotonic boundaries
+and conservation of stage time/allocation totals. It has no timing thresholds. Save output under `artifacts/verify/`.
 
 ## Measurement
 

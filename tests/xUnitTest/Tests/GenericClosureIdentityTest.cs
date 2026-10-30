@@ -40,8 +40,8 @@ public class GenericClosureIdentityTest
         Assert.Empty(first.Components);
     }
 
-    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context, and the old
-    // generator's bridge keeps one call per closure, the same at every request, so each instance runs each closure's own body.
+    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context and keep their
+    // own closed Types, which key their instances, so each instance runs each closure's own body.
     [Fact]
     public void TwoClosuresOfOneInstanceKeepTheirOwnBodies()
     {
@@ -54,8 +54,7 @@ public class GenericClosureIdentityTest
         Assert.Equal(2, closures.Length);
         Assert.Same(closures[0].ClosureContext, closures[1].ClosureContext);
         Assert.Same(c.Types.SubstOf(call), closures[0].ClosureContext);
-        Assert.NotSame(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[1]));
-        Assert.Same(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[0]));
+        Assert.NotSame(closures[0], closures[1]);
         ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", Source, string.Empty);
     }
 

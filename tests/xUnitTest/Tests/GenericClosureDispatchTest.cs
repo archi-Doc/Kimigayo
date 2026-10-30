@@ -16,10 +16,10 @@ public class GenericClosureDispatchTest
         ScalarEmissionTest.EmitFixture("GenericClosureDispatchSpecialization", Source, string.Empty);
     }
 
-    // DECISIONS R5-M34: a closure in a specialization of a generic struct's Type function is generic in the struct's slot (SPEC 6.1.3), while
-    // the old generator keeps generating it once, as before, until G7.
+    // DECISIONS R5-M34: a closure in a specialization of a generic struct's Type function is generic in the struct's slot (SPEC 6.1.3), and
+    // generation writes its instances.
     [Fact]
-    public void TheOldGeneratorKeepsAClosureInAContainerSpecializationClosed()
+    public void AClosureInAContainerSpecializationIsGenericInTheContainersSlot()
     {
         const string Source = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n" +
             "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n        let g = func [] (y: i32) -> i32 => y\n" +
