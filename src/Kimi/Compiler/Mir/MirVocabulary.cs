@@ -80,7 +80,7 @@ internal enum MirCalleeKind : byte
     Intrinsic, // An IntrinsicId.
 }
 
-/// <summary>How a comparison of a composite Self compares its Builtin leaves (SPEC 13.4, 13.4.1; DECISIONS R5-M163): a Requirement
+/// <summary>How a comparison of a composite Self compares its Builtin leaves (SPEC 13.4, 13.4.1; DECISIONS R5-M166): a Requirement
 /// callee's <see cref="MirCallee.Arg"/> and a comparison Builtin item's variant.</summary>
 internal enum ComparisonMode : byte
 {

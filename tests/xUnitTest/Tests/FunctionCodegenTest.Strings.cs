@@ -137,7 +137,7 @@ public sealed partial class FunctionCodegenTest
         Assert.All(calls, x => Assert.Single(function.Instructions, y => y.Shape == "icmp eq i32 %, 0" && y.Operands[0] == x));
     }
 
-    // SPEC 13.4 (DECISIONS R5-M118, R5-M163): a tuple ordering is a call of its Self's comparison item, whose string leaf, not its last,
+    // SPEC 13.4 (DECISIONS R5-M118, R5-M166): a tuple ordering is a call of its Self's comparison item, whose string leaf, not its last,
     // runs the ordering routine once and decides where its i32 is not zero (one pass; R5-M75's equality test first is gone).
     [Fact]
     public void ATuplesStringLeafRunsItsOrderOnce()

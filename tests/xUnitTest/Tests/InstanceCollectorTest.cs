@@ -1262,7 +1262,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
     }
 
-    // K 4.3, F package 4.6, DECISIONS R5-M163: a built-in comparison of a composite Self, a generic instance's comparison over its Type
+    // K 4.3, F package 4.6, DECISIONS R5-M166: a built-in comparison of a composite Self, a generic instance's comparison over its Type
     // parameter, is its Builtin item, keyed by its compiler function, its mode and the erased Self, whose targets are its direct parts'
     // (TyCtxt.Comparison under the Contract's mapping): a composite part's own item, shared by every Self that has that part, a user leaf's
     // equals or compare body, none for a built-in leaf; two instances comparing one erased Self share its item. A tuple operator is one

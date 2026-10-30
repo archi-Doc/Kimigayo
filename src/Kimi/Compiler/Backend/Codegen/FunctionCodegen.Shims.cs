@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Backend;
 // admitting call's substitution, a caller-location function), which a Requirement call, a requirement Item's Value call and its adapter
 // entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
 // reports nothing. By its function's compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
-// - BuiltinEquals and BuiltinCompare: the comparison item's node (InstanceCollector.Comparison; DECISIONS R5-M163) by its direct parts,
+// - BuiltinEquals and BuiltinCompare: the comparison item's node (InstanceCollector.Comparison; DECISIONS R5-M166) by its direct parts,
 //   whose items and witnesses are the item's targets in order: a Tuple's parts left to right at their Field offsets in its Self's layout,
 //   each but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
 //   layer's referent; a Builtin leaf through the operator table's column of its Type under the item's mode (Leaf); any other part its

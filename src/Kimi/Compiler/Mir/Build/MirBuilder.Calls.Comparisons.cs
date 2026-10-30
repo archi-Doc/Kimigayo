@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// A comparison operator's call (SPEC 13.4, 13.4.1; DECISIONS R5-M75's operands, R5-M163's one call of a tuple operator).
+// A comparison operator's call (SPEC 13.4, 13.4.1; DECISIONS R5-M75's operands, R5-M166's one call of a tuple operator).
 internal sealed partial class MirBuilder
 {
     // SPEC 13.4.1: the call of a comparison operator, a tuple operator's Composite call, any other the Contract call Binding selected; ==

@@ -2,7 +2,7 @@
 
 Status: the design-first candidate (D) of the Full change G308, revision 1, for the implementation on `claude/r6-g308-d` from the
 shared acceptance tests `claude/r6-g308-tests` `2bb98839d` (dev `9613a512e`). Working record, not authority: what it decides is
-authority only as DECISIONS R5-M163 once a choice lands it. Revision 0 is `artifacts/handoff/2026-10-30-r5-pause/designs/g308-design.md`
+authority only as DECISIONS R5-M166 once a choice lands it. Revision 0 is `artifacts/handoff/2026-10-30-r5-pause/designs/g308-design.md`
 (dev 6518409c8); the planning session's structure check (2026-10-31) passed it with the rulings below.
 
 ## Revision 1 (post-G7 dev and the rulings)

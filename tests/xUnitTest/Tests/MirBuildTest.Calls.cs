@@ -279,7 +279,7 @@ public sealed partial class MirBuildTest
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
     }
 
-    // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M163): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
+    // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M166): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
     // through a handle, has its comparison, since what the leaf's witness runs does not depend on that part: its comparison call (equals
     // under the operator mode) builds, with no record of the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the
     // operator).

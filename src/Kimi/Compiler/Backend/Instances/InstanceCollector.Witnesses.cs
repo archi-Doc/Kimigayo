@@ -22,7 +22,7 @@ internal sealed partial class InstanceCollector
         return this.StorageSignature(entry.RepresentativeType!, entry.Key.Symbol, (PropertyWitnessKind)entry.Key.Variant, slot, out count);
     }
 
-    /// <summary>Gets the node a comparison item compares (SPEC 13.4, 13.4.1; DECISIONS R5-M163), the one its targets and its shim's function
+    /// <summary>Gets the node a comparison item compares (SPEC 13.4, 13.4.1; DECISIONS R5-M166), the one its targets and its shim's function
     /// follow: TyCtxt.Comparison of its function's Contract (TyCtxt.Contract) on its key's Type at the template when that has a parameter,
     /// else on its representative Self, under source operators for an operator mode, else the Contract's mapping; its parts' Types in the
     /// instance are the representative Self's components.</summary>
@@ -201,7 +201,7 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // SPEC 13.4 (DECISIONS R5-M163): a tuple operator's call runs the comparison item of its Self under its mode (the callee's Arg), the
+    // SPEC 13.4 (DECISIONS R5-M166): a tuple operator's call runs the comparison item of its Self under its mode (the callee's Arg), the
     // Builtin target its requirement selects for a composite Self, keyed by the erased Self at the template and, when that has a parameter,
     // the calling item's erased instance (SPEC 13.4's generic rule: the template decides which leaves run a Contract mapping), represented
     // by the target's substitution (one Abi per key, R5-M126); the call is a use of each Tuple it compares past its operands' storage
@@ -218,7 +218,7 @@ internal sealed partial class InstanceCollector
         return this.Comparing(item, subject, target, template, new(default, this.Set.Items[item].Key.Body.Erased), (byte)callee.Arg);
     }
 
-    // DECISIONS R5-M163: the comparison item of a composite node's Type under a mode, requested at a site with the Builtin target its
+    // DECISIONS R5-M166: the comparison item of a composite node's Type under a mode, requested at a site with the Builtin target its
     // requirement selects on the instance Self: keyed by the target's compiler function, the mode and the node's erased Type, which is at
     // the template, with the requesting instance, when it has a parameter; represented by the target's substitution and its Self. A Limit
     // target is the storage-nesting gap at the site; any other a broken contract. -1 when refused.
@@ -235,7 +235,7 @@ internal sealed partial class InstanceCollector
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
-    // SPEC 8.15.3, 23.1.2 (DECISIONS R5-M149, R5-M163): a comparison call is a use, at its site, of each compared Tuple's offsets past its
+    // SPEC 8.15.3, 23.1.2 (DECISIONS R5-M149, R5-M166): a comparison call is a use, at its site, of each compared Tuple's offsets past its
     // operands' storage: its Self, and below a node laid out without its component (Layout.Indirect: a reference layer) the next node with
     // a layout need (LayoutNeeds: a Tuple's parts), after which its Type is the storage again; its node and the instance Type in parallel
     // (a part's Type is the instance's component), each distinct node once per position (uses).
@@ -266,7 +266,7 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // SPEC 13.4, 13.4.1 (DECISIONS R5-M163): a comparison item's targets, one per direct part of its node (Comparison) that is not a
+    // SPEC 13.4, 13.4.1 (DECISIONS R5-M166): a comparison item's targets, one per direct part of its node (Comparison) that is not a
     // Builtin leaf, in order, each at the part's instance Type (the representative's component): a Composite part's own item (the same
     // function and mode, keyed at the template while the part's Type has a parameter, as Compared), a Witness leaf's body under its
     // substitution, a Requirement leaf's witness on the instance part (Runs: a body or a Mapping item). No node, a Self whose storage does

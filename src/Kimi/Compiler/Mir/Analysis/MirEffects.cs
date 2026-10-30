@@ -233,7 +233,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.Enter(null, subst, symbol);
     }
 
-    // SPEC 13.4, 8.11.3 (DECISIONS R5-M163): a tuple operator's call runs, once per distinct node of its Self's comparison under source
+    // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
     // operators, what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf the requirement under the caller's
     // premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf nothing; a None leaf is the collector's record.
     private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
