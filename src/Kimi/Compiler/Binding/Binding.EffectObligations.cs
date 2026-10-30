@@ -107,6 +107,11 @@ public sealed partial class Binding
         return this.TryCallable(input, scope, out var signature, out _) ? this.AvailableCallableEffects(input, signature, receiver, scope) : null;
     }
 
+    // SPEC 8.10: the receiver access of a Callable input's one signature under a definition's premises (TryCallable), which a published
+    // row's Callable input must declare (TyCtxt.Published); null where it has several signatures or none.
+    internal SemanticsKind? CallableReceiver(BindingSymbol definition, BoundType input)
+        => this.TryCallable(input, this.EffectPremises(definition), out _, out var receiver) ? receiver : null;
+
     /// <summary>Gets whether an old Binding record of a conformance, Callable use or virtual function was made by an effect check: a bound
     /// violation or an effect-limit Unsupported, which the MIR difference ledger compares with A4 (DECISIONS R4-M23).</summary>
     /// <param name="node">The record's node.</param>

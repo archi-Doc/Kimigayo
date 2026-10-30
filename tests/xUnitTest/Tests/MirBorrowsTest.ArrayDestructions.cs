@@ -318,8 +318,8 @@ public sealed partial class MirBorrowsTest
     // call is the located Unsupported_Kd and Bad keeps its true `y = 5` (R4-M147's abstract-referent rule, as clearGen's).
     // Every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok, removeAllItemOk, removeAllCapOk), once
     // R4-M143's known false errors, is a correct error under SPEC 15.6's whole-holder text (DECISIONS BU-67, R4-M143's note; the Array
-    // holding x is consumed, as consumeDrop2Ok's x). Pinned, not SPEC's verdict: removeAllElemBad's second record, its MIR-only `y = 5`
-    // beside the activation conflict, is C3's destruction guard keeping W, pinned here until G264 U2. Guards: U0′ changes no A5 verdict,
+    // holding x is consumed, as consumeDrop2Ok's x). removeAllElemBad's second record, its MIR-only `y = 5` beside the activation
+    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline does not report it. Guards: U0′ changes no A5 verdict,
     // so each row holds today and must hold after.
     [Fact]
     public void ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW()

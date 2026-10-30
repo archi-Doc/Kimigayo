@@ -19,11 +19,11 @@ public partial class EffectBoundImplementationTest
     public void ArrayTruncateAndRemoveAllStayWithinTheirRows(string name)
     {
         var c = MinimalEmissionTest.Analyze(Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var array = (DeclarationContainerKoto)c.Library.GetSymbol(KimiDeclarationId.Array)!.Declaration;
         var operation = array.Members.OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf()!;
         Assert.True(KimiLibraryCatalog.Row(operation).HasValue, $"{name}: no row");
-        var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, null);
+        var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation);
         Assert.True(valid, $"{name}: {violation} at {node}");
     }
 }

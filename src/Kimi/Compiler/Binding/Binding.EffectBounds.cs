@@ -280,10 +280,8 @@ public sealed partial class Binding
 
         // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P). With `destructions`, the values each
         // reached body destroys are summarized too.
-        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null, BoundType? publishedCallable = null)
+        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false)
         {
-            this.published = published;
-            this.publishedCallable = publishedCallable;
             this.scope = scope;
             this.valid = true;
             this.destructions = destructions;
