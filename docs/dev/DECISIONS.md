@@ -13859,8 +13859,12 @@ structure is recorded here by the unit that first implements it.
     cannot be published"), its cause as a note (the Input precedent of `ProjectPreparationFailed_Kd` and `SourceReadFailed_Kd`; typed
     facts are a later Diagnostics unit, Q5), for output I/O and publication-time native configuration and supplies, a dependency
     module's supplies among them (C-package §3.10, Q4; PLAN's open issue owns its `Unsupported_Kd`); `InternalInvariant_Kd` when the
-    compiler's embedded backend record is missing (a contract failure, Q6). `GenerationFailed_Kd` is replaced in place (net 0 codes);
-    `DiagnosticPartition.Emission` and the `Emission` requirement stay through R6 (R5-M18).
+    compiler's embedded backend record is missing (a contract failure, Q6) and for a contract exception of code generation while it
+    writes into the output: `EmissionArtifacts.GenerateInto` maps the output's I/O exceptions to the publication code and code
+    generation's argument, data and support exceptions to `InternalInvariant_Kd` (C-package §3.10; implementation review 1, B1).
+    Every generation request clears the Emission partition first, a gate refusal included, so the partition is the latest request's.
+    `GenerationFailed_Kd` is replaced in place (net 0 codes); `DiagnosticPartition.Emission` and the `Emission` requirement stay
+    through R6 (R5-M18).
   - Deleted: `Compilation.ReportPublicationFailure`, `Publish`'s failure text and its public 3-argument overload (Q8), the repeated
     `NativeConfiguration.Validate` (preparation's `DependencyConfiguration` owns it, C-package §3.10), and at G9b2 the out-string adapters
     `WriteIr`, `Validate` and their texts. Tests and `src/Benchmark` call `Generate` and read its records; `MinimalEmissionTest.Describe`

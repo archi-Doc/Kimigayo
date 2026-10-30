@@ -91,7 +91,7 @@ DiagnosticFact
 | Syntax (one per module) | That module's syntax tree is rebuilt; it also holds the recovery map |
 | Semantics (Binding, startup, control flow and ownership) | Any syntax changes (all of it), or one phase is analyzed again (that phase and later ones) |
 | Later phases | One per result unit |
-| Emission (one generation request) | Each generation or publication: `Compilation.Generate`'s records (located codes and `InternalInvariant_Kd`) or `EmissionArtifacts.Publish`'s `ArtifactPublicationFailed_Kd` (Input: output I/O and publication-time native configuration and supplies, at the project file with its cause as a note); the partition and requirement names stay through R6 (DECISIONS R5-M18, R5-M165) |
+| Emission (one generation request) | Each generation or publication, a gate refusal included: `Compilation.Generate`'s records (located codes and `InternalInvariant_Kd`) or `EmissionArtifacts.Publish`'s: `ArtifactPublicationFailed_Kd` (Input: output I/O and publication-time native configuration and supplies, at the project file with its cause as a note) or `InternalInvariant_Kd` (a missing embedded backend record, or a contract exception of code generation while it writes the output); the partition and requirement names stay through R6 (DECISIONS R5-M18, R5-M165) |
 
 - Invalidation replaces a partition's fact list as a whole and never scans facts; `BeginSourceParsing` must stay cheap. Production analyzes each compilation once; repeated analysis happens in tests and benchmarks.
 - Recording an Error sets the error flag of its partition and module before aggregation or suppression; a valid partition never clears it.

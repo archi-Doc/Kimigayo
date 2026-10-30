@@ -249,6 +249,22 @@ public sealed class PipelineSwitchTest
     // DECISIONS R5-M156 (superseding R3-1): every pipeline publishes the MIR's construction records, here the unbuilt tuple operator's
     // (PD30's (e) row), as the analysis's problems, control-flow Errors that reject the program and block generation; switching the
     // pipeline revokes the analysis and changes no record.
+    // DECISIONS R5-M165: the Emission partition is the latest generation request's: the gate's step-1 refusal clears an earlier request's
+    // record (here a publication failure's) and adds none.
+    [Fact]
+    public void AGateRefusalClearsAnEarlierEmissionRecord()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.False(c.Analyze().IsVerified);
+        c.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.ArtifactPublicationFailed_Kd, c.Project.FilePath, note: "earlier");
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+    }
+
     [Fact]
     public void EveryPipelinePublishesTheMirRecords()
     {

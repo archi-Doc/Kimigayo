@@ -63,7 +63,7 @@ public static class EmissionArtifacts
             tempManifest = manifest + "." + unique + ".tmp";
             using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
             {
-                if (!compilation.Generate(writer))
+                if (!GenerateInto(compilation, writer))
                 {
                     return false;
                 }
@@ -90,6 +90,31 @@ public static class EmissionArtifacts
         {
             DeleteTemporary(tempIr);
             DeleteTemporary(tempManifest);
+        }
+    }
+
+    /// <summary>Generates into the publication's output through the generation entry, separating the output's failure from a broken
+    /// contract of code generation (DECISIONS R5-M165): an I/O failure of the output is <c>ArtifactPublicationFailed_Kd</c> with its
+    /// cause, and an argument, data or support exception from code generation's own checks is <c>InternalInvariant_Kd</c>. Publish's
+    /// other output operations (paths, directories, files, the manifest, the replacement) map their failures themselves.</summary>
+    /// <param name="compilation">The analyzed compilation.</param>
+    /// <param name="output">The output, written only when generation succeeds.</param>
+    /// <returns>Whether the module was written; otherwise the Emission partition records why.</returns>
+    internal static bool GenerateInto(Compilation compilation, TextWriter output)
+    {
+        try
+        {
+            return compilation.Generate(output);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
+            return false;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or NotSupportedException)
+        {
+            Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
+            return false;
         }
     }
 

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Benchmark;
 
@@ -107,7 +108,9 @@ public class CompilerPipelineBenchmark
 
         // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage (DECISIONS R5-M94).
         Capture(5, timestamps, allocations);
-        this.Require(result.Generate(output), "Generation failed; the Emission partition records why.");
+        var generated = result.Generate(output);
+        this.Require(generated, generated ? string.Empty : "Generation failed: " + string.Join(", ", result.Diagnostics
+            .Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics.Select(static x => x.Code)));
         Capture(6, timestamps, allocations);
         return result;
     }

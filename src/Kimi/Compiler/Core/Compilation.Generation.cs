@@ -9,8 +9,9 @@
 // and, for a module neither written nor explained, InternalInvariant_Kd at the project. A publication failure (settings, native supplies,
 // the backend or the file system) is EmissionArtifacts.Publish's own record in the same partition (DECISIONS R5-M165), which Project renders.
 // Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and the checked set's records, on every
-// pipeline; DECISIONS R5-M156). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none. MIR
-// code generation then needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2, which Project's check reads too).
+// pipeline; DECISIONS R5-M156). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none, and,
+// like every request, clears the partition first. MIR code generation then needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2,
+// which Project's check reads too).
 // Gate, step 2 (PD12; DECISIONS R5-M96): applied as each body item is written (FunctionCodegen.Write): a body A1 or A2 left inexact
 // (MirDropTable.Incomplete, R4-M102) is not written and its problem's code is recorded at its subject, every other item still written so
 // its gaps are recorded too, and no module (package C 3.8, 3.9); until H5, which decides acceptance by MIR.
@@ -58,13 +59,8 @@ public partial class Compilation
     /// siblings an expansion synthesizes with its span, are one problem.</remarks>
     internal bool Generate(TextWriter writer)
     {
-        if (this.MirRecords(null) > 0)
-        {
-            return false;
-        }
-
-        this.Diagnostics.Invalidate(DiagnosticPartition.Emission);
-        if (!this.Accepts)
+        this.Diagnostics.Invalidate(DiagnosticPartition.Emission); // The partition is the latest request's (DECISIONS R5-M165).
+        if (this.MirRecords(null) > 0 || !this.Accepts)
         {
             return false;
         }

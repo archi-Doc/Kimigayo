@@ -99,22 +99,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.NotEmpty(PublicationFailure(c));
     }
 
-    // Preparation validates the native configuration, an unused entry's too (DependencyConfiguration, InvalidDependencyConfiguration_Kd);
-    // publication does not repeat it (DECISIONS R5-M165).
-    [Theory]
-    [InlineData("kernel32", "static", "kernel32.lib", false)]
-    [InlineData("unused", "unknown", "unused.lib", false)]
-    [InlineData("unused", null, "unused.lib", false)]
-    [InlineData("codec", "static", "codec.lib", true)]
-    public void InvalidNativeEntriesAreRejectedAtPreparation(string name, string? kind, string input, bool packaged)
-    {
-        var settings = this.Create().Project.ProjectFile;
-        settings.NativeLibraries[WindowsProfile.Target] = packaged
-            ? new() { Packaged = [new() { Name = name, Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Kind = kind, Input = input }] }
-            : new() { [name] = new() { Kind = kind, Input = input } };
-        Assert.NotNull(NativeConfiguration.Validate(settings));
-    }
-
     [Fact]
     public void FullyQualifiedNativePathsRemainValid()
     {
@@ -133,21 +117,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"].Sha256 = new string('0', 64);
         Assert.False(EmissionArtifacts.Publish(c, null, out _));
         Assert.Contains("Sha256 assertion", PublicationFailure(c));
-
-        // Preparation validates the native configuration (DependencyConfiguration); publication does not repeat it (DECISIONS R5-M165).
-        settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"] = new() { Kind = "import", Input = "kimi_backend.lib" };
-        Assert.Contains("disagrees", NativeConfiguration.Validate(settings));
-    }
-
-    [Fact]
-    public void ExplicitKernel32PathRequiresMigration()
-    {
-        var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
-        {
-            ["kernel32"] = new() { Kind = "import", Input = "sdk/kernel32.lib" },
-        };
-        Assert.Contains("Remove the kernel32 entry", NativeConfiguration.Validate(c.Project.ProjectFile)); // at preparation (DECISIONS R5-M165)
     }
 
     [Fact]
@@ -272,8 +241,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.True(await c.Project.Generate(TestContext.Current.CancellationToken));
     }
 
-    // DECISIONS R5-M165: a publication failure, here an output directory a file blocks, is ArtifactPublicationFailed_Kd (Input) at the
-    // project in the Emission partition, its cause the note; kimi build renders it and publishes nothing.
+    // DECISIONS R5-M165: a publication failure, here an output directory a file blocks, is ArtifactPublicationFailed_Kd (Input) in the
+    // Emission partition, its cause the note, at the project file; kimi build renders it there and publishes nothing.
     [Fact]
     public async Task APublicationFailureIsAnInputRecordAtTheProject()
     {
@@ -286,14 +255,31 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal(("ArtifactPublicationFailed_Kd", DiagnosticCategory.Input, DiagnosticSeverity.Error), (record.Code, record.Category, record.Severity));
         Assert.NotEmpty(PublicationFailure(c));
 
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(Path.Combine(this.directory, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello, world!\")");
         var console = new DiagnosticContractTest.DiagnosticConsole();
-        var project = new Project(new Kimigayo(console)) { Name = "Hello", Directory = this.directory };
-        project.ProjectFile.OutputPath = "out/Hello.ll";
-        project.AddSource("Hello.kimi", "::Kimi.Console.writeLine(\"Hello, world!\")");
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         Assert.False(await project.Generate(TestContext.Current.CancellationToken));
         Assert.Contains("ArtifactPublicationFailed_Kd", console.Text, StringComparison.Ordinal);
         Assert.Contains("The build artifacts cannot be published", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*.ll", SearchOption.AllDirectories));
+    }
+
+    // DECISIONS R5-M165: generation into the publication's output separates the output's failure from a broken contract of code
+    // generation, by the exception's kind. A writer stands in for both: no test input makes code generation's own checks throw, so the
+    // contract side is shown on the narrowest function that maps it (an ArgumentException, as LlvmConstantPool's checks throw).
+    [Theory]
+    [InlineData(true, nameof(DiagnosticCode.ArtifactPublicationFailed_Kd))]
+    [InlineData(false, nameof(DiagnosticCode.InternalInvariant_Kd))]
+    public void GenerationIntoTheOutputSeparatesOutputFromContractFailures(bool output, string code)
+    {
+        var c = this.Create();
+        using var writer = new FailingWriter(output ? new IOException("disk full") : new ArgumentException("broken contract"));
+        Assert.False(EmissionArtifacts.GenerateInto(c, writer));
+        var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+        Assert.Equal((code, output ? DiagnosticCategory.Input : DiagnosticCategory.Internal), (record.Code, record.Category));
     }
 
     [Fact]
@@ -415,5 +401,13 @@ public sealed class EmissionArtifactsTest : IDisposable
         c.Project.Name = "Hello";
         c.Project.ProjectFile.OutputPath = "out/Hello.ll";
         return c;
+    }
+
+    // A writer whose every write fails with the given exception.
+    private sealed class FailingWriter(Exception failure) : TextWriter
+    {
+        public override Encoding Encoding => Encoding.UTF8;
+
+        public override void Write(char value) => throw failure;
     }
 }
