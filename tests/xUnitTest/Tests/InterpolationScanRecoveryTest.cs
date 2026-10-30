@@ -30,7 +30,7 @@ public class InterpolationScanRecoveryTest(ITestOutputHelper output)
             output.WriteLine(string.Join("\n", records.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
             Assert.Equal([code, "TypeMismatch_Kd"], records.Select(static x => x.Code));
             Assert.Equal(new SourceSpan(source.IndexOf(opening, StringComparison.Ordinal), opening == "\"inner" ? 1 : opening.Length), records[0].Span);
-            Assert.False(c.WriteIr(TextWriter.Null, out _));
+            Assert.False(c.Generate(TextWriter.Null));
             ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
             c.Bind();
             c.Binding.ReportDiagnostics();

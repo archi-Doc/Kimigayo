@@ -34,7 +34,7 @@ public class ConstraintProjectionCertificateBindingTest
     public void ValidProjectionPreservesDeclarationEvidence(int form)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertCertificate(c, form, true);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -81,7 +81,7 @@ public class ConstraintProjectionCertificateBindingTest
     public void DependentQualifiersUseTheDeclaringEnvironment()
     {
         var c = MinimalEmissionTest.Analyze("contract Origin\n    associate Item\nstruct Source<T>\n    T is Copy\n    Self is Origin\n    associate Origin.Item is i32\ncontract C\nstruct S<T, U>\n    T is Copy\n    U is Source<T>.Origin.Item\n    Self is C");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertCertificate(c, 1, true);
     }
 

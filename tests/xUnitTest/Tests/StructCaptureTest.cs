@@ -32,7 +32,7 @@ public class StructCaptureTest
     public void StoredFieldsKeepTheirCaptureAuthority(string name, string source, SemanticsKind receiver)
     {
         var c = MinimalEmissionTest.Analyze(Packet + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(receiver, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("StructCapture" + name, CompilationTestHelper.WriteIr(c), "drop\n");
     }
@@ -53,7 +53,7 @@ public class StructCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Packet + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -69,12 +69,12 @@ public class StructCaptureTest
     public void WarmStructCapturePlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Packet + "let packet = Packet.init(\"owned\", 7)\nlet f: () -> i32 = func [packet@move] () => packet.twice\nrequire f() == 14 else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -93,7 +93,7 @@ public class StructCaptureTest
             var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
             Assert.Equal("UnsatisfiedConstraint_Kd", error.Code); // SPEC 15.2.3: an Owned failure is a Constraint failure.
             Assert.Contains("Owned environment", error.Note, StringComparison.Ordinal);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
         else
         {

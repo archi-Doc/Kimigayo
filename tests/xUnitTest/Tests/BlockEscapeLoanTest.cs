@@ -309,7 +309,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     public void WarmEscapeChecksAllocateNothing(string workload, int escapes)
     {
         var c = MinimalEmissionTest.Analyze(workload);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(escapes == 0, c.Analysis.IsVerified);
         Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
         Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Borrow is not null));

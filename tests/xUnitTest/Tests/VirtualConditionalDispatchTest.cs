@@ -43,7 +43,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.Span.Start >= valid.Length);
         using var ir = new StringWriter();
-        Assert.False(c.WriteIr(ir, out _));
+        Assert.False(c.Generate(ir));
         Assert.Empty(ir.ToString());
     }
 
@@ -122,7 +122,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var replacement = ParseTestHelper.Detach(changed.TypeConstraints[0], new CodeBlockKoto(original.CodeContext));
         Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], replacement));
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
@@ -147,9 +147,9 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
     public void WarmApplicabilityAndHolesReuseTheirStorage(bool block)
     {
         var c = MinimalEmissionTest.Analyze(Program(block));
-        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

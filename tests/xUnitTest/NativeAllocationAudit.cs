@@ -42,7 +42,7 @@ internal static class NativeAllocationAudit
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = writer.ToString();
         ir = transformIr is null ? ir : transformIr(ir);
         foreach (Match declaration in Regex.Matches(ir, @"(?m)^declare\b[^\n]*"))

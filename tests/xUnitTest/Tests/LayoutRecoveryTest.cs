@@ -90,7 +90,7 @@ public class LayoutRecoveryTest(ITestOutputHelper output)
         Assert.Equal(new SourceRange(new(1, 0), new(1, indent.Length)), error.Display!.Range);
         Assert.Equal(DiagnosticCategory.Language, error.Category);
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("Layout.kimi:2:1", console.Text, StringComparison.Ordinal);

@@ -174,7 +174,7 @@ public sealed class CallPlan
             UnaryKoto unary => Nth(ordinal, Plan(unary.ArithmeticCall)),
             ForKoto { BindingState: BindingState.Resolved } loop => Nth(ordinal, Plan(loop.EntryCall), Plan(loop.Iteration?.Next)),
             DictionaryLiteralKoto { BindingState: BindingState.Resolved, BoundType: { Kind: BoundTypeKind.Dictionary, Components: [var key, var value] } } when ordinal == 0 =>
-                binding.DictionaryStorageCall(DictionaryCallee.FindEntry, key, value),
+                binding.DictionaryStorageCall(key, value),
             _ => null,
         };
 

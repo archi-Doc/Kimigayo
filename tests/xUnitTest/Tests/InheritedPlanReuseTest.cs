@@ -29,12 +29,12 @@ public class InheritedPlanReuseTest
     public void WarmFieldAndBasePlansAllocateNothing(int depth, int width, bool implicitConstructors)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InheritedPlans(depth, width, implicitConstructors));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -45,8 +45,8 @@ public class InheritedPlanReuseTest
     {
         var source = "contract C\n    " + requirement + "\nopen struct Base\n    " + implementation + "\nstruct Leaf: Base\n    Self is C\n    public init() => ()\nfunc read<T>(x: ref/T) -> i32\n    T is C\n    return " + use + "\nlet x = Leaf.init()\nrequire read(x@ref) == 1 else => $abort(\"dispatch\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("InheritedRequirement" + (use == "x.item" ? "Getter" : "Method"), source, string.Empty);
     }
 
@@ -68,18 +68,18 @@ public class InheritedPlanReuseTest
     public void WitnessProjectionPlansAreReused(bool getter)
     {
         var c = MinimalEmissionTest.Analyze(BorrowingWitness(getter) + "_ = r");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         c = CompilationTestHelper.Reload(c);
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.True(c.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     private static string BorrowingWitness(bool getter)

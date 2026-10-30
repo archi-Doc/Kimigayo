@@ -29,7 +29,7 @@ public class CallableEffectBoundTest
     public void AcceptsAConfinedClosure()
     {
         var c = MinimalEmissionTest.Analyze(Apply + "public func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     private static readonly string ApplyFromGroup = "group Callbacks\n    public " + Apply.TrimEnd('\n').Replace("\n", "\n    ", StringComparison.Ordinal) + "\n";
@@ -43,7 +43,7 @@ public class CallableEffectBoundTest
     public void ReportsTheViolatingCallableAfterSelection(string declarations, string argument)
     {
         var c = MinimalEmissionTest.Analyze(ApplyFromGroup + declarations + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analyze().IsVerified);
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Code == "UnsatisfiedEffectBound_Kd");
@@ -58,7 +58,7 @@ public class CallableEffectBoundTest
     public void ImmutableStaticStorageKeepsItsInitializationLimit()
     {
         var c = MinimalEmissionTest.Analyze(ApplyFromGroup + "group State\n    public let count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32 => storage\n            return Callbacks.apply(f@ref)\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Analyze();
         c.ReportAnalysis();
         Assert.Equal([("Unsupported_Kd", "storage"), ("Unsupported_Kd", "f@ref")], TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text)));
@@ -103,7 +103,7 @@ public class CallableEffectBoundTest
         var source = Apply + "func forward<G>(g: ref/G) -> i32\n    G is Callable<() -> i32>\n" +
             (bounded ? "        effect confined\n" : string.Empty) + "    return apply(g)\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 8\n    return forward(f@ref)\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(bounded, c.Analysis.IsVerified);
         if (!bounded)
         {
@@ -131,7 +131,7 @@ public class CallableEffectBoundTest
     {
         var source = Apply + declarations + $"func inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
         var at = (source.LastIndexOf("outer)", StringComparison.Ordinal), "outer".Length);
         var violations = DiagnosticCorpus.Check(source).Diagnostics.Where(static x => x.Code == "UnsatisfiedEffectBound_Kd").Select(static x => (x.Span!.Value.Start, x.Span.Value.Length));
@@ -147,7 +147,7 @@ public class CallableEffectBoundTest
             $"func apply<F>(f: {(receiver == "ref" ? "ref/F" : "F")}) -> i32\n    F is Callable<{receiver}, () -> i32>\n        effect confined\n    return {(receiver == "ref" ? "f()" : "f@move()")}\n" +
             $"public func main() => ()\nfunc entry() -> i32\n    let item = Item.init()\n    let f = func [item@move] () -> i32 => item.value\n    return apply(f@{(receiver == "ref" ? "ref" : "move")})\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -201,7 +201,7 @@ public class CallableEffectBoundTest
         var source = $"func need<F>() -> ()\n    F is Callable<{required}, () -> i32>\n        effect confined\n    return\n" +
             $"func forward<G>() -> ()\n    G is Callable<{required}, () -> i32>\n    G is Callable<{premise}, () -> i32>\n        effect confined\n    need<G>()\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -392,7 +392,7 @@ public class CallableEffectBoundTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 8.11.4, 8.11.3 (the adopted proposal): nothing relates two calls, so the same, a replaced or another Callable value makes

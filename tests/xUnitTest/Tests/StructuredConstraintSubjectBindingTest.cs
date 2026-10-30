@@ -27,7 +27,7 @@ public class StructuredConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(clause));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -37,7 +37,7 @@ public class StructuredConstraintSubjectBindingTest
             c.Kotonoha.RootKoto.UnparseAll(ref builder);
             var written = MinimalEmissionTest.Analyze(builder.ToString());
             Assert.Empty(TestDiagnostics.Of(written, "Hello.kimi"));
-            Assert.True(written.Binding.Result.IsComplete, MinimalEmissionTest.Describe(written, null));
+            Assert.True(written.Binding.Result.IsComplete, MinimalEmissionTest.Describe(written));
         }
         finally
         {
@@ -67,7 +67,7 @@ public class StructuredConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(clause).Replace("struct Target", "enum Target", StringComparison.Ordinal) + "\n    A");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class StructuredConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source("Box<i32> is Copy").Replace("Box", "associate", StringComparison.Ordinal));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

@@ -64,7 +64,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.True(c.Analysis.IsVerified, name + "\n" + string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), name + ": " + error);
+        Assert.True(c.Generate(TextWriter.Null), name + ": " + MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("CallReservation" + name, Cell + body, string.Empty);
     }
 
@@ -80,7 +80,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ExclusiveBorrowRequired_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -108,7 +108,7 @@ public class CallReservationTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.False(c.Analysis.IsVerified, body);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -288,8 +288,8 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = declarations + "    var cur = a@follow@uniq\n    let first = cur.0.takeWith(label w: do\n        cur = b@follow@uniq\n        exit to w 0\n    )\n" +
             (clear ? "    a.0.clear()\n" : string.Empty) + "    inspect(first@ref)\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var write = source.IndexOf("cur = b@follow@uniq", StringComparison.Ordinal);
         var problem = Assert.Single(c.BuildMir().Problems.All.ToArray(), static x => x.Subject.Module == 0);
         Assert.Equal((DiagnosticCode.CallReservationConflict_Kd, write), (problem.Code, c.SyntaxOf(problem.Subject).Span.Start));
@@ -315,13 +315,13 @@ public class CallReservationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
 
         var success = true;
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bytes);
@@ -337,7 +337,7 @@ public class CallReservationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     private static void AssertAccepted(string source)
@@ -347,7 +347,7 @@ public class CallReservationTest(ITestOutputHelper output)
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         c.ReportAnalysis();
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // One published Error at the expected range with one related location and its Note, in the console and in both
@@ -416,6 +416,6 @@ public class CallReservationTest(ITestOutputHelper output)
             }
         }
 
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

@@ -74,7 +74,7 @@ public class Utf8FloatTest
 
         var c = MinimalEmissionTest.Analyze("var bytes = [24 of 0@u8]\n_ = Text.tryFormat(1.0, bytes@uniq)");
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = new StringBuilder(writer.ToString());
         ir.Append("\n@float_cases = private constant [").Append(cases.Count).Append(" x {i64, i32, i32, [24 x i8]}] [\n");
         for (var i = 0; i < cases.Count; i++)

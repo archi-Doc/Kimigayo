@@ -14,9 +14,9 @@ public sealed class GenericCaseAllocationTest
     public void WarmCaseRunsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.PairCaseFamilies);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);

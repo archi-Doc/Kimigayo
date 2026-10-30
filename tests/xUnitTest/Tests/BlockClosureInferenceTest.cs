@@ -51,10 +51,10 @@ public sealed class BlockClosureInferenceTest
     public void NeverRequiresNoValueSourceAndNoEndArrival(string source, bool never)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Same(never ? BoundType.Never : BoundType.Unit, closure.SymbolOf()!.Type);
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -79,10 +79,10 @@ public sealed class BlockClosureInferenceTest
     public void AnUnreachableNonNeverSourceStillFixesTheResult()
     {
         var c = MinimalEmissionTest.Analyze("let f = func [] ()\n    loop => continue\n    return 1");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Same(BoundType.I32, closure.SymbolOf()!.Type);
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.9.1, 14.9.2: a single-item body's value and each self-targeted return operand are the sources, so the operand takes the
@@ -98,12 +98,12 @@ public sealed class BlockClosureInferenceTest
     public void ASingleItemBodyJoinsItsValueWithItsReturnOperands(string source, string type, string operand)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Equal(type, TyCtxt.Name(closure.SymbolOf()!.Type!));
         var returned = Assert.Single(KotoTree.Walk(closure).OfType<ReturnKoto>());
         Assert.Equal(operand, TyCtxt.Name((BoundType)HirTables.Meaning(returned.Expression!)!));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -118,7 +118,7 @@ public sealed class BlockClosureInferenceTest
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
         Assert.Equal("n@ref", error.Text);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -127,10 +127,10 @@ public sealed class BlockClosureInferenceTest
     public void AResultMeetRetainsBothInputLoans(string owner)
     {
         var c = MinimalEmissionTest.Analyze("let f = func [] (a: ref/i32, b: ref/i32, flag: bool)\n    if flag => return a\n    return b\nvar a: i32 = 4\nvar b: i32 = 7\nlet r = f(a@ref, b@ref, false)\n" + owner + " = 9\n_ = r@follow");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public sealed class BlockClosureInferenceTest
     public void EditingTheBodyInvalidatesItsInferredContract()
     {
         var c = MinimalEmissionTest.Analyze("let f = func [] ()\n    return 1\nlet n: i32 = f()");
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         var donor = MinimalEmissionTest.Analyze("let f = func [] ()\n    return \"s\"");
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
@@ -170,7 +170,7 @@ public sealed class BlockClosureInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);
         Assert.Same(BoundType.String, closure.SymbolOf()!.Type);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -181,12 +181,12 @@ public sealed class BlockClosureInferenceTest
     public void WarmBlockInferenceReusesItsResultContexts(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

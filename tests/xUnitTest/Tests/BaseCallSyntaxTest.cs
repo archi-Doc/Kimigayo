@@ -39,7 +39,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Base + "func readAgain(self: objref/Self) -> i32 => base.read()\n()");
         c.Binding.ReportDiagnostics();
         Assert.Empty(TestDiagnostics.Of(c));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

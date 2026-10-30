@@ -29,7 +29,7 @@ public class CallableRegionScalingTest
     public void GrowingPlansReuseBoundedStorage(string axis, int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.CallableRegions(axis, count));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
@@ -48,7 +48,7 @@ public class CallableRegionScalingTest
             Assert.True(body.LocalLoanFlowCapacity <= Math.Max(16L, 2L * body.PeakLocalLoanCells));
         }
 
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

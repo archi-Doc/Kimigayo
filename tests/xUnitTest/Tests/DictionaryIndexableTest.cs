@@ -13,7 +13,7 @@ public class DictionaryIndexableTest
     {
         const string Source = "var values = [1: 42]\nvalues[1] = 43\nrequire values[1] == 43 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryIndex)!.Declaration, generated);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryIndexUniq)!.Declaration, generated);
@@ -65,7 +65,7 @@ public class DictionaryIndexableTest
         var replacement = KotoTree.Walk(MinimalEmissionTest.Analyze(Prefix + "let r = values[j]").Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single().Right;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(index, index.Right, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(replacement, c.Binding.IndexerCall(index, false)!.ArgumentNodes[0]);
         Assert.Equal(BindingState.Resolved, replacement.StateOf());
     }
@@ -113,7 +113,7 @@ public class DictionaryIndexableTest
     public void ReturnedReferencesRetainTheReceiverLoan(string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1: 42]\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
     }

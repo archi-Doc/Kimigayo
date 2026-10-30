@@ -29,11 +29,11 @@ public class BorrowedTupleEmissionTest
     public void RejectsInvalidLifetimeOrInitialization(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.NotEmpty(c.Problems);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -45,7 +45,7 @@ public class BorrowedTupleEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class BorrowedTupleEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func first(pair: ref/(u8, bool)) -> u8 => pair.0\nrequire first((255, true)) == 255 else => $abort(\"value\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
@@ -69,7 +69,7 @@ public class BorrowedTupleEmissionTest
             Assert.True(restored.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(restored.Analyze().IsVerified);
             using var output = new StringWriter();
-            Assert.True(restored.WriteIr(output, out error), error);
+            Assert.True(restored.Generate(output), MinimalEmissionTest.Describe(restored));
             Assert.Equal(original.ToString(), output.ToString());
         }
     }

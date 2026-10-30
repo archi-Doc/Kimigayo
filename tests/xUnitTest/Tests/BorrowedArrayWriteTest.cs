@@ -41,7 +41,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -50,7 +50,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            if (!c.Analyze().IsVerified || !c.Validate(out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Borrowed array pipeline failed.");
             }
@@ -70,7 +70,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
             c.Binding.ReportDiagnostics();
             c.ReportAnalysis();
             Assert.Contains(c.Diagnostics.Finalize(rejected: true).Diagnostics, x => x.Code == code.ToString());
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 

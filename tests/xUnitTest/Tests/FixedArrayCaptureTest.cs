@@ -22,7 +22,7 @@ public class FixedArrayCaptureTest
     public void FixedArrayEnvironmentsPreserveElementAuthority(string name, string source, SemanticsKind receiver)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(receiver, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.Receiver);
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("FixedArrayCapture" + name, ir, string.Empty);
@@ -42,7 +42,7 @@ public class FixedArrayCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -75,9 +75,9 @@ public class FixedArrayCaptureTest
     public void WarmArrayCaptureEmissionAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let values: [2 of string] = [\"first\", \"last\"]\nlet f: () -> bool = func [values@move] () => values[0] == \"first\"\nrequire f() else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

@@ -36,8 +36,8 @@ public class TypeIdentityTest
     public void PremiseMakesOneTypeInItsFunction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public class TypeIdentityTest
         var parameters = string.Join(", ", Enumerable.Range(0, 24).Select(i => $"T{i}"));
         var premises = string.Join("\n", Enumerable.Range(0, 23).Select(i => $"    T{i} is T{i + 1}"));
         var c = MinimalEmissionTest.Analyze($"func same<{parameters}>(x: T0) -> T23\n{premises}\n    return x@move\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]

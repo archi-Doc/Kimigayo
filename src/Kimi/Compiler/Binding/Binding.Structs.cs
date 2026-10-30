@@ -79,7 +79,7 @@ public sealed partial class Binding
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call) => this.InstantiateStorageType(type, this.types.StorageSubst(call));
 
     // A declared Type in the instance a substitution makes (StorageInstance) unless its storage is a Limit, null then, the instantiation
-    // Binding's passes, the old analyses and generator read until R7 (TyCtxt.Apply reads TyCtxt.Instance, which publishes the verdict).
+    // Binding's passes and the old analyses read until R7 (TyCtxt.Apply reads TyCtxt.Instance, which publishes the verdict).
     // Rejected storage passes through, as retention reads it (DECISIONS BU-36, BU-38): a part Binding rejected holds, destroys and
     // violates nothing, while its other parts stay checked; outside Binding's passes it is read only on a complete Binding, where no
     // storage is Rejected.

@@ -66,7 +66,7 @@ public class BaseCallBindingTest
     public void AccessorBodiesTakeTheAccessorsSelf(string accessors)
     {
         var c = MinimalEmissionTest.Analyze(Accessors(accessors));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         Assert.Empty(TestDiagnostics.Of(c));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is MemberAccessKoto { Left: BaseReferenceKoto });
@@ -124,12 +124,12 @@ public class BaseCallBindingTest
     public void WarmBaseCallsReuseAllPlans(bool getter)
     {
         var c = MinimalEmissionTest.Analyze(getter ? Accessors("get() -> i32 => base.read() + 1") : Source);
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

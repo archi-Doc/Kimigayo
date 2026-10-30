@@ -103,10 +103,10 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
             "var n = 7\nlet first = Kimi.Intrinsics.makeRc(View.init(n@ref))\nlet copy = Kimi.Intrinsics.clone(first@ref)\n_ = first@move\nn = 9\n" +
             (destructor ? "()" : "require copy.value == 7 else => $abort(\"read\")");
         var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(source) : source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 3.6, 8.15: a generic definition is judged with the temporary handle's Loan before any instance exists.
@@ -196,7 +196,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
             (conflict ? "let moved = owner@move\n" : string.Empty) + "require view.value == 7 else => $abort(\"live\")";
         source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
@@ -229,7 +229,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     {
         var path = Path.GetFullPath("shared-object-ownership.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
