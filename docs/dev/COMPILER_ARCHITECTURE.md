@@ -148,8 +148,9 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 
 ## Structure limits
 
-Members and files outside the old Analysis path stay within these limits (the old Emission's exemption ended with its code at
-R6-gen, DECISIONS R5-M167; its surviving toolchain and publication files are held to them), which the owner decided on
+Members and files outside the old Analysis path and the toolchain and publication files left in `C/Emission` stay within these
+limits (those files stay exempt until R9 moves the toolchain out; the old Emission's half of the exemption ended with its code at
+R6-gen, DECISIONS R5-M167), which the owner decided on
 2026-10-11 for the [Code Rules Analyzer](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) (its §9).
 
 | Measure | Limit |

@@ -13933,14 +13933,14 @@ structure is recorded here by the unit that first implements it.
        because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 315, 470
        and 947 ms against 733, 1,521 and 3,106 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 30.7-47.0 MB against
        0.5-37.4 MB on the small inputs; 91, 151 and 270 MB against 209, 405 and 802 MB. The whole default build (A's total without its
-       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+73 to +120 ms) on the small inputs, 0.65,
-       0.51 and 0.47 on Generic 32, 64 and 128 (593, 907 and 1,598 ms against 919, 1,763 and 3,422 ms). Cold collection is equal on
-       both (Generic 128: 25.5 ms, 7.9 MB). Check cost against G2's head `90697ecfa` (its default configuration; R5-M156's measurement):
-       a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1 and 157.4 ms against 34.4, 94.2 and 154.7) and
-       61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.03 to +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms,
-       the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on both, cold +21 KB (Hello) and +17 KB
-       (Milestone26). Recorded under plan §18 P3: R6-gen trades a fixed library MIR build per fresh compilation for less work on
-       generic-heavy inputs.
+       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+72 to +120 ms) on the small inputs, 0.65,
+       0.51 and 0.47 on Generic 32, 64 and 128 (593, 907 and 1,598 ms against 919, 1,763 and 3,422 ms). Cold collection is equal within
+       2.5 % (B/A 0.98-1.02; bytes and items equal; Generic 128: 25.5 ms and 7.9 MB on both). Check cost against G2's head `90697ecfa`
+       (its default configuration; R5-M156's measurement): a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1
+       and 157.4 ms against 34.4, 94.2 and 154.7) and 61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.00 to
+       +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms, the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on
+       both, cold +21 KB (Hello) and +17 KB (Milestone26). The owner is asked (2026-10-31) whether to accept the fresh small-build cost
+       (PLAN §3).
     7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
        `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
        `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
@@ -13958,6 +13958,6 @@ structure is recorded here by the unit that first implements it.
     (30), (37), (38), (40), (43), (44), (46) and (50), G153, G289 (4) and LN (whose old-generator copy, `ObjectGenerationPlan.WriteKey`,
     went at G7); G158 (1) and (2) to BU after the exit. G157 (34), the old generator's defect, closed by G7 as (22). BU's G147 (2),
     G158 and G300 restate their old-generator outcomes as history or the current fact. LLVM_OPTIMIZATION §4 (`:638`) still names
-    `EmissionInstruction`, outside row 18's §6.1: an open item.
+    `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G335).
   - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
     R5-M163 (the folder).
