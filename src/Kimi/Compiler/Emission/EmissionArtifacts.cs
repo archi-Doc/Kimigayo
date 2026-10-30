@@ -13,7 +13,8 @@ public static class EmissionArtifacts
     /// <summary>Publishes both files, with the manifest last, or records why not in the Emission partition without claiming old files
     /// (DECISIONS R5-M165): the generation entry's records; <c>ArtifactPublicationFailed_Kd</c> at the project, its cause as a note, for an
     /// output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the project when the
-    /// compiler's embedded backend record is missing. The publication inputs are checked first, since the generation entry writes into
+    /// compiler's embedded backend record is missing or code generation fails a contract check while it writes the output (GenerateInto's
+    /// mapping). The publication inputs are checked first, since the generation entry writes into
     /// the temporary IR file (R5 C0a); preparation has validated the native configuration (DependencyConfiguration).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
