@@ -778,11 +778,11 @@ public sealed class RetentionTest
     // writes (rule A); one admitting only owner and uniq holds what its target `T` holds. `putRaw<s/T>`'s `value` keeps no handle
     // (PLAN G297; fails before: `store 1: own {0 Value, 1 Content}`).
     [Theory]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {1 Value}, reached {}")]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "")]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "")]
-    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {1 Value}, reached {}")]
-    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]
     public void AnAbstractPartHoldsARawArgumentWhereThePremisesOrAnErasedCallableMakeItOne(string function, string expected)
         => Assert.Equal(expected, Declared(Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" + function + "\n"), "f"));
 
@@ -794,7 +794,7 @@ public sealed class RetentionTest
             "func f<s/T>(x: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var b: i32 = 0\n    let r = b@uniq\n    unsafe => putRaw(r@follow@raw, x)\n" +
             "func g<T>() -> ()\n    T is MakeW\n    var slot: raw/u8 = null\n    let t = T.make(p: slot@raw, q: slot)\n");
         Assert.Equal(["store 1: own {1 Content}, reached {}"], Calls(c, "putRaw"));
-        Assert.Equal(["result {0 Value, 1 Value}"], Calls(c, "make"));
+        Assert.Equal(["result {0 Value, 1 Value}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(c, "make"));
     }
 
     // SPEC 5.7 Calls, 15.6 (the design review's S2 and R-B2; DECISIONS R4-M116 item 5): a raw pointer in an unstated or `static` Field or

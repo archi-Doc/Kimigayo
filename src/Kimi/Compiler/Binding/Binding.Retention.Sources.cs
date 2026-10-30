@@ -233,8 +233,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4's abstract-Type sentence, rule 2 (DECISIONS BU-66, R4-M154): the premises make a carrier one that can hold a raw input's
-    // own value where the closure from the carrier's node reaches the node of the input's own layer Origin (an unstated layer has none and
-    // reaches nothing), into retentionFills.
+    // own value where the closure from the node of the input's own layer Origin reaches the carrier's node, as an abstract part holds a
+    // value whose Origin reaches it (a carrier stored below a layer of that Origin, R2; an unstated layer has none and reaches nothing),
+    // into retentionFills.
     private void RawReach(OriginPremiseEnvironment environment)
     {
         foreach (var (input, pointer) in this.retentionRawInputs)
@@ -242,7 +243,7 @@ public sealed partial class Binding
             var layer = OwnedOrigin(pointer) is { Kind: not OriginKind.Unstated } origin ? this.PremiseNode(environment, origin) : -1;
             foreach (var (carrier, node) in this.retentionCarriers)
             {
-                if (layer >= 0 && this.Closure(environment, node).Contains(layer))
+                if (layer >= 0 && this.Closure(environment, layer).Contains(node))
                 {
                     this.retentionFills.Add((input, carrier));
                 }
