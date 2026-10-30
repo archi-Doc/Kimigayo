@@ -531,7 +531,7 @@ public sealed partial class Binding
     // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30, BU-35, BU-40), the hold walk: a position of `output` the call
     // may write or lend, a hold (Hold's: the result's whole Type, or a position of input j's writable storage) or a position below
     // one, with `written`, the Type a struct's Field or an enum's Case payload declares there while it is a Tuple, a fixed array or a raw
-    // layer (null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), the instance holding
+    // layer (Written; null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), the instance holding
     // it there (`holder`, whose case a declared slot's step reads, SPEC 15.3.5; DECISIONS BU-44), and whether it is
     // `lent`: below a borrow in the result (BorrowReferent: a borrow layer, a pair layer admitting only borrows, a Slice's or UniqSlice's
     // elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as that borrow
@@ -555,7 +555,7 @@ public sealed partial class Binding
             return Holding.None;
         }
 
-        written = ReferenceTypes.IsPointer(written) || written?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray ? written : null;
+        written = Written(written);
         holder = written is null ? null : holder;
         if (!this.retentionMet.Add((type, written, holder, lent)))
         {

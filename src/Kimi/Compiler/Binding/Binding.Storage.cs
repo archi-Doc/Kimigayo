@@ -17,6 +17,7 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> enumPayloadTypes = new();
     private readonly TypeMemo<BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<BoundType> markedParts = new(); // WithUnstatedOrigins' results.
     private readonly TypeMemo<bool> layoutParts = new(); // The Tuples and fixed arrays a container frame met that added no cycle.
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
@@ -235,8 +236,30 @@ public sealed partial class Binding
     // stating an Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes; KeptType has completed
     // the completable projections first, DECISIONS BU-50) and a callable are kept as written; an Unbound layer, a reported error's
     // dependent, is not marked. A declared part is never a Semantics family (a family
-    // comes only from an expression's adaptation): one is a broken contract.
-    private BoundType WithUnstatedOrigins(BoundType declared)
+    // comes only from an expression's adaptation): one is a broken contract. A part's result depends on the part alone, so each distinct
+    // part is marked once per call (DECISIONS BU-19, BU-58).
+    private BoundType WithUnstatedOrigins(BoundType declared) => this.MarkedParts(declared, this.markedParts.Begin(this.storageVersion));
+
+    // A component's result (WithUnstatedOrigins), each distinct one with components marked once per query; a leaf is cheaper to mark
+    // again than to record.
+    private BoundType MarkedPart(BoundType part, uint query)
+    {
+        if (part.Components.Count == 0)
+        {
+            return this.MarkedParts(part, query);
+        }
+
+        if (!this.markedParts.TryGet(part, query, out var result))
+        {
+            result = this.MarkedParts(part, query);
+            this.markedParts.Set(part, query, result);
+        }
+
+        return result;
+    }
+
+    // A declared part, its components marked first (WithUnstatedOrigins).
+    private BoundType MarkedParts(BoundType declared, uint query)
     {
         if (declared.Kind == BoundTypeKind.SemanticsAdaptation)
         {
@@ -255,7 +278,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < declared.Components.Count; i++)
             {
-                components[i] = this.WithUnstatedOrigins(declared.Components[i]);
+                components[i] = this.MarkedPart(declared.Components[i], query);
                 changed |= !ReferenceEquals(components[i], declared.Components[i]);
             }
 
@@ -506,7 +529,7 @@ public sealed partial class Binding
                     {
                         var syntax = payload.Operands[j];
                         shape.Types.Add(syntax);
-                        if (syntax.BoundType is { } type && !TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
+                        if (syntax.BoundType is { } type && !this.TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
                         {
                             this.Fail(member, BindingFailure.Access);
                         }
