@@ -267,14 +267,15 @@ public sealed partial class Binding
                 (this.resultContexts.TryGetValue(target, out var context) && context.Collecting && context.Expected is null)
             : collecting;
 
-    // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position or holding what its call
-    // completed since (Completed), which it waits to take with the rest of its join (SPEC 14.9.2 steps 2-3; DECISIONS BU-43).
+    // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position, holding what its call
+    // completed since (Completed), or a call the probe deferred (Call, SPEC 10.5.1), which it waits to take with the rest of its join
+    // (SPEC 14.9.2 steps 2-3; DECISIONS BU-43).
     private bool Deferred(Koto source) => this.Deferred(source, null);
 
     // The same with the source's Awaiting (AwaitsFor) when the caller already has it, so the source is not walked twice.
     private bool Deferred(Koto source, Awaiting? awaits)
         => source.BindingState is BindingState.Unvisited or BindingState.Unresolved && !this.PartFailed(source) &&
-            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source));
+            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source) || this.KindOf(source) == PartKind.Call);
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
@@ -661,7 +662,8 @@ public sealed partial class Binding
             return target; // SPEC 3.8: a Never expression fits; the literal around it takes its position's Type.
         }
 
-        if (!this.AwaitsPosition(node) && !this.Deferred(node))
+        var kind = this.KindOf(node);
+        if (!AwaitsCall(node, kind) && !this.AwaitsPosition(node) && !this.Deferred(node))
         {
             return this.LateAdaptation(node, target); // A bound part; one holding what its call completed is formed from its parts below.
         }
@@ -677,8 +679,9 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            _ when this.KindOf(node) is PartKind.Function or PartKind.Case or PartKind.Reference => // One waiting for its call, fitted as
+            _ when kind is PartKind.Function or PartKind.Case or PartKind.Reference => // One waiting for its call, fitted as an argument
                 this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
+            _ when kind == PartKind.Call => target, // A deferred call, which its own call completes at this position's Type.
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 
