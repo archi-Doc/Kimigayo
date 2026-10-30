@@ -384,9 +384,9 @@ public sealed partial class Binding
         return origin;
     }
 
-    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses; a failed clause makes its contract unavailable
-    // (Binding.OriginDeclarations.Failures.cs); otherwise its equalities substitute, its pending slots complete, and its Types and
-    // Origins are rewritten to the completed Origins.
+    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses; a failed clause makes its contract unavailable, or a local's
+    // rests the slots it names (Binding.OriginDeclarations.Failures.cs); otherwise its equalities substitute, its pending slots
+    // complete, and its Types and Origins are rewritten to the completed Origins.
     private void CompleteOriginDeclaration(OriginDeclaration? declaration)
     {
         if (declaration is null || declaration.State != 1)
@@ -402,7 +402,7 @@ public sealed partial class Binding
             var b = this.BindOrigin(clause.Right, declaration.Scope!);
             if (IsRecovery(clause, out _) || a is null || b is null)
             {
-                this.FailOriginClause(declaration, clause, a);
+                this.FailOriginClause(declaration, clause, a, b);
             }
             else
             {
@@ -411,9 +411,8 @@ public sealed partial class Binding
             }
         }
 
-        if (declaration.Failure is { } failure)
+        if (declaration.Failure is { } failure && this.FailOriginDeclaration(declaration, failure))
         {
-            this.FailOriginDeclaration(declaration, failure);
             return;
         }
 
@@ -502,8 +501,8 @@ public sealed partial class Binding
         }
     }
 
-    // The pending slots no equality substituted complete: a result slot a nontrivial outlives clause names as an aggregate input, any
-    // other by the position rule (OmittedOrigin).
+    // The pending slots no equality substituted and no failed clause rests (RestsOnFailedClause) complete: a result slot a nontrivial
+    // outlives clause names as an aggregate input, any other by the position rule (OmittedOrigin).
     private void CompletePendingOrigins(OriginDeclaration declaration)
     {
         declaration.State = 2; // Further omission performs the established position rule.
@@ -511,7 +510,7 @@ public sealed partial class Binding
         foreach (var pending in declaration.Pending)
         {
             var origin = this.ResolveOrigin(pending.Origin, declaration);
-            if (origin.Kind != OriginKind.Unbound || !ReferenceEquals(origin, pending.Origin))
+            if (origin.Kind != OriginKind.Unbound || !ReferenceEquals(origin, pending.Origin) || this.RestsOnFailedClause(declaration, origin))
             {
                 continue;
             }

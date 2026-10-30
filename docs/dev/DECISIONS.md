@@ -8949,6 +8949,38 @@ resumed by R4-M86 (2026-10-20).
     is needed. The test names and comments that say "interim" or "flip back" (MirBorrowsTest.Raw.cs, MirBorrowsTest.Referents.cs) change
     with R4's 15.6.4 example unit.
 
+- **BU-68 A local's failed Origin clause leaves Unbound only the inference variables it names** (2026-10-31; PLAN G306 (1), unit bu85
+  U1, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g306\design.md` items 1-2, its design review's item 8 (`u2-review\`),
+  the BU planning session's decisions) SPEC 15.3.3: a local's clauses are checks that assume nothing (ExtractOriginPremises never reads
+  them), so only the slots a failed clause feeds can rest on it; SPEC 23.1.2: every other failed requirement is reported. Path a made
+  every owner's failed clause a contract's: `Relations.Clear()`, State 3, every pending slot Unbound, which hid a local's independent
+  records.
+  - The fact: `OriginDeclaration.FailedClauses`, the bound Origins of each failed clause, null where an operand is unavailable. One
+    writer, `FailOriginClause` (the clause loop's failure arm); its readers are the completion (`FailOriginDeclaration`,
+    `RestsOnFailedClause`) and, later, G306 U2's dependence query. A reused list, allocated at a declaration's first failed clause and
+    cleared by `Reset`; a warm rebind allocates nothing.
+  - The rule (`Binding.OriginDeclarations.Failures.cs`): for a local (`OriginDeclaration.IsLocal`, the one discriminator JudgeLocalClause
+    also reads) whose failed clauses each name a bound Origin, a pending slot that one of them names, resolved through the declaration's
+    equalities, stays Unbound and rests on the first failed clause (`PendingFailure`, path a); every other slot completes by the
+    ordinary rule, the bound clauses stay and are judged, and the owner still fails on its first failed clause. A failed clause that
+    names no bound Origin, and a contract's failed clause, make the whole declaration unavailable as before. The scope is decided once,
+    at completion: no second walk and no per-binder lookup (R4-M118's rejected route).
+  - Limit (the BU planning session, 2026-10-31, on U1's stop): a failed operand names no slot, also one that fails on the declaration's
+    own set (a repeated set's `x.a`, a missing member `x.zz`). Where a `==` repair would have substituted such a slot, its completion
+    can differ from the repaired program's, so at most a dependent record is reported as direct, never a record lost (BU-61's stance).
+  - BU-62: `PendingFailure` keeps its one writer and its meaning; for a local, path a now leaves only the named slots Unbound, and they
+    still rest on the failed clause (`UnboundCause`). `Failure` stays set, so `FailedOriginEnvironment` still derives a failed fit
+    beneath the local.
+  - Records (probes `g306\probe-{base,p1}-*.txt` and `g306\u2-review\`, default and mir alike): x-valid-clause-beside gains
+    UnsatisfiedOriginRelation_Kd at `P.init(a, l@ref)`; i-unrelated-slot's and u1-typo-slot's `p.q` go Unproven to Unsatisfied; each
+    is its valid twin's. The named slot rests, unchanged, in x-named-later, i-named-slot, x-upper-failed, x-eq-beside, m3 and meet-ret.
+    Only incomplete compilations change.
+  - Tests: `OriginRelationDiagnosticTest.FailedClauses` (its first three rows and the warm-rebind row fail on U0 8a3053e7d).
+    `MirOriginsTest.RepeatedSet`'s clause becomes `x.a == zz`, naming no bound Origin, so the OriginRowsTest rows that read it keep a
+    Dependent end (they test that end, not the clause); in the Dependent-chain theory the assignment's form (`var p`, `x.s outlives zz`),
+    whose slot `x.t` now completes, records at `p.q` instead of `return p.q`.
+  - Rejected: resting every slot of a local (the cause above); a failure lookup per binder (R4-M118).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

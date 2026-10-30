@@ -175,7 +175,7 @@ public sealed partial class Binding
             if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
                 (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
             {
-                if (declaration.Owner is FieldKoto)
+                if (declaration.IsLocal)
                 {
                     this.JudgeLocalClause(declaration, relation);
                 }
