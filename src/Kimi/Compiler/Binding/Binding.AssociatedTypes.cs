@@ -254,11 +254,12 @@ public sealed partial class Binding
         return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
 
-    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that formed `type` and is judged in the innermost scope of `scope`'s chain, the
-    // scopes whose premises the solver reads (Supply); null when no use on that chain formed it. Each use is keyed by its Type and the
-    // scope its conformance check (ValidateConformances, after the bodies) judges it in, ConstraintScope; the innermost wins, since an
-    // inner scope's premises can validate what an outer one rejects. A check that fails only because its Type is such a projection rests
-    // on that use, which publication judges (AddPendingPrerequisite).
+    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that formed `type` and is judged under `scope`'s own premises: the first use
+    // found walking `scope`'s chain inward-out (the scopes whose premises the solver reads, Supply) before a scope that adds premises
+    // without forming it; null otherwise. Each use is keyed by its Type and the scope its conformance check (ValidateConformances, after
+    // the bodies) judges it in, ConstraintScope. Premises only grow inward, so a use found before such a scope is judged as `scope`
+    // would judge it, and one beyond it may be rejected under fewer premises than `scope` has. A check that fails only because its
+    // Type is such a projection rests on that use, which publication judges (AddPendingPrerequisite).
     private Koto? ProjectionUseOf(BoundType type, BindingScope scope)
     {
         for (BindingScope? current = scope; current is not null; current = current.Parent)
@@ -266,6 +267,11 @@ public sealed partial class Binding
             if (this.projectionForms.TryGetValue((type, current), out var use))
             {
                 return use;
+            }
+
+            if (current.Constraints is { } premises && (premises.Invalid || premises.Facts.Count != 0))
+            {
+                return null;
             }
         }
 

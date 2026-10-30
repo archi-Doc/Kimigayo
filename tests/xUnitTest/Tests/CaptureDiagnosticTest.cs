@@ -191,7 +191,9 @@ public class CaptureDiagnosticTest
     // after or before the dependent entry, in another closure, or in a local whose initializer failed. Only a formation judged on the
     // closure's own scope chain counts, innermost first: a sibling method's rejection of the same projection, before or after the
     // capture's method, as a parameter or a result, and a Field's rejection outside the method's premise leave the capture of a projection
-    // the method validates its own Unsupported_Kd (they removed it in fix round 1). HOLE takes `bad`, then `good`.
+    // the method validates its own Unsupported_Kd (they removed it in fix round 1), and so does a scope that adds premises without
+    // forming the Type: a Field read under the method's own premise or a conditional block's keeps its Unsupported_Kd (fix round 2
+    // removed it), as when the method forms the Type or the Field is valid. HOLE takes `bad`, then `good`.
     [Theory]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
@@ -210,6 +212,10 @@ public class CaptureDiagnosticTest
     [InlineData(StructOfT + ValidatedCapture + "\nHOLE", "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return", "", "Unsupported_Kd t@move | UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag", "Unsupported_Kd t@move")]
     [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad()\n", "", "UnprovenConstraint_Kd bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad() | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
     [InlineData("struct S<T>\nHOLE" + ValidatedCapture, "    var v: T.(Iter<i32>).Tag\n", "    var v: i32\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t: T.(Iter<i32>).Tag = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\n    T is Iter<i32>\n    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\nHOLE        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "        T is Iter<i32>\n", "Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("contract Named\n    func name(self: ref/Self) -> string\nstruct S<T>\nHOLE    var w: T.(Iter<i32>).Tag\n    Self is Named when T is Iter<i32>\n        public func name(self: ref/Self) -> string => \"s\"\n        public func good(self: ref/Self) -> ()\n            let t = self.w\n            let c = func [t@move] () -> () => ()\n            return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var w: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
     public void ACaptureOfARejectedTypeRestsOnIt(string body, string bad, string good, string records, string twin)
     {
         const string Tag = "contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n";

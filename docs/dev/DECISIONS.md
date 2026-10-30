@@ -8726,8 +8726,8 @@ resumed by R4-M86 (2026-10-20).
     either sweep order (a four-cycle does under alternation).
 - **BU-61 A projection use is published under its Type and the scope that judges it, `Binding.ProjectionUseOf`; a check that fails
   only because its Type is a projection rests on the use judged on its own scope chain, at publication (`AddPendingPrerequisite`)**
-  (2026-10-30; PLAN G293's BU part, bu78 fix rounds 1 and 2 on the review's B1 and the re-check's finding 1; the planning session's
-  decisions after the addenda `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g293\design.md` A1–A12; class Minor) SPEC 23.1.2.
+  (2026-10-30; PLAN G293's BU part, bu78 fix rounds 1 to 3 on the review's B1 and the re-checks' first findings; the planning session's
+  and the owner's (round 3: 「すべて推奨どおり」) decisions after the addenda `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g293\design.md` A1–A16; class Minor) SPEC 23.1.2.
   Binding keeps a rejected projection as the binding's Type (R5-M155's (c)), so a capture of it (`[t@move]`, `[t]`) failed with a
   located Unsupported_Kd without prerequisite, beside the rejection it depends on.
   - Fact: `BindAssociatedProjection` (Type formation) publishes each projection use under its interned Type and its
@@ -8739,9 +8739,12 @@ resumed by R4-M86 (2026-10-20).
     chain whose facts the solver reads, `Supply`), and records it as the closure's part prerequisite with the closure's first failure.
     No exact key matches: a parameter's or local's Type is formed in the function's or block's scope, the capture sits in the
     closure's. Innermost first is required: an inner scope's premise (a method clause on its struct's `T`) can validate what an outer
-    formation (the struct's Field) rejects. A scope off the chain (a sibling method's, a sibling closure's) is never read; with no
-    use on the chain no prerequisite is recorded and the record stays direct (a call result or a Field read formed elsewhere: an extra
-    record, never a lost one). `AddPendingPrerequisite` keeps the first part whatever its state now (AddPrerequisite drops a part
+    formation (the struct's Field) rejects. The walk stops, with no prerequisite, at the first scope that adds premises (its own facts
+    or an Invalid environment) without forming the Type: premises only grow inward, so a use found before any such scope is judged
+    under the capture's own premises and its rejection is the capture's, while one beyond it may be rejected under fewer premises (a
+    Field read in a method whose clause or conditional block validates it: the re-check's q01, q07f). A scope off the chain (a sibling
+    method's, a sibling closure's) is never read. With no use before the stop, no prerequisite is recorded and the record stays
+    direct (a call result, a Field read formed elsewhere or past a premise: an extra record, never a lost one). `AddPendingPrerequisite` keeps the first part whatever its state now (AddPrerequisite drops a part
     already Resolved), and `UnresolvedPart` reads it at publication: derived when the use was rejected (a parameter, an annotated
     local, `let u = t`, a primitive, Tuple or Type parameter subject), direct when it resolved (an abstract `T.Tag`). It replaces
     bu78's `TypeSource` there, which stays only as ConsultTypeSource's mapping for a binding without a Type (G260).
