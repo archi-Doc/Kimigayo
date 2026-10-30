@@ -273,7 +273,7 @@ public partial class ClosureResultOriginTest
     }
 
     // The returned Closure at a Callable proof or an erasure (problem-draft §4.4; SPEC 8.10, 10.7, 15.4.3 rule 2, 7.7.4): its result keeps
-    // its own input or no Origin (valid); a result over the maker's ρ or input is Refuted (...PendingG326 below). An erasure needs an Owned
+    // its own input or no Origin (valid); a result over the maker's ρ or input is Unknown (...AtACallableProof below). An erasure needs an Owned
     // environment (q10).
     [Theory]
     [InlineData(
@@ -296,12 +296,12 @@ public partial class ClosureResultOriginTest
     public void AReturnedClosureKeepsItsImagesAtACallableProofOrAnErasure(string form, string source, string mir, string? published)
         => AssertSides(form, source, mir, published);
 
-    // Kept apart, not counted for G273 (PLAN G326; R4's G273 decision K4). SPEC 15.4.3 rule 2, 15.6.5 (problem-check K1, replacing the
-    // owner's interim 「暫定として認める」 for q2 and q6, whose premise was a valid form): `Callable<() -> ref/i32>` has no borrowed input,
-    // so its omitted result Origin is `static`, and a result over the maker's ρ (q2, q6) or input (q3, q9) would have to outlive it: a
-    // Refuted chain, UnsatisfiedConstraint_Kd at the argument (MIR side at the `apply` line, published at `a@ref`). Dev's Callable proof
-    // answers Unknown where the relation is Refuted, G326's cause and not G273's, so the rows pin dev's UnprovenConstraint_Kd at the
-    // argument. They join the counted theory above with that verdict when G326 lands.
+    // SPEC 15.4.3 rule 2, 15.6.1, 10.7: `Callable<() -> ref/i32>` has no borrowed input, so its omitted result Origin is `static`, and a
+    // result over the maker's ρ (q2, q6) or input (q3, q9) would have to outlive it. The Origin part of that Callable compatibility is
+    // judged from premises alone, so it is Proven or Unknown (SPEC 15.6.1), and Unknown is a Constraint failure inside a Callable
+    // Constraint: UnprovenConstraint_Kd at the argument, dev's verdict. Counted rows since the owner's answer to PLAN G326 (2026-10-31,
+    // verbatim 「すべて推奨の内容でお願いします」: SPEC 15.6.1 governs, G326 is no defect), which replaces K4's PendingG326 and K1's Refuted
+    // reading (UnsatisfiedConstraint_Kd).
     [Theory]
     [InlineData("q2_nested", CallableRef + Use + "    let outer = func (x: i32) => func [x] () => func [x@ref] () => x\n    let m = outer(3)\n    let a = m()\n" + ApplyRef + MainUnit)]
     [InlineData("q3_input", CallableRef + Use + InputMaker + "    let a = outer(local@ref)\n" + ApplyRef + MainUnit)]
@@ -309,7 +309,7 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "q9_called",
         "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    _ = f()\n    return 0\n" + Use + InputMaker + "    let a = outer(local@ref)\n" + ApplyRef + MainUnit)]
-    public void AReturnedClosureKeepsItsImagesAtACallableProofPendingG326(string form, string source)
+    public void AReturnedClosureKeepsItsImagesAtACallableProof(string form, string source)
         => Assert.Equal((form, $"{nameof(DiagnosticCode.UnprovenConstraint_Kd)} a@ref"), (form, Records(source)));
 
     // Raw-layer positions (problem-draft §4.5; SPEC 5.7, 15.6.5): an Origin a raw layer obtains by substituting the maker's input or

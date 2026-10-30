@@ -40,9 +40,28 @@ public partial class ClosureResultOriginTest
 
     private const string V13 = Inspect + MainBody + "    var local: i32 = 1\n    var other: i32 = 2\n    let lr = local@ref\n";
 
-    private const string V13Maker = V13 + "    let outer = func (x: ref/i32) => func (v: ref/i32 during x) -> ref/i32 during x => v\n    let a = outer(lr)\n";
+    private const string InputInner = "    let outer = func (x: ref/i32) => func (v: ref/i32 during x) -> ref/i32 during x => v\n";
+
+    private const string V13Maker = V13 + InputInner + "    let a = outer(lr)\n";
 
     private const string V13Flat = V13 + "    let a = func (v: ref/i32 during lr) -> ref/i32 during lr => v\n";
+
+    private const string ParamArg = HpQi32 + PoutlivesQ + "    let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> i32 => 0\n";
+
+    private const string PhantomTag = "struct Tag {a}\n    public init(v: ref/i32 during a) => ()\n";
+
+    private const string BothPositions = "    let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> ref/i32 during x => y\n";
+
+    private const string Kept = Inspect + "func keepIt<T>(t: T) => ()\nfunc look<T>(t: ref/T) => ()\n" + MainBody +
+        "    var local: i32 = 1\n    let lr = local@ref\n";
+
+    private const string KeptOuter = "    let a = outer(lr)\n    local = 5\n";
+
+    private const string KeptFlat = "    local = 5\n";
+
+    private const string Move = "    keepIt(a@move)\n";
+
+    private const string Look = "    look(a@ref)\n";
 
     // SPEC 15.3.5, 15.3.6, 15.6.1 (R4 B1, BU 1): a Closure Type's Origin argument takes the variance of its occurrences in the definition's
     // signature, so an argument that only the inner environment and result name is covariant. A value of one image fits a holder of
@@ -78,11 +97,59 @@ public partial class ClosureResultOriginTest
     public void AClosuresOriginArgumentTakesTheVarianceOfItsOccurrences(string form, string source, string mir)
         => AssertSides(form, source, mir, null);
 
+    // SPEC 15.3.5 "Function parameters reverse polarity" (BU's re-review 1, finding 6): an argument that only the inner parameter names is
+    // contravariant, so a holder of a longer image takes a value of a shorter one (c1, reassigned; c3, created) and the call may pass what
+    // outlives the image, but not what the image outlives (c2, Unproven at the call). An argument named by both the parameter and the result
+    // is invariant (c4): `var c` holds images `p` and `q`, which must be equal, and `origin p outlives q` does not prove it. Dev accepted c4
+    // on both sides because its Type carried no Origin argument; UnprovenOriginRelation_Kd is SPEC 15.3.5's verdict for the invariant
+    // argument, a new rejection of a form dev accepted, at the line of its flat twin's record on dev (a Phantom slot, invariant).
+    [Theory]
+    [InlineData("c1_param_arg_reassign_ok", ParamArg + "    var c = outer(q)\n    c = outer(p)\n    return c(p)\n" + MainUnit, "")]
+    [InlineData("c2_param_arg_call_short_bad", ParamArg + "    let c = outer(p)\n    return c(q)\n" + MainUnit, Unproven + " return c(q)")]
+    [InlineData("c3_param_arg_call_long_ok", ParamArg + "    let c = outer(q)\n    return c(p)\n" + MainUnit, "")]
+    [InlineData(
+        "c4_both_positions_reassign",
+        HpQi32 + PoutlivesQ + BothPositions + "    var c = outer(p)\n    c = outer(q)\n    return 0\n" + MainUnit,
+        Unproven + " var c = outer(p)")]
+    [InlineData(
+        "c4_phantom_ctl_bad",
+        PhantomTag + HpQi32 + PoutlivesQ + "    var c = Tag.init(p)\n    c = Tag.init(q)\n    return 0\n" + MainUnit,
+        Unproven + " var c = Tag.init(p)")]
+    public void AClosuresOriginArgumentInAParameterReversesPolarity(string form, string source, string mir)
+        => AssertSides(form, source, mir, null);
+
     // SPEC 15.6, 15.6.4 (R4 B2): a Closure value whose Type's Origin argument a maker's input images, named only in the inner signature,
     // holds no reference and carries no Loan, so writing the input's Place while it lives is valid (v13_param_kept_ok, D2 on the default,
     // as its flat twin), and so is the write while the call's result lives (v13_param_bad_local, the review's name: the result retains only
     // its argument `other@ref`, as dev accepts the flat twin). The invalid twin passes the input itself, which the result then carries.
+    // R4's review 2 (R2-B1): the same holds for a value that is never called, moved (v60) or borrowed (v63) after the write, and for one
+    // whose result names no Origin (v64, `x` named by the parameter only). Their invalid twins capture the input, so the value holds lr's
+    // reference and carries its Loan (SPEC 15.6.4): the review's v60_kept_env_bad, and `[x]` added to v63's and v64's inner literal.
     [Theory]
+    [InlineData("v60_kept_move_ok", Kept + InputInner + KeptOuter + Move, "")]
+    [InlineData("v60_kept_move_ctl_ok", Kept + "    let a = func (v: ref/i32 during lr) -> ref/i32 during lr => v\n" + KeptFlat + Move, "")]
+    [InlineData("v60_kept_env_bad", Kept + InputOuter + KeptOuter + Move, Conflict + " local = 5")]
+    [InlineData("v60_kept_env_ctl_bad", Kept + "    let a = func [lr] () => lr\n" + KeptFlat + Move, Conflict + " local = 5")]
+    [InlineData("v63_kept_look_ok", Kept + InputInner + KeptOuter + Look, "")]
+    [InlineData("v63_kept_look_ctl_ok", Kept + "    let a = func (v: ref/i32 during lr) -> ref/i32 during lr => v\n" + KeptFlat + Look, "")]
+    [InlineData(
+        "v63_kept_env_look_bad",
+        Kept + "    let outer = func (x: ref/i32) => func [x] (v: ref/i32 during x) -> ref/i32 during x => v\n" + KeptOuter + Look,
+        Conflict + " local = 5")]
+    [InlineData(
+        "v63_kept_env_look_ctl_bad",
+        Kept + "    let a = func [lr] (v: ref/i32 during lr) -> ref/i32 during lr => v\n" + KeptFlat + Look,
+        Conflict + " local = 5")]
+    [InlineData("v64_kept_param_only_ok", Kept + "    let outer = func (x: ref/i32) => func (v: ref/i32 during x) -> i32 => v@follow\n" + KeptOuter + Look, "")]
+    [InlineData("v64_kept_param_only_ctl_ok", Kept + "    let a = func (v: ref/i32 during lr) -> i32 => v@follow\n" + KeptFlat + Look, "")]
+    [InlineData(
+        "v64_kept_param_env_bad",
+        Kept + "    let outer = func (x: ref/i32) => func [x] (v: ref/i32 during x) -> i32 => v@follow\n" + KeptOuter + Look,
+        Conflict + " local = 5")]
+    [InlineData(
+        "v64_kept_param_env_ctl_bad",
+        Kept + "    let a = func [lr] (v: ref/i32 during lr) -> i32 => v@follow\n" + KeptFlat + Look,
+        Conflict + " local = 5")]
     [InlineData("v13_param_kept_ok", V13Maker + "    local = 5\n    let r = a(other@ref)\n    inspect(r)\n", "")]
     [InlineData("v13_param_kept_ctl_ok", V13Flat + "    local = 5\n    let r = a(other@ref)\n    inspect(r)\n", "")]
     [InlineData("v13_param_bad_local", V13Maker + "    let r = a(other@ref)\n    local = 5\n    inspect(r)\n", "")]
