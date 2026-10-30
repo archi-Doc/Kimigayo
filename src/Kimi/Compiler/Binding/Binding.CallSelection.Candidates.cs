@@ -610,11 +610,13 @@ public sealed partial class Binding
         // SPEC 15.6.4 step 3, 15.3.6: the solution satisfies the well-formedness, slots substituted, of every parameter the call fills,
         // so a covariant slot takes the meet of all its upper bounds. Beside a written argument's own Type, which is well formed, only the
         // positions that Type does not give are bounds (CollectFilledPremises); a default and a part that takes its Type from the call
-        // (TakesCallType) have none of their own. A slot still unsolved gives no bound: the call fails on that slot.
+        // (TakesCallType) have none of their own. A slot still unsolved gives no bound: the call fails on that slot. A pattern that stores
+        // no Origin and names no slot has no well-formedness, so it is not substituted (its interned summaries, BU's (B3)).
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var argument = ArgumentAt(i);
             if ((defaults.Contains(i) || argument is not null) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern &&
+                (pattern.StoresOrigin || pattern.ContainsParameter) &&
                 this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } substituted)
             {
                 this.CollectFilledPremises(substituted, argument is null ? null : this.OwnType(argument), inference, call);

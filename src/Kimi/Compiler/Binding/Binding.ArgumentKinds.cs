@@ -62,23 +62,14 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is RangeKoto range && !IsLiteralOnlyRange(range) &&
             ((range.Start is { } start && IsLiteralOnlyPosition(start)) || (range.End is { } end && IsLiteralOnlyPosition(end)));
 
-    // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far; an unbound part that PrepareArgument or the argument
-    // probe classified (a control-flow part, a deferred nested call) by its recorded fact.
+    // SPEC 10.5.1: the kind of an argument part: while its call has not completed it (unbound), the one recorded when its call or the
+    // probe classified it, before any other rule (R2-N3); otherwise, a completed part or one no producer classified, the one classifier's
+    // (ClassifyPart, BU's (B1)), which gives a completed part its form's kind (Composite for an aggregate, else Typed).
     private ArgumentKind KindOf(Koto part)
     {
-        var kind = this.ClassifyPart(part);
-        if (kind is ArgumentKind.Literal or ArgumentKind.Composite)
-        {
-            return kind;
-        }
-
-        var recorded = part.BoundType is null ? this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind : ArgumentKind.Typed;
-        if (recorded == ArgumentKind.Composite || kind == ArgumentKind.Waiting)
-        {
-            return recorded == ArgumentKind.Composite ? ArgumentKind.Composite : ArgumentKind.Waiting;
-        }
-
-        return recorded == ArgumentKind.Literal ? ArgumentKind.Literal : ArgumentKind.Typed;
+        var node = KotoHelper.UnwrapParentheses(part);
+        return node.BoundType is null && node.SyntaxOwner is { } owner && this.argumentKinds.TryGetValue(new(owner.Module, node.SyntaxId), out var fact)
+            ? fact.Kind : this.ClassifyPart(part);
     }
 
     // SPEC 10.5.1: the one classifier of an argument part by its form and binding state: an unfitted literal is Literal, a Tuple or
@@ -294,7 +285,15 @@ public sealed partial class Binding
             // when every result source other than Never is a literal, since Never supplies nothing at any position; with an unknown
             // source beside its literals it needs an expectation or a default, so it waits. It is bound once its call selects a
             // candidate, as an anonymous function is. A recovered part is bound as any other.
-            this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Unknown ? ArgumentKind.Waiting : ArgumentKind.Literal, null, survey.Unknown);
+            if (survey.Unknown)
+            {
+                this.Defer(part);
+            }
+            else
+            {
+                this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(ArgumentKind.Literal, null, false);
+            }
+
             return true;
         }
 
@@ -367,14 +366,18 @@ public sealed partial class Binding
             return false;
         }
 
-        this.argumentKinds[SourceRef.Of(call)] = new(ArgumentKind.Waiting, null, true);
+        this.Defer(call);
         if (this.argumentProbe is { } probe && this.UnderArgumentProbe(call))
         {
-            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Waiting, null, true); // SPEC 14.9.2: so does its control-flow argument.
+            this.Defer(probe); // SPEC 14.9.2: so does its control-flow argument.
         }
 
         return true;
     }
+
+    // The one writer of a part's deferral (BU review 2 N5): Waiting until its call's selected candidate completes it, and deferred after
+    // that, so its Type is never evidence for an outer slot (WasDeferred).
+    private void Defer(Koto part) => this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(ArgumentKind.Waiting, null, true);
 
     // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable

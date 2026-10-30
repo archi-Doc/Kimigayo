@@ -322,7 +322,8 @@ public sealed partial class Binding
     {
         for (var i = 0; i < payload.Length; i++)
         {
-            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } payloadType)
+            if (payload[i].BoundType is { } declared && (declared.StoresOrigin || declared.ContainsParameter) &&
+                this.SubstituteType(declared, solution.SlotOwner, solution.Types, solution.Lengths) is { } payloadType)
             {
                 this.CollectFilledPremises(payloadType, this.OwnType(solution.Call.ArgumentNodes[i]), inference, use);
             }
