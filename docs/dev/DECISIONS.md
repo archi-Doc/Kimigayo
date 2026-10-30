@@ -8519,8 +8519,9 @@ resumed by R4-M86 (2026-10-20).
     raw visits being fixed for a contract or an erased signature. A second visit appends the same atoms again, so each such position
     is walked once (`retentionPositions`, cleared with `retentionRawVisits`): the atom list loses duplicates only, which change no
     node, edge or row. bu36's candidate key.
-  - O2, `VisitInlineLayout`. A visit's effect depends on the Type and the container stack. Each container frame (the root and each
-    pushed struct or enum instance) is one query of `layoutParts`, whose stack is fixed. A Tuple or fixed array whose visit closed no
+  - O2, `VisitInlineLayout` (superseded by BU-65, which replaces the walk). A visit's effect depends on the Type and the
+    container stack. Each container frame (the root and each pushed struct or enum instance) is one query of `layoutParts`, whose
+    stack is fixed. A Tuple or fixed array whose visit closed no
     cycle is not visited again in its frame. Every struct or enum instance below it is then finite (skipped) or meets a container on
     the same stack, which adds nothing again, so the skipped revisit is a no-op under dev's rule. `finiteInlineLayouts` is unchanged.
   - Rejected:
@@ -8529,7 +8530,7 @@ resumed by R4-M86 (2026-10-20).
       unreported; (a) would report R2.
     - (b), a global Tuple memo. It would miss C in `struct R {r: C<u8>}; struct C<T> {t: (C<i32>, u8)}`, whose Tuple first closes
       nothing under R's stack.
-    - (c), a declaration-level cycle graph: a redesign.
+    - (c), a declaration-level cycle graph: a redesign (taken by BU-65: G310's exactness needs it).
     - BU-35's (b), one shared walker.
   - Evidence:
     - The probe's every call's and function's retention, Bind's records and BuildMir's counts are identical before and after for
@@ -8782,6 +8783,55 @@ resumed by R4-M86 (2026-10-20).
     copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
+
+- **BU-65 A declaration's finite inline storage is judged on per-node summaries by Tarjan over the edges the walks discover**
+  (2026-10-30; PLAN G310, unit bu76; designs `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g310\design.md`, `design-r1.md`,
+  `design-r2.md`, the review REVISE, re-check 1 REVISE, re-check 2 ACCEPT; the BU planning session's decisions) SPEC 6.2 Finite inline
+  storage: a struct or enum declaration is invalid iff its storage, its own parameters open, reaches the same declaration again, with
+  any Type arguments, through by-value positions (Fields, the base, Case payloads, Tuple and fixed-array elements, the parts a
+  declaration stores inline of its arguments, a projection's as SPEC 8.6.1 completes it). Supersedes BU-55's O2 (a′) and its rejected
+  (c): (c) was rejected as a redesign outside a linearity unit, and exactness now needs it. The instance walk matched cycles by
+  declaration identity and marked an instance finite when its visit added no new member, so its verdicts depended on order and
+  duplicated parts (A/R2/M), rejected a valid program (`R {r: X<D>}; X<T> {t: T}; D {x: X<u8>}`), accepted infinite layouts
+  (`Node {next: Option<Option<Node>>}`, `R {r: C<i32>}; C<T> {t: (C<i32>, u8)}`) and missed declarations reaching themselves through
+  another's growth. Dropping its cut at a repeated non-own declaration makes it infinite under growth, and the only sound cut is the
+  declaration-level fact itself.
+  - Owner: `Binding.InlineLayouts.cs` (moved from Binding.Storage.cs by U0, behaviour unchanged), its contract at the file's head.
+  - Nodes: one per struct or enum declaration, walked and proven in the declaration's scope; one per associated binding,
+    ProjectionSpecification's Type in its subject declaration's terms, keyed by the conformance path it comes from and walked and
+    proven in that path's Scope (SPEC 8.8.2: D + P). ProjectionSpecification publishes the path (ProjectionOutcome.Path; the
+    receiver's ResolveAssociated returns the binding with its path). An inherited path's binding is its source's: the walk resolves the
+    projection again on StoredType(InheritedBase, subject), as ProveConformanceConditions proves an inherited path's conditions.
+  - Summary: the abstract parts a node's storage reaches by value. An instance at a by-value position adds the edge to its declaration
+    and walks that summary under the instance (a projection part rebuilt over substituted components, any other part by PartType); a
+    completed projection adds the edge to its binding's node and walks that summary under the Subject; a builtin output is walked; a
+    pending projection, a parameter, a pair application or target are summary parts.
+  - Judgment: a declaration is invalid iff its strongly connected component has two nodes or more, or it has an edge to itself. Tarjan
+    over the edges the walks discover; a summary is computed before its first read, and every read follows its edge, so dependencies
+    are edges; a cyclic component is re-walked until no summary grows; a re-walk reaching below its root merges into the enclosing
+    component. The result is the least-fixpoint graph's cycles in any declaration order. Only declarations are reported; a cycle of
+    binding nodes alone is its conformance's error (SPEC 8.3.3).
+  - Bound (SPEC 8.3.3): a pending projection is a summary part only when each step's subject is a parameter, a pair target or a
+    projection of one, proven in the node's scope to conform to the step's Contract, a non-recursive one. A recursive Contract's
+    projection never completes for a concrete argument (none conforms), so it adds no edge; an unproven step, or a pending step over a
+    constructed subject, is a dependent of the node's own requirement error. A formable path longer than a node's premises reach repeats
+    a Contract that supplies a conformance of a projection of Self to itself, which makes it recursive, so the summaries are finite and
+    the re-walks end. Recursion is judged by Binding.IsRecursive under the premise supply the proofs read, once per run
+    (RecursiveInStorage), never through TyCtxt.RecursiveContracts' post-Bind memo, which a judgment inside Bind would fix before the
+    source states are final; that memo's contract names this one reader.
+  - Cost (BU-19): each node walk is one query of `layoutParts`, a TypeMemo of the composite parts it met; exact, because a part adds
+    edges and summary parts from the part and the summaries it reads alone, and a component's last round reads fixed summaries. The
+    nodes are pooled across runs: a warm pass allocates nothing.
+  - Evidence: 10,580 programs (75 forms in every declaration order, the review's sets included) give the round-2 prototype's verdicts
+    exactly, default and mir alike; versus dev they differ only on the fixed forms above, their dependents following the cyclic set.
+    Visits are linear (V16 tuple 146/162/178/258 at n = 12/16/20/40 against dev's 432/614/844/2714). Tests: InlineLayoutTest
+    `EveryDeclarationOrderGivesOneVerdict` and the A/R2/M row flipped to M,R2 (SPEC 6.2: R2<T> reaches R2<i32>); TypeDagScalingTest
+    `AnInlineCycleThroughAChainIsLinearInDistinctParts` at n = 40. The diagnostic snapshot shows no difference (its corpus has none of
+    the fixed forms). Cold Bind +2,392 B (Hello) and +2,544 B (Milestone 27), warm 0 B also with binding nodes; no time A/B (heavy
+    runs were registered throughout).
+  - Open: N3, ProjectionSpecification publishing an inherited binding's source path with the base subject, so the walk loses its
+    inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
+    a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
