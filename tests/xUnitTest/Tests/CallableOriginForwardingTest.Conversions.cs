@@ -70,6 +70,38 @@ public partial class CallableOriginForwardingTest
 
     private const string ErasedClosure = "func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None";
 
+    private const string FnC = "((ref/(ref/i32 during c) during a) -> i32) -> i32";
+
+    private const string FnB = "((ref/(ref/i32 during b) during a) -> i32) -> i32";
+
+    private const string ABCHead = "func k(a: ref/i32, b: ref/i32, c: ref/i32, ";
+
+    private const string CB = "    origin c outlives b\n";
+
+    private const string CBA = CB + "    origin b outlives a\n";
+
+    private const string CallableApply = "func apply<F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> Option<ref/(ref/i32)>>\n    return 0\nfunc k(s: ref/i32) -> i32\n";
+
+    private const string FlatApply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\n";
+
+    private const string LeakMk = "func mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n";
+
+    private const string LeakUse = "func use(g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let local: i32 = 5\n    let pair = g(local@ref)\n    return pair.1\n";
+
+    private const string LeakUseOk = "func use(g: " + StaticLeakTarget + ", s: ref/i32 during static) -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\n";
+
+    private const string LeakFrom = "func leak() -> ref/i32 during static\n";
+
+    private const string LeakFromStatic = "func leak(s: ref/i32 during static) -> ref/i32 during static\n";
+
+    private const string LocalCall = "    let local: i32 = 5\n    let pair = g(local@ref)\n    return pair.1\n";
+
+    private const string ResultClosure = "    let c = func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, i32)\n        return (.None, 1)\n    let pair = c(s)\n    return pair.1\n";
+
+    private const string LocalNone = "    let local: i32 = 5\n    let o = g(local@ref)\n    return 0\n";
+
+    private const string NestedLabel = "the 1st parameter's 1st parameter's well-formedness requires b outlives a, which is not proven";
+
     // Conversions of Function values and Items: a relation the converted signature needs follows from the target's own well-formedness by
     // transitivity (t1c, t1d, t1o, t1j), by a meet (t1p) or combined with a premise of the use (e1, e1a, e1f, e1r); a Closure body assumes
     // its own result's well-formedness (rv1), which each call proves. The invalid twins drop the use premise, take a target that does not
@@ -127,6 +159,13 @@ public partial class CallableOriginForwardingTest
     // signature's well-formedness (nest1); without it the conversion's one record is Proof class (SPEC 15.6.1: a whole-contract
     // comparison's Origin part is Proven or Unknown, never a Type mismatch) naming the member inside the nested Function Type (nest1_n,
     // R2-B1), a nested member Origin (nest2) and depth 2 (nest2_n). Each twin takes a target or premise that gives the relation.
+    // G216 (a) T2b, U2.1 (design-r2 §6; R4's design reviews 1 B1 and 2 D2-B1): a nested comparison inside an aggregate is recorded at the
+    // aggregate value, its members named from the nearest comparison, at every fit root: an initialization (o1, o1t), a return (o1ret), a
+    // Case construction (o1some, at `.Some(f@move)`, the value whose fit fails), an assignment (o1asg), a value call's argument (vo1, at
+    // the argument as v1) and a getter's expression body (pg1); each Proof class (SPEC 15.6.1), never TypeMismatch_Kd or
+    // NoApplicableOverload_Kd. The Callable proof of a Closure subject judges its well-formedness (cal2) and a whole-contract comparison's
+    // Origin part is Unknown at the argument (q3_flat, q6_flat: the owner's G326 answer, 2026-10-31, 「すべて推奨の内容でお願いします」);
+    // a conversion failing in several conditions is one record naming the first (two).
     [Theory]
     [InlineData("U2.1", "e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: " + LeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c", LeakLabel)]
     [InlineData("U2.1", "e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
@@ -144,7 +183,53 @@ public partial class CallableOriginForwardingTest
     [InlineData("U2.1", "nest2_ok", MemberHead + "    origin c outlives b\n" + MemberTarget, "", null)]
     [InlineData("U2.1", "nest2_n", Nested2Head + "    origin c outlives b\n" + Nested2Target, "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's 1st parameter requires b outlives c, which is not proven")]
     [InlineData("U2.1", "nest2_c", Nested2Head + "    origin c outlives b\n    origin b outlives c\n" + Nested2Target, "", null)]
+    [InlineData("U2.1", "o1", ABCHead + "o: Option<" + FnC + ">) -> i32\n" + CB + "    let g: Option<" + FnB + "> = o@move\n    return 0\n", "UnprovenOriginContract_Kd o@move", NestedLabel)]
+    [InlineData("U2.1", "o1_c", ABCHead + "o: Option<" + FnC + ">) -> i32\n" + CBA + "    let g: Option<" + FnB + "> = o@move\n    return 0\n", "", null)]
+    [InlineData("U2.1", "o1t", ABCHead + "t: (" + FnC + ", i32)) -> i32\n" + CB + "    let g: (" + FnB + ", i32) = t@move\n    return 0\n", "UnprovenOriginContract_Kd t@move", null)]
+    [InlineData("U2.1", "o1t_c", ABCHead + "t: (" + FnC + ", i32)) -> i32\n" + CBA + "    let g: (" + FnB + ", i32) = t@move\n    return 0\n", "", null)]
+    [InlineData("U2.1", "o1ret", ABCHead + "o: Option<" + FnC + ">) -> Option<" + FnB + ">\n" + CB + "    return o@move\n", "UnprovenOriginContract_Kd o@move", null)]
+    [InlineData("U2.1", "o1ret_c", ABCHead + "o: Option<" + FnC + ">) -> Option<" + FnB + ">\n" + CBA + "    return o@move\n", "", null)]
+    [InlineData("U2.1", "o1some", ABCHead + "f: " + FnC + ") -> i32\n" + CB + "    let g: Option<" + FnB + "> = .Some(f@move)\n    return 0\n", "UnprovenOriginContract_Kd .Some(f@move)", null)]
+    [InlineData("U2.1", "o1some_c", ABCHead + "f: " + FnC + ") -> i32\n" + CBA + "    let g: Option<" + FnB + "> = .Some(f@move)\n    return 0\n", "", null)]
+    [InlineData("U2.1", "o1asg", ABCHead + "o: Option<" + FnC + ">, p: Option<" + FnB + ">) -> i32\n" + CB + "    var g = p@move\n    g = o@move\n    return 0\n", "UnprovenOriginContract_Kd o@move", null)]
+    [InlineData("U2.1", "o1asg_c", ABCHead + "o: Option<" + FnC + ">, p: Option<" + FnB + ">) -> i32\n" + CBA + "    var g = p@move\n    g = o@move\n    return 0\n", "", null)]
+    [InlineData("U2.1", "vo1", ABCHead + "o: Option<" + FnC + ">, h: (Option<" + FnB + ">) -> i32) -> i32\n" + CB + "    return h(o@move)\n", "UnprovenOriginContract_Kd o@move", null)]
+    [InlineData("U2.1", "vo1_c", ABCHead + "o: Option<" + FnC + ">, h: (Option<" + FnB + ">) -> i32) -> i32\n" + CBA + "    return h(o@move)\n", "", null)]
+    [InlineData("U2.1", "pg1", "struct S {a, b, c}\n" + CB + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "UnprovenOriginContract_Kd self.mk()", null)]
+    [InlineData("U2.1", "pg1_c", "struct S {a, b, c}\n" + CBA + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "", null)]
+    [InlineData("U2.1", "cal2", CallableApply + "    let c = " + ErasedClosure + "\n    return apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
+    [InlineData("U2.1", "cal2_c", CallableApply + "    let c = func [] (x: ref/i32) -> Option<ref/(ref/i32 during static) during x> => .None\n    return apply(c@ref)\n", "", null)]
+    [InlineData("U2.1", "q3_flat", FlatApply + "func use()\n    var local: i32 = 1\n    let p = local@ref\n    let c = func [p] () => p\n    let r = apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
+    [InlineData("U2.1", "q6_flat", FlatApply + "func use()\n    let n: i32 = 1\n    let c = func [n@ref] () => n\n    let r = apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
+    [InlineData("U2.1", "q3_flat_c", FlatApply + "func use(p: ref/i32 during static)\n    let c = func [p] () => p\n    let r = apply(c@ref)\n", "", null)]
+    [InlineData("U2.1", "two", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter requires r outlives q, which is not proven")]
+    [InlineData("U2.1", "two_c", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    origin r outlives q\n    origin q outlives r\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "", null)]
     public void EveryCallableComparisonJudgesTheImplementationsWellFormedness(string unit, string form, string body, string records, string? label)
+        => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
+
+    // G216 (a) T2b, U2.1 (design-r2 §4: the owner's (A), use side, for the nested-signature class): an anonymous function's body
+    // assumes its own result's well-formedness and every value call whose callee is not a named declaration proves the instantiated
+    // result well-formed at the call (SPEC 15.6.1, 15.6.4 step 3): d1 (a Closure's own call), lp and lpn (a Function value parameter,
+    // from a Closure or a named function), lc and ln (a converted local), ann and ann2 (an annotated local); a Borrow of `local` cannot
+    // outlive `static` (Refuted). Each conversion holds by the target's own well-formedness, so each twin, which passes a `static` value or
+    // makes no call, is valid (lp, lc, ln, ann and ann2 are BU's u21-review probes; ann takes `f@move`, where BU's bare `f` adds an
+    // independent TransferRequired_Kd).
+    [Theory]
+    [InlineData("U2.1", "d1", "func k(s: ref/i32) -> i32\n" + ResultClosure, "UnprovenOriginRelation_Kd c(s)", null)]
+    [InlineData("U2.1", "d1_c", "func k(s: ref/i32 during static) -> i32\n" + ResultClosure, "", null)]
+    [InlineData("U2.1", "lp", LeakUse + LeakFrom + LeakClosure + "    return use(c)\n", "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
+    [InlineData("U2.1", "lp_ok", LeakUseOk + LeakFromStatic + LeakClosure + "    return use(c, s)\n", "", null)]
+    [InlineData("U2.1", "lpn", LeakMk + LeakUse + LeakFrom + "    return use(mk)\n", "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
+    [InlineData("U2.1", "lpn_ok", LeakMk + LeakUseOk + LeakFromStatic + "    return use(mk, s)\n", "", null)]
+    [InlineData("U2.1", "lc", LeakFrom + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n" + LocalCall, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
+    [InlineData("U2.1", "lc_ok", LeakFromStatic + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
+    [InlineData("U2.1", "ln", LeakMk + LeakFrom + "    let g: " + StaticLeakTarget + " = mk\n" + LocalCall, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
+    [InlineData("U2.1", "ln_ok", LeakMk + LeakFromStatic + "    let g: " + StaticLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "", null)]
+    [InlineData("U2.1", "ann", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n    return 0\n", "", null)]
+    [InlineData("U2.1", "ann_n", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n" + LocalNone, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
+    [InlineData("U2.1", "ann2", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n    return 0\n", "", null)]
+    [InlineData("U2.1", "ann2_n", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n" + LocalNone, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
+    public void AValueCallOfANestedSignatureProvesItsResult(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
 
     // Not fixed yet (the owner's pending question about conversion records): a Loan conflict or TransferRequired_Kd independent of a

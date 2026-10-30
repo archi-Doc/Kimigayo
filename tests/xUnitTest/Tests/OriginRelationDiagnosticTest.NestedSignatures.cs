@@ -101,15 +101,15 @@ public partial class OriginRelationDiagnosticTest
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
-    // G216 (a) T2: PLAN G277's (3) and (4) (e1c, G277 (2), is CallableOriginForwardingTest's U2.1 row). s4, "same cause" as U2.1's
-    // erasure twins: a Closure's written result Type is its own signature's, assumed by its body and proven by each call (SPEC 15.6.1; the
-    // owner's (A)), so the uncalled Closure is valid and the call errs at `c()` only, as t7's value call; dev records the body's `.None`, as
-    // it records e1x_c's `(.None, x)`. h4: a call whose contextual `E.init()` needs q outlives r is valid when the result is read while
-    // `long` lives (dev no longer reports G277 (4)'s Loan conflict); its twin reads the result after `short` ends, which the call's
-    // judgment of `E.init()` (U2.2, as j02) makes the Loan conflict at `short` (as d09).
+    // G216 (a) T2: PLAN G277's (3) and (4) (e1c, G277 (2), is CallableOriginForwardingTest's U2.1 row). s4, decided by the owner
+    // (2026-10-31, 「すべて推奨の内容でお願いします」, PLAN 7f3e61b1b): a written result Type's own clause is a body obligation (SPEC 15.6.1,
+    // 15.3.2, 15.6.4 step 3), as n4u's, and G277 (3) is no defect; so the Closure body's `.None` keeps dev's record (s4u), and a call also
+    // proves its result Type's clauses at `c()` (s4c, t7's rule, U2.3). h4: a call whose contextual `E.init()` needs q outlives r is valid
+    // when the result is read while `long` lives (dev no longer reports G277 (4)'s Loan conflict); its twin reads the result after `short`
+    // ends, which the call's judgment of `E.init()` (U2.2, as j02) makes the Loan conflict at `short` (as d09).
     [Theory]
-    [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "")]
-    [InlineData("U2.1", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd c()")]
+    [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
+    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None; UnprovenConstraint_Kd c()")]
     [InlineData("U2.2", "h4", H4Head + "func ok(b: ref/i32) -> i32\n    let long = 1\n    let x = h4(long@ref, b, E.init())\n    return x@follow\n", "")]
     [InlineData("U2.2", "h4_n", H4Head + "func bad() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        keep = h4(short@ref, keep, E.init())\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     public void APlanG277FormHasItsVerdict(string unit, string form, string body, string records)
