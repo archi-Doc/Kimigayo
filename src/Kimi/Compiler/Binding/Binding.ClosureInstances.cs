@@ -29,10 +29,15 @@ public sealed partial class Binding
     internal BoundType? ClosureSignature(BoundType type)
     {
         var signature = this.ClosureDefinitionSignature(type);
-        if (signature is null || BoundClosure.Of(type)!.EnvironmentType is not { OriginArguments.Count: > 0 } definition ||
-            definition.OriginArguments.Count != type.OriginArguments.Count || ReferenceEquals(definition, type))
+        if (signature is null || type.OriginArguments.Count == 0)
         {
             return signature;
+        }
+
+        // A Type's arguments are positionally its definition's images (R4-M159); a Type with arguments its definition lacks is a broken contract.
+        if (BoundClosure.Of(type)!.EnvironmentType is not { } definition || definition.OriginArguments.Count != type.OriginArguments.Count)
+        {
+            throw new InvalidOperationException($"Closure Type `{type}` has Origin arguments its definition does not declare (InternalInvariant; R4-M159).");
         }
 
         var from = (BoundOrigin[])definition.OriginArguments;
@@ -74,7 +79,7 @@ public sealed partial class Binding
                 return seen;
             }
 
-            seen = Names(type.Origin ?? type.RawOrigin, atom) ? Join(seen, polarity) : seen;
+            seen = Names(OwnedOrigin(type), atom) ? Join(seen, polarity) : seen;
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, OriginArgumentVariance(type, i, binding))) : seen;
@@ -134,7 +139,7 @@ public sealed partial class Binding
                 return count;
             }
 
-            count = Add(type.Origin ?? type.RawOrigin, function, scratch, count);
+            count = Add(OwnedOrigin(type), function, scratch, count);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 count = Add(type.OriginArguments[i], function, scratch, count);

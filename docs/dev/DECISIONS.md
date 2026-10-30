@@ -5840,17 +5840,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     definition argument replaced by the Type's (one `PerCallImages` row of the one substitution); every caller-world reader takes it
     (value calls, argument-kind inference, Callable proofs, conversions, diagnostics). `ClosureDefinitionSignature` is the
     definition's, which a value call declares (`CallPlan.DeclaredSignature`), so retention keeps reading the definition's world and
-    its memo. An argument's variance is its occurrences' composition in the definition's signature (SPEC 15.3.5), read through the
-    one accessor `OriginArgumentVariance` that replaced nine inline schema reads (a behavior-preserving commit first); invariance
-    would Refute P8's own fit (`env0 : ρ`), covariance would shorten an Origin a parameter promises (w1's `uniq/(raw/i32 during x)`).
+    its memo. `TryCallable` and a value call's declared signature resolve the callee Closure Type through one function,
+    `CallableClosure` (BU's N1).
+  - Variance (implementation review 1's B1; SPEC 15.3.5, 15.3.6, 15.6.1): a Closure Type's Origin argument has the composition of its
+    atom's occurrences in the definition's signature (a parameter reverses polarity, an exclusive layer's target is invariant; equal
+    occurrences keep their variance, different ones are invariant), read through the one accessor `OriginArgumentVariance` that
+    replaced nine inline schema reads (a behavior-preserving commit first). So an argument only a result or a shared capture names is
+    covariant (`var c = outer(q); c = outer(s)` with `s` outliving `q`, v50, v51, v53: valid). Rejected: the schema-less default
+    (invariant: those valid forms get `UnprovenOriginRelation_Kd`, and P8's own fit `env0 : ρ` would be Refuted); one covariance rule
+    for every argument (it would shorten an Origin a parameter promises, w1's `uniq/(raw/i32 during x)`).
   - Removes: F1's located `Unsupported_Kd` (R4-M152) on every reachable form: it stays only for an atom no image reached (a value
-    that reaches a non-enclosing call without its maker's call; no form known), and now walks raw layers (R4-M152's first open item;
-    BU-24's raw-role sites: `Binding.ClosureInstances.cs` 1 to 3, `Binding.ValueCalls.cs` 0 to 1). R4-M152's interim limit's cause
+    that reaches a non-enclosing call without its maker's call; no form known), and now walks raw layers (R4-M152's first open item)
+    through the raw-Origin owner's `OwnedOrigin`, so BU-24's raw-role sites are unchanged. R4-M152's interim limit's cause
     (images reach the Callable proof); the q rows keep PLAN G326's class.
-  - Default pipeline (C1, R4-M126 (vi)): the gate is unchanged. The old Analysis reports its own located `Unsupported_Kd` for a
-    Closure Type with Origin arguments (`SupportsType`), so every invalid G273 row stays rejected there (D1) and the valid ones are `Unsupported_Kd`
-    (D2); dev's default accepted five of them: a16_raw_input, a18_raw_input_store, a21_raw_in_ref_store, i6_maker_body,
-    i7_mid_in_outer (reduction regressions under K5, removed at R6-check with the old Analysis).
+  - Default pipeline: the old Analysis's `SupportsType` reports its located `Unsupported_Kd` for a Closure Type with Origin arguments.
+    The reduction regression is a class (K5, removed at R6-check with the old Analysis): every Closure value whose Type carries Origin
+    arguments, a literal in its maker's body (i6, i7) or a maker-returned value kept or called (a16, a18_raw_input_store, a21,
+    v3_reassign_nocall, w3_var_nocall), is `Unsupported_Kd` on the default where dev accepted it. `SupportsType` does not stop the
+    old Analysis's Loan analysis of the values, so without the gate row below a valid form can get a false Loan record there
+    (v13_param_kept_ok: implementation review 1's B2).
   - Rejected: O1 solve the images from the environment (meets normalize; a signature-only atom has no position: a fallback); O3
     images in `Subst` or a closure context (codegen-visible, R4-M152); O4 the definition over its own Origin parameters (every
     definition-world reader changes); a gate row for F1's calls (widens the owner's D5 exception).

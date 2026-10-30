@@ -604,12 +604,16 @@ public sealed partial class Binding
         }
     }
 
-    // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152): its inputs, in parameter-slot
+    // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152, R4-M159): its inputs, in parameter-slot
     // order, and at a value call of a Closure its two reserved atoms', the call receiver ρ (the receiver acquisition's Origin) and the
     // call result (the call's Unbound atom, R4-M118), each built only where the result names its atom; a missing image keeps its atom.
     // A Closure Type's Origin arguments are the images of its definition's (DECISIONS R4-M159): `definition[i]` becomes `value[i]`.
     private readonly ref struct PerCallImages(
-        ReadOnlySpan<BoundOrigin> inputs, BoundOrigin? receiver, BoundOrigin? result, ReadOnlySpan<BoundOrigin> definition = default, ReadOnlySpan<BoundOrigin> value = default)
+        ReadOnlySpan<BoundOrigin> inputs,
+        BoundOrigin? receiver,
+        BoundOrigin? result,
+        ReadOnlySpan<BoundOrigin> definition = default,
+        ReadOnlySpan<BoundOrigin> value = default)
     {
         private readonly ReadOnlySpan<BoundOrigin> definition = definition;
         private readonly ReadOnlySpan<BoundOrigin> value = value;

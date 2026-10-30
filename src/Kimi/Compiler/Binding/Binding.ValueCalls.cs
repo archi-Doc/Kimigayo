@@ -236,7 +236,7 @@ public sealed partial class Binding
             return CallAtoms.None;
         }
 
-        var atoms = CallAtomsOf(type.Origin ?? type.RawOrigin, closure, call);
+        var atoms = CallAtomsOf(OwnedOrigin(type), closure, call);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
             atoms |= CallAtomsOf(type.OriginArguments[i], closure, call);
@@ -302,6 +302,21 @@ public sealed partial class Binding
         return this.PlaceOrigin(call.Method);
     }
 
+    // SPEC 8.10, 15.8.2: the Closure Type a callable value's calls read, the one TryCallable reads its signature from and a value call
+    // declares (R4-M159): the value without its acquisition layer, else its normalized Callable contract Type; null for any other callable.
+    private BoundType? CallableClosure(BoundType type, BindingScope scope)
+    {
+        var owner = CallableCore(type)!;
+        if (BoundClosure.Of(owner) is not null)
+        {
+            return owner;
+        }
+
+        var normalized = owner.Kind == BoundTypeKind.Function || this.FunctionItemSignature(owner) is not null
+            ? owner : this.CallableContractType(owner, scope);
+        return ReferenceEquals(normalized, owner) ? null : this.CallableClosure(normalized, scope);
+    }
+
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
     // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
@@ -325,10 +340,10 @@ public sealed partial class Binding
             return true;
         }
 
-        if (BoundClosure.Of(owner) is { } closure)
+        if (this.CallableClosure(owner, scope) is { } closureType)
         {
-            signature = this.ClosureSignature(owner)!;
-            receiver = closure.Receiver;
+            signature = this.ClosureSignature(closureType)!;
+            receiver = BoundClosure.Of(closureType)!.Receiver;
             return true;
         }
 
@@ -586,7 +601,9 @@ public sealed partial class Binding
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
-            var declaredSignature = this.ClosureDefinitionSignature(CallableCore(call.Method.BoundType)!) ?? signature; // Retention's world.
+            // A Closure callee declares its definition's signature, the world retention reads (R4-M159).
+            var declaredSignature = this.CallableClosure(call.Method.BoundType!, scope) is { } closureType
+                ? this.ClosureDefinitionSignature(closureType)! : signature;
             signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
             return Complete(call, result);
