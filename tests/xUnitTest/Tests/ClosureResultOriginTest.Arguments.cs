@@ -12,6 +12,12 @@ public partial class ClosureResultOriginTest
 {
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
 
+    private const string NestedCell = Inspect + "struct Outer<T> {a}\n    public struct Cell\n        let value: ref/T during a\n" +
+        "        public init(value: ref/T during a) => self.value = value\nfunc f(value: ref/i32 during x)\n" +
+        "    let cell = (Outer<i32>{o}).Cell.init(value)\n        origin o.a == x\n    var other: i32 = 2\n    let r = other@ref\n";
+
+    private const string CellUnsupported = "Unsupported_Kd let cell = (Outer<i32>{o}).Cell.init(value); Unsupported_Kd (Outer<i32>{o}).Cell.init(value)";
+
     private const string HpQ = "func h(p: ref/i32, q: ref/i32) -> ref/i32 during q\n";
 
     private const string HpQi32 = "func h(p: ref/i32, q: ref/i32) -> i32\n";
@@ -158,4 +164,14 @@ public partial class ClosureResultOriginTest
     [InlineData("v13_param_lr_ctl_bad", V13Flat + "    let r = a(lr)\n    local = 5\n    inspect(r)\n", Conflict + " local = 5")]
     public void AKeptClosureWhoseSignatureNamesItsMakersInputCarriesNoLoan(string form, string source, string mir)
         => AssertSides(form, source, mir, null);
+
+    // R4's review 3 (R3-B1; SPEC 6.1.3, 23.1.2): a nested struct's reference carries its enclosing declaration's Origin, which its symbol
+    // declares, so the old analysis's stop (Origin arguments a symbol does not declare, DECISIONS R4-M159) does not apply to it: dev's
+    // published records stay, SupportsType's located Unsupported_Kd (an old-path limit) and the invalid form's independent Loan conflict.
+    [Theory]
+    [InlineData("n01_inherited_ok", NestedCell + "    inspect(r)\n    other = 3\n" + MainUnit, "", CellUnsupported)]
+    [InlineData(
+        "n01_inherited_bad", NestedCell + "    other = 3\n    inspect(r)\n" + MainUnit, Conflict + " other = 3", CellUnsupported + "; " + Conflict + " other = 3")]
+    public void ANestedStructsInheritedOriginIsOneItsSymbolDeclares(string form, string source, string mir, string published)
+        => AssertSides(form, source, mir, published);
 }
