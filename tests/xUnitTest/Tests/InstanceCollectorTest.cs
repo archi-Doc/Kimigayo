@@ -2068,6 +2068,30 @@ public sealed partial class InstanceCollectorTest
                 $"struct S{i}\n    public var value: i32\n    public init(value: i32) => self.value = value\nlet s{i} = first(S{i}.init({i}))\n"));
     }
 
+    // G308 S4 (a generic equality whose T is P_n's compared Tuple, MirBuildTest.Dag), S6 (a Dictionary keyed by that Tuple: insert and
+    // tryGet; V16): at n = 8, 12, 16 the collector's Work and the checked set's items grow linearly in n, the distinct Types (the ratio rule
+    // of MirBuildTest.DropTreesScaleLinearly). F rows as stated, but they pass on dev 9613a512e (items 4 and Work 4, items 18 and Work 72 at
+    // every n: the checked set admits no item per leaf), which the planning session was told; they guard the collector's linearity.
+    [Theory]
+    [InlineData(MirBuildTest.DagContract)]
+    [InlineData(MirBuildTest.DagKey)]
+    public void AContractMappingOnADagGrowsWithItsDistinctTypes(string form)
+    {
+        var sizes = new[] { 8, 12, 16 };
+        var work = sizes.Select(n =>
+        {
+            var c = MirBuildTest.Compile(MirBuildTest.Dag(n, form));
+            var collector = new InstanceCollector(c.Types, c.Layout);
+            var set = collector.Run(c.BuildMir(), 1);
+            Assert.Empty(set.Records);
+            return (Items: (long)set.Items.Length, Work: (long)collector.Work);
+        }).ToArray();
+        var (items, steps) = (work.Select(static x => x.Items).ToArray(), work.Select(static x => x.Work).ToArray());
+        TestContext.Current.TestOutputHelper?.WriteLine($"N {string.Join(", ", sizes)}: items {string.Join(", ", items)}; work {string.Join(", ", steps)}");
+        Assert.True(items[2] - items[1] <= (2 * (items[1] - items[0])) + 8, $"items {string.Join(", ", items)}; work {string.Join(", ", steps)}");
+        Assert.True(steps[2] - steps[1] <= (2 * (steps[1] - steps[0])) + 8, $"work {string.Join(", ", steps)}; items {string.Join(", ", items)}");
+    }
+
     // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
     // program, which the old analysis rejects at the same accesses), whose statics of P42's storage (vars, Resource lets, the unused one
     // included, and the static of a generic container's group, X33 (a)) are the static-storage gap at their declarations (DECISIONS R5-M82).
