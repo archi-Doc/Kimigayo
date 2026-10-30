@@ -107,8 +107,8 @@ internal static partial class LlvmModuleText
         [RuntimeAbi.TryAllocateBytes]);
 
     // SPEC 22.2: the byte copy (RuntimeAbi.TransferBytes), defined where a body calls it: its ranges never overlap (the declaration's
-    // contract), so llvm.memcpy (DECISIONS R5-M18, R5-M92); it moves no responsibility and has no location to report. Both generators
-    // call it, so the native audits count one routine (DECISIONS R5-M145).
+    // contract), so llvm.memcpy (DECISIONS R5-M18, R5-M92); it moves no responsibility and has no location to report. Code
+    // generation calls this one routine, which the native audits count (DECISIONS R5-M145).
     internal static readonly string TransferBytes = ExpandRuntime(
         """
         {{__kimi_transfer_bytes}}

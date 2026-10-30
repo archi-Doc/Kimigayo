@@ -148,7 +148,8 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 
 ## Structure limits
 
-Members and files outside the old Analysis/Emission paths stay within these limits, which the owner decided on
+Members and files outside the old Analysis path stay within these limits (the old Emission's exemption ended with its code at
+R6-gen, DECISIONS R5-M167; its surviving toolchain and publication files are held to them), which the owner decided on
 2026-10-11 for the [Code Rules Analyzer](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) (its §9).
 
 | Measure | Limit |
@@ -203,8 +204,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
 - **Freeze (D5).** From R0 until R6-check completes (DECISIONS R4-M35), the old Analysis path receives no new accepted forms;
   the Emission half ended with R6-gen on 2026-10-31, the old Emission deleted (DECISIONS R5-M167). Allowed: deletion, miscompile fixes
   mirrored on the new path, the mechanical follow-up that a stage of the plan names, the owner's exception for the Place
-  result removal (DECISIONS PR-1), and the owner's exception for G147 (2b): the old paths accept the forms its Binding
-  correction makes valid where the old Emission is shown to generate them (the owner's whitelist of receiver paths), and
+  result removal (DECISIONS PR-1), and the owner's exception for G147 (2b): the old analysis accepts the forms its Binding
+  correction makes valid on the owner's whitelist of receiver paths (chosen where the old Emission was shown to generate them; that
+  half ended at R6-gen), and
   a guard in the old analysis reports the others as `Unsupported_Kd` until R6-check (DECISIONS BU-10), and the owner's exception
   for 2x-E7 (re-approved on its corrected premise): a guard in the old analysis reports `Unsupported_Kd` for a Pattern Binding
   that borrows a part of an owned Subject or item past a pair layer admitting owner (`OwnedPart` with access other than Owned) and

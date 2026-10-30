@@ -228,7 +228,7 @@ internal sealed partial class GeneratedIr
             return;
         }
 
-        Assert.True(function.Blocks.Count != 0, "Both generators label every block: " + line);
+        Assert.True(function.Blocks.Count != 0, "Code generation labels every block: " + line);
         var result = Result().Match(line);
         var text = line[result.Length..];
         var words = text.Split(' ', 3);

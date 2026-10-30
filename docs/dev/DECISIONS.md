@@ -13916,14 +13916,31 @@ structure is recorded here by the unit that first implements it.
        20 methods and `stage-baselines.json` stand (R5-M156).
     3. The 8 O2 corpus kernels' input and O2 IR are identical between G3's B `519d88f38` and `df7ae4c45`
        (`artifacts/benchmarks/r6-gen-exit/kernel-ir.txt`), so G3's run 3 (`r6-g3-run3/`, every kernel within variance) measured the
-       exit's code; G11c changed comment lines only. M5 = 0: G287's `count.sh` at `df7ae4c45` counts Z 63, B 28, A 20 raw, and the
+       exit's code; G11c changed comment lines only. G308, merged into dev after this head, keeps that: its O2 A/B found the 8
+       kernels' `.ll` and `.O2.ll` byte-identical between `f600ef4c8` and its D `cbdc16afc` (`artifacts/benchmarks/r6-g308-o2/`).
+       M5 = 0: G287's `count.sh` at `df7ae4c45` counts Z 63, B 28, A 20 raw, and the
        changed sites read: two zero-expect audits through `WriteFixture`, which fails closed; four negative names left with deleted
-       old-module tests; `VirtualOwnershipTest`'s names a symbol `ObjectRuntime` writes. The warm allocation tests pass in each Session.
+       old-module tests; `VirtualOwnershipTest`'s names a symbol `ObjectRuntime` writes. The warm allocation tests pass in each Session: 1,183
+       `Purpose=Allocation` tests (the 6 tests not run are Explicit).
     4. G10's zero-reference rows (R5-M162's G10 line) hold; their `*.cs` scope missed two names, fixed by G11a (`O2Corpus.md`) and
        G11c (the template); M8's Emission rows are 0.
     5. No `[Transitional("R6-gen")]`; `GenerationFailed_Kd` replaced (R5-M165); `AnalyzeInstance` deleted (R5-M162).
-    6. G2's default check and warm Analyze measurement: R5-M156's cost.
-       PLAN10-P3: figures follow (G11b's quiet-slot run)
+    6. PLAN10-P3, measured 2026-10-31 in a quiet slot (`artifacts/benchmarks/r6-gen-exit/plan10-p3/`: `run-p3.sh`, `summarize-p3.py`,
+       the raw reports; A = `acc2f12ad`, the old generator's default, B = `8d93fec57`, both run from one folder, CPU 2 pinned at High
+       priority, tiering off, 5 interleaved rounds, each report's compiler id checked; times are the median of the rounds' sample
+       medians). The MIR side, BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against
+       the old Analyze and Emission (A's stages 4 to 6): 87-136 ms against 1.1-62 ms on the Scalar and Branching inputs and Generic 1,
+       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 315, 470
+       and 947 ms against 733, 1,521 and 3,106 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 30.7-47.0 MB against
+       0.5-37.4 MB on the small inputs; 91, 151 and 270 MB against 209, 405 and 802 MB. The whole default build (A's total without its
+       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+73 to +120 ms) on the small inputs, 0.65,
+       0.51 and 0.47 on Generic 32, 64 and 128 (593, 907 and 1,598 ms against 919, 1,763 and 3,422 ms). Cold collection is equal on
+       both (Generic 128: 25.5 ms, 7.9 MB). Check cost against G2's head `90697ecfa` (its default configuration; R5-M156's measurement):
+       a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1 and 157.4 ms against 34.4, 94.2 and 154.7) and
+       61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.03 to +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms,
+       the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on both, cold +21 KB (Hello) and +17 KB
+       (Milestone26). Recorded under plan §18 P3: R6-gen trades a fixed library MIR build per fresh compilation for less work on
+       generic-heavy inputs.
     7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
        `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
        `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
@@ -13932,10 +13949,15 @@ structure is recorded here by the unit that first implements it.
        strings 0; `Ownership.Bodies` 30 (R6-check's). Hotspots: `Compilation.Generation.cs` (9 R6-gen commits, now 158 lines) and
        `Compilation.Switch.cs` (5). Duplication: R5's two line clones, no new one. No NativeAOT run (OQ17 (c)). The final review
        follows these records.
-  - Corrections (G11a's probes under MIR code generation, STATUS): P34's generation-failure forms, `(p@uniq, 1)` and Unit or struct
+  - Corrections (G11a's probes under MIR code generation, `artifacts/benchmarks/r6-gen-exit/probes/`; STATUS, P34_REMAINING, PLAN
+    G147 (2)): P34's generation-failure forms, G147 (2)'s two old-generator failures, `(p@uniq, 1)` and Unit or struct
     temporaries on the right of `and`/`or` build and run; a custom setter or compound assignment through `uniq/(rc/T)` reports
     `InternalInvariant_Kd` at check (PLAN's BU row).
-  - Open after the exit: G330 (one rule for a thrown code generation contract failure, its own design; Q1) and G157's items staged
-    to R6-gen or G11, re-staged in PLAN.
+  - Open after the exit: G330 (one rule for a thrown code generation contract failure, its own design; Q1). Re-staged in PLAN,
+    each to the next unit changing its files (R6-gen ended without one): G157 (7), (17), (25)'s cache, (26), (28), (29)'s `Use`,
+    (30), (37), (38), (40), (43), (44), (46) and (50), G153, G289 (4) and LN (whose old-generator copy, `ObjectGenerationPlan.WriteKey`,
+    went at G7); G158 (1) and (2) to BU after the exit. G157 (34), the old generator's defect, closed by G7 as (22). BU's G147 (2),
+    G158 and G300 restate their old-generator outcomes as history or the current fact. LLVM_OPTIMIZATION §4 (`:638`) still names
+    `EmissionInstruction`, outside row 18's §6.1: an open item.
   - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
     R5-M163 (the folder).

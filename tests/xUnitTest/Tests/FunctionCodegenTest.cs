@@ -878,7 +878,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // DECISIONS R5-M87: the string's record, a first-class value of its three Fields (RuntimeAbi.String), is loaded and stored whole, its
-    // Fields only, as the old generator moves it; nothing is copied by memcpy, so the module declares none.
+    // Fields only, as the old generator moved it; nothing is copied by memcpy, so the module declares none.
     [Fact]
     public void AStringIsMovedAsItsRecord()
     {
@@ -1531,7 +1531,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
-    // refutes at its owning layer, which is checked only (the old generator skips it too); where the slot applies, the override is generated.
+    // refutes at its owning layer, which is checked only (as the old generator skipped it); where the slot applies, the override is generated.
     // A Closure and a function nested in its body are no output roots: the override's runtime targets reach them, so they follow its mark
     // (DECISIONS R5-M153; fail-before: both generated where the slot is refuted).
     [Theory]
