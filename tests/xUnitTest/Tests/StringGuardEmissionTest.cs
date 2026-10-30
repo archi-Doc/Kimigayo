@@ -78,43 +78,6 @@ public class StringGuardEmissionTest
         }
     }
 
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("anchor")]
-    [InlineData("early")]
-    [InlineData("read")]
-    [InlineData("origin")]
-    [InlineData("guard_entry")]
-    [InlineData("guard_match")]
-    [InlineData("read_move")]
-    public void InvalidLoanPlansAreRejected(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            Same + "match \"a\"@move\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var arm = body.MatchArms[0];
-        var read = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Borrow);
-        switch (defect)
-        {
-            case "missing": body.MatchArmStorage[0] = arm with { GuardLoan = -1 }; break;
-            case "anchor": body.ComparisonLoans[arm.GuardLoan] = body.ComparisonLoans[arm.GuardLoan] with { Place = 0 }; break;
-            case "early": body.LoanInputs[read] = -1; break;
-            case "read": body.OperationSteps[read] = 1; break;
-            case "origin": body.OperationStorage[read] = body.Operations[read] with { Source = body.Operations[arm.GuardEntry].Source }; break;
-            case "guard_entry": body.MatchArmStorage[0] = arm with { GuardEntry = int.MaxValue }; break;
-            case "guard_match": body.MatchArmStorage[0] = arm with { Match = int.MaxValue }; break;
-            case "read_move": body.OperationStorage[read] = body.Operations[read] with { Acquisition = AcquisitionKind.Move }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCandidateBindingAndEmissionAllocateNothing()

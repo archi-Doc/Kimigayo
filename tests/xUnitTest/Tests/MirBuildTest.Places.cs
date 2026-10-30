@@ -372,7 +372,6 @@ public sealed partial class MirBuildTest
     public void ARejectedJumpsOperandIsNotAcquired(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source + "public func main() => ()\n"));
         c.Bind();

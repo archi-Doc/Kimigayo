@@ -21,7 +21,7 @@ function Invoke-Tool([string] $Name, [string[]] $Arguments) {
     & $tools[$Name] @Arguments
     if ($LASTEXITCODE -ne 0) { throw "Library verification failed: $Name" }
 }
-# Library sources emitted through the CLI, so their IR is the generator this process selects (KIMI_PIPELINE, KIMI_CODEGEN).
+# Library sources emitted through the CLI, so their IR is MIR code generation's on the pipeline this process selects (KIMI_PIPELINE).
 $sources = [ordered]@{
     Empty = ''
     Main = 'public func main(value: i32) -> i32 => value + 1'
@@ -81,7 +81,7 @@ try {
     $status = 'PASS'
 }
 finally {
-    $selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE', 'KIMI_CODEGEN' | ForEach-Object { "$($_.Name)=$($_.Value)" })
+    $selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE' | ForEach-Object { "$($_.Name)=$($_.Value)" })
     @{ status = $status; configuration = $Configuration; compilerSha256 = (Get-FileHash -LiteralPath $compiler).Hash; selectors = $selectors; tools = $identities; checks = $checks } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $work 'result.json') -Encoding utf8
 }

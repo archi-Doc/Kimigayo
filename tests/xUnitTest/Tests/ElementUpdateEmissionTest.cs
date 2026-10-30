@@ -253,57 +253,6 @@ public class ElementUpdateEmissionTest
     public void ProtectionStartsAfterIndicesAndEndsOnTransfer(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementUpdateLoan" + name, source, "ok\n");
 
-    [Theory]
-    [InlineData("update")]
-    [InlineData("output")]
-    [InlineData("write")]
-    [InlineData("owner")]
-    [InlineData("duplicate")]
-    [InlineData("right")]
-    [InlineData("computation")]
-    [InlineData("result")]
-    [InlineData("operator")]
-    [InlineData("constant")]
-    [InlineData("postfix")]
-    [InlineData("release")]
-    [InlineData("exclusive")]
-    [InlineData("mode")]
-    [InlineData("anchor")]
-    [InlineData("parentLoan")]
-    public void InvalidUpdatePlansFailBeforeWritingAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [40]\nlet old = a[0]++", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var update = Assert.Single(body.ElementUpdates);
-        var plan = body.Projections[update.Projection];
-        switch (defect)
-        {
-            case "update": body.Projections[update.Projection] = plan with { Update = -1 }; break;
-            case "output": body.Projections[update.Projection] = plan with { Output = -1 }; break;
-            case "write": body.Projections[update.Projection] = plan with { Write = -1 }; break;
-            case "owner": body.ElementUpdates[plan.Update] = update with { Projection = int.MaxValue }; break;
-            case "duplicate": body.ElementUpdates.Add(update); break;
-            case "right": body.ElementUpdates[plan.Update] = update with { Right = int.MaxValue }; break;
-            case "computation": body.ElementUpdates[plan.Update] = update with { Computation = plan.Output }; break;
-            case "result": body.ElementUpdates[plan.Update] = update with { Result = plan.Output }; break;
-            case "operator": body.Values[update.Computation] = body.Values[update.Computation] with { Operator = KotoKind.Minus }; break;
-            case "constant": body.Values[update.Right] = body.Values[update.Right] with { Constant = 2 }; break;
-            case "postfix": body.ValueOperands[body.Values[update.Result].Start] = update.Computation; break;
-            case "release": body.LoanStates[plan.Write - 1] = plan.Loan; break;
-            case "exclusive": body.Projections[update.Projection] = plan with { Exclusive = -1 }; break;
-            case "mode": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Mode = LoanRequirement.Ref }; break;
-            case "anchor": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Projection = int.MaxValue }; break;
-            case "parentLoan": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Parent = plan.Loan }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmElementUpdatesAllocateNothing()

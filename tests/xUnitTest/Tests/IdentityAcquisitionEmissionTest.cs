@@ -86,38 +86,6 @@ public class IdentityAcquisitionEmissionTest
     public void BoundariesAndEvaluationOrderExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("IdentityAcquisition" + name, source, "ok\n");
 
-    [Theory]
-    [InlineData("binding")]
-    [InlineData("target")]
-    [InlineData("place")]
-    public void CorruptIdentityPlansAreRejectedAndRebindingRestoresThem(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let value = \"value\"\nlet taken = value@move", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var identities = c.Ownership.Bodies[0].Identities!;
-        var identity = Assert.Single(identities);
-        if (defect == "binding")
-        {
-            identity.Source.SetConversion(ConversionBinding.Literal);
-        }
-        else if (defect == "target")
-        {
-            identity.Source.Right.SetType(BoundType.Boolean);
-        }
-        else
-        {
-            identities[0] = identity with { Place = -1 };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Fact]
     public void RebindingAndReloadPreserveIdentityAcquisition()
     {

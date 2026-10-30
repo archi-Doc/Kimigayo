@@ -21,35 +21,4 @@ public class SharedResultEmissionTest
     [InlineData("DestructionOrder", "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop\")\nfunc pick<T>(value: T, flag: bool) -> i32\n    return if flag\n        let moved = value@move\n        yield 42\n    else\n        yield 12\nrequire pick(Token.init(1), true) == 42 else => $abort(\"result\")\nConsole.writeLine(\"returned\")\nrequire pick(Token.init(2), false) == 12 else => $abort(\"result\")\nConsole.writeLine(\"returned\")", "drop\nreturned\ndrop\nreturned\n")]
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("SharedResult" + name, source, stdout);
-
-    [Theory]
-    [InlineData("duplicate")]
-    [InlineData("edge")]
-    [InlineData("value")]
-    [InlineData("write")]
-    public void RejectsCorruptArrivalsAndRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt result arrival is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(
-            "func pick(value: ref/bool, flag: bool, n: i32) -> i32 => if flag => n + 1 else => n - 1\nlet v = true\nlet r = pick(v, true, 2)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Values.Any(v => v.Kind == OwnershipValueKind.Phi));
-        var phi = body.Values.First(x => x.Kind == OwnershipValueKind.Phi);
-        var input = body.PhiInputs[phi.Start];
-        body.PhiInputs[phi.Start] = defect switch
-        {
-            "duplicate" => body.PhiInputs[phi.Start + 1],
-            "edge" => input with { Edge = 0 },
-            "value" => input with { Value = body.PhiInputs[phi.Start + 1].Value },
-            _ => input with { Write = -1 },
-        };
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
 }

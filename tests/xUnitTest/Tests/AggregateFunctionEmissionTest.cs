@@ -185,64 +185,6 @@ public class AggregateFunctionEmissionTest
         Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MissingNormalInitializationIsRejectedEvenForZeroByteResults(bool zero)
-    {
-        var source = zero ? "func echo(value: [0 of string]) -> [0 of string] => value@move\nlet empty: [0 of string] = []\necho(empty@move)" : Echo + "echo((\"a\", 1))";
-        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        body.OperationStorage[call + 1] = body.Operations[call + 1] with { Kind = OwnershipOperationKind.Read };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData("result")]
-    [InlineData("argument")]
-    [InlineData("parameter")]
-    [InlineData("return")]
-    public void InconsistentFunctionPlansAreRejectedAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "echo((\"a\", 1))", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        if (defect == "result")
-        {
-            body.OperationStorage[call] = body.Operations[call] with { Place = -1 };
-        }
-        else if (defect == "argument")
-        {
-            body.OperationStorage[call - 1] = body.Operations[call - 1] with { Place = body.Operations[call].Place };
-        }
-        else
-        {
-            body = c.Ownership.Bodies[1];
-            if (defect == "return")
-            {
-                body.Deliveries[0] = body.Deliveries[0] with { Write = -1 };
-            }
-            else
-            {
-                var produce = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce);
-                body.OperationStorage[produce] = body.Operations[produce] with { Source = body.Function };
-            }
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void PhysicalSignatureCacheReusesShapesWithoutRetainingSyntax()
     {

@@ -215,47 +215,4 @@ public class CallbackEmissionTest
         Assert.True(restored.WriteIr(second, out failure), MinimalEmissionTest.Describe(restored, failure));
         Assert.Equal(first.ToString(), second.ToString());
     }
-
-    [Theory]
-    [InlineData("capture")]
-    [InlineData("signature")]
-    [InlineData("argument")]
-    [InlineData("loan")]
-    public void CorruptCallbackPlansAreRejected(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let n: i32 = 6\nlet f: (i32) -> bool = func [n] (v: i32) => v == n\nf(6)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var failure), failure);
-        var body = c.Ownership.Bodies.Single(x => x.Values.Any(v => v.Kind == OwnershipValueKind.Closure));
-        var create = body.OperationStorage.FindIndex(x => x.Source is FunctionKoto created && created.ClosureOf() is not null && x.Kind == OwnershipOperationKind.Produce);
-        var closure = ((FunctionKoto)body.Operations[create].Source).ClosureOf()!;
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto called && called.ValueCallOf() is not null);
-        var invocation = (InvocationKoto)body.Operations[call].Source;
-        switch (defect)
-        {
-            case "capture":
-                body.Values[create] = body.Values[create] with { Count = 0 };
-                break;
-            case "signature":
-                closure.Signature = BoundType.Unit;
-                break;
-            case "argument":
-                var plan = invocation.ValueCallOf()!;
-                var arguments = plan.ArgumentOperations.ToArray();
-                arguments[0] = arguments[0] with { ParameterType = BoundType.Unit };
-                plan.SetValue(plan.CalleeValue, plan.Signature, arguments, plan.Signature, default, plan.ReceiverKind);
-                break;
-            case "loan":
-                var loan = body.ComparisonLoans[0];
-                body.ComparisonLoans[0] = loan with { Place = 0 };
-                break;
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out failure), failure);
-    }
 }

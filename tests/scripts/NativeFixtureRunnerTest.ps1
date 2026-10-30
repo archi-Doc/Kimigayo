@@ -124,15 +124,11 @@ if ($missing.status -cne 'incomplete' -or $missing.termination -cne 'notStarted'
     $missing.problems.Count -ne 1 -or $missing.problems[0].operation -cne 'launch') { throw 'Missing launch invented observation facts.' }
 $results.Add(@{ name = 'missing-executable'; passed = $true; records = @($missing) })
 
-# A real successful link followed by loss of our executable must not become a known codegen failure.
+# A real successful link followed by loss of our executable stays incomplete, never a known failure.
 . (Join-Path $repo 'src/backend/windows-x64/kernel32.ps1')
-. (Join-Path $repo 'scripts/verification-selection.ps1')
-. (Join-Path $repo 'scripts/codegen-pending.ps1')
-$chain = Join-Path $evidence 'launch-gap'
-$chainLogs = Join-Path $chain 'native-0-fixtures'
+$chainLogs = Join-Path $evidence 'launch-gap/native-0-fixtures'
 $chainWork = Join-Path $work 'launch-gap'
-$ledger = Join-Path $chainWork 'ledger'
-$null = New-Item -ItemType Directory -Force $chainLogs, $chainWork, $ledger
+$null = New-Item -ItemType Directory -Force $chainLogs, $chainWork
 $wrapper = Join-Path $chainWork 'link-and-retain.ps1'
 $wrapperSource = @'
 $ErrorActionPreference = 'Stop'
@@ -172,24 +168,7 @@ $worker = Join-Path $repo 'src/backend/windows-x64/test-scalar-fixture.ps1'
 $record = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
 if ($record.status -cne 'incomplete' -or $record.executions.Count -ne 1 -or
     $record.executions[0].result.problems[0].operation -cne 'launch') { throw 'A lost executable became a known failure or lost its execution.' }
-$record | ConvertTo-Json -Depth 12 -AsArray | Set-Content -LiteralPath (Join-Path $chainLogs 'results.json')
-$xml = '<assemblies><assembly><collection><test name="XunitTest.Probe.Pass" type="XunitTest.Probe" ' +
-    'method="Pass" result="Pass" /></collection></assembly></assemblies>'
-[IO.File]::WriteAllText((Join-Path $chain 'tests-Release-probe.xml'), $xml, $utf8)
-foreach ($name in @('selected-methods.json', 'discovered-methods.json')) {
-    [IO.File]::WriteAllText((Join-Path $chain $name), '["XunitTest.Probe.Pass"]', $utf8)
-}
-$ledgerPath = Join-Path $ledger 'C-frame.tsv'
-[IO.File]::WriteAllText($ledgerPath, ('fixture' + [char]9 + 'one.ll' + [char]9 + '1' + [char]10), $utf8)
-$ledgerHash = (Get-FileHash -LiteralPath $ledgerPath).Hash
-$pending = Write-KimiCodegenPending $chain 'Unit' 'Release' @('one.ll') $ledger
-$report = Get-Content -LiteralPath $pending.report -Raw | ConvertFrom-Json
-if ($pending.differences -ne 1 -or $report.entries[0].state -cne 'incomplete') { throw 'Known pending absorbed an unobserved execution.' }
-$rejected = $false
-try { Update-KimiCodegenLedger $ledger $pending.report }
-catch { $rejected = $true }
-if (-not $rejected -or (Get-FileHash -LiteralPath $ledgerPath).Hash -cne $ledgerHash) { throw 'Incomplete observation changed the ledger.' }
-$results.Add(@{ name = 'launch-gap-pending'; passed = $true; records = @($record) })
+$results.Add(@{ name = 'launch-gap'; passed = $true; records = @($record) })
 
 # Failure to write tool evidence remains incomplete at the fixture boundary, never an input or LLVM failure.
 $context.logs = Join-Path $evidence 'evidence-write'

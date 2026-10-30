@@ -75,22 +75,6 @@ public class BorrowedArrayEmissionTest
     }
 
     [Fact]
-    public void RejectsDifferentReferenceProducerAndReanalysisRecovers()
-    {
-        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet r = a@ref\nlet n = r.length", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single();
-        var sequence = body.Sequences.Single();
-        var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
-        body.ValueOperands[body.Values[sequence.Operation].Start] = borrow;
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Fact]
     public void BorrowedGenericAbiRemainsGuarded()
     {
         var c = MinimalEmissionTest.Analyze("func identity<T>(x: T) -> T => x\nlet a: [1 of i32] = [42]\nlet r = identity(a@ref)\nlet n = r[0]");

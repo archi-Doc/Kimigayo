@@ -18,7 +18,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 # A's processes get only the inherited environment, so an inherited selector would leave A off the default.
-$selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE', 'KIMI_CODEGEN' | ForEach-Object Name)
+$selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE' | ForEach-Object Name)
 if ($selectors) { throw "The baseline (A) would inherit $($selectors -join ', '); unset it and pass B's selectors with -CandidateEnvironment." }
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot

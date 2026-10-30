@@ -11,7 +11,7 @@ namespace XunitTest;
 // and storage kind calls its LegacyRow item's routine (P1b's helper of its kind over the element, or a capacity routine given the element's
 // stride) with the call's operands by slot, its result slot and location, at a direct call, an Item's Value call and an adapter's entry; an
 // Array from none, setArrayLength and capacity are written in place; an Array's glue calls its Drop helper, which destroys the elements by
-// their glue; natively under both generators.
+// their glue; natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library over Arrays of i32, a 16-byte struct, a drop-needing struct, a 24-byte Copy struct, string and Unit: the eight operations, the
@@ -49,7 +49,7 @@ public sealed partial class FunctionCodegenTest
         "func arErasedText() -> (uniq/Array<string>, string) -> () => Array<string>.append\n";
 
     // SPEC 4.9.3-4.9.8 (DECISIONS R5-M121): the operations, the storage boundary, zero-sized and drop-needing elements, strings, an Item's Value
-    // call and an erased Item natively under both generators.
+    // call and an erased Item natively.
     public static TheoryData<string, string, string> ArrayPrograms => new()
     {
         {

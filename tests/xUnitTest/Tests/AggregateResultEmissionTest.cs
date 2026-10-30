@@ -129,65 +129,6 @@ public class AggregateResultEmissionTest
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
-    [Theory]
-    [InlineData("plan")]
-    [InlineData("write")]
-    [InlineData("arrival")]
-    [InlineData("duplicate")]
-    [InlineData("declaration")]
-    [InlineData("branch")]
-    [InlineData("type")]
-    [InlineData("dominance")]
-    public void MalformedPlansPublishNoIrAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let pair = if true => (\"a\", 1) else => (\"b\", 2)", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        switch (defect)
-        {
-            case "plan": body.SlotResults.Clear(); break;
-            case "write": body.ResultWrites.RemoveAt(0); break;
-            case "arrival": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = -1 }; break;
-            case "duplicate": body.ResultArrivals[1] = body.ResultArrivals[0]; break;
-            case "declaration": body.SlotResults[0] = result with { Declare = result.Join }; break;
-            case "branch": body.OperationStorage[result.Join] = body.OperationStorage[result.Join] with { Place = result.Place }; break;
-            case "dominance": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = body.ResultArrivals[1].Write }; break;
-            case "type":
-                var write = body.ResultWrites[0].Operation;
-                body.OperationStorage[write] = body.OperationStorage[write] with { Input = body.PlaceStorage.FindIndex(x => ReferenceEquals(x.Type, BoundType.Boolean)) };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ADeferredConsumerCannotReadASecuredUndeliveredResult(bool text)
-    {
-        var source = "var original = (\"old\", 1)\nvar target = (\"init\", 1)\nlet saved = label work: do\n    defer => target = (\"cleanup\", 1)\n    exit to work original@move";
-        if (text)
-        {
-            source = source.Replace("(\"old\", 1)", "\"old\"").Replace("(\"init\", 1)", "\"init\"").Replace("(\"cleanup\", 1)", "\"cleanup\"");
-        }
-
-        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        var deferred = Assert.Single(body.DeferredPlans, x => body.IsReachable(x.Entry));
-        var write = body.OperationStorage.FindIndex(deferred.Entry, deferred.End - deferred.Entry, x => x.Kind == OwnershipOperationKind.Write);
-        Assert.True(write >= 0);
-        body.OperationStorage[write] = body.OperationStorage[write] with { Input = result.Place };
-        Assert.False(c.WriteIr(TextWriter.Null, out error));
-        Assert.Contains("normal delivery", error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingAndResultEmissionAllocateNothing()

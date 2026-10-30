@@ -15,9 +15,9 @@ function Expect([bool] $condition, [string] $message) {
     $script:cases++
 }
 # Each fixture records a source location and returns its value; runs default to passing O0 and O2 with output "ok".
-function New-Run([string] $name, [hashtable] $returns, [hashtable] $native = @{}, [hashtable] $stdout = @{}, [string] $location = 'a.kimi', [string] $codegen = 'legacy') {
+function New-Run([string] $name, [hashtable] $returns, [hashtable] $native = @{}, [hashtable] $stdout = @{}, [string] $location = 'a.kimi') {
     $directory = Join-Path $work $name
-    $summary = [ordered]@{ configuration = 'Release'; pipeline = 'legacy'; codegen = $codegen; head = $name; workDirectory = (Join-Path $directory 'work'); steps = @([ordered]@{ step = 'tests'; result = 'PASS' }) }
+    $summary = [ordered]@{ configuration = 'Release'; pipeline = 'legacy'; head = $name; workDirectory = (Join-Path $directory 'work'); steps = @([ordered]@{ step = 'tests'; result = 'PASS' }) }
     Put (Join-Path $directory 'summary.json') ($summary | ConvertTo-Json -Depth 3)
     $records = foreach ($stem in @($returns.Keys | Sort-Object)) {
         Put (Join-Path $directory "fixtures-Release/$stem.ll") "; $location`ndefine i32 @main() {`n  ret i32 $($returns[$stem])`n}`n"
@@ -109,46 +109,6 @@ Reject 'incomplete' 'incomplete native observation'
 Reject 'incomplete' 'incomplete native observation' -baseline 'incomplete'
 New-Run 'unknown' @{ one = 0; two = 0 } @{ two = @{ status = 'other'; levels = @('O0', 'O2') } }
 Reject 'unknown' 'unknown native status'
-
-# DECISIONS R5-M85, R5-M106: between an old-generator run and a MIR code generation run, two's outcome sidecars deviate by a decided
-# item when both runs carry the same .deviation and each run's outcome is its side's: only those three sidecars are counted apart. Its
-# .ll and its native outcomes stay compared; a side that does not match its run, or a sidecar in one run only, stays a difference;
-# within one generator nothing deviates.
-$deviation = '{"id":"d","class":"a","item":"R5-M106","clause":"22.4.3","reason":"r","legacy":{"stdout":"ok\n","exit":0,"stderr":""},' +
-    '"target":{"stdout":"new\n","exit":1,"stderr":"cycle\n"}}' + "`n"
-$fails = @{ two = [ordered]@{ status = 'failed'; levels = @('O0') } }
-foreach ($name in @('legacyside', 'mirside', 'mirwrong', 'mirone', 'mirfail')) {
-    New-Run $name @{ one = 0; two = $(if ($name -eq 'legacyside') { 0 } else { 1 }) } $(if ($name -eq 'mirfail') { $fails } else { @{} }) -codegen $(if ($name -eq 'legacyside') { 'legacy' } else { 'mir' })
-    if ($name -ne 'legacyside') {
-        Put (Join-Path $work "$name/fixtures-Release/two.stdout") "new`n"
-        Put (Join-Path $work "$name/fixtures-Release/two.exit") '1'
-        Put (Join-Path $work "$name/fixtures-Release/two.stderr") $(if ($name -eq 'mirwrong') { "other`n" } else { "cycle`n" })
-    }
-
-    if ($name -ne 'mirone') { Put (Join-Path $work "$name/fixtures-Release/two.deviation") $deviation }
-}
-foreach ($name in @('devbase', 'devir', 'devfail')) {
-    New-Run $name @{ one = 0; two = $(if ($name -eq 'devir') { 7 } else { 0 }) } $(if ($name -eq 'devfail') { $fails } else { @{} })
-    Put (Join-Path $work "$name/fixtures-Release/two.deviation") $deviation
-}
-$deviating = Compare-Run 'legacyside' 'mirside' 1
-Expect ((@($deviating.files.deviating) -join ',') -ceq 'two' -and -not $deviating.identical -and $deviating.files.irIdentical -eq 1) 'A decided deviation must be counted apart.'
-Only $deviating 'differing' 'two.ll'
-Expect ((Get-Content -LiteralPath (Join-Path $work 'compare-legacyside-mirside/fixture-comparison.txt')) -contains 'Deviating: 1 fixtures (decided deviations)') 'The text report must count deviations.'
-$wrong = Compare-Run 'legacyside' 'mirwrong' 1
-Expect (@($wrong.files.deviating).Count -eq 0) 'A side that does not match its run must not deviate.'
-Only $wrong 'differing' 'two.exit,two.ll,two.stderr,two.stdout'
-$one = Compare-Run 'legacyside' 'mirone' 1
-Expect (@($one.files.deviating).Count -eq 0 -and (@($one.files.missing) -join ',') -ceq 'two.deviation') 'A sidecar in one run must not deviate.'
-# A native failure of a deviating stem stays visible.
-$failed = Compare-Run 'legacyside' 'mirfail' 1
-Expect ((@($failed.files.deviating) -join ',') -ceq 'two' -and (@($failed.native.differing.fixture) -join ',') -ceq 'two.ll' -and -not $failed.identical) 'A deviating stem must keep its native difference.'
-# Within one generator the same .deviation deviates nothing: a changed .ll and a native failure stay differences.
-Expect (@((Compare-Run 'devbase' 'devbase' 0).files.deviating).Count -eq 0) 'Equal runs of one generator must not deviate.'
-$changed = Compare-Run 'devbase' 'devir' 1
-Expect (@($changed.files.deviating).Count -eq 0) 'Runs of one generator must not deviate.'
-Only $changed 'differing' 'two.ll'
-Only (Compare-Run 'devbase' 'devfail' 1) 'native' 'two.ll'
 
 # O2 metrics: four.ll fails before O2 in the candidate and five.ll is the candidate's only, so each lacks one side.
 New-Run 'o2base' @{ one = 0; two = 0; three = 0; four = 0; six = 0 }
