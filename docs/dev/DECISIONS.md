@@ -5829,7 +5829,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the step appears at the merge with dev 3e614b427 (B/A' 1.031 there, 1.008 on the old base). Work counted per warm census pass in
     instrumented throwaway builds shows no interaction and no memo eviction (the merge adds exactly the branch's work); the branch adds
     +35k well-formedness visits (16c065a44's walk, kept above) and +34k substitutions (`SolveLate`, now skipped where the pattern stores
-    no Origin and names no slot, read from the interned summaries, BU's (B3)). The final head's quiet measurement replaces this line.
+    no Origin and names no slot, read from the interned summaries, BU's (B3)).
+  - Cost of revision 3 (the planning session's GO, 2026-10-30, no window running: A dev 1a9c72d7a, A' its byte copy, B bbca4b0b2, one
+    throwaway worktree, one folder, CPU 2 pinned, tiering off, BindBench minima over 3 rotated rounds): Hello cold B/A' 1.024, warm 1.001;
+    Milestone26 0.992, 1.007 (both 1.008, 1.004; A'/A 0.984, 1.020); census (121 programs) cold B/A 1.022, A'/A 0.994, B/A' 1.028,
+    warm B/A 1.026, A'/A 0.995, B/A' 1.031; cold allocation +19 KB per program (census +2.53 MB, +0.42%), warm 0 B on every program.
+    Verification of bbca4b0b2 (merge of dev 1a9c72d7a): default Session 25,783 with the five kept-apart failures; diagnostic snapshot 0
+    differences against shared-base/1a9c72d7a (verify-commit matched); the construction native families under MIR code generation
+    (BU-N6: GenericCase, GenericEnum, EnumStorage, ContainerNestingEnum, CopySnapshotEnum, AssociatedLendingOption,
+    AssociatedIteratorYieldedPayload, ClosureReceiverPayloadFollow) 102 native executions pass; mir ledger 3,401 -> 3,487 rows: in shared
+    programs only swap3's, mb27's and WrittenParameter's moves of revision 2, the three nested-result Unsupported_Kd rows gone with their
+    programs, the rest the new tests' programs, and no both->old row in a shared program.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
