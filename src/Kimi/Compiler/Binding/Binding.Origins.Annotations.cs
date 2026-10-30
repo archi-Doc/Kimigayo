@@ -156,6 +156,8 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 15.3.1, 23.1.2: a written Origin expression. A parenthesis or meet whose operand did not resolve has no Origin for that
+    // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record.
     private BoundOrigin? BindOrigin(Koto syntax, BindingScope scope)
     {
         if (IsRecovery(syntax, out _))
@@ -165,6 +167,7 @@ public sealed partial class Binding
         }
 
         BoundOrigin? result = null;
+        Koto? failedOperand = null;
         if (syntax is IdentifierNameKoto name)
         {
             result = this.BindOriginName(name.IdentifierName, syntax, scope);
@@ -172,11 +175,13 @@ public sealed partial class Binding
         else if (syntax is ParenthesizedKoto parentheses)
         {
             result = this.BindOrigin(parentheses.Operand, scope);
+            failedOperand = FailedOperand(parentheses.Operand);
         }
         else if (syntax is BinaryKoto binary && binary.Akind == KotoKind.And)
         {
             var left = this.BindOrigin(binary.Left, scope);
             var right = this.BindOrigin(binary.Right, scope);
+            failedOperand = FailedOperand(binary.Left) ?? FailedOperand(binary.Right);
             if (left is not null && right is not null)
             {
                 result = this.Meet(left, right);
@@ -207,22 +212,21 @@ public sealed partial class Binding
             }
         }
 
-        if (result is null)
-        {
-            this.Fail(syntax, BindingFailure.InvalidOrigin);
-        }
-        else
+        if (result is not null)
         {
             result = this.OriginAtUse(result, syntax);
             syntax.BindingState = BindingState.Resolved;
             syntax.BoundOrigin = result;
-            if (!OriginVisible(result, syntax))
-            {
-                this.Fail(syntax, BindingFailure.InvalidOrigin);
-            }
+        }
+
+        if (result is null || !OriginVisible(result, syntax))
+        {
+            _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }
 
         return result;
+
+        static Koto? FailedOperand(Koto operand) => IsUnresolvedPrerequisite(operand) ? operand : null;
     }
 
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
