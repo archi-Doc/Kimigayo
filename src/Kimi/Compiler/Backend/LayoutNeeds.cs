@@ -4,8 +4,8 @@
 // reads a layout of besides its by-value storage, the one fact the instance collector (K 4.8: a use of that Type) and code generation (the
 // Type it lays out, FunctionCodegen.Needed) both read. Rows: a projection step by its kind, an operator by its operator and operand, a
 // comparison node by its kind and Type; the intrinsic rows' and the legacy rows' Need columns (IntrinsicRow.Need, LegacyRow.Need) carry the
-// calls'. TypeOf is the one place that names the Type a need reads, as a Type of the form's body or tree; each reader maps it into its
-// item's instance.
+// calls'. TypeOf is the one place that names the Type a form's need reads, as a Type of its body; each reader maps it into its item's
+// instance. A comparison node's is its own Type, which its reader takes in the instance Self it compares (InstanceCollector.Uses).
 // Input: a projection kind, a MIR operator and its first operand's Type, a comparison node; a body Place, rvalue or substitution for TypeOf.
 // Output: a LayoutNeed; the Type (or the Types) it names.
 // Invariants: closed: a new form adds a row here or a Need on its table; every row's Type is TypeOf's; a need past its root's storage is a
@@ -85,11 +85,6 @@ internal static class LayoutNeeds
         var pointer = operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
         return pointer.Components[0];
     }
-
-    /// <summary>Gets the Type a comparison node's need names: its own.</summary>
-    /// <param name="node">A node whose need is Parts.</param>
-    /// <returns>The Type.</returns>
-    internal static BoundType TypeOf(ComparisonNode node) => node.Type;
 
     /// <summary>Gets the Types a call's TypeArguments need names: every Type of its substitution (a whole-value update's T, a Dictionary
     /// kernel's K and V, an intrinsic's one argument).</summary>

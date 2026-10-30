@@ -1262,29 +1262,38 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
     }
 
-    // K 4.3, F package 4.6: a built-in comparison of a composite Self, a generic instance's comparison over its Type parameter, is its
-    // Builtin shim, keyed by its compiler function and the erased Self, whose targets are its leaves' witnesses under the Contract's mapping
-    // (TyCtxt.Comparison), depth first: each user leaf's equals or compare body, none for a built-in leaf; two instances comparing one
-    // erased Self share its shim. A tuple operator is no shim: its expansion calls its leaves' witnesses in the instance (F package 4.8,
-    // DECISIONS R5-M75).
+    // K 4.3, F package 4.6, DECISIONS R5-M163: a built-in comparison of a composite Self, a generic instance's comparison over its Type
+    // parameter, is its Builtin item, keyed by its compiler function, its mode and the erased Self, whose targets are its direct parts'
+    // (TyCtxt.Comparison under the Contract's mapping): a composite part's own item, shared by every Self that has that part, a user leaf's
+    // equals or compare body, none for a built-in leaf; two instances comparing one erased Self share its item. A tuple operator is one
+    // such item under its operator mode, keyed at the template while its Type has a parameter (same's (ref/T, i32) at T = Box), whose T
+    // leaf runs its Contract mapping in the instance (Box's equals).
     [Fact]
-    public void AComparisonShimsTargetsAreItsLeafWitnesses()
+    public void AComparisonItemsTargetsAreItsDirectParts()
     {
         var (program, set) = Collect(CompareSource);
         Assert.Empty(set.Records);
-        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
-        Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
-        Assert.Equal(["Fn compare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
+        Assert.Equal(["Builtin ref/Box BuiltinEquals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
+        Assert.Equal(
+            ["Builtin (ref/Box, i32) BuiltinEquals", "Builtin ref/Box BuiltinEquals"],
+            Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
+        Assert.Equal(["Builtin ref/Rank BuiltinCompare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
+        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin ref/Box BuiltinEquals"));
+        Assert.Equal(["Fn compare"], Targets(program, set, "Builtin ref/Rank BuiltinCompare"));
         Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn equal [(ref/Box, i32)]"));
         Assert.Equal(
             set.Targets(Item(program, set, "Fn equal [(ref/Box, i32)]"))[0].Item,
             set.Targets(Item(program, set, "Fn differ [(ref/Box, i32)]"))[0].Item);
-        Assert.Equal(["Fn equals"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals Operator"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(["Builtin ref/Box BuiltinEquals Operator"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals Operator"));
+        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin ref/Box BuiltinEquals Operator"));
         Assert.Equal(
-            ["struct Box", "struct Box", "struct Box", "struct Rank"],
-            new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }
+            ["struct Box", "struct Rank", "struct Box"],
+            new[] { "Builtin ref/Box BuiltinEquals", "Builtin ref/Rank BuiltinCompare", "Builtin ref/Box BuiltinEquals Operator" }
                 .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
                 .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
+        var template = set.Items[Item(program, set, "Builtin (ref/Box, i32) BuiltinEquals Operator")].Key;
+        Assert.True(template.Type!.ContainsParameter && template.Body.Erased is not null, $"{template}");
     }
 
     // K 4.3, DECISIONS R5-M70: a Builtin item is keyed by its compiler function and the erased Self, so two built-in operations on one Self
@@ -2324,6 +2333,7 @@ public sealed partial class InstanceCollectorTest
         {
             var variant = item.Key.Kind switch
             {
+                MonoKind.Builtin when item.Key.Variant != 0 => $" {item.Key.Symbol!.CompilerFunction} {(ComparisonMode)item.Key.Variant}",
                 MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
                 MonoKind.LegacyRow => " " + item.Key.Body.Def.Decl!.CompilerFunction,

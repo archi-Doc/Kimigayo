@@ -80,6 +80,15 @@ internal enum MirCalleeKind : byte
     Intrinsic, // An IntrinsicId.
 }
 
+/// <summary>How a comparison of a composite Self compares its Builtin leaves (SPEC 13.4, 13.4.1; DECISIONS R5-M163): a Requirement
+/// callee's <see cref="MirCallee.Arg"/> and a comparison Builtin item's variant.</summary>
+internal enum ComparisonMode : byte
+{
+    Mapping, // The Contract's mapping (SPEC 13.4.1): NaN-reflexive equality; every requirement call but a tuple operator's.
+    Operator, // A tuple operator's (SPEC 13.4): IEEE equality; an ordering's unordered pair compares as greater (<, <=).
+    Reversed, // A tuple operator's ordering whose unordered pair compares as less (>, >=).
+}
+
 /// <summary>A binary operator of MIR; the Type decides checked or wrapping arithmetic.</summary>
 internal enum MirBinaryOp : byte
 {

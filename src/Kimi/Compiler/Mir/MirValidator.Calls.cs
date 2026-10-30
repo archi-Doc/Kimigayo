@@ -2,11 +2,12 @@
 
 namespace Kimi.Compiler.Mir;
 
-// Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71).
-// - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function, a Value
-//   callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the compiler function it serves, its arity, no
-//   target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot, testRecordValue's recorded value a
-//   Scalar by Records); and its destination: a diverging Call's write bit for G131, no Never value written by a returning Call.
+// Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M163).
+// - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
+//   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
+//   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
+//   testRecordValue's recorded value a Scalar by Records); and its destination: a diverging Call's write bit for G131, no Never value
+//   written by a returning Call.
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
 //   StaticSlot, Type and NeverWrite findings; a callee with a signature goes to MirValidator.Signatures and the Call's inputs to
 //   MirValidator.Inputs (G136).
@@ -18,6 +19,17 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
+        // DECISIONS R5-M163: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement on a composite Self
+        // (ComparisonTypes), Reversed only Comparable's.
+        private static bool Compares(in MirCallee callee)
+            => ComparisonTypes.IsComposite(callee.Subst?.Self) && TyCtxt.Contract(callee.Symbol!) is { LibraryDeclaration: var contract } owner &&
+                ReferenceEquals(owner.Contract?.OwnRequirement(), callee.Symbol) && (ComparisonMode)callee.Arg switch
+                {
+                    ComparisonMode.Operator => contract is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable,
+                    ComparisonMode.Reversed => contract == KimiDeclarationId.Comparable,
+                    _ => false,
+                };
+
         // F10 (plan 5.6.6): a staticEnsure names its static (Slot); a constant id out of range is the walk's Const finding.
         private readonly bool Ensures(in MirTerminator call) => Slot(body, call) >= 0 ||
             (body.Operands[call.Start] is { Kind: MirOperandKind.Const } operand && (uint)operand.Arg >= (uint)body.Consts.Length);
@@ -42,6 +54,7 @@ internal sealed partial class MirValidator
             switch (callee.Kind)
             {
                 case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual when callee.Symbol is null:
+                case MirCalleeKind.Requirement when callee.Arg != 0 && !Compares(callee):
                 case MirCalleeKind.Value when (uint)callee.Arg >= (uint)body.Consts.Length || body.Consts[callee.Arg].Kind != MirConstKind.TypeToken:
                     this.Report(MirViolation.Callee);
                     break;

@@ -114,10 +114,10 @@ internal sealed partial class InstanceCollector
     // (TyCtxt.Compose, whose declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit
     // checks; a default template's, the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), or for a
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
-    // (InstanceCollector.Witnesses.cs); the body a Value callee's Closure or function item runs; an intrinsic's target where its row names
-    // one (an erased writer's reserve witness, a staticEnsure's StaticInit, a creation's payload descriptor, a DestroyValues' glue) and a
-    // dropped value's glue; an intrinsic's Type arguments uses where its row's need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1
-    // for a callee without a body or row or a refused edge.
+    // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
+    // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
+    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue; an intrinsic's Type arguments uses where its row's
+    // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
         var callee = call.Callee;
@@ -156,7 +156,8 @@ internal sealed partial class InstanceCollector
 
         if (callee.Kind == MirCalleeKind.Requirement)
         {
-            return this.Called(program, item, subject, callee.Symbol!, this.types.Witness(callee.Symbol!, callee.Contract, subst!));
+            var target = this.types.Witness(callee.Symbol!, callee.Contract, subst!);
+            return callee.Arg == 0 ? this.Called(program, item, subject, callee.Symbol!, target) : this.Compared(item, subject, callee, target);
         }
 
         if (callee.Arg > 0)

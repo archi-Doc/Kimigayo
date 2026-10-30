@@ -10658,6 +10658,8 @@ structure is recorded here by the unit that first implements it.
   Contract-mapping comparisons, the shims' remaining producers). Rejected: a string leaf as a call (F6's Builtin leaf names no callee;
   a second form of one comparison); testing the last pair too and deciding all-equal by a constant (a redundant test, two string
   passes); deciding `==` by recomputing the pair (a second comparison); the legacy four-valued relation code (a new form).
+  - Amended by R5-M163 (provisional, G308): the expansion is superseded by one call per tuple operator; the operand rule and the root
+    Limit stay.
 - **R5-M76 The operator rows of MIR code generation** (2026-10-19, C lane; plan C1a, package C §3.2 I5 and I9, §3.9, audit row
   "Rvalue BinaryOp (16), UnaryOp (2)"; under R5-M18 form 1, R5-M17, R5-M20 and R5-M65) `FunctionCodegen.Arithmetic` writes a BinaryOp
   or UnaryOp into an unprojected local through `LlvmScalarText` by one table, `Rows`: a row per `MirBinaryOp`, then per `MirUnaryOp`.
@@ -12230,6 +12232,8 @@ structure is recorded here by the unit that first implements it.
     `WriteBuiltinComparison` text (per-instruction text C8c left in D5, R5-M118); `MirBodyKind.Shim` bodies (PD3); the builder expanding
     generic comparisons per instance (MIR is per template; held); new IntrinsicIds or catalog rows (PD21); Kimigayo bodies for built-in
     witnesses now (R8).
+  - Amended by R5-M163 (provisional, G308): "one function per tree node" is adopted for comparison items; the reason (more
+    functions and calls) no longer holds against a shared node written once per root-to-leaf path.
 - **R5-M127 The owner confirms C8f's departure** (owner, 2026-10-26, to the R5 planning session directly, on its explanation after
   C8f's design; verbatim 「C8f の逸脱 (i)も承認します」; the consequences are the planning session's) The departure R5-M126 records is
   confirmed: K package 4.3's Builtin row (and PropertyWitness's) gives "Representative: Self Type"; a shim item also records its
@@ -13695,3 +13699,25 @@ structure is recorded here by the unit that first implements it.
     inlining `GenericStoragePlan.IsGeneric` into `AggregateLayout` (it would keep `InstantiatesInLegacy` past its stage).
   - Amends, each with its amendment line: R5-M5 and R5-M88 (done), R5-M94, R5-M152 S7, R5-M160 and R5-M161; R5-M34 and R5-M36 with
     the Binding commit.
+- **R5-M163 (provisional) One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
+  Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
+  expansion and amends R5-M126; under R5-M68, R5-M70, R5-M126, R5-M127, R5-M143 and R5-M149)
+  - Cause: `TyCtxt.Comparison` memoizes one node per (Contract, Type, mode), so a Type sharing parts is a DAG, which R5-M75's builder,
+    the collector's shim targets and the shim writer each walked per root-to-leaf path: exponential in the distinct Types (V16).
+  - Rule: a tuple operator is ONE `Requirement` call of its Contract's own requirement on its Self (`TyCtxt.Synthesized`, Contract null)
+    on shared borrows of its operands' terminal Places, the operands as R5-M75; `MirCallee.Arg` of a Requirement callee is its
+    `ComparisonMode` (`Mir/MirVocabulary.cs`: `Mapping` 0, every other requirement call; `Operator`, IEEE equality and an unordered
+    pair ordered greater, for `==`, `!=`, `<`, `<=`; `Reversed`, ordered less, for `>`, `>=`); `==` takes the bool, `!=` its negation,
+    an ordering the i32 against 0. The validator checks a mode names Equatable's or Comparable's own requirement on a composite Self.
+  - Items: the Builtin target of such a call is a comparison item keyed by the compiler function, the mode (`Variant`) and the node's
+    erased Type, at the template with the requesting instance (`Body.Erased`) when that Type has a parameter (SPEC 13.4's generic
+    rule), represented by the target's substitution (R5-M126's Abi unchanged). `InstanceCollector.Comparison(item)` publishes its node;
+    its targets are its direct parts': a composite part's item (every composite part, a ref layer's included), a Witness leaf's body,
+    a Requirement leaf's witness on the instance part (a body or a Mapping item). Code generation writes one function per item calling
+    its parts' targets; a Builtin leaf by mode. A4 runs a comparison call's distinct leaves' witnesses (a visited set).
+  - Layout: each item is laid out at its admission; a comparison call also lays out, at its site, its Self and each Tuple past a
+    reference layer (one record per requesting site, SPEC 23.1.2).
+  - Rejected: a memo in the builder (Places differ per occurrence); one synthesized MIR body per node (a second mechanism, and the
+    Contract mapping stays exponential); operator items keyed by the instance Type (wrong for `(T, f64)` at `T = f64`); the whole
+    tuple through the Contract mapping (NaN-reflexive `==`, no float `Comparable`); an inline threshold; a four-valued result.
+  - Open: the owner's question on K package 4.3's Builtin key (the mode, the template Type and instance), as R5-M127 did.

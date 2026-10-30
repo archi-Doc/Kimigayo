@@ -115,7 +115,7 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        key = key with { Type = this.types.Erase(type) };
+        key = key with { Type = key.Type ?? this.types.Erase(type) }; // A comparison item's is its node's (InstanceCollector.Compared).
         if (set.Find(key) is >= 0 and var found)
         {
             return found;

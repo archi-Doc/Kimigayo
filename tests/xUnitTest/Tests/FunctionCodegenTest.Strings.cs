@@ -137,16 +137,19 @@ public sealed partial class FunctionCodegenTest
         Assert.All(calls, x => Assert.Single(function.Instructions, y => y.Shape == "icmp eq i32 %, 0" && y.Operands[0] == x));
     }
 
-    // SPEC 13.4 (DECISIONS R5-M75, R5-M118): a tuple ordering's string leaf, not its last, tests equality first and decides by the ordering
-    // routine where its pair is unequal (two passes, PLAN G157 (16)).
+    // SPEC 13.4 (DECISIONS R5-M118, R5-M163): a tuple ordering is a call of its Self's comparison item, whose string leaf, not its last,
+    // runs the ordering routine once and decides where its i32 is not zero (one pass; R5-M75's equality test first is gone).
     [Fact]
-    public void ATuplesStringLeafTestsEqualityThenOrder()
+    public void ATuplesStringLeafRunsItsOrderOnce()
     {
         var c = Analyze(Comparisons, OutputKind.Library);
-        var ir = GeneratedIr.Parse(Generate(c));
-        Assert.Equal(
-            [ir.Function(LegacyRuntimeHelpers.StringEqual.Name), ir.Function(LegacyRuntimeHelpers.StringCompare.Name)],
-            StringCallsOf(ir, Assert.Single(FunctionsOf(ir, c, "ordered"))).Select(static x => x.Callee));
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        Assert.Empty(StringCallsOf(ir, Assert.Single(FunctionsOf(ir, c, "ordered"))));
+        var order = ir.Function(LegacyRuntimeHelpers.StringCompare.Name);
+        var call = Assert.Single(StringCallsOf(ir, Assert.Single(ShimsOf(ir, text), x => x.Instructions.Any(y => y.Callee == order))));
+        Assert.Same(order, call.Callee);
+        Assert.Contains(ir.Functions, x => x.Instructions.Any(y => y.Shape == "icmp eq i32 %, 0" && y.Operands[0] == call));
     }
 
     // IMPL 21.1.3 (DECISIONS R5-M118): a string constant is written whole as its record where it is stored, a Tuple's, a fixed array's and an
