@@ -25,11 +25,11 @@ namespace Kimi.Compiler;
 //   candidate of a call whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its
 //   checks run once more (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments, and CompleteArguments, its
 //   arguments completed at its operations; the waiting-binds-F rule (TakeWaiting, Binding.ArgumentKinds.Waiting.cs), the one walk to
-//   the waiting callables at an F that the call's queries and the completions share; SlotSolution (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of
-//   one candidate or one Case construction, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
-//   Binding.ArgumentKinds.Evidence.cs) and applies the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations
-//   substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts of a call that completes
-//   none, bound on their own (SPEC 23.1.2).
+//   the waiting callables at an F that the call's queries and the completions share; SlotSolution (Binding.ArgumentKinds.Solution.cs),
+//   the SPEC 10.8 solve state of one candidate or one Case construction, whose evidence walk takes each part's evidence for the slots
+//   by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies the defaults (DefaultArguments, DefaultPayloads), and
+//   whose candidate operations substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts
+//   of a call that completes none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded part (ArgumentPart: its kind and a Literal's default) is keyed by syntax identity (SourceRef) and lives for
 //   one pass; Call is the only waiting kind recorded, so a part recorded as waiting is a deferred one, which stays waiting after its
 //   completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal is evidence only through the default
@@ -39,12 +39,16 @@ namespace Kimi.Compiler;
 //   paths keep no evidence or fit dispatch of their own; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
 // - Temporary (G216 (a) Part 1; U1.1 moved the readers of the old kinds onto PartKind and AwaitsCall, and these remain until their
 //   units): until U1.2's classifier records it as Join, a waiting join (control flow whose literals have an unknown source beside
-//   them, or whose source call the probe deferred) is recorded as Call, and PositionKind gives Call to a position with a part not
-//   Resolved (its BindingState). Form tests U1.2's classifier removes: IsWaitingCallable in TryArithmetic, SelectArithmetic,
-//   TryCandidateCore, ComparableCallableSlots, FailUnboundSlots and TakeWaiting; TryCandidateCore's contextual-callable tests;
-//   PrepareArgument's anonymous-function and contextual-Case test; InferCallableSignatures' and InferPosition's anonymous-function
-//   tests. Waiting decisions U1.3 removes: HoldsWaitingFunction, BindMatch's pendingBody, and ResultPropagation's own deferral tests
-//   (WaitsForPosition's anonymous-function test, Deferred).
+//   them, or whose source call the probe deferred) is recorded as Call, and PositionKind gives Call to a position with a part, other
+//   than a literal or an aggregate, not Resolved (its BindingState). U1.2's one classifier (arithmetic operands, SPEC 13.3.4, are
+//   among its part producers) and its per-kind completion remove: PositionKind's BindingState read; the form tests IsWaitingCallable
+//   in TryArithmetic, SelectArithmetic, TryCandidateCore, ComparableCallableSlots, FailUnboundSlots and TakeWaiting;
+//   TryCandidateCore's contextual-callable tests; PrepareArgument's anonymous-function and contextual-Case test; the
+//   anonymous-function tests of InferCallableSignatures, InferPosition and MarkWaitingHeaders; the completions and fits by form in
+//   CompleteWaitingPart (Function, Reference), CompleteUnselectedPart (Case), FitPerCall (Reference) and FailUnboundSlots (Function,
+//   Reference). U1.3 removes the waiting decisions HoldsWaitingFunction, BindMatch's pendingBody (with its read of Deferred) and
+//   WaitsForPosition's anonymous-function test. Position waiting (Deferred, AwaitsFor; SPEC 14.9.2, 4.3) decides whether a part
+//   waits for its position, not for its call, so it is not in this list.
 public sealed partial class Binding
 {
     private readonly Dictionary<SourceRef, ArgumentPart> argumentParts = new();
