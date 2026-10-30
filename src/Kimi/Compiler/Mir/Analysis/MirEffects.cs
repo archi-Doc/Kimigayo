@@ -199,6 +199,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Item(this.Below(symbol, subst, row.Destroys), Drop);
             }
 
+            if (row.Calls >= 0)
+            {
+                this.Item(this.Below(symbol, subst, row.Calls), (byte)(1 + (int)row.Receiver)); // SPEC 8.11.4: as a call through a value.
+            }
+
             return;
         }
 

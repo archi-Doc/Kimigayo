@@ -21,9 +21,10 @@ internal sealed partial class TyCtxt
     };
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
-    // parameter On, the parameter below which it destroys, -1 for none, and whether it destroys that target in place (`replace`); null for
-    // an operation without a row.
-    internal (BindingSymbol? Runs, int On, int Destroys, bool InPlace)? Published(BindingSymbol operation)
+    // parameter On, the parameter below which it destroys, -1 for none, whether it destroys that target in place (`replace`), and the
+    // parameter whose Callable argument it calls, -1 for none, with the receiver of that parameter's Callable premise (SPEC 8.11.4); null
+    // for an operation without a row.
+    internal (BindingSymbol? Runs, int On, int Destroys, bool InPlace, int Calls, SemanticsKind Receiver)? Published(BindingSymbol operation)
     {
         if (KimiLibraryCatalog.Row(operation) is not { } row)
         {
@@ -31,7 +32,8 @@ internal sealed partial class TyCtxt
         }
 
         var requirement = row.Runs is { } runs ? this.OwnRequirement(runs) : null; // The one its Contract declares, not an inherited one.
-        return (requirement, row.On, row.Destroys, row.InPlace);
+        var receiver = row.Calls >= 0 ? binding.CallableReceiver(operation, Signature(operation, null, row.Calls, out _)!) : default;
+        return (requirement, row.On, row.Destroys, row.InPlace, row.Calls, receiver);
     }
 
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract (Binding.Witnesses), appended to a caller-owned list with each

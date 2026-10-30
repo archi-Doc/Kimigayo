@@ -15,14 +15,15 @@ public sealed partial class Binding
     private EffectSummary? cleanupCollector;
 
     /// <summary>SPEC 4.9.6: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
-    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
+    /// Type parameters, as its published row permits: the parameter-dependent requirement and Callable argument the row names are covered.</summary>
     /// <param name="operation">The operation.</param>
     /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
     /// <returns>Whether the body stays within confined, and the first effect that does not.</returns>
     internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, BindingSymbol? published)
     {
         var summary = this.effectSummary ??= new(this);
-        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
+        var calls = KimiLibraryCatalog.Row(operation) is { Calls: >= 0 and var slot } ? TyCtxt.Signature(operation, null, slot, out _) : null;
+        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: (published, calls));
         return (valid, summary.Violation, summary.ViolationNode);
     }
 
@@ -149,7 +150,7 @@ public sealed partial class Binding
         private Koto? last;
         private bool valid;
         private bool destructions;
-        private BindingSymbol? published;
+        private (BindingSymbol? Requirement, BoundType? Calls) published;
         private OwnershipBody? cleanupSource;
         private OwnershipBody? subjectBody;
         private InterpretationContext subjectContext;
@@ -293,7 +294,7 @@ public sealed partial class Binding
 
         // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P). With `destructions`, the values each
         // reached body destroys are summarized too.
-        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
+        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, (BindingSymbol? Requirement, BoundType? Calls) published = default)
         {
             this.published = published;
             this.scope = scope;
@@ -713,10 +714,12 @@ public sealed partial class Binding
             }
 
             // A forwarded abstract argument belongs to the caller's premises; an unsubstituted parameter belongs to the visited
-            // declaration. Neither substitutes a favorable concrete body for its universal proof.
+            // declaration. Neither substitutes a favorable concrete body for its universal proof. SPEC 4.9.6: the calls of the Callable
+            // argument the operation's row publishes are its callers'.
             var signature = this.Type(call.DeclaredSignature);
-            if (signature is null || (!binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use) &&
-                !binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!)))
+            if (!ReferenceEquals(type, this.published.Calls) &&
+                (signature is null || (!binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use) &&
+                !binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!))))
             {
                 this.Violate(EffectViolation.UnclassifiedCall, use);
             }
@@ -902,7 +905,7 @@ public sealed partial class Binding
             var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
                 ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
             var confined = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
-            if (ReferenceEquals(requirement.BoundSymbol, this.published))
+            if (ReferenceEquals(requirement.BoundSymbol, this.published.Requirement))
             {
                 return; // SPEC 4.9.6: the parameter-dependent effect the operation's row publishes.
             }

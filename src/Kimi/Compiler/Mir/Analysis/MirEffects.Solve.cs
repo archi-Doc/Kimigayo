@@ -260,6 +260,11 @@ internal sealed partial class MirEffects
                 this.Process(this.Below(symbol, subst, row.Destroys), Drop);
             }
 
+            if (row.Calls >= 0)
+            {
+                this.Process(this.Below(symbol, subst, row.Calls), (byte)(1 + (int)row.Receiver));
+            }
+
             return;
         }
 

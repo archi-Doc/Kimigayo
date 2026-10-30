@@ -8,13 +8,14 @@ namespace Kimi.Compiler;
 internal static partial class KimiLibraryCatalog
 {
     // The published rows (SPEC 4.9.6) the entries name: no user code beyond the input accesses; `K` equality; the destruction of the
-    // target in place (`replace`) or of its elements (the `clear`s); a formatting of the value (first parameter, or second after a
-    // writer). Every initializer the entries and indices read is in this file, in order: the order of static initializers across
-    // partial files is not defined.
+    // target in place (`replace`) or of its elements (the `clear`s, `truncate`), with the calls of `matching` (`removeAll`); a formatting
+    // of the value (first parameter, or second after a writer). Every initializer the entries and indices read is in this file, in
+    // order: the order of static initializers across partial files is not defined.
     private static readonly PublishedRow None = new(Runs: null); // Not `default`, which skips the parameter defaults (On 0, Destroys 0).
     private static readonly PublishedRow Equality = new(KimiDeclarationId.Equatable, On: 1);
     private static readonly PublishedRow Replace = new(Destroys: 0, InPlace: true);
     private static readonly PublishedRow Target = new(Destroys: 0);
+    private static readonly PublishedRow Matching = new(Destroys: 0, Calls: 1);
     private static readonly PublishedRow Formats = new(KimiDeclarationId.Utf8Format, On: 0);
     private static readonly PublishedRow FormatsValue = new(KimiDeclarationId.Utf8Format, On: 1);
 
@@ -227,7 +228,8 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageSetArrayLength, "setArrayLength", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSetArrayLength),
         new(KimiDeclarationId.SliceToArray, "toArray", SourceFunction: true, CallerLocation: true, Owner: "Slice"),
         new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
-        new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: Target),
+        new(KimiDeclarationId.ArrayRemoveAll, "removeAll", KimiLibraryContainer.Array, SourceFunction: true, Row: Matching),
         // SPEC 4.9.6, 15.6.4: the public position insert and appendAll, which add inputs to the element storage (AddedRows).
         new(KimiDeclarationId.ArrayInsertPosition, "insert", KimiLibraryContainer.Array, SourceFunction: true),
         new(KimiDeclarationId.ArrayAppendAll, "appendAll", KimiLibraryContainer.Array, SourceFunction: true),

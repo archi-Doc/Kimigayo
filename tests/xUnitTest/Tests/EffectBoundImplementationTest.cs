@@ -174,7 +174,7 @@ public partial class EffectBoundImplementationTest
             operations++;
         }
 
-        Assert.Equal(11, operations);
+        Assert.Equal(13, operations);
     }
 
     // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
