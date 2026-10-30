@@ -51,16 +51,20 @@ public sealed partial class Binding
     private static bool AccessorReceiverShapeMismatch(BoundAccessor accessor)
         => accessor.Receiver is { } receiver && receiver.Semantics != (accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq);
 
-    // SPEC 11.3, 11.4: the Type an accessor's use takes, a `get` result or a stored `set` input, is its Property's Type. The declaration
-    // check reports a mismatch (ValidateAccessor); a use of such an accessor takes the Property's Type (BindPropertyCall).
-    private static bool AccessorTypeMismatch(BoundAccessor accessor)
-        => (accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null) is { } used &&
-            accessor.Property.Type is { } type && !SameType(used, type);
+    // SPEC 11.3, 11.4: the Type an accessor's use takes, a `get` result or a stored `set` input, is its Property's Type. A mismatch is
+    // judged between formed Types only (one whose formation fails judges nothing), once per pass, so the declaration check that reports
+    // it (ValidateAccessor) and the uses that take the Property's Type instead (BindPropertyCall) agree.
+    private bool AccessorTypeMismatch(BoundAccessor accessor)
+        => accessor.TypeMismatch ??= accessor.Declaration is { } syntax &&
+            (accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null) is { } used &&
+            accessor.Property.Type is { } type && !SameType(used, type) &&
+            this.CheckTypeConstraints(used, this.scopes[syntax]) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax]) == ConstraintProof.Proven;
 
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
     {
         var accessor = Accessor(syntax);
         var property = accessor.Property;
+        accessor.TypeMismatch = null;
         if (accessor.SignatureSymbol is not { } signature || !ReferenceEquals(signature.Declaration, syntax))
         {
             accessor.SignatureSymbol = new(syntax.AccessorText, BindingSymbolKind.PropertyAccessor, syntax, property.Symbol.Scope);
@@ -363,7 +367,7 @@ public sealed partial class Binding
                 return ConstraintProof.Error;
             }
 
-            if (AccessorTypeMismatch(accessor))
+            if (this.AccessorTypeMismatch(accessor))
             {
                 this.Fail(syntax!, BindingFailure.TypeMismatch);
                 return ConstraintProof.Error;

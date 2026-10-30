@@ -72,6 +72,10 @@ public sealed class BoundAccessor
     internal BindingSymbol? SignatureSymbol { get; set; }
 
     internal FunctionKoto? ExecutionFunction { get; set; }
+
+    // SPEC 11.3, 11.4: whether the Type a use takes differs, both formed, from the Property's (Binding.AccessorTypeMismatch); judged once
+    // per pass, null until then.
+    internal bool? TypeMismatch { get; set; }
 }
 
 /// <summary>The limited implementations of a required Property operation.</summary>

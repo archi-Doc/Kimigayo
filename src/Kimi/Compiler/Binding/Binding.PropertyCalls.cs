@@ -189,7 +189,7 @@ public sealed partial class Binding
             // SPEC 11.3, 11.4, 23.1.2: a use of an accessor whose `get` result or stored `set` input is not its Property's Type (the
             // declaration's TypeMismatch_Kd) takes the Type those rules fix, so what reads the use is judged against it; once validation
             // has failed the declaration, the use rests on it (Check, CallPlan.Called).
-            var mistyped = AccessorTypeMismatch(accessor);
+            var mistyped = this.AccessorTypeMismatch(accessor);
             var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
             // is the declaration error of SPEC 11.3, not a limit of this path.

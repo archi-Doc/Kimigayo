@@ -56,10 +56,21 @@ public class PropertyBindingTest
     // failed declaration context (PLAN G322).
     private const string AccessWrongGetter = ClosedField + "        public get() -> i64\n            return 1\n" + ClosedInit;
     private const string ShapeWrongGetter = ClosedField + "        get(self: uniq/Self) -> i64\n            return 1\n" + ClosedInit;
+    private const string UnformedPart = "struct NC\n    public var a: i32\n    drop => ()\nstruct W<T>\n    T is Copy\n    public var t: T\n";
+    private const string UnformedGetter = UnformedPart + ClosedField + "        get() -> W<NC>\n            return storage\n" + ClosedInit;
+    private const string UnformedSetter = UnformedPart + ClosedField + "        set(value: W<NC>) -> ()\n            storage = 1\n" + ClosedInit;
     private const string MissingReceiverGetter = ClosedField + "        get(self: ref/Missing) -> i64\n            return 1\n" + ClosedInit;
     private const string MissingReceiverSetter = ClosedField + "        set(self: uniq/Missing, value: i64) -> ()\n            storage = 1\n" + ClosedInit;
     private const string FailedContext = "struct HW<S>\n    S is Missing\n    public var x: i32\n        get() -> i64\n            return 1\n    public init(x: i32) => self.x = x\n" +
         "    public func bump(self: uniq/Self) -> ()\n";
+
+    // Dev's records beside those accessors, which a formation failure keeps (AUseOfAWronglyTypedAccessorIsJudgedAgainstItsPropertysType).
+    private const string UnformedGetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd get() -> W<NC>;UnsatisfiedConstraint_Kd W<NC>;" +
+        "UnsatisfiedConstraint_Kd W<NC>;TypeMismatch_Kd return storage;ArithmeticSelection_Kd h.x += 4;UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd let v: i32 = h.x;" +
+        "UnsatisfiedConstraint_Kd h.x";
+
+    private const string UnformedSetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;UnsatisfiedConstraint_Kd W<NC>;" +
+        "UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd 5;TypeMismatch_Kd h.x += 4";
 
     // A group Property beside a custom `get` of another Type, and a bare update inside its group.
     private const string WrongCountGetter = "group Config\n    public var count: i32 = 0\n        get() -> i64\n            return 1\n";
@@ -431,7 +442,8 @@ public class PropertyBindingTest
     // one that rejects it keeps its own record (dev's read the accessor's Type), as do a user arithmetic `+=`, G295's bare group limit, a
     // missing or string operand, and a use through the standard accessor beside a failed one. An accessor resting on its missing receiver
     // Type rests its uses too, which record no InternalInvariant_Kd; one with an access or shape error keeps that record, its mismatch
-    // unreported (one failure per node). The valid twin: a `get` of the Field's Type.
+    // unreported (one failure per node). A `get` result or `set` input whose formation fails is no mismatch, so dev's records stay. The
+    // valid twin: a `get` of the Field's Type.
     [Theory]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd get() -> i64")]
@@ -467,6 +479,8 @@ public class PropertyBindingTest
     [InlineData(MissingReceiverSetter, "var h = HW.init(x: 3)\n    let n: i32 = 3\n    h.x = n\n    h.x += 1", "UnresolvedBinding_Kd Missing")]
     [InlineData(AccessWrongGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1\n    let v: bool = h.x", "InaccessibleBinding_Kd public get() -> i64;TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(ShapeWrongGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1\n    let v: bool = h.x", "AccessorReceiverShape_Kd get(self: uniq/Self) -> i64;TypeMismatch_Kd let v: bool = h.x")]
+    [InlineData(UnformedGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    let v: i32 = h.x", UnformedGetterRecords)]
+    [InlineData(UnformedSetter, "var h = HW.init(x: 3)\n    h.x = 5\n    h.x += 4", UnformedSetterRecords)]
     [InlineData(RightGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++\n    let v: i32 = h.x", "")]
     public void AUseOfAWronglyTypedAccessorIsJudgedAgainstItsPropertysType(string holder, string use, string records)
     {
