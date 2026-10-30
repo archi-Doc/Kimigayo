@@ -7315,6 +7315,9 @@ resumed by R4-M86 (2026-10-20).
     (MirCensusTest, the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118
     rows and adds 2, both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike.
     MirCensusTest passes on the default pipeline too. The untied results and stores change no verdict of today's A5; their Φ_E is 4b's.
+  - Superseded in part by BU-66 (2026-10-31, PLAN G297): the hold walk's "or an abstract part" is gone (an abstract part holds a raw
+    input's own value only where a handed callable may retain it there, `HoldsRaw`), and a raw layer stating an Origin no longer needs
+    the raw input's Type to fit (R-B4's fit).
 
 - **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
   design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
@@ -8955,6 +8958,44 @@ resumed by R4-M86 (2026-10-20).
   - No code changes. PLAN G303 (part-level raw reach) closes without implementation and its row goes; no `Own` split per root storage Type
     is needed. The test names and comments that say "interim" or "flip back" (MirBorrowsTest.Raw.cs, MirBorrowsTest.Referents.cs) change
     with R4's 15.6.4 example unit.
+- **BU-66 The hold walk keeps a raw input's own value at an abstract part only where a handed callable may retain it there, and at a
+  raw layer stating an Origin whatever its pointee Type** (2026-10-31; the BU planning session on R4's design option 3 for PLAN G297
+  (R4 notes `g297\design.md`), the owner's 「すべて推奨どおり」 (2026-10-30); unit bu83, split under DECISIONS Q12 into G297-1 and
+  G297-2 on the owner's 「GO」 (2026-10-31); fix round 1 on both reviews' B1 and BU's B2, decided by R4 (R4-M154's owner) and the
+  planning session after R4's probes (R4 notes `g297-probe\`); supersedes BU-30's "or an abstract part" and R-B4's Type fit) SPEC 15.6.4
+  (the abstract-Type sentence; "a raw layer retains ... as the borrow that Origin belongs to would"), 5.4, 5.7.
+  - Cause: `Binding.Held`'s arm `type.IsAbstract ||` gave every raw input but the output a Value row at any abstract part of an output's
+    writable storage, so the builder-served `placeEntry<i32, s/T>` kept the Dictionary handle in `T` and A5 stored its Loan in storage
+    the body does not own (ledger class a5-dict-pair; user calls of that shape alike). The arm is now `HoldsRaw`
+    (Binding.Retention.Sources.cs) at an abstract part (`Abstract`), which reads `retentionFills`, the computation's (raw input, carrier)
+    pairs; a fill with no carrier stands for every abstract part.
+  - Rule 2 at an abstract part (option (A)): "only where the premises make it one" means storage that can hold a value of the argument's
+    Type, of a part it holds by value, or a borrow formed through it; an Origin relation (`T` outlives `a`) does not make `T` such
+    storage, and no safe body puts a raw input into `*dst: T` without a handed callable (R4's P1: TypeMismatch_Kd). Rule 2's one test
+    is Storages' (the closure from the position's node; a carrier's reaches only rule 3's relations), so the hold walk adds no reach of
+    its own (G297-1's `RawReach` is deleted). TwoRawLayersOfOneOriginKeepTheirRows and BU's fTwo, fNested, fTwoInputs and fChain lose
+    their raw Values at `T`; the raw and borrowed twins agree.
+  - Rule 3 (a callable the contract hands the body may retain the input there): `ErasedFills`, from `AddErasedSignature`, fills each
+    carrier a handed callable's result holds or it writes through one of its raw inputs (the atoms `AddErasedRelations` reads) with
+    every contract raw input, whatever the pointee Types (SPEC 15.6.4 states no Type condition; a raw cast keeps the address and
+    provenance, 5.4; a pointer to a local holding the input is read through), never in that raw input's own pointee; `RetainsErased`
+    fills every abstract part of an erased callee's outputs with each of its raw inputs. The owner on SPEC 15.6.4 (2026-10-30, verbatim
+    「(a) 今の文面に含まれると読み、今の動作のまま進める」): the sentence covers an erased callee's own abstract result, so `T.make`
+    keeps the raw input (e1 stays an error).
+  - A raw layer stating an Origin or `static` (Held's stated-layer arm) keeps every raw input's own value whatever its pointee Type: no
+    SPEC sentence states a pointee-Type condition there, and R-B4's Type fit let a safe cast (`s.q = p@raw/u8` into a `raw/u8 during
+    a` Field, `p: raw/i32 during a`) escape (R4's P2, unsound on dev). The same cause as rule 3's gate: one rule, one place.
+  - Pending with the owner: whether SPEC 5.2's fit rule applies to a punned Place (R4's unsafe forms m1-m6); option (A) is sound if it
+    does, and G297 lands only after that answer.
+  - A pair layer keeps at its own position only its raw case (an unstated raw layer the call writes, where rule A keeps the raw inputs'
+    own values, what the arm gave); its owning cases are its target, now walked. Rule A's other rows there stay open (PLAN G332).
+  - No new `RetentionSource` form and no second rule. Moved rows (none a weakening; SPEC 15.6.4 as above): RetentionTest's
+    `f<T>(dst: uniq/Array<T>, p: raw/i32)` loses `1 Value`, `T is MakeW` with `p: raw/i32` gains it, TwoRawLayers loses its Values at
+    `T`; MirBorrowsTest's rawArg rows err only at putSlotBad, rawReq's at makeRawBad, fillRawBad, fill32Bad, fillPBad and useHBad,
+    rawCast's at cast8Bad, cast32Bad, same8Bad and same32Bad; the ledger: see the landing commit.
+  - Rejected (R4's design): filtering in A5 (A5 derives no retention, and its record is per storage); building the literal another way
+    (a clause for one form, user calls stay rejected). Rejected in fix round 1: option (B), RawReach's direction with a carrier-to-Field
+    edge (a second reach beside Storages' test; the twins disagree).
 
 - **BU-70 A published row names the Callable input an operation calls: `PublishedRow.Calls`; `truncate` and `removeAll` have rows**
   (2026-10-27, chosen 2026-10-31; PLAN G264 U0′, a Full change under WORKFLOW Q11: BU's design-first candidate `claude/bu-u0p-design`

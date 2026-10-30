@@ -101,6 +101,11 @@ public sealed partial class MirBorrowsTest
     private const string WkMoved = "var v = value@move\nvar slot = other@move\nlet child: uniq/i32 during o = v\n";
     private const string WkEHead = "value: s/T, other: uniq/(s/T), x: T";
 
+    // The G297 rows' bodies (DECISIONS BU-66): a raw handle on the local `b`; a requirement's `T` made from a raw pointer to `w`, which
+    // refers to `y`.
+    private const string WkRawHandle = "var b: i32 = 0\nlet r = b@uniq\n";
+    private const string WkRawMake = "var y: i32 = 1\nvar w: ref/i32 = y@ref\nvar slot: raw/u8 = null\nlet t = T.make(p: slot@raw, q: w@raw@raw/u8)\n";
+
     // Each row's program, without WkHelpers.
     private static readonly Dictionary<string, string> WkForms = new(StringComparer.Ordinal)
     {
@@ -149,6 +154,18 @@ public sealed partial class MirBorrowsTest
             WkForm("sneakRN", "<T>(w: uniq/(ref/i32 during o), y: ref/T during o) -> ()\n    T is N\n", "w@follow = y.n()") +
             WkForm("rnUse", "<T>(t: T, z: ref/i32 during o) -> ()\n    T is N\n", "var w = z\nlet b = t@ref\nsneakRN(w@uniq, b)\nconsume(t@move)\n_ = w@follow"),
         ["F2"] = WkTwins("uniqAnyBad", "uniqAnyLate", "<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n", "var v = value@move\n" + WkPut, "look(slot@ref)", "v@follow = x@move"),
+        ["rawArg"] = "unsafe func putRaw<V>(handle: raw/i32, value: V) => ()\nunsafe func putSlot(handle: raw/i32, slot: uniq/(raw/i32)) => ()\n" +
+            WkForm("dictPairOk", WkRawPair("x: s/T, y: s/T", "owner or uniq"), "let d: Dictionary<i32, s/T> = [1: x]\nlet k = d.length") +
+            WkForm("dictTwoOk", WkRawPair("x: s/T, y: s/T", "owner or uniq"), "let d: Dictionary<i32, s/T> = [1: x, 2: y]\nlet k = d.length") +
+            WkForm("dictUniqOk", "<T>(x: uniq/T) -> ()\n    T is Copy\n", "let d: Dictionary<i32, uniq/T> = [1: x]\nlet k = d.length") +
+            WkForm("dictMovedOk", "<s/T>(x: s/T) -> ()\n    s is owner or uniq\n", "let d: Dictionary<i32, s/T> = [1: x@move]\nlet k = d.length") +
+            WkForm("dictRefUniqOk", WkRawPair("x: s/T", "ref or uniq"), "let d: Dictionary<i32, s/T> = [1: x]\nlet k = d.length") +
+            WkForm("arrPairOk", WkRawPair("x: s/T, y: s/T", "owner or uniq"), "let a: Array<s/T> = [x, y]\nlet k = a.length") +
+            WkForm("putRawOk", WkRawPair("x: s/T", "owner or uniq"), WkRawHandle + "unsafe => putRaw(r@follow@raw, x)\nb = 1") +
+            WkForm("putRawUniqOk", "<T>(x: uniq/T) -> ()\n    T is Copy\n", WkRawHandle + "unsafe => putRaw(r@follow@raw, x)\nb = 1") +
+            WkForm("putRawDeadOk", "<T>(x: T) -> ()\n    T is Copy\n", "var t = x\n" + WkRawHandle + "unsafe => putRaw(r@follow@raw, t@uniq)\nb = 1") +
+            WkForm("putRawLiveOk", "<T>(x: T) -> ()\n    T is Copy\n", "var t = x\n" + WkRawHandle + "unsafe => putRaw(r@follow@raw, t@uniq)\nb = 1\nlet u = t") +
+            WkForm("putSlotBad", "() -> ()\n", WkRawHandle + "var s: raw/i32 = null\nunsafe => putSlot(r@follow@raw, s@uniq)\nb = 1\nlook(s@ref)"),
 
         // M3 with R1 (a Loan on a part: the storage the call writes is the Place the Loan names, its holder the Place's root).
         ["partLoan"] = WkLf +
@@ -327,6 +344,21 @@ public sealed partial class MirBorrowsTest
                 "<T, F>(value: uniq/i32 during o, other: T, make: ref/F) -> ()\n    F is Callable<(Wrap{w}) -> T>\n    origin w.a == o\n",
                 WkMoved + "let wr = Wrap.init(r: child@move)\nsneakC(slot@uniq, wr@move, make)",
                 "slot"),
+        ["rawReq"] = "contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\ncontract MakeP\n    func make(p: raw/(raw/i32)) -> Self\n" +
+            "func fillRaw<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return\nfunc fillBare<T>(dst: uniq/T, p: raw/u8) => ()\n" +
+            WkForm("fill32", "<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n", "var slot: raw/u8 = null\ndst@follow = T.make(p: slot@raw, q: p@raw/u8)") +
+            WkForm("fillP", "<T>(dst: uniq/T, p: raw/i32)\n    T is MakeP\n", "var s = p\ndst@follow = T.make(p: s@raw)") +
+            WkForm("useH", "<T>(dst: uniq/T, p: raw/i32, mk: (raw/u8) -> T)\n", "dst@follow = mk(p@raw/u8)") +
+            WkForm("fill32Bad", "<T>(x: T) -> ()\n    T is MakeW\n", WkRawFill("fill32", "i32") + "y = 5\nconsume(t@move)") +
+            WkForm("fillPBad", "<T>(x: T) -> ()\n    T is MakeP\n", WkRawFill("fillP", "i32") + "y = 5\nconsume(t@move)") +
+            WkForm("useHBad", "<T>(x: T, mk: (raw/u8) -> T) -> ()\n", WkRawFill("useH", "i32", ", mk@move") + "y = 5\nconsume(t@move)") +
+            WkForm("makeRawBad", "<T>() -> ()\n    T is MakeW\n", WkRawMake + "y = 5\nconsume(t@move)") +
+            WkForm("makeRawOk", "<T>() -> ()\n    T is MakeW\n", WkRawMake + "consume(t@move)\ny = 5") +
+            WkForm("fillRawBad", "<T>(x: T) -> ()\n    T is MakeW\n", WkRawFill("fillRaw") + "y = 5\nconsume(t@move)") +
+            WkForm("fillBareLate", "<T>(x: T) -> ()\n", WkRawFill("fillBare") + "y = 5\nconsume(t@move)"),
+        ["rawCast"] = "func usep(p: raw/u8) => ()\n" + WkCastHolder("S8", "u8") + WkCastHolder("S32", "i32") +
+            WkCastTwins("cast8", "S8", "u8", "raw/i32", "p@raw/u8") + WkCastTwins("same8", "S8", "u8", "raw/u8", "p") +
+            WkCastTwins("cast32", "S32", "i32", "raw/i32", "p@raw/u8") + WkCastTwins("same32", "S32", "i32", "raw/u8", "p"),
     };
 
     // M3, SPEC 15.6.4 with R1: a call keeps what the direct stores its Types permit would keep, whatever the storage's position or identity:
@@ -385,6 +417,11 @@ public sealed partial class MirBorrowsTest
     // fits a `ref/i32` position, so rhUse errs though sneakRH stores nothing, and rnUse, whose requirement `n` lets it store a borrow of a
     // part of `t` into `*w`, must.
     [InlineData("abstractRef", "rhUse: t 1|rnUse: t 1")]
+    // A raw argument's own value alike (PLAN G297, DECISIONS BU-66): no premise makes T one, so the builder's placeEntry keeps no handle in
+    // a pair carrier's `T` (Dictionary literals; Array literals, which place their elements through no raw handle, beside them) and
+    // neither does a user call's (putRaw*); a raw layer that can hold it does (putSlotBad, rule A). Fails on dev by design: dictPairOk,
+    // dictTwoOk, dictMovedOk and dictRefUniqOk `[1: x…]` 3, dictUniqOk 1, putRawOk `b = 1` 3, putRawUniqOk, putRawDeadOk, putRawLiveOk 1.
+    [InlineData("rawArg", "putSlotBad: b = 1 1")]
     public void AnAbstractTypeHoldsOnlyWhatItsPremisesMakeIt(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -469,6 +506,16 @@ public sealed partial class MirBorrowsTest
     // `r`. Fails on 295224f0e (since 4b58be003): setGetOk and setAddOk err at `s` (the erased signature's Binder was the accessor's
     // FunctionKoto, so the setter's own Origins read as fixed).
     [InlineData("erasedSetter", "setHeldBad: s.item = 9 CallActivationConflict_Kd 1")]
+    // A raw argument's own value (DECISIONS BU-66): the erased requirement `T.make` (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、
+    // 今の動作のまま進める」) and fillRaw, whose premise hands it `make`, keep the pointer to `w` in `t`; fillBare, handed nothing, does not.
+    // Fails on dev by design: fillBareLate `y = 5` 1. Rule 3 reads no Type (SPEC 15.6.4, 5.4: a raw cast keeps the address and
+    // provenance; G297 fix 1): fill32 casts `p` to `make`'s `raw/u8`, fillP hands a pointer to a local holding it, useH casts it into a
+    // handed callable value; each keeps the pointer to `w` in `t`. Fails on fd7058a42: fill32Bad, fillPBad and useHBad valid.
+    [InlineData("rawReq", "fill32Bad: y = 5 1|fillPBad: y = 5 1|fillRawBad: y = 5 1|makeRawBad: y = 5 1|useHBad: y = 5 1")]
+    // A raw layer stating an Origin retains a raw argument's own value whatever its pointee Type (SPEC 15.6.4: as the borrow its Origin
+    // belongs to would; 5.4: a raw cast keeps the address; DECISIONS BU-66, R4's P2): cast8 and cast32 store `p: raw/i32` as a `raw/u8`
+    // into `s.q`, as same8 and same32 store a `raw/u8`. Fails on dev and fd7058a42 (R4's probe): cast8Bad and cast32Bad valid.
+    [InlineData("rawCast", "cast32Bad: y = 5 1|cast8Bad: y = 5 1|same32Bad: y = 5 1|same8Bad: y = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -500,6 +547,29 @@ public sealed partial class MirBorrowsTest
     // Template P's head (problem r2 §2): a pair binding admitting owner and uniq, a Copy T and `var v = value@move`.
     private static string WkPair(string parameters = "value: s/T, other: s/T, x: T")
         => $"<s/T>({parameters}) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n";
+
+    // A G297 row's head (DECISIONS BU-66): a pair binding admitting `cases` over a Copy T; and its body filling the local `t` through
+    // `callee` from a raw pointer to `w`, which refers to `y`.
+    private static string WkRawPair(string parameters, string cases) => $"<s/T>({parameters}) -> ()\n    s is {cases}\n    T is Copy\n";
+
+    // A G297 cast row's holder (R4's P2): a struct whose `raw/u8 during a` Field `q` shares its Origin with a `ref/<anchor> during a` Field.
+    private static string WkCastHolder(string name, string anchor)
+        => $"struct {name} {{a}}\n    public var q: raw/u8 during a\n    public let r: ref/{anchor} during a\n    public init(r: ref/{anchor} during a)\n" +
+            "        self.q = null\n        self.r = r\n";
+
+    // A cast row's twins: `{name}` stores `p: {pointer} during k.a` as `{stored}` into `s.q`; the Ok form uses `s.q` before `y = 5`.
+    private static string WkCastTwins(string name, string holder, string anchor, string pointer, string stored)
+        => $"func {name}(s: uniq/{holder}{{k}}, p: {pointer} during k.a) => s.q = {stored}\n" +
+            WkTwins(
+                $"{name}Ok",
+                $"{name}Bad",
+                "() -> ()\n",
+                $"var z: {anchor} = 0\nvar y: i32 = 1\nlet w = y@ref\nlet bw = w@ref\nvar s = {holder}.init(z@ref)\n{name}(s@uniq, bw@follow@raw@{pointer})",
+                "usep(s.q)",
+                "y = 5");
+
+    private static string WkRawFill(string callee, string pointee = "u8", string more = "")
+        => $"var t = x@move\nvar y: i32 = 1\nvar w: ref/i32 = y@ref\n{callee}(t@uniq, w@raw@raw/{pointee}{more})\n";
 
     // A function: its name, its head (what follows the name, Constraint lines included) and its body, one line per `\n`.
     private static string WkForm(string name, string head, string body = "")
