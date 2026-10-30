@@ -273,9 +273,7 @@ public partial class ClosureResultOriginTest
     }
 
     // The returned Closure at a Callable proof or an erasure (problem-draft §4.4; SPEC 8.10, 10.7, 15.4.3 rule 2, 7.7.4): its result keeps
-    // its own input or no Origin (valid), while a result over the maker's ρ or input cannot fit `Callable<() -> ref/i32>`, whose omitted
-    // result Origin is `static`: a Refuted chain, UnsatisfiedConstraint_Kd at the argument (problem-check K1, replacing the owner's interim
-    // 「暫定として認める」 for q2 and q6, whose premise was a valid form; dev: UnprovenConstraint_Kd). An erasure needs an Owned
+    // its own input or no Origin (valid); a result over the maker's ρ or input is Refuted (...PendingG326 below). An erasure needs an Owned
     // environment (q10).
     [Theory]
     [InlineData(
@@ -295,24 +293,24 @@ public partial class ClosureResultOriginTest
         Apply + Use + "    let n: i32 = 1\n    let outer = func [n] () => func [n@ref] () => n@follow\n    let a = outer()\n    let r = apply(a)\n" + MainUnit,
         Constraint + " let r = apply(a)",
         Constraint + " a")]
-    [InlineData(
-        "q2_nested",
-        CallableRef + Use + "    let outer = func (x: i32) => func [x] () => func [x@ref] () => x\n    let m = outer(3)\n    let a = m()\n" + ApplyRef + MainUnit,
-        Constraint + " let r = apply(a@ref)",
-        Constraint + " a@ref")]
-    [InlineData("q3_input", CallableRef + Use + InputMaker + "    let a = outer(local@ref)\n" + ApplyRef + MainUnit, Constraint + " let r = apply(a@ref)", Constraint + " a@ref")]
-    [InlineData(
-        "q6_receiver",
-        CallableRef + Use + "    let n: i32 = 1\n    let outer = func [n] () => func [n@ref] () => n\n    let a = outer()\n" + ApplyRef + MainUnit,
-        Constraint + " let r = apply(a@ref)",
-        Constraint + " a@ref")]
-    [InlineData(
-        "q9_called",
-        "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    _ = f()\n    return 0\n" + Use + InputMaker + "    let a = outer(local@ref)\n" + ApplyRef + MainUnit,
-        Constraint + " let r = apply(a@ref)",
-        Constraint + " a@ref")]
     public void AReturnedClosureKeepsItsImagesAtACallableProofOrAnErasure(string form, string source, string mir, string? published)
         => AssertSides(form, source, mir, published);
+
+    // Kept apart, not counted for G273 (PLAN G326; R4's G273 decision K4). SPEC 15.4.3 rule 2, 15.6.5 (problem-check K1, replacing the
+    // owner's interim 「暫定として認める」 for q2 and q6, whose premise was a valid form): `Callable<() -> ref/i32>` has no borrowed input,
+    // so its omitted result Origin is `static`, and a result over the maker's ρ (q2, q6) or input (q3, q9) would have to outlive it: a
+    // Refuted chain, UnsatisfiedConstraint_Kd at the argument (MIR side at the `apply` line, published at `a@ref`). Dev's Callable proof
+    // answers Unknown where the relation is Refuted, G326's cause and not G273's, so the rows pin dev's UnprovenConstraint_Kd at the
+    // argument. They join the counted theory above with that verdict when G326 lands.
+    [Theory]
+    [InlineData("q2_nested", CallableRef + Use + "    let outer = func (x: i32) => func [x] () => func [x@ref] () => x\n    let m = outer(3)\n    let a = m()\n" + ApplyRef + MainUnit)]
+    [InlineData("q3_input", CallableRef + Use + InputMaker + "    let a = outer(local@ref)\n" + ApplyRef + MainUnit)]
+    [InlineData("q6_receiver", CallableRef + Use + "    let n: i32 = 1\n    let outer = func [n] () => func [n@ref] () => n\n    let a = outer()\n" + ApplyRef + MainUnit)]
+    [InlineData(
+        "q9_called",
+        "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    _ = f()\n    return 0\n" + Use + InputMaker + "    let a = outer(local@ref)\n" + ApplyRef + MainUnit)]
+    public void AReturnedClosureKeepsItsImagesAtACallableProofPendingG326(string form, string source)
+        => Assert.Equal((form, $"{nameof(DiagnosticCode.UnprovenConstraint_Kd)} a@ref"), (form, Records(source)));
 
     // Raw-layer positions (problem-draft §4.5; SPEC 5.7, 15.6.5): an Origin a raw layer obtains by substituting the maker's input or
     // receiver belongs to what that Origin comes from, so returning or storing it fits a written Origin it outlives (a17, a18_ok) and is
