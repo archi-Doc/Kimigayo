@@ -9000,10 +9000,12 @@ resumed by R4-M86 (2026-10-20).
   - The contract: a failed contract's bound clauses (`RejectedRelations`) and its failed clauses' bound Origins with their direction (on
     `OriginDeclaration`) are read only by dependence queries. A dependence query decides whether a relation that already failed is
     derived, so it only ever removes a dependent report: the declaration judge's rows and the fit judge's records with no Unbound end.
-    Each reads them wherever the premise extraction reads that contract (R1 and a Type's premises, substituted). Every other request
-    still sees the contract unavailable. The state is `readingFailedContracts` in `Binding.OriginPremises.cs` (the premise component),
-    set by both judges, replacing Chains.cs's `judgingDeclarationRows`; it outlives R6-check, since fixed-fixed fit records stay
-    Binding's until R7.
+    The fit judge's query reads them wherever the premise extraction reads that contract (R1 and a Type's premises, substituted); the
+    declaration judge reads the bound clauses at R1 only (the limit below). Each judge's own requests read them; a request nested in
+    their extraction (a capability proof whose summary is kept, for one) and every other request still see the contract unavailable.
+    The state is `readingFailedContracts`, the premise depth of the judges' own requests, in `Binding.OriginPremises.cs` (the premise
+    component), set by both judges, replacing Chains.cs's `judgingDeclarationRows`; it outlives R6-check, since fixed-fixed fit
+    records stay Binding's until R7.
   - The query (`DependenceCause`, Binding.OriginDeclarations.Failures.cs; R4's conditions): decided once, where the record is formed
     (RecordOriginChains), as its typed cause; no consumer re-runs a proof to decide or explain it. One premise extraction at the use,
     run only for a failed record with no Unbound end (that one keeps the ancestor walk, R4-M118, until R6-check). The record is derived

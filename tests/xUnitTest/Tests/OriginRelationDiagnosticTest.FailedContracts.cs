@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -11,6 +12,10 @@ namespace XunitTest;
 // valid twin where it has one: the first rows report the twin's record (independent), the rest stay derived (dependent).
 public partial class OriginRelationDiagnosticTest
 {
+    // A function returning a pair binder's value whose Origin slot exists only in the binder's borrow cases.
+    private const string PairReturn = "func g<s/T>(a: ref/i32, b: ref/i32, c: ref/i32, x: s/T during b) -> s/T during a\n    s is owner or ref\n" +
+        "    T is Copy\n";
+
     /// <summary>Gets each form with a failed contract and its Origin records, with its repair or valid twin (or null) and the twin's.</summary>
     public static TheoryData<string, string[], string?, string[]> FailedContracts => new()
     {
@@ -341,6 +346,14 @@ public partial class OriginRelationDiagnosticTest
             "func h(o: ref/D{y}, p: ref/D{w}) -> ref/i32 during w.a => o.rb\n",
             ["UnprovenOriginRelation_Kd o.rb"]
         },
+
+        // A position that exists only in the pair binder's borrow cases (the record's Condition): `b == zz`'s repair `b == a` proves it,
+        // `c == zz`'s does not.
+        { PairReturn + "    origin b == zz\n    return x\n", [], PairReturn + "    origin b == a\n    return x\n", [] },
+        {
+            PairReturn + "    origin c == zz\n    return x\n", [Unproven + "x"], PairReturn + "    origin c == a\n    return x\n",
+            [Unproven + "x"]
+        },
     };
 
     [Theory]
@@ -352,5 +365,20 @@ public partial class OriginRelationDiagnosticTest
         {
             Assert.Equal(twinRecords, OriginRecords(twin + Main));
         }
+    }
+
+    // A warm rebind decides a failed contract's dependents from reused storage: a dependent record (r-m-other) and an independent one
+    // (a-fn-clause).
+    [Theory]
+    [Trait("Purpose", "Allocation")]
+    [InlineData("struct D {a, b}\n    origin b outlives a\n    origin a == zz\n    public let ra: ref/i32 during a\n" +
+        "    public let rb: ref/i32 during b\n    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n        self.ra = ra\n        self.rb = rb\n" +
+        "    public func m(self: ref/Self, other: ref/D{y}) -> ref/i32 during y.a => other.rb\n")]
+    [InlineData("func g(a: ref/i32, b: ref/i32, l: ref/i32) -> ref/i32 during a\n    origin b == zz\n    return l\n")]
+    public void AWarmRebindDecidesAFailedContractsDependentsWithoutAllocating(string source)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 }

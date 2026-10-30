@@ -147,16 +147,15 @@ public sealed partial class Binding
     private Koto? DependenceCause(BoundOrigin longer, BoundOrigin shorter, bool equality, Koto use, ulong condition)
     {
         var saved = this.readingFailedContracts;
-        this.readingFailedContracts = true;
+        this.readingFailedContracts = this.originPremiseDepth;
         var environment = this.RentPremises(use);
-        if (environment is null)
-        {
-            this.readingFailedContracts = saved;
-            return null;
-        }
-
         try
         {
+            if (environment is null)
+            {
+                throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
+            }
+
             var closure = environment.Closure;
             environment.Dependence = true;
             this.CollectOriginResolvers(environment);
@@ -193,7 +192,10 @@ public sealed partial class Binding
         finally
         {
             this.readingFailedContracts = saved;
-            this.ReturnPremises(environment);
+            if (environment is not null)
+            {
+                this.ReturnPremises(environment);
+            }
         }
     }
 
@@ -242,7 +244,7 @@ public sealed partial class Binding
 
         for (var node = 0; owner is not null && node < closure.NodeCount; node++)
         {
-            if (closure.Origin(node) is { Kind: OriginKind.Parameter or OriginKind.Input or OriginKind.Projection, Binder: { } binder } &&
+            if (closure.Origin(node) is { Binder: { } binder } origin && Declared(origin) &&
                 OriginOwner(binder) is { } declared && Encloses(declared, owner) && closure.Entails(longer, node, condition))
             {
                 return true;
@@ -250,6 +252,10 @@ public sealed partial class Binding
         }
 
         return false;
+
+        // A declared Origin: a slot or an input, or a binding set's slot; never a body atom such as a parameter Place's Borrow.
+        static bool Declared(BoundOrigin origin)
+            => origin.Kind is OriginKind.Parameter or OriginKind.Input || (origin.Kind == OriginKind.Projection && origin.Binder is TypeSemanticsKoto { BindingSetName: not null });
 
         static bool Encloses(Koto ancestor, Koto node)
         {

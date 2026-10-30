@@ -59,6 +59,19 @@ public sealed partial class Binding
         this.originTwins?.Clear();
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M133, BU-69): the failed clause a failure that no chain in `relationScratch` refutes rests on, decided
+    // once where the record is formed (FailedOriginEnvironment); a refuted chain stays independent.
+    private Koto? UnrefutedCause(Koto node, in OriginRelationFact recorded)
+    {
+        var refuted = recorded.Refuted;
+        foreach (var chain in this.relationScratch)
+        {
+            refuted |= chain.Refuted;
+        }
+
+        return refuted ? null : this.FailedOriginEnvironment(node, recorded);
+    }
+
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records (RecordOriginChains). A position the relation judge fails records every failed chain; a position that is only unproven is
     // recorded when an end is unresolved and is otherwise Unsupported, unless a failed Origin environment explains it. A record at a
@@ -70,30 +83,34 @@ public sealed partial class Binding
         var all = this.relationScratch;
         all.Clear();
         OriginRelationFact recorded;
+        Koto? cause;
         if (new OriginFitSearch(this, node, this.formingBody, OriginFitMode.Judged, all).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is
             { } relation)
         {
             recorded = relation;
+            cause = this.UnrefutedCause(node, recorded);
         }
         else if (new OriginFitSearch(this, node, this.formingBody, OriginFitMode.Proof).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is
             { } unproven)
         {
             // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
             // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
-            if (unproven.Longer.Kind != OriginKind.Unbound && unproven.Shorter.Kind != OriginKind.Unbound && this.FailedOriginEnvironment(node, unproven) is null)
+            cause = this.FailedOriginEnvironment(node, unproven);
+            if (unproven.Longer.Kind != OriginKind.Unbound && unproven.Shorter.Kind != OriginKind.Unbound && cause is null)
             {
                 this.Fail(node, BindingFailure.Unsupported);
                 return true;
             }
 
             all.Add(recorded = unproven);
+            cause = unproven.Refuted ? null : cause;
         }
         else
         {
             return false;
         }
 
-        if (this.RecordOriginChains(node, at, this.formingBody, expected, recorded))
+        if (this.RecordOriginChains(node, at, this.formingBody, expected, recorded, cause))
         {
             _ = this.CheckTypeUse(actual, expected, node);
         }
@@ -104,19 +121,12 @@ public sealed partial class Binding
     // SPEC 15.6.1, 23.1.2 (DECISIONS R4-M133): the one recording of an Origin relation failure's chains, a fit's at binding time and a
     // pending relation's at its Closure's classification: the chains in `relationScratch`, `recorded` the node's own record and the
     // others published with it (RecordMoreRelation), each at `at` with the destination Type (none for a relation without one). A
-    // failure that no chain refutes is a dependent of the failed clause its failed Origin environment names (FailedOriginEnvironment;
-    // DECISIONS BU-69) instead. Returns whether a recorded
-    // chain is a body chain of `body`, its ends resolved at the use; the node is then a twin (DECISIONS R4-M108, R4-M111).
-    private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded)
+    // failure with a `cause`, the failed clause it rests on (UnrefutedCause), is that clause's dependent instead. Returns whether a
+    // recorded chain is a body chain of `body`, its ends resolved at the use; the node is then a twin (DECISIONS R4-M108, R4-M111).
+    private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded, Koto? cause)
     {
         var all = this.relationScratch;
-        var refuted = recorded.Refuted;
-        for (var i = 0; i < all.Count; i++)
-        {
-            refuted |= all[i].Refuted;
-        }
-
-        if (!refuted && this.FailedOriginEnvironment(node, recorded) is { } cause)
+        if (cause is not null)
         {
             all.Clear();
             this.CompleteDependent(node, cause);

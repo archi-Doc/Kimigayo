@@ -15,10 +15,11 @@ public sealed partial class Binding
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
     private int originPremiseDepth;
 
-    // DECISIONS BU-62, BU-69: set by the two dependence queries, the declaration judge (JudgeDeclarationRows) and the fit judge's
-    // (DependenceCause); while it is set the extraction reads each failed contract it meets (ReadFailedContract). Every other request
-    // sees a failed contract unavailable.
-    private bool readingFailedContracts;
+    // DECISIONS BU-62, BU-69: the premise depth whose requests read failed contracts (ReadFailedContract), set by the two dependence
+    // queries, the declaration judge (JudgeDeclarationRows) and the fit judge's (DependenceCause), for their own requests only; -1 when
+    // none. A request nested in their extraction, such as a capability proof whose summary is kept, sees a failed contract unavailable,
+    // as every other request does.
+    private int readingFailedContracts = -1;
 
     // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
     // whether any of them still references an Origin, a Type, a declaration or syntax.
@@ -102,7 +103,8 @@ public sealed partial class Binding
             this.originPremiseEnvironments.Add(new());
         }
 
-        var environment = this.originPremiseEnvironments[this.originPremiseDepth++];
+        var environment = this.originPremiseEnvironments[this.originPremiseDepth];
+        environment.ReadsFailedContracts = this.originPremiseDepth++ == this.readingFailedContracts;
         environment.Use = use;
         return environment;
     }
@@ -208,7 +210,7 @@ public sealed partial class Binding
                 this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
             {
                 this.AddDeclarationPremises(environment, declaration.Relations);
-                if (this.readingFailedContracts && declaration.Failure is not null)
+                if (environment.ReadsFailedContracts && declaration.Failure is not null)
                 {
                     this.ReadFailedContract(environment, declaration, OriginPremiseRule.Declaration, null);
                 }
@@ -454,8 +456,11 @@ public sealed partial class Binding
 
         internal BindingScope? Scope { get; set; }
 
-        // A dependence query's reads of failed contracts (DECISIONS BU-69): each read's failed clause, its bound clauses by read, and a
-        // repair of each failed clause with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
+        // Whether this request is a dependence query's own, which reads failed contracts (readingFailedContracts; DECISIONS BU-69).
+        internal bool ReadsFailedContracts { get; set; }
+
+        // A fit's dependence query's reads of failed contracts (DECISIONS BU-69): each read's failed clause, its bound clauses by read,
+        // and a repair of each failed clause with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
         internal bool Dependence { get; set; }
 
         internal List<Koto> Reads { get; } = new();
@@ -473,6 +478,7 @@ public sealed partial class Binding
             this.Resolvers.Clear();
             this.Use = null!;
             this.Scope = null;
+            this.ReadsFailedContracts = false;
             this.Dependence = false;
             this.Reads.Clear();
             this.Rejected.Clear();

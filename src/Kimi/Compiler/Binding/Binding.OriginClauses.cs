@@ -101,7 +101,8 @@ public sealed partial class Binding
     {
         this.callRelationScratch.Clear();
         this.CollectDeclarationRows();
-        this.readingFailedContracts = true;
+        var saved = this.readingFailedContracts;
+        this.readingFailedContracts = this.originPremiseDepth;
         try
         {
             foreach (var (row, longer, shorter) in this.fixedRows)
@@ -114,7 +115,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.readingFailedContracts = false;
+            this.readingFailedContracts = saved;
         }
 
         foreach (var row in this.unboundRows)
