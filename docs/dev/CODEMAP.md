@@ -10,11 +10,10 @@ The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live 
 [`verify.ps1`](../../scripts/verify.ps1) owns build/test execution and input stability;
 [`verification-selection.ps1`](../../scripts/verification-selection.ps1) owns selector normalization, discovery checks and the executed-test count;
 [`verification-inputs.ps1`](../../scripts/verification-inputs.ps1) owns source/NuGet manifests and Git-normalized matching;
-[verification-native.ps1](../../scripts/verification-native.ps1) reads native success and pending-coverage evidence (VerificationNativeTest.ps1);
+[verification-native.ps1](../../scripts/verification-native.ps1) reads native success evidence (VerificationNativeTest.ps1);
 [`verify-commit.ps1`](../../scripts/verify-commit.ps1) associates successful evidence with exact committed inputs;
-[`compare-fixtures.ps1`](../../scripts/compare-fixtures.ps1) compares two runs' fixture evidence (behavior-preserving commits);
-[`codegen-pending.ps1`](../../scripts/codegen-pending.ps1) owns the R5 pending ledger (`tests/xUnitTest/TestData/codegen-pending/`), its sel report and gate, its write (`-UpdatePending`) and R5-M73's filing rule (`Get-KimiCodegenGroup`) (DECISIONS R5-M66, R5-M81, until G4).
-The matching script regressions are VerificationSelectionTest.ps1, VerificationInputsTest.ps1, FixtureComparisonTest.ps1 and CodegenPendingTest.ps1.
+[`compare-fixtures.ps1`](../../scripts/compare-fixtures.ps1) compares two runs' fixture evidence (behavior-preserving commits).
+The matching script regressions are VerificationSelectionTest.ps1, VerificationInputsTest.ps1 and FixtureComparisonTest.ps1.
 [test-scalars.ps1](../../src/backend/windows-x64/test-scalars.ps1) owns native fixture selection and aggregation;
 [test-scalar-fixture.ps1](../../src/backend/windows-x64/test-scalar-fixture.ps1) compiles each optimization level;
 [test-scalar-process.ps1](../../src/backend/windows-x64/test-scalar-process.ps1) owns executable lifetime and oracle comparison
