@@ -771,15 +771,16 @@ public sealed class RetentionTest
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66, R4-M154 rules 2 and 3): an abstract part holds a raw argument's own value
-    // only where the premises make it one (TwoRawLayersOfOneOriginKeepTheirRows) or where an erased callable the call may run may store
-    // a value of its Type there: `make`, which `T is MakeW` hands the body, returns a `T` from a `raw/u8` (`p`'s Type, not `raw/i32`'s);
+    // only where the premises make it one (TwoRawLayersOfOneOriginKeepTheirRows) or where an erased callable the call may run may retain
+    // the argument there: `make`, which `T is MakeW` hands the body, returns a `T` from raw pointers, whatever their pointee (a raw cast
+    // keeps the address, SPEC 5.4; G297 fix 1, fails on fd7058a42: `raw/i32` gave no row);
     // a requirement on an abstract Self is such a callee itself (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、今の動作のまま進
     // める」), so `T.make`'s result keeps both. A pair layer admitting `raw` is, in that case, a raw layer without an Origin the call
     // writes (rule A); one admitting only owner and uniq holds what its target `T` holds. `putRaw<s/T>`'s `value` keeps no handle
     // (PLAN G297; fails before: `store 1: own {0 Value, 1 Content}`).
     [Theory]
     [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
     [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]
