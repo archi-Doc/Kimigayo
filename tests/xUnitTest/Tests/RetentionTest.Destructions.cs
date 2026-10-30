@@ -36,14 +36,16 @@ public sealed partial class RetentionTest
 
     // SPEC 15.6.4, 4.9.6 (PLAN G264 U0′; DECISIONS BU-42, BU-47): a row changes no retention row, which reads the signature and the
     // premises' Callable bounds, never the body: `truncate` and `removeAll` over `Array<Writer>` write their receiver's unstated raw layers
-    // only in its referent (`0 Chain store 0, untied store 0, referent store 0`, as `clear` does), over an abstract `Array<T>` its content
-    // (`0 Content store 0, referent store 0`), and `removeAll` over `Array<i32>` with a Closure that captures raw pointers stores through
-    // the Closure's own raw layer alone (`untied store 1`). Guards: each row holds today and must hold after the rows are published.
+    // only in its referent (`store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0`, as `clear` does), over an abstract
+    // `Array<T>` its content (`store 0: own {0 Content}, reached {}, referent store 0`), and `removeAll` over `Array<i32>` with a Closure
+    // that captures raw pointers stores through the Closure's own raw layer alone (`untied store 1`). Guards: each row must hold after the
+    // rows are published; each holds on dev but the last, where dev prints `referent store 0` since BU-52's TransferWrites gate also
+    // covers the untied verdict (G266 fix 1): not re-pinned, the planning session's reading pending.
     [Theory]
-    [InlineData(Writer + "var a: Array<Writer> = []\na.truncate(0)\n", "truncate", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData(Writer + "var a: Array<Writer> = []\na.removeAll(matching: func (v) => true)\n", "removeAll", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("func g<T>(a: uniq/Array<T>) => a.truncate(0)\n", "truncate", "0 Content store 0, referent store 0")]
-    [InlineData("func g<T>(a: uniq/Array<T>) => a.removeAll(matching: func (v) => true)\n", "removeAll", "0 Content store 0, referent store 0")]
+    [InlineData(Writer + "var a: Array<Writer> = []\na.truncate(0)\n", "truncate", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData(Writer + "var a: Array<Writer> = []\na.removeAll(matching: func (v) => true)\n", "removeAll", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData("func g<T>(a: uniq/Array<T>) => a.truncate(0)\n", "truncate", "store 0: own {0 Content}, reached {}, referent store 0")]
+    [InlineData("func g<T>(a: uniq/Array<T>) => a.removeAll(matching: func (v) => true)\n", "removeAll", "store 0: own {0 Content}, reached {}, referent store 0")]
     [InlineData(
         RawStash + "var a: Array<i32> = [1]\nvar slot: raw/u8 = null\nlet p = slot@raw\nlet q: raw/u8 = null\na.removeAll(matching: func [p, q] (v) => stash(p, q))\n",
         "removeAll",
