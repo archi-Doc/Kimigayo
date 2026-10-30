@@ -45,6 +45,31 @@ public partial class CallableOriginForwardingTest
     private const string ClosureR3 = "func k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [q] () -> Option<ref/(ref/i32 during q) during r>\n" +
         "        let x: ref/i32 during r = q\n        return .None\n";
 
+    private const string LeakClosure = "    let c = func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static)\n        return (.None, x)\n";
+
+    private const string LeakTarget = "(ref/i32) -> (Option<ref/(ref/i32) during s>, ref/i32 during static)";
+
+    private const string StaticLeakTarget = "(ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static)";
+
+    private const string LeakApply = "func apply(s: ref/i32, g: " + LeakTarget + ") -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\n" +
+        "func k(s: ref/i32) -> ref/i32 during static\n";
+
+    private const string LeakLabel = "the result's well-formedness requires the omitted Origin of ref/i32 outlives static, which is not proven";
+
+    private const string NestedHead = "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: ((ref/(ref/i32 during c) during a) -> i32) -> ";
+
+    private const string NestedTarget = "((ref/(ref/i32 during b) during a) -> i32) -> ";
+
+    private const string Nested2Head = "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (((ref/(ref/i32 during c) during a) -> i32) -> i32) -> i32) -> i32\n";
+
+    private const string Nested2Target = "    let g: (((ref/(ref/i32 during b) during a) -> i32) -> i32) -> i32 = f@move\n    return 0\n";
+
+    private const string MemberHead = "func k(b: ref/i32, c: ref/i32, f: ((ref/i32 during c) -> i32) -> i32) -> i32\n";
+
+    private const string MemberTarget = "    let g: ((ref/i32 during b) -> i32) -> i32 = f@move\n    return 0\n";
+
+    private const string ErasedClosure = "func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None";
+
     // Conversions of Function values and Items: a relation the converted signature needs follows from the target's own well-formedness by
     // transitivity (t1c, t1d, t1o, t1j), by a meet (t1p) or combined with a premise of the use (e1, e1a, e1f, e1r); a Closure body assumes
     // its own result's well-formedness (rv1), which each call proves. The invalid twins drop the use premise, take a target that does not
@@ -92,6 +117,35 @@ public partial class CallableOriginForwardingTest
     [InlineData("c4_c", StrongerHead + "    let a: Array<" + WeakerTarget + "> = [f@move]\n    return 0\n", "")]
     public void AConversionAssumesItsTargetsOwnWellFormedness(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // G216 (a) T2, U2.1 (G216a-PLAN.md §3; ported from held/g216a-r3's rows and R4's implementation reviews 1-3): SPEC 15.3.7, 15.6.1,
+    // 10.7 and the owner's (a): every Callable comparison judges the implementation's own well-formedness from the target's own
+    // well-formedness and the use's premises, a Closure's at its erasure after selection: an initialization (e1x), a return (e1ret), a
+    // named call's argument (e1arg2) and a value call's argument (v1, R2-N1: at its argument, as e1arg2), each an UnprovenOriginContract_Kd
+    // at the Closure, whose body assumes its own result's well-formedness (dev records the body's `(.None, x)`, twins included); e1c (PLAN G277 (2), "same cause": its header fit and its conversion record are two judgments of one comparison) is
+    // valid by the target's own well-formedness and the premise, as e1x_c. A comparison nested in another assumes the enclosing required
+    // signature's well-formedness (nest1); without it the conversion's one record is Proof class (SPEC 15.6.1: a whole-contract
+    // comparison's Origin part is Proven or Unknown, never a Type mismatch) naming the member inside the nested Function Type (nest1_n,
+    // R2-B1), a nested member Origin (nest2) and depth 2 (nest2_n). Each twin takes a target or premise that gives the relation.
+    [Theory]
+    [InlineData("U2.1", "e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: " + LeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c", LeakLabel)]
+    [InlineData("U2.1", "e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
+    [InlineData("U2.1", "e1ret", "func mk(s: ref/i32) -> " + LeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginContract_Kd c", LeakLabel)]
+    [InlineData("U2.1", "e1ret_c", "func mk(s: ref/i32) -> " + StaticLeakTarget + "\n" + LeakClosure + "    return c\n", "", null)]
+    [InlineData("U2.1", "e1arg2", LeakApply + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginContract_Kd c@move", LeakLabel)]
+    [InlineData("U2.1", "e1arg2_c", "func apply(s: ref/i32 during static, g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\nfunc k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return apply(s, c@move)\n", "", null)]
+    [InlineData("U2.1", "v1", "func k(s: ref/i32, h: (ref/i32, " + LeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginContract_Kd c@move", LeakLabel)]
+    [InlineData("U2.1", "v1_c", "func k(s: ref/i32 during static, h: (ref/i32, " + StaticLeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "", null)]
+    [InlineData("U2.1", "e1c", "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "", null)]
+    [InlineData("U2.1", "e1c_n", "func k(q: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginContract_Kd " + ErasedClosure, null)]
+    [InlineData("U2.1", "nest1", NestedHead + "Option<ref/(ref/i32 during b) during a>) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "Option<ref/(ref/i32 during b) during a> = f@move\n    return 0\n", "", null)]
+    [InlineData("U2.1", "nest1_n", NestedHead + "i32) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "i32 = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's well-formedness requires b outlives a, which is not proven")]
+    [InlineData("U2.1", "nest2", MemberHead + MemberTarget, "UnprovenOriginContract_Kd f@move", null)]
+    [InlineData("U2.1", "nest2_ok", MemberHead + "    origin c outlives b\n" + MemberTarget, "", null)]
+    [InlineData("U2.1", "nest2_n", Nested2Head + "    origin c outlives b\n" + Nested2Target, "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's 1st parameter requires b outlives c, which is not proven")]
+    [InlineData("U2.1", "nest2_c", Nested2Head + "    origin c outlives b\n    origin b outlives c\n" + Nested2Target, "", null)]
+    public void EveryCallableComparisonJudgesTheImplementationsWellFormedness(string unit, string form, string body, string records, string? label)
+        => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
 
     // Not fixed yet (the owner's pending question about conversion records): a Loan conflict or TransferRequired_Kd independent of a
     // failed conversion stays beside the conversion's record (SPEC 23.1.2: records kept). Each twin's conversion holds and keeps the
