@@ -101,7 +101,7 @@ public class StringFunctionEmissionTest
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bytes);

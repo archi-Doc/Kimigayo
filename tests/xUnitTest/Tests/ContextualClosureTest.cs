@@ -41,7 +41,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -99,12 +99,12 @@ public class ContextualClosureTest(ITestOutputHelper output)
     public void WarmContextualBindingAndEmissionReuseTheirPlans()
     {
         var c = MinimalEmissionTest.Analyze("let text = \"owned\"\nlet f: () -> bool = func [text@move] () => text == \"owned\"\nrequire f() else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

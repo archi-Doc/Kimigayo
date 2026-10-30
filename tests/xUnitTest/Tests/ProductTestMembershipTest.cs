@@ -17,7 +17,7 @@ public class ProductTestMembershipTest
     public void ProductDoesNotBindOrAnalyzeTestBodies(string source)
     {
         var compilation = MinimalEmissionTest.Analyze(source);
-        Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.True(compilation.Binding.Startup.IsComplete);
         Assert.True(compilation.Analysis.IsVerified);
         Assert.Equal(1, compilation.Analysis.BodyCount);
@@ -77,7 +77,7 @@ public class ProductTestMembershipTest
     {
         var cases = kind == "enum" ? "    Value\n" : string.Empty;
         var compilation = MinimalEmissionTest.Analyze($"{kind} Container\n{cases}    #Test\n    func test() => Tests.missing()\nConsole.writeLine(\"product\")");
-        Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.True(compilation.Analysis.IsVerified);
     }
 
@@ -108,8 +108,8 @@ public class ProductTestMembershipTest
         var changed = MinimalEmissionTest.Analyze(Product + "#Test\nfunc renamed()\n    loop => Missing.second()");
         var first = new StringWriter();
         var second = new StringWriter();
-        Assert.True(original.WriteIr(first, out _));
-        Assert.True(changed.WriteIr(second, out _));
+        Assert.True(original.Generate(first));
+        Assert.True(changed.Generate(second));
         Assert.Equal(first.ToString(), second.ToString());
     }
 

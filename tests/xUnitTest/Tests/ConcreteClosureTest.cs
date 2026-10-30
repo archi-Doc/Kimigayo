@@ -17,7 +17,7 @@ public class ConcreteClosureTest
     public void NestedAcquisitionKeepsTheWrittenMoveRequirement(string name, string declaration, string result, string acquisition, SemanticsKind receiver)
     {
         var c = MinimalEmissionTest.Analyze(declaration + "\nlet outer = func [n] () => func [n" + acquisition + "] () => " + result + "\nlet first = outer()\nlet second = outer()\nrequire first() == 7 and second() == 7 else => $abort(\"nested\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var outer = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous && x.ClosureOf()!.Captures[0].Source.Kind == BindingSymbolKind.Local);
         Assert.Equal(receiver, outer.ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("ConcreteClosureNested" + name, CompilationTestHelper.WriteIr(c), string.Empty);
@@ -30,11 +30,11 @@ public class ConcreteClosureTest
     public void InfersConcreteEnvironmentAndReceiver(string source, SemanticsKind receiver)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!;
         Assert.Equal(BoundTypeKind.Closure, closure.EnvironmentType!.Kind);
         Assert.Equal(receiver, closure.Receiver);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -42,7 +42,7 @@ public class ConcreteClosureTest
     public void BindsExclusiveCallableContract()
     {
         var c = MinimalEmissionTest.Analyze("func apply<F>(f: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\nlet n: i32 = 0\nvar f = func [var n] () -> i32\n    n += 1\n    return n\napply(f@uniq)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -86,7 +86,7 @@ public class ConcreteClosureTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 

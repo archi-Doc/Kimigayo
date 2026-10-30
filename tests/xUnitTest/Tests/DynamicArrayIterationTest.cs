@@ -18,7 +18,7 @@ public class DynamicArrayIterationTest
     public void SelectsTheLibraryIterationEntry(string subject, string entry)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = [1, 2]\nfor value in " + subject + " => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.NotNull(loop.IterationOf().Entry);
         Assert.Equal(entry, Assert.IsType<IdentifierNameKoto>(Assert.IsType<MemberAccessKoto>(loop.IterationOf().Entry!.Method).Right).IdentifierName);
@@ -73,7 +73,7 @@ public class DynamicArrayIterationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }

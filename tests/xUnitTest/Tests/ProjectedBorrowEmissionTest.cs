@@ -35,7 +35,7 @@ public class ProjectedBorrowEmissionTest
         var c = MinimalEmissionTest.Analyze(Batch + "let values: [2 of i32] = [6, 7]\n" + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 }

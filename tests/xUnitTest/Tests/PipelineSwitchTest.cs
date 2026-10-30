@@ -108,7 +108,7 @@ public sealed class PipelineSwitchTest
         var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "public func first() => ()\npublic func second() => ()\n";
         var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
-        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
+        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c));
         if (test)
         {
             c.Tests.Discover(c); // As Project does after acceptance.
@@ -127,7 +127,7 @@ public sealed class PipelineSwitchTest
 
         Assert.True(c.WriteIr(TextWriter.Null, out var failure));
         Assert.Null(failure);
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
     }
 
@@ -273,7 +273,7 @@ public sealed class PipelineSwitchTest
             Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
             Assert.False(c.WriteIr(TextWriter.Null, out var failure));
             Assert.Contains("MIR", failure);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 
@@ -308,7 +308,7 @@ public sealed class PipelineSwitchTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(
             "Hello.kimi", "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\npublic func main() => ()\n"));
-        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c));
         var loop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single();
         var program = c.BuildMir();
         foreach (var arm in loop.Iteration!.Match.Arms)
@@ -413,7 +413,7 @@ public sealed class PipelineSwitchTest
         c.Binding.ReportDiagnostics();
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         c.Binding.ReportStartupDiagnostics();
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         return (string.Join('\n', TestDiagnostics.Of(c).Select(static x => x.ToString())), CompilationTestHelper.WriteIr(c));
     }
@@ -430,7 +430,7 @@ public sealed class PipelineSwitchTest
         c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", "#Test\nfunc sample() => ()"));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckTestStartup().IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
         return c.Tests.ManifestFields;
     }

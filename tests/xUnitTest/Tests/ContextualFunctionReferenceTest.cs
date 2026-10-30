@@ -27,7 +27,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         var arguments = actionFirst ? "action: choose, value: 41" : "value: 41, action: choose";
         var source = Functions + apply + "require apply(" + arguments + ") == 42 else => $abort(\"item\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "apply");
         Assert.Equal(BoundTypeKind.FunctionItem, call.CallOf()!.TypeArguments[1]!.Kind);
         Assert.All(call.ArgumentNodes, x => Assert.Null(x.ErasedTypeOf()));
@@ -123,7 +123,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     {
         const string Source = "func choose<T>(value: T) -> T => value@move\n" + Apply + "require apply(41, choose) == 41 else => $abort(\"generic\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "apply");
         Assert.Same(BoundType.I32, Assert.Single(call.CallOf()!.TypeArguments[1]!.Components));
         ScalarEmissionTest.EmitFixture("ContextualReferenceGeneric", Source, string.Empty);
@@ -139,7 +139,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         const string Source = Functions + Select + "func select<F>(action: ref/F, extra: i32 = 0) -> bool\n    F is Callable<(bool) -> bool>\n    return action(true)\n" +
             "require select(choose) == 42 else => $abort(\"winner\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "select");
         Assert.Equal(1, call.CallOf()!.Target.Declaration is FunctionKoto selected ? selected.Parameters.Count : 0);
         ScalarEmissionTest.EmitFixture("ContextualReferenceDiffering", Source, string.Empty);
@@ -191,12 +191,12 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     public void WarmReferenceSelectionAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ContextualFunctionReference);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

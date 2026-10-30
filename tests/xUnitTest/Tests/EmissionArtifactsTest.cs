@@ -270,7 +270,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             var c = MinimalEmissionTest.Analyze("Console.writeLine(\"日本語\")", Path.Combine(checkout, "Hello.kimi"));
             c.Project.Directory = checkout;
             using var writer = new StringWriter();
-            Assert.True(c.WriteIr(writer, out var error), error);
+            Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             return writer.ToString();
         }
 

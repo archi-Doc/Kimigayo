@@ -29,13 +29,13 @@ public class ConversionReadTest
     public void ReferenceOperandsSupplyTheirValue(string source, string type, string binding)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Last();
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
         Assert.Same(expected, conversion.TypeOf());
         Assert.Equal(binding, conversion.ConversionOf().Kind.ToString());
         Assert.True(c.Binding.ReadsReferent(conversion.Left));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class ConversionReadTest
     public void ReferenceTargetsKeepTheReference(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Last();
         Assert.False(c.Binding.ReadsReferent(conversion.Left));
     }

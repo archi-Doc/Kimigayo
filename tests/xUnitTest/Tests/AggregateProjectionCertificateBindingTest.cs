@@ -40,7 +40,7 @@ public class AggregateProjectionCertificateBindingTest
     public void ValidWitnessPreservesAggregate(int form, bool reverse)
     {
         var c = MinimalEmissionTest.Analyze(Source(form, reverse, "public"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         CheckConstruction(c, form, true);
         var restored = CompilationTestHelper.Reload(c);

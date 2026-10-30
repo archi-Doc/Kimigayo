@@ -14,7 +14,7 @@ public class AssociatedOriginRefinementTest
     public void RefinementFixesEveryAppliedOrigin()
     {
         var c = MinimalEmissionTest.Analyze(Declarations + "func f(x: ref/i32 during a) -> S.(Parent).Item(a) => 42");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(BoundType.I32, f.ReturnType!.TypeOf());
     }
@@ -23,7 +23,7 @@ public class AssociatedOriginRefinementTest
     public void GenericRefinementNormalizesToStepIndependentItem()
     {
         var c = MinimalEmissionTest.Analyze(Declarations + "func f<T>(value: T.(Parent).Item(a), source: ref/T during a) -> T.(Child).Value\n    T is Child\n    return value@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

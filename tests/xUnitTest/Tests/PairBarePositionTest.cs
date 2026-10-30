@@ -20,8 +20,8 @@ public sealed class PairBarePositionTest
     public void ABarePositionIsAcquiredPerCase(string definition)
     {
         var c = MinimalEmissionTest.Analyze(definition + "public func main() -> ()\n    var n: i32 = 1\n    _ = f(n" + (definition.Contains("x: T", StringComparison.Ordinal) ? ", 9" : definition.Contains("c: bool", StringComparison.Ordinal) ? ", true" : string.Empty) + ")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -40,8 +40,8 @@ public sealed class PairBarePositionTest
         Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidAssignment_Kd));
         var valid = source.Replace("let v = value@s", "var slot = value@move\n    let v = slot@s", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(valid);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         NativeAllocationAudit.WriteFixture("GenericAdaptationWritableSlot", valid, 0, 0, 0);
     }
 }

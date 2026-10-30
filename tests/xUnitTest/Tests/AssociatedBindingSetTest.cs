@@ -25,7 +25,7 @@ public class AssociatedBindingSetTest
         var source = Related + Family + "func f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")";
         ParseTestHelper.ParseSuccess(source);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -35,6 +35,6 @@ public class AssociatedBindingSetTest
     {
         var source = Related + "contract C\n    associate Item(a, b)\n        " + relation + "\nstruct S\n    Self is C\n    associate C.Item(a, b) is Related{view}\n        origin view.first == a\n        origin view.second == b";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

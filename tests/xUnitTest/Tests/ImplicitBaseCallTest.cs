@@ -147,7 +147,7 @@ public partial class ImplicitBaseCallTest
         var second = new SourceDocument("base.kimi", "open struct Base\n    protected init() => ()\nstruct Leaf: Base");
         c.Kotonoha.AddSource(reversed ? second : first);
         c.Kotonoha.AddSource(reversed ? first : second);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var leaf = c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>().Single(static x => x.Name == "Leaf");
         var initializer = leaf.ImplicitConstructor!.BaseInitializer!;
         Assert.Equal(("base.kimi", leaf.Bases[0].Span), (initializer.CodeContext.SourceDocument!.Path, initializer.Span));
@@ -160,12 +160,12 @@ public partial class ImplicitBaseCallTest
     {
         const string Source = "open struct Base<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    public let extra: i32 = 2\nstruct Absent: Base<i32>\n    public var other: i32 = 1\nopen struct Closed\n    private init() => ()\nstruct Unused: Closed\nlet leaf = Leaf<i64>.init()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -278,7 +278,7 @@ public partial class ImplicitBaseCallTest
         Assert.Same(initializer, constructor.BaseInitializer);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

@@ -41,7 +41,7 @@ public sealed class ChildMoveActivationTest
     public void AParentIsUsableAfterItsPlacedChildsLastUse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // The write through the parent meets the value that still holds the moved child's Loan, at the write, not at the call.
@@ -53,7 +53,7 @@ public sealed class ChildMoveActivationTest
     public void AParentUsedWhileTheMovedChildsLoanIsHeldIsRejectedAtTheUse(string source, string holder)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Ownership.Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.False(issue.Activation);
@@ -66,7 +66,7 @@ public sealed class ChildMoveActivationTest
     public void MovingAChildWhileItsOwnChildIsLiveIsRejected()
     {
         var c = MinimalEmissionTest.Analyze(Take + Child + "let d = c\ntake(c@move)\n_ = d@follow");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Ownership.Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.True(issue.Activation);
@@ -81,7 +81,7 @@ public sealed class ChildMoveActivationTest
     public void AParentPlacedWhileItsChildIsLiveInTheLiteralIsRejected(string body, string loan)
     {
         var c = MinimalEmissionTest.Analyze(Child + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Ownership.Issues);
         Assert.Equal(DiagnosticCode.PlacementActivationConflict_Kd, issue.Code);
         Assert.Equal(loan, issue.LoanSource!.ToString());
@@ -94,7 +94,7 @@ public sealed class ChildMoveActivationTest
     public void AParentUsedWhileItsPlacedChildIsLiveInTheLiteralIsRejected(string body)
     {
         var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nvar p = n@uniq\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Ownership.Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.False(issue.Activation);

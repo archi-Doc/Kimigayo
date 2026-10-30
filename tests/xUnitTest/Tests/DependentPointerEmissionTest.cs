@@ -28,8 +28,8 @@ public class DependentPointerEmissionTest
     {
         var source = "func read(pointer: raw/(" + type + ")) -> " + type + "\n    unsafe => return (*pointer)@move\nfunc replace(pointer: raw/(" + type + "), value: " + type + ")\n    unsafe => *pointer = value@move\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -58,14 +58,14 @@ public class DependentPointerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func read(pointer: raw/(ref/i32 during a)) -> ref/i32 during static\n    unsafe => return *pointer");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void AReferenceTransferredThroughOwningIterationProtectsItsReferent()
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet entries = [1: value@ref]\nfor (key, item) in entries@move\n    value = 99\n    require item == 42 else => $abort(\"reference\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -85,7 +85,7 @@ public class DependentPointerEmissionTest
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
 
         Compile();

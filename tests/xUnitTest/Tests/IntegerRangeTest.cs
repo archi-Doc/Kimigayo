@@ -184,7 +184,7 @@ public class IntegerRangeTest
     public void RejectsWhatTheRangeRulesDoNotAdmit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 4.6.2: each literal-only boundary takes the S or E of the expected range, else the integer Type of the other
@@ -202,7 +202,7 @@ public class IntegerRangeTest
     public void LiteralBoundariesTakeTheirTypeByRule(string source, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var r = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
         Assert.Equal(expected, Render(r.NameKoto.TypeOf()!));
 

@@ -18,7 +18,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
     {
         var source = ConfinedProgram(bounded);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(bounded, c.Analysis.IsVerified);
         if (!bounded)
         {
@@ -38,7 +38,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analyze().IsVerified);
         Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }

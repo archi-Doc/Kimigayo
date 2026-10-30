@@ -40,8 +40,8 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         var source = Source("let view = View.init(item@follow@ref)", "view.item", true);
         var path = Path.GetFullPath("stored-reborrow.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Validate(out _));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Generate(TextWriter.Null));
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
@@ -76,7 +76,7 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         var source = Types + "\nfunc run(left: uniq/Resource during a, right: uniq/Resource during a) -> i32\n    let view = View.init(left@follow@ref)\n    " +
             (conflict ? "left" : "right") + ".value = 9\n    return view.item.value\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(!conflict, c.Analysis.IsVerified);
         if (conflict)
         {
@@ -93,7 +93,7 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
     {
         var source = Types + "\nfunc run(left: uniq/Resource, right: uniq/Resource) -> i32\n    let view = (left@follow@ref, right@follow@ref)\n    let seen = view.1.value\n    " + parent + ".value = seen\n    return view.0.value + view.1.value\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var error = Assert.Single(c.Problems);
         Assert.True(error.Code.IsLoanConflict(), error.Code.ToString());
         Assert.Equal(parent + ".value", c.SyntaxOf(error.Subject).ToString());
@@ -104,10 +104,10 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
     public void WarmStoredAncestryAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("let view = (0, View.init(item@follow@ref))", "view.1.item", false));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

@@ -139,7 +139,7 @@ public class NoInitTest(ITestOutputHelper output)
     public void ReadBeforeWriteHasNoExtraCompilerState(string use)
     {
         var c = MinimalEmissionTest.Analyze("unsafe\n    var values: [2 of bool] = noinit\n    " + use);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error ?? MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error ?? MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class NoInitTest(ITestOutputHelper output)
         {
             ok &= c.Bind().IsComplete;
             c.Binding.CheckStartup(OutputKind.Application);
-            ok &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+            ok &= c.Analyze().IsVerified && c.Generate(TextWriter.Null);
         });
         Assert.True(ok);
         Assert.Equal(0, bytes);

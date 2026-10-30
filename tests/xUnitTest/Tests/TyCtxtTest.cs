@@ -250,7 +250,7 @@ public sealed class TyCtxtTest
     public void ADirectBaseCallIsItsImplementationsInstantiation(string source, int direct, int intoOverrides)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf())
             .Where(static x => x is { Kind: CalleeKind.Virtual, VirtualIsDirect: true }).ToArray();
         Assert.Equal(direct, calls.Length);
@@ -264,7 +264,7 @@ public sealed class TyCtxtTest
     public void AClosureIsInItsInstancesSubstitution()
     {
         var c = MinimalEmissionTest.Analyze(ClosureSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var function = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "identity");
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
@@ -286,7 +286,7 @@ public sealed class TyCtxtTest
     public void AClosureContextKeepsTheConformingSelf()
     {
         var c = MinimalEmissionTest.Analyze(ClosureSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).First(static x => x?.Target.Name == "identity")!;
@@ -319,7 +319,7 @@ public sealed class TyCtxtTest
     public void ASubstitutionHasOneLengthEntryPerSlot()
     {
         var c = MinimalEmissionTest.Analyze("func make<T>() -> i32 => 1\nlet f = make<i32>\nrequire make<i32>() == f() else => $abort(\"make\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x is { Kind: CalleeKind.Function, Target.Name: "make" })!;
         var item = nodes.Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
@@ -335,7 +335,7 @@ public sealed class TyCtxtTest
     public void LayersAreReferencesHandlesAndPairLayers()
     {
         var c = MinimalEmissionTest.Analyze("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var types = c.Types;
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var pair = function.Parameters[0].Type.TypeOf()!;
@@ -369,7 +369,7 @@ public sealed class TyCtxtTest
             "    public func m(self: uniq/Self, x: uniq/i32 during s)\n        self.at = x@follow@raw\n        unsafe => *self.at = 1\n" +
             "struct K {s}\n    internal let loan: Loan<uniq/i32 during s>\n    internal var at: raw/i32 during s\n" +
             "func probe(y: uniq/i32, g: G, h: H during y, k: K during y) => ()\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
     }
@@ -409,7 +409,7 @@ public sealed class TyCtxtTest
             "func probe(r: uniq/i32, q: ref/i32, z: ref/i64, iu: Outer<uniq/i32 during r>.Inner<i64>, ir: Outer<ref/i32 during q>.Inner<i64>, " +
             "iuz: Outer<uniq/i32 during r>.Inner<ref/i64 during z>, irz: Outer<ref/i32 during q>.Inner<uniq/i64 during r>, " +
             "pu: Outer<uniq/i32 during r>.Plain, pr: Outer<ref/i32 during q>.Plain) => ()\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal(
             [RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared],
@@ -498,7 +498,7 @@ public sealed class TyCtxtTest
             "struct K {s}\n    internal let loan: Loan<uniq/i32 during s>\n    internal var at: raw/i32 during s\n" +
             "func probe(y: uniq/i32, g: G, h: H during y, k: K during y) => ()\n" +
             "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
         Assert.True(c.Types.RawMembers(p[1], 0, [], members));
@@ -523,7 +523,7 @@ public sealed class TyCtxtTest
 
         var c = MinimalEmissionTest.Analyze(source + $"struct X {{s}}\n    internal let at: raw/u8 during s\n    internal let d: D{n} during s\n" +
             "func f(y: uniq/i32, x: X during y) => ()\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
         Assert.True(c.Types.RawMembers(p[1], 0, [], members));
@@ -539,7 +539,7 @@ public sealed class TyCtxtTest
             "func id(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => p\n" +
             "func f()\n    let g = func (l: ref/View, p: raw/i32 during l.source) => ()\n    let n = 1\n    let r = n@ref\n    let a = r@follow@raw\n" +
             "    let b = id(r, a)\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous);
         var r = nodes.OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "r").SymbolOf()!.Type!.Origin;
@@ -638,7 +638,7 @@ public sealed class TyCtxtTest
             "    internal var x: (raw/i32 during s, i32)\n    internal var y: T\nenum E3 {s}\n    A(raw/(ref/i32 during s) during s, i32)\n" +
             "    B(raw/(ref/i32 during static) during static, i32)\n    C(ref/i32 during s)\n" +
             "func probe(y: uniq/i32, e: E<raw/i32 during y> during y, p: P<(raw/i32 during y, i32)> during y, e3: E3 during static) => ()\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var types = c.Types;
         var q = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         (BoundType Instance, int Part, int Other)[] twins = [(q[1], 0, 1), (q[2], 1, 2), (q[3], 0, 1)];
@@ -669,7 +669,7 @@ public sealed class TyCtxtTest
     public void WrittenAtFollowsAWrittenProjectionDag()
     {
         var c = MirBuildTest.Compile(TypeDagScalingTest.ProjectionChain("raw/i32 during static", 8));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "pv").Parameters[1].Type.TypeOf()!;
         var kept = c.Types.StoredParts(holder, out _)[1]!;
         var path = new int[8];
@@ -787,7 +787,7 @@ public sealed class TyCtxtTest
             "n2: HA<Nest<Src2<raw/u8>>>, hc: HHC, c2: HA<SrcC<raw/u8>>, es: HA<ESrc>, w: HAd<Wrapping<i32>>) => ()\n" +
             "func unbound<T>(g: HA<T>, eh: EH<Src>) -> ()\n    T is HasItem\n    return\n" +
             "func wrapped<T>(w: HAd<Wrapping<T>>) -> ()\n    T is PrimitiveInteger\n    return\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
         var p = functions.Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var u = functions.Single(static x => x.Name == "unbound").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
@@ -851,7 +851,7 @@ public sealed class TyCtxtTest
             "var i2 = Kimi.Iteration.borrowing(counter@uniq)\nlet x2 = step(i2@uniq)\nvar i3 = Wrapper<Counter>.init(Counter.init())\n" +
             "let x3 = step(i3@uniq)\nvar i4 = GenWrap<Counter>.init(Counter.init())\nlet x4 = step(i4@uniq)\nvar i5 = Counter.init()\n" +
             "let x5 = step(i5@uniq)\nvar i6 = Cursor.init()\nlet x6 = step(i6@uniq)\nvar i7 = Gen<i32>.init()\nlet x7 = step(i7@uniq)\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Where(static x => x.Target.Name == "step").ToArray();
         var declared = ((FunctionKoto)calls[0].Target.Declaration).ReturnType!.TypeOf()!;
         Assert.Equal(
@@ -884,7 +884,7 @@ public sealed class TyCtxtTest
             "    Self is Iter<S.(HasItem).Item>\n    var n: i32\n    public init(n: i32) => self.n = n\n" +
             "    public func size(self: ref/Self) -> i32 => self.n\nfunc use<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    return x.size()\n" +
             "let a = B<SrcI>.init(n: 7)\nlet b = B<Src>.init(n: 8)\nrequire use(a@ref) == 7 and use(b@ref) == 8 else => $abort(\"size\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(
             ["B<SrcI> Body size", "B<Src> Body size"],
             RequirementCalls(c, c.Kotonoha).Select(x => (Composed(c, x)!.Self!, Witness(c, x)))
@@ -969,7 +969,7 @@ public sealed class TyCtxtTest
             "func probe(x: ref/i32, a: Holder<raw/i32 during x>, b: Holder<raw/i32>, c: Holder<raw/i32 during static>, d: Local<raw/i32 during x>, " +
             "e: Local<raw/i32>, f: Outer<raw/i32 during x>.Inner, g: Outer<raw/i32>.Inner)\n" +
             "    let i = id<raw/i32 during x>\n    let j = id<raw/i32>\n    let k = idt<raw/i32 during x>\n    let l = idt<raw/i32>\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var p = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var items = nodes.OfType<VariableKoto>().Where(static x => x.NameKoto.IdentifierName is "i" or "j" or "k" or "l").Select(static x => x.SymbolOf()!.Type!).ToArray();
@@ -1064,7 +1064,7 @@ public sealed class TyCtxtTest
     public void InstantiatesFollowsTheEnclosingSlots()
     {
         var c = MinimalEmissionTest.Analyze(InstanceSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         string[] expected =
         [
             "Fn plain False", "Fn pass True", "Closure pass True", "Fn specialize pass False", "Closure specialize pass False", "Fn size True",
@@ -1097,7 +1097,7 @@ public sealed class TyCtxtTest
     public void EnclosingFunctionIsTheFunctionWhoseBodyDeclaresTheDefinition()
     {
         var c = MinimalEmissionTest.Analyze(EnclosingSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         string[] expected =
         [
             "Fn init none", "Getter got.Get none", "Fn inner got.Get", "Closure keep got.Get", "Fn deep got.Get", "Setter got.Set none",
@@ -1127,7 +1127,7 @@ public sealed class TyCtxtTest
     public void EraseKeepsEverythingButOrigins()
     {
         var c = MinimalEmissionTest.Analyze(EraseSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var types = c.Types;
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "keep")
@@ -1179,7 +1179,7 @@ public sealed class TyCtxtTest
     public void AnInstanceStoresNoRawOrigin()
     {
         var c = MinimalEmissionTest.Analyze(RawShapeSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var instances = new List<BoundType>();
         var problems = ErasedStoreProblems(c, instances);
         Assert.True(problems.Count == 0, $"{problems.Count} differ:\n{string.Join('\n', problems)}");
@@ -1204,7 +1204,7 @@ public sealed class TyCtxtTest
         }
 
         var direct = MinimalEmissionTest.Analyze(ComposeSource);
-        Assert.True(direct.Binding.Result.IsComplete, MinimalEmissionTest.Describe(direct, null));
+        Assert.True(direct.Binding.Result.IsComplete, MinimalEmissionTest.Describe(direct));
         var calls = ComposeProblems(direct, direct.Kotonoha, problems);
         Assert.True(corpus == 6 && calls == 7 && problems.Count == 0, $"{corpus} corpus and {calls} direct nested calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
@@ -1234,7 +1234,7 @@ public sealed class TyCtxtTest
         }
 
         var direct = MinimalEmissionTest.Analyze(WitnessSource);
-        Assert.True(direct.Binding.Result.IsComplete, MinimalEmissionTest.Describe(direct, null));
+        Assert.True(direct.Binding.Result.IsComplete, MinimalEmissionTest.Describe(direct));
         var kinds = new SortedDictionary<string, int>(StringComparer.Ordinal);
         WitnessProblems(direct, direct.Kotonoha, "direct", kinds, problems);
         var counts = $"corpus {Counts(corpus)}; direct {Counts(kinds)}";
@@ -1566,7 +1566,7 @@ public sealed class TyCtxtTest
             "p: Parts, ta: Local<raw/i32>, tb: Local<raw/i32 during y>, tc: Local<raw/i32 during static>, td: Local<raw/T>, te: Holder<raw/i32>, " +
             "tf: Anchored<raw/i32, i64> during x, tg: Choice<raw/i32, i64> during x, th: InTuple<raw/u8>, ti: InArray<raw/u8>, " +
             "tj: Local<(raw/u8 during y, isize)>, tk: Option<raw/u8 during y>, tn: Local<i32>, to: Holder<raw/i32 during y>, tp: Local<Local<raw/u8 during y>>) => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
@@ -1583,7 +1583,7 @@ public sealed class TyCtxtTest
             $"struct H<{pairs}s/T> {{a}}\n{premises}    s is ref or uniq\n    internal let item: s/T during a\n    internal var at: raw/i32 during a\n" +
             $"func probe(r: uniq/i32, q: ref/i32, iu: Outer<{arguments}uniq/i32 during r>.Inner<ref/i64 during q>, ir: Outer<{arguments}ref/i32 during q>.Inner<uniq/i64 during r>, " +
             $"hu: H<{arguments}uniq/i32 during r>, hr: H<{arguments}ref/i32 during q>) => ()\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
@@ -1592,7 +1592,7 @@ public sealed class TyCtxtTest
     private static (TyCtxt Types, BoundType[] Parameters) ConditionalLayers()
     {
         var c = MinimalEmissionTest.Analyze(ConditionalSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
@@ -1602,7 +1602,7 @@ public sealed class TyCtxtTest
     private static (Compilation C, BoundType[] Parameters) KeptParts()
     {
         var c = MinimalEmissionTest.Analyze(KeptSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
@@ -1632,7 +1632,7 @@ public sealed class TyCtxtTest
     private static (Compilation C, Dictionary<string, BoundType> Parameters) DeclaredLayers()
     {
         var c = MinimalEmissionTest.Analyze(DeclaredSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c, probe.Parameters.ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
     }

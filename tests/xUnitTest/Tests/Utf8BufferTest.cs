@@ -159,7 +159,7 @@ public class Utf8BufferTest
     public void FixedBufferHoldsItsExclusiveLoanUntilLastUse(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("var storage = [3 of 0@u8]\nlet buffer = Text.fixed(storage@uniq)\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
         if (!valid)
         {

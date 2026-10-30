@@ -72,10 +72,10 @@ public class PublishedPlaceProjectionTest
             "    let child = match values.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n" +
             "    " + selection + ".0@follow = 99\n    require child == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() != "item.0");
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -277,7 +277,7 @@ public class PublishedPlaceProjectionTest
     {
         var c = MinimalEmissionTest.Analyze("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
             "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" + function + "\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var unsupported = Assert.Single(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Equal(element, c.SyntaxOf(unsupported.Subject).ToString());
     }

@@ -97,7 +97,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze("func test(left: ref/string, right: bool) -> bool => right\nfunc take(a: string) -> bool => true\nlet a = \"a\"\n" + expression);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Problems, x => x.Code == failure);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -119,7 +119,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -129,7 +129,7 @@ public class ReferenceEmissionTest
     {
         var source = "func test(a: ref/string) -> bool\n    " + expression + "\n    return false\nlet a = \"a\"\nif test(a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
     }
 
@@ -142,7 +142,7 @@ public class ReferenceEmissionTest
         const string Source = Same + "let a = \"a\"\nif same(a, a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(Source);
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out var error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = writer.ToString();
         const string Shared = @"ptr noundef nonnull align 8 dereferenceable\(24\) %\w+";
         var same = Assert.Single(Regex.Matches(ir, @"(?ms)^define internal i1 @([\w.]+)\(" + Shared + ", " + Shared + @"\) #0 \{\n.*?^\}"));
@@ -160,14 +160,14 @@ public class ReferenceEmissionTest
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var emissionBytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);

@@ -54,7 +54,7 @@ public class PipelineObjectTest
         var c = MinimalEmissionTest.Analyze(Counter + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 }

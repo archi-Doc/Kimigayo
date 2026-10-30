@@ -39,7 +39,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         // `entries` and keeps its Loan on `value`; `insertOrReplace` may return its `value: V` argument instead, and an input
         // other than the receiver that names those Origins prevents the descent (SPEC 15.6.3).
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -52,10 +52,10 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     public void StoredSharedReferencesPreventMutationUntilTheirLastUse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         }
 
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -103,7 +103,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     public void AStoredExclusiveInputCannotBeMovedAgain()
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let entries = [1: value@move]\n    let again = value@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
@@ -112,7 +112,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("func make() -> Dictionary<i32, ref/i32 during static>\n    let value = 42\n    return [1: value@ref]");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
 
         Compile();

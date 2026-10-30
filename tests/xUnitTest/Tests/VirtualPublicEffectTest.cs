@@ -18,7 +18,7 @@ public class VirtualPublicEffectTest
         Assert.Equal(confined, c.Binding.AvailableEffectBounds(original, null, original));
         var implementation = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
         Assert.False(c.Binding.AvailableEffectBounds(implementation, null, implementation));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

@@ -255,7 +255,7 @@ public class ComparisonCompositionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -289,7 +289,7 @@ public class ComparisonCompositionTest
         foreach (var source in new[] { RecursiveSource, FloatingSource, ReferenceSource, ViewSource })
         {
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
             Twin(c, c.Kotonoha, source[..source.IndexOf('\n')], direct, problems);
         }
 
@@ -346,7 +346,7 @@ public class ComparisonCompositionTest
         var donor = MinimalEmissionTest.Analyze(ViewSource.Replace("self.value - other.value", "other.value - self.value", StringComparison.Ordinal));
         var key = Container(c, "Key");
         Assert.True(KotoHelper.Replace(key, Compare(key), ParseTestHelper.Detach(Compare(Container(donor, "Key")), new CodeBlockKoto(key.CodeContext))));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         call = Comparisons(c.Kotonoha).First(x => ReferenceEquals(x.ConformingType, self));
         var after = View(c, call)!.Parts[0].Parts[0];
         Assert.Equal("Key.compare @Key", Show(after));

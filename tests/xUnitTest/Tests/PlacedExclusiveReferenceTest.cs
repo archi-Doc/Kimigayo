@@ -22,7 +22,7 @@ public sealed class PlacedExclusiveReferenceTest
     public void AParentPlacedWhileItsReborrowChildIsLiveIsRejected(string body)
     {
         var c = MinimalEmissionTest.Analyze(Run + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd);
     }
 
@@ -33,7 +33,7 @@ public sealed class PlacedExclusiveReferenceTest
     public void APlacementWithoutALiveChildIsAccepted(string body)
     {
         var c = MinimalEmissionTest.Analyze(Run + body);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

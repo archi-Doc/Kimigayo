@@ -57,7 +57,7 @@ public class DeferredEmissionTest
     public void CleanupSegmentsHaveUniqueMembershipAndDeferredEndpoints()
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\ndefer\n    var y = 2\n    defer => y = 3\n    x = y\nvar z = 4");
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var body = c.Ownership.Bodies[0];
         var seen = new HashSet<int>();
         foreach (var plan in body.CleanupPlans)
@@ -87,7 +87,7 @@ public class DeferredEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, allocated);
@@ -112,7 +112,7 @@ public class DeferredEmissionTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -133,7 +133,7 @@ public class DeferredEmissionTest
     {
         const string Source = "defer\n    Console.writeLine(\"bad\")\ndefer => loop => ()\nConsole.writeLine(\"begin\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", observationMilliseconds: 1000);
     }
 
@@ -147,8 +147,8 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
         var body = c.Ownership.Bodies[0];
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.InRange(body.Operations.Count, 1, OwnershipAnalysis.DeferredOperationLimit);
         Assert.Equal(depth + 2, body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local));
     }
@@ -163,7 +163,7 @@ public class DeferredEmissionTest
             Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DeferredExpansionLimit_Kd);
             Assert.Equal(OwnershipAnalysis.DeferredOperationLimit, c.Ownership.Bodies[0].Operations.Count);
             using var writer = new StringWriter();
-            Assert.False(c.WriteIr(writer, out _));
+            Assert.False(c.Generate(writer));
             Assert.Empty(writer.ToString());
         }
 

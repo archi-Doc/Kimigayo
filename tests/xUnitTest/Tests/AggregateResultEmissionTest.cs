@@ -83,14 +83,14 @@ public class AggregateResultEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);

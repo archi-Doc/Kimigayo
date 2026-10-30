@@ -77,7 +77,7 @@ public class BorrowingIterationTest
     public void LoopProtectsItsBorrowedSource(bool exclusive)
     {
         var c = MinimalEmissionTest.Analyze(Declarations(exclusive) + "var values = Values.init()\nfor item in values" + (exclusive ? "@uniq" : string.Empty) + "\n    values = Values.init()\n    require item == 7 else => $abort(\"source\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
     }
 
@@ -131,7 +131,7 @@ public class BorrowingIterationTest
     public void EnumPayloadShorteningNeedsProof(string relation, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("func f(value: ref/i32 during a, other: ref/i32 during b) -> Option<ref/i32 during b>\n    " + relation + "\n    return .Some(value)");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // A source's one Loan conflict at `local = second@move`, whose Loan the value declared by `loan` keeps; no diagnostic for null.

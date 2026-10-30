@@ -54,7 +54,7 @@ public class StringComparisonEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -135,7 +135,7 @@ public class StringComparisonEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
 
         Assert.Equal(0, allocated);

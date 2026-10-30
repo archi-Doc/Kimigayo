@@ -52,10 +52,10 @@ public class ClosureResultOriginTest
     public void TheReturnedViewProtectsTheOwnerAfterTheLastClosureUse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -239,7 +239,7 @@ public class ClosureResultOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Captured + "let erased: () -> ref/i32 = f\nerased()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 7.7.4, 15.6.1, 23.1: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
@@ -272,7 +272,7 @@ public class ClosureResultOriginTest
         var c = MinimalEmissionTest.Analyze("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\nbad()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Failure == BindingFailure.Unsupported);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -285,7 +285,7 @@ public class ClosureResultOriginTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }

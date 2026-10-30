@@ -31,9 +31,9 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
 
         var path = Path.GetFullPath("generic-factory.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var emitted = c.Validate(out var failure);
-        Assert.True(emitted == !independent, MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var emitted = c.Generate(TextWriter.Null);
+        Assert.True(emitted == !independent, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
@@ -119,10 +119,10 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
     {
         const string Source = "func box<T>(value: T) -> rc/T\n    T is ObjectPayload\n    return Kimi.Intrinsics.makeRc(value@move)\nlet first = box(7)\nlet second = box(true)";
         var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source);
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -147,12 +147,12 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
             """ + (conflict ? "\nfirst = 1" : string.Empty) + "\nrequire a.value == 7 and b.value == 9 else => $abort(\"origins\")";
         source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (conflict)
         {
             Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
             Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
         else
         {

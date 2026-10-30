@@ -55,7 +55,7 @@ public class UnknownAttributeCertificateBindingTest
     public void ExcludedMarkersDoNotInvalidateSelectedDeclarations(string excluded)
     {
         var c = MinimalEmissionTest.Analyze(excluded + "\ncontract Marker\nstruct S\n    Self is Marker");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
     }
 

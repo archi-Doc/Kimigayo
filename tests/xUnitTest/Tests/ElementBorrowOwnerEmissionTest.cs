@@ -57,7 +57,7 @@ public class ElementBorrowOwnerEmissionTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -111,14 +111,14 @@ public class ElementBorrowOwnerEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);

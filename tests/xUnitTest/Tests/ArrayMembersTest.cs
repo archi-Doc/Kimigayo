@@ -207,7 +207,7 @@ public class ArrayMembersTest
     public void Rejects(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -235,6 +235,6 @@ public class ArrayMembersTest
     public void MetadataIsSelectedThroughASafeReference(string type, string member)
     {
         var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

@@ -174,9 +174,9 @@ public class ElementUpdateEmissionTest
     public void RightSideEffectsPrecedeTheAccessProtection(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // The located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
@@ -186,18 +186,18 @@ public class ElementUpdateEmissionTest
     public void IndexOperandsCannotMutateTheProtectedReceiver(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void TargetMovedByTheRightSideIsRejected()
     {
         var c = MinimalEmissionTest.Analyze("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (label work: do\n    take(a@move)\n    exit to work 42\n)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -238,9 +238,9 @@ public class ElementUpdateEmissionTest
     public void SelfReadsInTheRightSidePrecedeTheExclusiveUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -259,7 +259,7 @@ public class ElementUpdateEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
 
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
@@ -267,7 +267,7 @@ public class ElementUpdateEmissionTest
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
@@ -294,7 +294,7 @@ public class ElementUpdateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 

@@ -98,7 +98,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(DiagnosticCode.UnprovenConstraint_Kd, Assert.Single(c.Binding.Issues).Code);
         Assert.True(KotoHelper.Replace(clause, changed, original));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(call.CallOf());
     }
 
@@ -155,12 +155,12 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
     public void WarmObjectBaseCallsReuseAllPlans()
     {
         var c = MinimalEmissionTest.Analyze(Types + "let owner = Leaf<i32>.init()@obj\nlet r = owner.view()\n_ = r\n_ = owner.read()");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

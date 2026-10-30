@@ -47,7 +47,7 @@ public class PatternTypeFormationBindingTest
     {
         // A structural pattern decomposes an owned Non-Copy subject only under `match value@move` (SPEC 15.1.6).
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value@move\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -58,7 +58,7 @@ public class PatternTypeFormationBindingTest
     public void DependentSubjectUsesDefinitionEvidence()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f<U>(value: Box<U>)\n    U is i32\n    match value\n        _ => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

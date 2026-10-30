@@ -61,7 +61,7 @@ public class GenericAdaptationDiagnosticTest(ITestOutputHelper output)
         Assert.Contains(record, independent.Diagnostics);
 
         var repaired = MinimalEmissionTest.Analyze(Program(name, valid: true));
-        Assert.True(repaired.Binding.Result.IsComplete && repaired.Analysis.IsVerified, MinimalEmissionTest.Describe(repaired, null));
+        Assert.True(repaired.Binding.Result.IsComplete && repaired.Analysis.IsVerified, MinimalEmissionTest.Describe(repaired));
     }
 
     private static string Program(string name, bool valid)
