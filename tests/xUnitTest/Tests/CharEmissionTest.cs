@@ -115,7 +115,7 @@ public class CharEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.NotEmpty(c.Binding.Issues);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -125,10 +125,10 @@ public class CharEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Guard + "\nlet aggregate = ('A', (true, '😀'))");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Character analysis or emission failed.");
             }

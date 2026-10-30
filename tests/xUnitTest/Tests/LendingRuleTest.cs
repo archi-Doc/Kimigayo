@@ -37,7 +37,7 @@ public class LendingRuleTest
     public void MovingALentRootIsReportedOnce()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 3\n    drop => ()\nfunc borrow(item: ref/Item) -> ref/Item during item => item\nfunc take(item: Item) => ()\nvar item = Item.init()\nlet view = borrow(item@ref)\ntake(item@move)\nlet a = view.value\nlet b = view.value\nlet c = view.value\nrequire a + b + c == 9 else => $abort(\"sum\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Problems);
         Assert.True(issue.Code.IsLoanConflict(), issue.Code.ToString());
         Assert.Equal("item@move", c.SyntaxOf(issue.Subject).Parent?.ToString()); // Reported at the Move, not at the reads of view.
@@ -49,7 +49,7 @@ public class LendingRuleTest
     public void OwnershipRejectsConflictingAndMovedPlaces(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code == failure);
     }

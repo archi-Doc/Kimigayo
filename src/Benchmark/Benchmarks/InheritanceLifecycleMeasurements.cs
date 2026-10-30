@@ -130,7 +130,7 @@ internal static class InheritanceLifecycleMeasurements
     private static void Pipeline(Compilation c)
     {
         if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete ||
-            !c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            !c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
         {
             throw new InvalidOperationException("Every inheritance snapshot must bind, verify and emit.");
         }

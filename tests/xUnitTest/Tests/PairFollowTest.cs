@@ -299,7 +299,7 @@ public class PairFollowTest
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let a = Node.init(10)\n    let refs = Collection<ref/Node>.init([a@ref])\n    let n = refs.indices.length");
         for (var i = 0; i < 3; i++)
         {
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -312,14 +312,14 @@ public class PairFollowTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
@@ -335,7 +335,7 @@ public class PairFollowTest
     public void Rejects(string function, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Box + function);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
@@ -349,7 +349,7 @@ public class PairFollowTest
     public void SlotBorrowsAndFollowsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Box + source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 13.5.5, 15.5, 8.15: a follow through a borrow-only layer keeps the slot met with the borrows that reach the operand
@@ -393,7 +393,7 @@ public class PairFollowTest
     public void InstancesBindTheOuterOriginInsideMeetsAndOriginArguments()
     {
         var c = MinimalEmissionTest.Analyze(UniqInstance);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var body = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "write");
         var write = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "write").CallOf()!;
         var named = KotoTree.Walk(body).Select(x => x.TypeOf()).OfType<BoundType>().Where(NamesOuterOrigin).Distinct().ToArray();
@@ -426,7 +426,7 @@ public class PairFollowTest
     public void CollectionAccessVerifies(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -436,7 +436,7 @@ public class PairFollowTest
     public void ConstructionQualifierOriginsAreInferred(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.6: an omitted Origin that nothing constrains has no candidate; in a body it is a local region, never invented as static.
@@ -444,7 +444,7 @@ public class PairFollowTest
     public void UnconstrainedQualifierOriginIsALocalRegion()
     {
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -467,7 +467,7 @@ public class PairFollowTest
     public void PairPositionsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 7.3: an owning receiver is acquired through a pair layer only by the Scalar read; p@follow.m() Copies the Place.
@@ -479,7 +479,7 @@ public class PairFollowTest
     public void OwningReceivers(string source, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True((code is null) == (c.Binding.Result.IsComplete && c.Analysis.IsVerified), MinimalEmissionTest.Describe(c, null));
+        Assert.True((code is null) == (c.Binding.Result.IsComplete && c.Analysis.IsVerified), MinimalEmissionTest.Describe(c));
         if (code is { } expected)
         {
             Assert.Contains(expected, Codes(c));
@@ -495,7 +495,7 @@ public class PairFollowTest
     public void PairPositionsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
-        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Contains(code, Codes(c));
     }
 
@@ -568,7 +568,7 @@ public class PairFollowTest
     public void ScalarReadNeedsAFollowablePair()
     {
         var c = MinimalEmissionTest.Analyze(Box + "func f<s/T>(item: s/T, factor: s/i32) -> i32\n    return factor * 2");
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
     }
 
@@ -576,7 +576,7 @@ public class PairFollowTest
     public void ConcreteOwnedPlaceIsNotFollowed()
     {
         var c = MinimalEmissionTest.Analyze("let x: i32 = 1\nlet y = x@follow");
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
     }
 

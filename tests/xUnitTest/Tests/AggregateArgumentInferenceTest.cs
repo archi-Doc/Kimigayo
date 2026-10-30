@@ -24,7 +24,7 @@ public class AggregateArgumentInferenceTest
     public void CollectsStructuralEvidenceBeforeDefaulting(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
@@ -38,7 +38,7 @@ public class AggregateArgumentInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingFailure.Ambiguous, call.FailureOf());
         Assert.Null(call.CallOf());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class AggregateArgumentInferenceTest
     public void PreservesIndependentTupleInferenceAndTemporaryBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class AggregateArgumentInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingFailure.NoApplicableCandidate, call.FailureOf());
         Assert.Null(call.CallOf());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 10.5.1, 10.2, 10.8: an element of a Tuple or array literal argument is a parameter position: a nested call that waits for the
@@ -90,8 +90,8 @@ public class AggregateArgumentInferenceTest
     public void ElementsArePositionsOfTheirParameter(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 10.8, 10.5.1: an element's evidence and fit are its position's: a written header that disagrees with the other evidence, and

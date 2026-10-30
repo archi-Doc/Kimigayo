@@ -2,9 +2,9 @@
 
 // Owns the LLVM text of scalar arithmetic, numeric conversions and their checks (SPEC 4.7.1, 13.3.1, 13.5.4, 22.5.2; IMPL 21.3.3;
 // DECISIONS R5-M17): an operation's instruction, the overflow intrinsic of a checked one, the zero, minimum / -1 and count checks
-// of division, remainder and shifts with the divisor substitutions they need, a conversion's cast with its range checks or its
-// position saturation, and each check's own failure block, which calls the runtime Abort with the check's reason and location
-// operands. Both generators write scalar arithmetic and conversions through it (PD2: promoted, never copied).
+// of division, remainder and shifts with the divisor substitutions they need, a conversion's cast with its range checks, and each
+// check's own failure block, which calls the runtime Abort with the check's reason and location
+// operands. MIR code generation writes scalar arithmetic and conversions through it (PD2: promoted, never copied).
 // Input: a writer; a ScalarOperation (operator and Type text, operand spellings, result name) or a ScalarConversion (cast, source
 // and target Type text, input spelling, result name, ScalarBounds); for a check, a ScalarCheck (the number naming its
 // temporaries and failure label, its success label, its location operands); for a check another writer computes (a bounds or
@@ -13,14 +13,13 @@
 // signed value, as LlvmModuleText.WriteNumber writes it, so a literal -1 is -1 at every width (LLVM's unsigned spelling, i8 255,
 // would skip SPEC 13.3.1's -1 substitution); a floating constant is LLVM's hexadecimal double spelling of the bits
 // LlvmModuleText.Hexadecimal gives, so an f32 NaN keeps its signaling bit; an integer Type is iN of width 1 to 128. A checked
-// conversion has a bound; a position conversion has a cast and a bound; a floating narrowing has both bounds over a double source.
+// conversion has a bound; a floating narrowing has both bounds over a double source.
 // Output: LLVM text written to the writer.
 // Invariants: a check names its temporaries role + Id and its failure label abort + Id, except the signed quotient's reason,
-// which the caller names; a position conversion names its temporaries role + its own Id; `select i1` appears only on a failure
+// which the caller names; `select i1` appears only on a failure
 // block's zero test (its reason) and on a signed divisor's -1 test (its substitution by 1, the wrapping quotient's negation), the
-// forms PD8 admits; no nsw or nuw; the legacy writer's .ll stays byte-identical while it shares this text; writing allocates
-// nothing.
-// Must not take an opcode or check kind of either IR, syntax, HIR, Binding internals, EmissionModule or MIR types, or use LINQ.
+// forms PD8 admits; no nsw or nuw; writing allocates nothing.
+// Must not take an IR's opcode or check kind, syntax, HIR, Binding internals or MIR types, or use LINQ.
 // Files: the operations, their checks and the failure blocks (this file); the conversions and their bounds (LlvmScalarText.Conversions.cs).
 
 #pragma warning disable SA1402 // The operation, conversion and check records are this writer's inputs.

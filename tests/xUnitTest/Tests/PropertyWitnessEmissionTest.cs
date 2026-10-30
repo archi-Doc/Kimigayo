@@ -52,15 +52,15 @@ public class PropertyWitnessEmissionTest
     public void InheritedBridgeBodiesAreReused()
     {
         var c = MinimalEmissionTest.Analyze(Counted + "func bump<T>(x: uniq/T) -> i32\n    T is Counted\n    x.count += 1\n    return x.count\nvar x = Leaf.init()\n_ = bump(x@uniq)");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         var uncalled = MinimalEmissionTest.Analyze(Counted + "Console.writeLine(\"unused\")");
-        Assert.True(uncalled.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(uncalled, error));
+        Assert.True(uncalled.Generate(TextWriter.Null), MinimalEmissionTest.Describe(uncalled));
     }
 
     // SPEC 11.9.2: a bridge is checked and executed under its conformance path's premises, so the Copy that `when T is Copy` grants
@@ -106,12 +106,12 @@ public class PropertyWitnessEmissionTest
     {
         var source = "contract C\n    property item: i32 has get, set\nstruct S\n    Self is C\n    public var item: i32 = 7\nfunc update<T>(s: uniq/T) -> i32\n    T is C\n    s.item = 9\n    return s.item\nvar s = S.init()\n_ = update(s@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

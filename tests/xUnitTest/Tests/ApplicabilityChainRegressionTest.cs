@@ -146,8 +146,8 @@ public class ApplicabilityChainRegressionTest
     public void AControlFlowArgumentIsClassifiedByItsResultSources(string use)
     {
         var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 10.5.1 (the owner, 2026-10-26; DECISIONS BU-43): a control-flow argument is Literal when every result source other than Never
@@ -400,7 +400,7 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

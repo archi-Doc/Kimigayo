@@ -17,7 +17,7 @@ public class BitConversionTest
             "let a = f@bits<i32>\nlet b = f@bits<u32>\nlet c = f@bits<Wrapping<i32>>\nlet e = d@bits<i64>\nlet g = d@bits<u64>\nlet h = d@bits<Wrapping<u64>>\n" +
             "let k = i@bits<f32>\nlet l = u@bits<f64>\nlet m = w@bits<f32>\nlet n = v@bits<f64>";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
         Assert.Same(BoundType.Primitives["i32"], variables["a"].NameKoto.TypeOf());
         Assert.Same(BoundType.Primitives["u32"], variables["b"].NameKoto.TypeOf());
@@ -44,13 +44,13 @@ public class BitConversionTest
     public void DirectLiteralsAreConvertedAtCompileTime(string expression, string type, long payload)
     {
         var c = MinimalEmissionTest.Analyze($"let w = {expression}");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
         Assert.Same(expected, conversion.TypeOf());
         Assert.Equal(ConversionBinding.Bits, conversion.ConversionOf().Kind);
         Assert.Equal((Int128)payload, Assert.NotNull(conversion.ConversionOf().Folded));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -119,6 +119,6 @@ public class BitConversionTest
     public void FixedTypesInsideAGenericBodyAreAccepted()
     {
         var c = MinimalEmissionTest.Analyze("func f<T>(x: T, f: f32) -> u32\n    T is PrimitiveInteger\n    return f@bits<u32>\nlet r = f(1@u8, 1.5)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

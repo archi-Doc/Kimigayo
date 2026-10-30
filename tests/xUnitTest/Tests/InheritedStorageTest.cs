@@ -108,7 +108,7 @@ public class InheritedStorageTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    var n: i32\n    public init(x: i32)\n        self.n = x\n        let a = self.n@ref\n" +
             "        let b = x@ref\n        _ = a\n        _ = b\n    drop\n        let c = self.n@ref\n        _ = c\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var borrows = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>()
             .Select(static x => (Text: x.ToString(), Origin: x.TypeOf()!.Origin!)).ToArray();
         var receiver = borrows.Where(static x => x.Text == "self.n@ref").Select(static x => x.Origin).ToArray();

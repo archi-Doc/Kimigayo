@@ -20,13 +20,13 @@ public class DictionaryLiteralTest
     public void IndependentLiteralsInferKeyAndValueTypes(string source, string key, string value)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var declaration = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Last();
         var type = declaration.TypeOf()!;
         Assert.Equal(BoundTypeKind.Dictionary, type.Kind);
         Assert.Same(key == "string" ? BoundType.String : BoundType.Primitives[key], type.Components[0]);
         Assert.Same(BoundType.Primitives[value], type.Components[1]);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -44,7 +44,7 @@ public class DictionaryLiteralTest
         var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.NotEmpty(errors);
         Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public class DictionaryLiteralTest
     public void NestedAndGenericEvidenceAndNeverValuesBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -147,8 +147,8 @@ public class DictionaryLiteralTest
     {
         var source = "let entries: Dictionary<" + type + ", i32> = [" + first + ": 1, " + later + ": 2]";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains("DuplicateDictionaryKey_Kd", MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Contains("DuplicateDictionaryKey_Kd", MinimalEmissionTest.Describe(c));
         var duplicate = Assert.Single(c.Binding.Issues, issue => issue.Code == DiagnosticCode.DuplicateDictionaryKey_Kd);
         Assert.Equal(source.LastIndexOf(later, StringComparison.Ordinal), duplicate.Node.Span.Start);
     }
@@ -158,7 +158,7 @@ public class DictionaryLiteralTest
     {
         var c = MinimalEmissionTest.Analyze("func unused(key: i32)\n    if false\n        let entries: Dictionary<i32, i32> = [1: 1, key: 2, (1): 3, +1: 4]");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains("DuplicateDictionaryKey_Kd", MinimalEmissionTest.Describe(c, null));
+        Assert.Contains("DuplicateDictionaryKey_Kd", MinimalEmissionTest.Describe(c));
         Assert.Equal(2, c.Binding.Issues.Count(issue => issue.Code == DiagnosticCode.DuplicateDictionaryKey_Kd));
     }
 
@@ -175,14 +175,14 @@ public class DictionaryLiteralTest
     {
         var c = MinimalEmissionTest.Analyze("let entries: Dictionary<" + type + ", i32> = [" + first + ": 1, " + later + ": 2]");
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void NamedKeysAndNestedLiteralsDoNotPolluteStaticChecking()
     {
         var c = MinimalEmissionTest.Analyze("let key = 1\nlet entries: Dictionary<i32, Dictionary<i32, i32>> = [key: [1: 2], key: [1: 3], 1: [1: 4]]");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

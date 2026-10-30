@@ -28,7 +28,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         Assert.False(property.IsVerified);
         Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(static x => x.IdentifierName == "storage"), static x => Assert.Null(x.TypeOf()));
         this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         Assert.False(c.Bind().IsComplete);
         this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
     }
@@ -61,7 +61,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         inferred.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(inferred), static x => x.Code == "CyclicBinding_Kd");
         var declared = MinimalEmissionTest.Analyze("group Values\n    var a: i32 = b\n    var b: i32 = a");
-        Assert.True(declared.Binding.Result.IsComplete, MinimalEmissionTest.Describe(declared, null));
+        Assert.True(declared.Binding.Result.IsComplete, MinimalEmissionTest.Describe(declared));
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<PropertyKoto>().Single().TypeKoto!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property.Declaration, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(property.IsVerified);
         this.AssertRecords(c, []);
         Assert.True(KotoHelper.Replace(property.Declaration, replacement, original));

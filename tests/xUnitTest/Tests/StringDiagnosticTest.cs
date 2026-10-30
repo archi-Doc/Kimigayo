@@ -34,7 +34,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         Assert.Equal("string starts here", error.Label);
         Assert.Equal("\"", Assert.Single(error.Reason!).Value);
         Assert.Equal("expected", error.Reason![0].Name);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
@@ -109,7 +109,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void ClosingTheStringRestoresAcceptance(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Diagnostics.Finalize().Diagnostics);
     }
 
@@ -235,7 +235,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         Assert.All(errors, x => Assert.Equal((code, escape), (x.Code, x.Text)));
         Assert.Equal(new SourceSpan(source.IndexOf(escape, StringComparison.Ordinal), escape.Length), errors[0].Span);
         Assert.Equal(new SourceSpan(source.LastIndexOf(escape, StringComparison.Ordinal), escape.Length), errors[1].Span);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, TestDiagnostics.Of(c));

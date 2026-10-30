@@ -111,7 +111,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             (common ? "func accept<T>(f: () -> T) => ()\n" : "func accept<T, F>(f: ref/F)\n    F is Callable<() -> T>\n    return\n") +
             "accept(stop)\nConsole.writeLine(\"alive\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "accept");
         Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
         ScalarEmissionTest.EmitFixture("CallableSignatureNever" + common, source, "alive\n");
@@ -156,7 +156,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var path = Path.GetFullPath("callable-signature.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -194,7 +194,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         const string Source = "func consume<T, F>(action: F) -> T\n    F is Callable<owner, () -> T>\n    return action@move()\nlet value = consume(func [] () => 42)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -261,7 +261,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var arguments = reversed ? "x@ref, len" : "len, x@ref";
         var body = $"func keep<T>({parameters}) -> T => value@move\nvar x: i32 = 4\nlet r = keep({arguments})\n";
         var c = MinimalEmissionTest.Analyze(Len + body + "require r@follow == 4 else => $abort(\"order\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "keep");
         var slot = call.CallOf()!.TypeArguments[0]!;
         var borrow = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => x.ToString() == "x@ref");
@@ -291,7 +291,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void APerCallOriginLeavesTheSlotOriginOpen()
     {
         var c = MinimalEmissionTest.Analyze(Len + "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nlet r = runOnly(len)\nlet again = runOnly(len)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "runOnly").ToArray();
         Assert.Equal(2, calls.Length);
         var first = calls[0].CallOf()!.TypeArguments[0]!;
@@ -299,7 +299,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (first.Kind, first.Semantics));
         Assert.Equal((OriginKind.Inference, true), (first.Origin!.Kind, first.Origin.Open));
         Assert.NotSame(first.Origin, second.Origin); // Each call site has its own local region.
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
 
         // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code: both calls call the one instance.
         var startup = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
@@ -329,9 +329,9 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     {
         const string Source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc make<T>(f: () -> T) -> T => f()\npublic func main()\n    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    require r@follow == 3 else => $abort(\"value\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.6, 10.8: when only the argument's own per-call Origin would satisfy the slot (the Function value or Callable proof holds
@@ -458,8 +458,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // The fixed-input instantiation and the per-call stand-in rechecks run only when a fit or a Callable proof fails as is; a warm rebind
@@ -475,7 +475,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -488,8 +488,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

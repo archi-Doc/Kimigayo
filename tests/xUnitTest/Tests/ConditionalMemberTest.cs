@@ -45,7 +45,7 @@ public class ConditionalMemberTest
     public void RefutedMembersAreNotCandidates(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Box + source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
@@ -54,6 +54,6 @@ public class ConditionalMemberTest
     public void ForeignSubjectsAreRejected()
     {
         var c = MinimalEmissionTest.Analyze("struct Other<F>\n    var f: F\nstruct Box<E>\n    public var item: E\n    public func bad(self) -> bool\n        F is Equatable\n        return true\n");
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

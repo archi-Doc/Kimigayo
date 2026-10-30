@@ -111,7 +111,7 @@ public class CallableSignatureSelectionTest
     {
         var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n        effect confined\n    F is Callable<(i64) -> i32>\n    return f(1@" + type + ")\n" + Main;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.ValueCallOf() is not null);
         var plan = call.ValueCallOf()!;
         Assert.Equal(confined, c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, call));
@@ -128,7 +128,7 @@ public class CallableSignatureSelectionTest
     public void AChangedContractInvalidatesThePreviousSelection()
     {
         var c = MinimalEmissionTest.Analyze("func both<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i64>\n    return f(1)\n" + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Last();
         var donor = MinimalEmissionTest.Analyze("func other<F>(f: ref/F)\n    F is Callable<(i64) -> i32>\n    return\n" + Main);
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<IsKoto>().Last();
@@ -144,13 +144,13 @@ public class CallableSignatureSelectionTest
     public void WarmSelectionReusesCandidateAndOperationStorage()
     {
         var c = MinimalEmissionTest.Analyze(Forward);
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

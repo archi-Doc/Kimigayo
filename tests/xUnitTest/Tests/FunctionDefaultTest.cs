@@ -275,12 +275,12 @@ public class FunctionDefaultTest
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"plans\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         using var rebound = new StringWriter();
-        Assert.True(c.WriteIr(rebound, out error), error);
+        Assert.True(c.Generate(rebound), MinimalEmissionTest.Describe(c));
         Assert.Equal(original.ToString(), rebound.ToString());
 
         var restored = CompilationTestHelper.Reload(c);
@@ -288,7 +288,7 @@ public class FunctionDefaultTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var reloaded = new StringWriter();
-        Assert.True(restored.WriteIr(reloaded, out error), error);
+        Assert.True(restored.Generate(reloaded), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), reloaded.ToString());
     }
 
@@ -298,10 +298,10 @@ public class FunctionDefaultTest
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"warm\")");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Function default emission failed.");
             }

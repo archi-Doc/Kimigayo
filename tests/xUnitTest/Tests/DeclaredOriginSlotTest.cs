@@ -65,7 +65,7 @@ public class DeclaredOriginSlotTest
 
         // The projection of a declared slot binds (its ownership is checked by the projection tests).
         var c = MinimalEmissionTest.Analyze("public struct View<T> {source}\n    private let data: ref/T during source\nfunc forward<T>(value: View<T>) -> View<T>{result}\n    origin result.source == value.source\n    return value@move\n" + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.2: after a slot is renamed, each projection of the old name is one record at the slot name, and the unbound result slot

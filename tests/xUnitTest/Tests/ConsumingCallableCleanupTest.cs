@@ -38,8 +38,8 @@ public class ConsumingCallableCleanupTest
         var c = MinimalEmissionTest.Analyze(Prefix + "let action = func [item@move] () -> i32 => item.value\nlet result = invoke(action@move)");
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -26,8 +26,6 @@ internal static partial class KimiLibraryCatalog
 {
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
-    internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
-
     internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageSetArrayLength;
 
     internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;

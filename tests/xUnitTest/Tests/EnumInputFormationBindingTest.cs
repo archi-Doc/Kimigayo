@@ -44,7 +44,7 @@ public class EnumInputFormationBindingTest
     public void DependentPayloadInputsUseDeclarationEvidence()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nenum E<U>\n    U is i32\n    A(Source<U>.Origin.Item)\n    Self is C");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
     }
 

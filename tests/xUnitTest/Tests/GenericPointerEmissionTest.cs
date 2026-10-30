@@ -67,8 +67,8 @@ public class GenericPointerEmissionTest
     public void AbstractOwnedPointeeCanBeAcquired(string expression)
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E, index: isize) -> E\n    unsafe => return {expression}\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -78,8 +78,8 @@ public class GenericPointerEmissionTest
     public void DependentInstantiationsPreserveTheCompletePointee(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc read(pointer: raw/({type})) => take(pointer)\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -87,7 +87,7 @@ public class GenericPointerEmissionTest
     public void AcquiredGenericValueCannotBeMovedTwice()
     {
         var c = MinimalEmissionTest.Analyze("func take<E>(pointer: raw/E) -> E\n    unsafe\n        let value = (*pointer)@move\n        let moved = value@move\n        return value@move\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.ErrorCount > 0);
     }
 }

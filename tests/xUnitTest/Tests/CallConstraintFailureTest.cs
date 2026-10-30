@@ -52,7 +52,7 @@ public class CallConstraintFailureTest
     public void FailedConditionsDoNotDisplaceAnApplicableOverload()
     {
         var c = MinimalEmissionTest.Analyze("func read<T>(value: ref/T) -> i32\n    T is Copy\n    return 1\nfunc read(value: ref/string) -> i32 => 2\nlet text = \"text\"\nlet result = read(text@ref)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Binding.Issues);
     }
 }

@@ -22,7 +22,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     public void DistinctBoundParentsKeepBothAssociatedTypes(string parents)
     {
         var c = MinimalEmissionTest.Analyze(Declarations(parents));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
         Assert.Equal(2, q.SymbolOf()!.Contract!.AssociatedTypes.Count);
     }
@@ -64,7 +64,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     {
         var source = "contract C<E>\n    associate Item(a) is E\ncontract Q<U>: C<i32>, C<U>\nstruct S\n    Self is Q<" + argument + ">\n    public init() => ()\nlet value = S.init()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
         var reference = Assert.Single(s.ConstraintNodes).ConstraintOf()!.Contract!;
         Assert.Equal(count, reference.Contract!.AssociatedTypes.Count);
@@ -80,7 +80,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     {
         var source = "contract C<E>\n    associate Item(a) for ref/E during a\ncontract Q: C<i32>, C<i64>\n    associate " + qualifier + ".Item(b) is ref/i32 during b\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (qualifier == "C")
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
@@ -95,8 +95,8 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C<i32>.Item(a) is Copy\n" +
             "func copy<T>(value: T.(C<" + projected + ">).Item(a), marker: ref/T during a)\n    T is Q\n    let duplicate = value\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -107,7 +107,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var source = "contract C<E>\n    associate Item(a) for ref/E during a\ncontract Q<U, V>: C<U>, C<V>\n" +
             "func use<T, U, V>(source: ref/T, value: ref/U during a) -> T.(C<" + target + ">).Item(a)\n    T is Q<U, V>\n    $abort(\"unused\")\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -118,7 +118,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var source = "contract C<E>\n    associate Item(a) is E\ncontract Q<U>: C<i32>, C<U>\nopen struct Base<U>\n    Self is Q<U>\n    public init() => ()\n" +
             "struct Derived: Base<" + argument + ">\n    Self is Q<" + argument + ">\n    public init() : base() => ()\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var derived = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "Derived");
         var reference = Assert.Single(derived.ConstraintNodes).ConstraintOf()!.Contract!;
         Assert.All(c.Binding.GetConformanceDefinition(derived.TypeOf()!, reference)!.Paths, path =>
@@ -137,7 +137,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     {
         const string Source = "contract C<E>\n    associate Item(a)\ncontract Left: C<i32>\ncontract Right: C<i32>\ncontract Q: Left, Right\nstruct S\n    Self is Q\n    associate Item(a) is i32\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
         Assert.Single(q.SymbolOf()!.Contract!.AssociatedTypes);
     }
@@ -147,7 +147,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     {
         const string Source = "contract C<E>\n    associate Item(a) is E\ncontract Q: C<i32>, C<i64>\nstruct S\n    Self is Q\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single();
         var mapping = c.Binding.GetConformance(s.TypeOf()!, q.SymbolOf()!)!;
@@ -156,7 +156,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var donor = CompilationTestHelper.ParseSuccess("contract Q: C<i64>").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single();
         Assert.True(KotoHelper.Replace(q, q.Bases[0], ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(q.CodeContext))));
         Assert.False(mapping.IsVerified);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(old[1], Assert.Single(mapping.AssociatedTypes).Key);
         Assert.False(mapping.AssociatedTypes.ContainsKey(old[0]));
     }
@@ -166,9 +166,9 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     public void WarmBoundAssociatedRebindDoesNotAllocate()
     {
         var c = MinimalEmissionTest.Analyze(Declarations("C<i32>, C<i64>"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var bytes = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, bytes);
     }
 

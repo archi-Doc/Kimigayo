@@ -482,7 +482,6 @@ public sealed partial class OwnershipAnalysis
         this.placeValues.Clear();
         this.resultHeads.Clear();
         this.resultJoins.Clear();
-        this.resultDeclarations.Clear();
         this.pendingResults.Clear();
         this.selections.Clear();
         this.candidates.Clear();
@@ -526,9 +525,9 @@ public sealed partial class OwnershipAnalysis
             // checking neither destroys them nor applies the callee's return contract.
             var defaultValue = function.Parameters[declarationDefault].DefaultValue!;
             var reported = this.body.IssueStorage.Count;
-            var securedDefault = this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
+            this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
             this.Cleanup(0, parameterCount, defaultValue, CleanupReason.Return);
-            this.Deliver(function, securedDefault);
+            this.Deliver(function);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
             this.CompleteBody(function, declarationDefault);
             return;
@@ -551,7 +550,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.PrepareReceiverFields(function);
-        var secured = -1;
         if (function.Body is { } block)
         {
             this.Block(block);
@@ -571,7 +569,7 @@ public sealed partial class OwnershipAnalysis
             {
                 var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(expression);
-                secured = this.WriteResult(expression, this.resultPlace, value, reported);
+                this.WriteResult(expression, this.resultPlace, value, reported);
             }
         }
         else
@@ -582,7 +580,7 @@ public sealed partial class OwnershipAnalysis
         this.CheckEnvironmentMoves(function);
         this.CheckConstruction(function);
         this.Cleanup(0, 0, function, CleanupReason.Return);
-        this.Deliver(function, secured);
+        this.Deliver(function);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         this.CompleteBody(function);
     }
@@ -658,7 +656,6 @@ public sealed partial class OwnershipAnalysis
             DefaultContext = this.defaultContext,
             CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
-        this.body.IsConcrete &= !type.HasAbstractPart;
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
             this.Unsupported(source);
@@ -692,7 +689,6 @@ public sealed partial class OwnershipAnalysis
     {
         this.body.PlaceStorage.Add(place);
         this.placeValues.Add(-1);
-        this.resultDeclarations.Add(-1);
         return place.Id;
     }
 
@@ -914,7 +910,7 @@ public sealed partial class OwnershipAnalysis
         if (node.ErasedFunctionType is { } erased)
         {
             if (node.BoundType?.Kind == BoundTypeKind.FunctionItem && node.BoundSymbol is { Declaration: FunctionKoto item } symbol &&
-                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType, requireClosed: false) is null :
+                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType) is null :
                     (item.Body ?? item.ExpressionBody) is null && symbol.CompilerFunction == CompilerFunctionKind.None))
             {
                 this.Unsupported(node); // A requirement without a selected executable entry cannot be erased.
@@ -1533,12 +1529,9 @@ public sealed partial class OwnershipAnalysis
         var mark = this.arguments.Count;
         var loanDepth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
-        var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            var prepared = this.PrepareCallArgument(call, receiver, plan.ReceiverOperation);
-            borrows |= this.HasCallInspection(prepared);
-            this.arguments.Add(prepared);
+            this.arguments.Add(this.PrepareCallArgument(call, receiver, plan.ReceiverOperation));
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -1549,7 +1542,6 @@ public sealed partial class OwnershipAnalysis
                 : accessor is not null && argument.ParameterIndex == 0 && accessor.Receiver is not null && preparedReceiver >= 0 ? preparedReceiver
                 : accessor?.Kind == PropertyAccessorKind.Set && preparedInput >= 0 ? preparedInput
                 : this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
-            borrows |= this.HasCallInspection(prepared);
             this.arguments.Add(prepared);
         }
 
@@ -1589,11 +1581,6 @@ public sealed partial class OwnershipAnalysis
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(call.BoundType, BoundType.Never))
         {
-            if (borrows)
-            {
-                this.body.CallLoans.Add(new(invoke, -1, -1, LoanRequirement.None));
-            }
-
             this.current = -1;
             this.EndComparisonLoans(loanDepth, call);
             this.comparisonDepth = loanDepth;
@@ -1618,12 +1605,7 @@ public sealed partial class OwnershipAnalysis
 
         // Result Origins retain their source Loans independently of call-argument Loans.
         // Secure the result before ending the latter.
-        var loanEnd = this.EndComparisonLoans(loanDepth, call);
-        if (borrows)
-        {
-            this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
-        }
-
+        this.EndComparisonLoans(loanDepth, call);
         this.comparisonDepth = loanDepth;
 
         return result;
@@ -1723,13 +1705,10 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    private int Condition(Koto condition) => this.Condition(condition, out _);
-
-    private int Condition(Koto condition, out int cleanupStart)
+    private int Condition(Koto condition)
     {
         var mark = this.temporaries.Count;
         var value = this.Value(this.Expression(condition, PlaceUseKind.Read));
-        cleanupStart = this.body.Operations.Count;
         this.Cleanup(mark, this.locals.Count, condition, CleanupReason.ExpressionEnd);
         this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
         return value;
@@ -1844,10 +1823,10 @@ public sealed partial class OwnershipAnalysis
         this.EndComparisonLoans(loanDepth, jump);
         if (returns)
         {
-            var secured = this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
+            this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
             this.CheckConstruction(jump);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
-            this.Deliver(jump, secured);
+            this.Deliver(jump);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
         else if (selected && jump is YieldKoto or ExitKoto)

@@ -27,7 +27,7 @@ public partial class ModuleBindingTest
         {
             Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(compilation.Analyze().IsVerified);
-            Assert.True(compilation.Validate(out var failure), failure);
+            Assert.True(compilation.Generate(TextWriter.Null), MinimalEmissionTest.Describe(compilation));
         }
     }
 

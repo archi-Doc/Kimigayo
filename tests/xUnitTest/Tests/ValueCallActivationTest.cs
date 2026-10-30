@@ -26,8 +26,8 @@ public class ValueCallActivationTest
     public void ReservedArgumentsActivateAfterTheReceiver(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var failure), failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ValueCallActivation" + name, source, stdout);
     }
 
@@ -39,10 +39,10 @@ public class ValueCallActivationTest
     public void AnArgumentCannotTakeWhatTheReceiverHolds(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Ownership.Issues);
         Assert.True(issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Activation, issue.ToString());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -51,10 +51,10 @@ public class ValueCallActivationTest
     {
         var c = MinimalEmissionTest.Analyze("func local(value: uniq/i32, f: ref/((uniq/i32) -> ())) -> ()\n    f(value)\n" + Bump +
             "var n: i32 = 1\nlet g: (uniq/i32) -> () = bump\nlocal(n@uniq, g@ref)\nlet r = g@ref\nr(n@uniq)\nrequire n == 3 else => $abort(\"n\")");
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

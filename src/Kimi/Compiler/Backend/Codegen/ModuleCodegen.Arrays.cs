@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Backend;
 // The Array legacy rows of ModuleCodegen (R5 plan C8d, package C 3.4 and 3.6; S2-S4 X4, X39; DECISIONS R5-M121), until R8 writes them in
 // Kimigayo. A LegacyRow item's routine (Row), which its calls, its function's Item's Value calls and its adapter's entry call (FunctionCodegen's
 // Instance rows): its own helper, or the capacity routine its row names, with one given number, its element's stride or, for a fixed array's
-// ownStorage, the array's length. A helper is P1b's row text, the one copy both generators write (PD2; LegacyRuntimeHelpers.WriteArray), named
+// ownStorage, the array's length. A helper is P1b's row text, the one copy (PD2; LegacyRuntimeHelpers.WriteArray), named
 // after its item by its kind's prefix over its element descriptor in the item's instance (Helper): the element's Layout record, the name of
 // the element glue its text destroys by (its item's target, so a string element dies by its glue) and, by its kind, the Option payload's
 // offset (Pop: the Some Case's element at the Option record's Field 1) or the remainder record's Fields in declaration order (storage,

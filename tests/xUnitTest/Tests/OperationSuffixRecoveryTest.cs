@@ -34,7 +34,7 @@ public class OperationSuffixRecoveryTest(ITestOutputHelper output)
         Assert.Equal(["MisplacedSyntax_Kd", "TypeMismatch_Kd"], records.Select(static x => x.Code));
         Assert.Equal(new SourceSpan(source.IndexOf('?', StringComparison.Ordinal), 1), records[0].Span);
         Assert.Equal("Syntax.SemanticsShorthandSuffix", Assert.Single(records[0].Reason!, static x => x.Name == "form").Value);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.IsType<ErrorKoto>(conversion.Right);
         Assert.Null(conversion.Right.TypeOf());
@@ -53,7 +53,7 @@ public class OperationSuffixRecoveryTest(ITestOutputHelper output)
     public void CompleteTypesKeepTheirIndependentSuffixGrammar(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

@@ -23,7 +23,7 @@ public class LendingIteratorContractTest
     {
         var source = Counter + "var iterator = Counter.init()\nlet first = iterator.next()\nlet second = iterator.next()\nmatch first\n    .Some(let item) => require item == 1 else => $abort(\"item\")\n    .None => ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.NotEmpty(c.Problems);
     }

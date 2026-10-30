@@ -59,7 +59,7 @@ public class CompositeMatchTest
         const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nmatch x@move\n    .A((let n, true)) if n == 7 => Console.writeLine(\"ok\")\n    .A(_) => ()\n    .B => ()";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -70,14 +70,14 @@ public class CompositeMatchTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("CompositePatternReload", writer.ToString(), "ok\n");
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
         var written = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null)));
         Assert.True(written);
     }
 }

@@ -22,8 +22,8 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     public void SpecializationsInheritUniversallyQuantifiedResultOrigins(string annotation)
     {
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32" + annotation + "> => .None\nlet value = empty<i32>()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
         Assert.Equal(OriginKind.Parameter, implementation.SymbolOf()!.Type!.Components[0].Origin!.Kind);
     }
@@ -34,7 +34,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     public void OverridesInheritTheSameResultOriginContract(string annotation)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func empty(self: objref/Self) -> Option<ref/T during fresh> => .None\nstruct Derived : Base<i32>\n    override func empty(self: objref/Self) -> Option<ref/i32" + annotation + "> => .None\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
         Assert.Equal(OriginKind.Parameter, implementation.SymbolOf()!.Type!.Components[0].Origin!.Kind);
@@ -44,8 +44,8 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     public void AnOmittedBinderRemainsVisibleInTheImplementationBody()
     {
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32>\n    let value: Option<ref/i32 during fresh> = .None\n    return value@move\nlet value = empty<i32>()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -55,7 +55,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32" + annotation + "> => .None\n()");
         Assert.Contains(c.Binding.Issues, x => x.Code == expected);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("func empty<T>(x: ref/T) -> Option<ref/T during fresh> => .None\nspecialize func empty<i32>(x: ref/i32) -> Option<ref/i32> => .Some(x)\n()");
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnprovenOriginRelation_Kd");
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -82,13 +82,13 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => x.Name == "empty").ToArray();
         var original = functions.Single(x => !x.IsSpecialization);
         var implementation = functions.Single(x => x.IsSpecialization);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var previous = implementation.SymbolOf()!.Type!.Components[0].Origin!;
         var donor = MinimalEmissionTest.Analyze(Empty.Replace("fresh", "updated", StringComparison.Ordinal) + "()");
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "empty").ReturnType!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original, original.ReturnType!, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var current = implementation.SymbolOf()!.Type!.Components[0].Origin!;
         Assert.NotSame(previous, current);
         Assert.Equal("fresh", previous.Name);
@@ -132,7 +132,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32> => .None\nlet value = empty<i32>()");
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 5.7, 15.3.7: a contract compares raw Origins by subtyping: an override may state an Origin its slot leaves unstated, but not

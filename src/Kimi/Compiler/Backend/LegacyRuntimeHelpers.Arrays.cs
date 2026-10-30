@@ -67,7 +67,7 @@ internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, Stored
 
 /// <summary>SPEC 4.9.3, 4.9.5, 4.9.7, 4.9.8, 22.2: the Array capacity routines and the per-element Array helpers over the
 /// {buffer, length, capacity} handle (Windows x64 profile).</summary>
-internal sealed partial class LegacyRuntimeHelpers
+internal static partial class LegacyRuntimeHelpers
 {
     private const string ArrayGrowBody = """
         entry:
@@ -333,8 +333,7 @@ internal sealed partial class LegacyRuntimeHelpers
     /// <param name="output">The module text.</param>
     internal static void WriteArrayRuntime(TextWriter output) => output.Write(ArrayRuntime);
 
-    /// <summary>Writes one Array helper's definition: its ABI, its kind row's prologue and writer, the one text both generators write
-    /// (PD2).</summary>
+    /// <summary>Writes one Array helper's definition: its ABI, its kind row's prologue and writer (PD2).</summary>
     /// <param name="output">The module text.</param>
     /// <param name="helper">The helper.</param>
     internal static void WriteArray(TextWriter output, ArrayHelper helper)
@@ -344,33 +343,6 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write(row.Prologue);
         row.Write(output, helper);
         output.Write("}\n");
-    }
-
-    /// <summary>Registers an Array helper a lowered body uses: each helper is written once per module, in first-request order,
-    /// and the runtimes its kind's row declares join the module's.</summary>
-    /// <param name="helper">The requested helper.</param>
-    internal void Request(ArrayHelper helper)
-    {
-        this.JoinNeeds(ArrayRow(helper.Kind).Needs);
-        if (!this.arrayHelpers.Contains(helper))
-        {
-            this.arrayHelpers.Add(helper);
-        }
-    }
-
-    /// <summary>Writes the capacity routines when the module uses Arrays, then each requested Array helper.</summary>
-    /// <param name="output">The module text.</param>
-    internal void WriteArrays(TextWriter output)
-    {
-        if (this.NeedsArrayRuntime)
-        {
-            WriteArrayRuntime(output);
-        }
-
-        foreach (var helper in this.arrayHelpers)
-        {
-            WriteArray(output, helper);
-        }
     }
 
     // A signature without a result: the handle, the leading parameters and the caller's location (SPEC 22.5.1).

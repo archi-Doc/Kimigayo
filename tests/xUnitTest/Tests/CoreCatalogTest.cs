@@ -81,7 +81,7 @@ public class CoreCatalogTest
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

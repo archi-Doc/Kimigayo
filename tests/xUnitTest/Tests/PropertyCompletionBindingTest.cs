@@ -33,7 +33,7 @@ public class PropertyCompletionBindingTest
     public void ValidApiTypesRemainVerified(string type)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: " + type);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Property(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -61,7 +61,7 @@ public class PropertyCompletionBindingTest
     public void ValidDependentPropertyUsesItsDeclaredEvidence()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct S<U>\n    U is Hidden\n    var value: E<U>");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Property(c).IsVerified);
     }
 

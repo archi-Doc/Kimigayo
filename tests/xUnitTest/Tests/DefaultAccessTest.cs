@@ -104,10 +104,10 @@ public class DefaultAccessTest
         public void PreparedAccessPlansReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze("func f(x: uniq/i32, y: i32 = x) -> i32 => y\nvar n = 3\nf(n@uniq)");
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
     }

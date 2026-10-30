@@ -16,8 +16,8 @@ public class AssociatedCollectionFormationTest
     {
         var source = "contract C\n    associate Item(a, b) is Slice<ref/i32 during a> during b\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -64,14 +64,14 @@ public class AssociatedCollectionFormationTest
         {
             var source = "contract C\n    associate Item(a, b) for ref/(" + type + ") during b\nstruct S\n    Self is C\n    associate Item(a, b) is i32\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n" + (valid ? "    origin a outlives b\n" : string.Empty) + "    return 42";
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         }
     }
 
     private static void Check(string name, string source, string stdout, bool conflict)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(!conflict, c.Analysis.IsVerified);
         if (!conflict)
         {

@@ -41,9 +41,9 @@ public class AbortEmissionTest
     public void ExplicitAbortPassesEveryCompilerStage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         Assert.Contains("@__kimi_abort_message", writer.ToString());
     }
 
@@ -64,7 +64,7 @@ public class AbortEmissionTest
     public void RejectsInvalidInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -75,7 +75,7 @@ public class AbortEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Problems, x => x.Code == failure);
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // Code after $abort is unreachable: its first use of a Local is one location-only Unsupported at that use.
@@ -87,7 +87,7 @@ public class AbortEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         var issue = Assert.Single(c.Problems);
         Assert.Equal((DiagnosticCode.Unsupported_Kd, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class AbortEmissionTest
         var replaced = LocationText(c);
         c.Kotonoha.RootKoto.Clear();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "\n$abort(\"after\")");
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.EndsWith(":2:1", c.Locations.Text(SourceRef.Of(Abort(c))));
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -153,13 +153,13 @@ public class AbortEmissionTest
         Assert.Same(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf(), CallPlan.Of(Abort(c)));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out _));
+        Assert.True(c.Generate(TextWriter.Null));
 
         var success = true;
         var allocated = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, allocated);

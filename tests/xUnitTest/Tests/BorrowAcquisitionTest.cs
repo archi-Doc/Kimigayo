@@ -94,7 +94,7 @@ public class BorrowAcquisitionTest
     public void RejectsUsesDuringReborrowLoans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
