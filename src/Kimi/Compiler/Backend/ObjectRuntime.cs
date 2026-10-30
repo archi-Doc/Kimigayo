@@ -16,8 +16,7 @@
 // Output: LLVM text written to the writer: the runtime, then per object its constants, its destructor and its factory; the signatures and
 // values above.
 // Invariants: a release publishes the reduced count before any destruction, destroys the payload before the free and accesses the
-// header after neither (SHARED_OBJECT_RUNTIME, Release); the legacy writer's .ll stays byte-identical while it shares this text;
-// warm writes allocate nothing.
+// header after neither (SHARED_OBJECT_RUNTIME, Release); warm writes allocate nothing.
 // Must not decide whether a module uses objects or build an object's row (code generation's), take syntax, HIR or MIR types, or use
 // LINQ.
 
@@ -42,7 +41,7 @@ internal sealed record ObjectCreation(int Id, ValueLowering Payload, bool Copy, 
     internal FunctionAbi?[] VirtualSlots { get; init; } = [];
 }
 
-/// <summary>Writes the object runtime of the LLVM text that every generator shares.</summary>
+/// <summary>Writes the object runtime of the LLVM text.</summary>
 internal static partial class ObjectRuntime
 {
     /// <summary>The offset of an object's payload from its header, after its descriptor and control words (IMPL 21.1.3), at which the

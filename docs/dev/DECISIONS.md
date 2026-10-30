@@ -9249,6 +9249,8 @@ structure is recorded here by the unit that first implements it.
   collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit). The
   Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27, the formatting rows (P1d) by
   R5-M30, the inline storage kernel rows (P2a) by R5-M45 and the rows' Array runtime needs by R5-M46.
+  - Amended by R5-M163 (G8): the module instance and its requests are deleted with `EmissionModule`, its one holder; the class is
+    static, its rows and writers MIR code generation's.
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -13700,7 +13702,7 @@ structure is recorded here by the unit that first implements it.
   - Amends, each with its amendment line: R5-M5 and R5-M88 (done), R5-M94, R5-M152 S7, R5-M160 and R5-M161; R5-M34 and R5-M36 with
     the Binding commit.
   - Amended by R5-M163 (G8): the unit mapping's G8 items are deleted: `StaticScalarEntry` and `AggregateLayoutPool`'s hooks with
-    their files.
+    their files, and `LegacyRuntimeHelpers`' whole instance half, not only its formatting requests (one instance, one rule).
 - **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
   design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
   G:R6-gen-del)
@@ -13716,8 +13718,15 @@ structure is recorded here by the unit that first implements it.
   - `C/Emission` keeps the toolchain, publication and profile files (`EmissionArtifacts`, `NativeToolchain*`, `ToolchainResolver`,
     `ArtifactPaths`, `ArtifactFiles`, `Kernel32Imports`, `WindowsProfile`) and the `.ll.in` resources, whose manifest names and
     paths the Backend, the tests and `compare-fixtures.ps1` read.
+  - G8b: `LegacyRuntimeHelpers` loses its instance half, which only `EmissionModule.RuntimeHelpers` held: the request lists and
+    flags, `Clear`, `Request`, `Callee`/`Resolve`, `HasUnresolvedReference`, `WriteArrays`, `WriteDictionaries`, `WriteFormatting`,
+    the formatting requests, and the statics only they called (the Dictionary runtime's duplicate adapter and initialization
+    bridge with `RuntimeAbi.DictionaryInit`, the formatting write wrapper text); the class is static. Freed with them: the CheckKey
+    row (no MIR site requests it; a literal checks its duplicates itself, R5-M124) with `HelperNeeds.DictionaryRuntime`,
+    `DictionaryHelper.Related` (MIR passes -1), `WriteRawSlice` and `LlvmScalarText.WritePositionConversion` (the old writer's
+    alone). The Backend's contracts and ARCH's rows name one generator.
   - Records: ARCH drops `EmissionOpcode` (49) and the old pool's clauses of its Layout and Abi rows; CODEMAP drops the old layer's
     row and stems; the Backend's contracts drop the deleted types.
   - Rejected: moving the survivors at G8 (resource names, harness paths; G11's CODEMAP decides the folder); keeping the pool's
     destruction half (no reader).
-  - Amends, each with its amendment line: R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's unit mapping.
+  - Amends, each with its amendment line: R5-M16, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's unit mapping.

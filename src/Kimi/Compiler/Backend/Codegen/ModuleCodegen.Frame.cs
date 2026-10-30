@@ -43,7 +43,7 @@ internal sealed partial class ModuleCodegen
         ZeroSized = 2,
 
         /// <summary>The storage byte primitives' definitions, the nullable Alloc and the byte copy (LlvmModuleText.TryAllocate, then
-        /// LlvmModuleText.TransferBytes, as the old generator writes them), for a Requested row's call (DECISIONS R5-M92, R5-M145).</summary>
+        /// LlvmModuleText.TransferBytes, as the old generator wrote them), for a Requested row's call (DECISIONS R5-M92, R5-M145).</summary>
         StorageBytes = 4,
 
         /// <summary>The object runtime (ObjectRuntime.WriteRuntime), for a descriptor, a clone or a runtime Type test (DECISIONS R5-M110).</summary>
@@ -70,8 +70,7 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
     /// row's needs to the frame's parts: the Array runtime and the formatting runtime, each with the memory declarations. The other needs name
-    /// no part: the element glue is an item, the collector's target, and the Dictionary runtime is the old lowering's (MIR code generation
-    /// calls initialize's body).</summary>
+    /// no part: the element glue is an item, the collector's target.</summary>
     /// <param name="needs">The row's needs.</param>
     internal void Request(HelperNeeds needs)
     {
