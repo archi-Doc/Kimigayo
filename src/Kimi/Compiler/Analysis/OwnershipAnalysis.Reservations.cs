@@ -85,15 +85,6 @@ public sealed partial class OwnershipAnalysis
                 ReferenceEquals(node.CodeContext.SourceDocument, input.CodeContext.SourceDocument);
     }
 
-    private bool HasCallInspection(int place)
-    {
-        var value = this.Value(place);
-        // Address values use Origin liveness; reads of guard candidates retain their
-        // enclosing guard Loan. Only a new inspection has its own call-wide extent.
-        return value >= 0 && this.body.Values[value].Kind == OwnershipValueKind.Borrow &&
-            this.body.Operations[value].Kind == OwnershipOperationKind.Borrow;
-    }
-
     // SPEC 9.6.1: a shared receiver selected through a base path is the whole receiver, borrowed at its own Type (`whole`), whose base
     // prefix is then lent at the parameter Type (`type`). Binding rejects an exclusive or unproven projection first (OCC-X).
     private bool BaseBorrowTypes(Koto source, in BoundArgumentOperation argument, out BoundType type, out BoundType whole)

@@ -791,6 +791,24 @@ public sealed partial class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
+    // DECISIONS R5-M36, R5-M43, S2-S4 X10: two closures of equal result Type in one generic function are two items per enclosing
+    // instance, each the instance of its own body.
+    [Fact]
+    public void TwoClosuresOfOneInstanceAreItsTwoItems()
+    {
+        var c = MirBuildTest.Compile(GenericClosureIdentityTest.TwoClosures);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        var closures = set.Items.ToArray().Where(x => Label(program, x).StartsWith("Closure ", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(
+            ["Closure pair [bool]", "Closure pair [bool]", "Closure pair [i32]", "Closure pair [i32]"],
+            closures.Select(x => Label(program, x)).Order(StringComparer.Ordinal));
+        Assert.Equal(4, closures.Select(x => (Label(program, x), x.BodyOrdinal)).Distinct().Count());
+        Assert.Equal(2, closures.Select(static x => x.BodyOrdinal).Distinct().Count());
+    }
+
     // SPEC 11.3, 6.1.3 (PLAN G157 (49)): a Closure in a generic struct's accessor is an instance of its body under the accessor's instance,
     // as one in a function is: one per instance of the getter and of the setter, with no record (before: InternalInvariant_Kd where it is
     // made and where it is called, since no context carried the accessor's instance).

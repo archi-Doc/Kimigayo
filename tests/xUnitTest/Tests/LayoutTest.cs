@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// IMPL 21.1.3's rows and the sequence handles (SPEC 4.8.6, 4.9.5) in Layout.Of, which the old pool and gate read (R5 P7a), and
+// IMPL 21.1.3's rows and the sequence handles (SPEC 4.8.6, 4.9.5) in Layout.Of (R5 P7a), and
 // struct, Tuple, fixed-array, enum, Closure and Function Item placement with its OK/Limit/CLayout result (R5 P7b, S2-S4 X1, X18, X31);
 // one Layout per compilation, its memo for the program version, the count and depth bounds, the outcomes and their precedence (R5 P7c,
 // DECISIONS R5-M37).
@@ -40,10 +40,9 @@ public partial class LayoutTest
     [InlineData("u128", "i128", "i128", 16)]
     public void ScalarsFollowTheProfileRows(string type, string storage, string computation, int size)
     {
-        // IMPL 21.1.3: size, alignment and stride are equal; arguments pass the computation Type; the old gate reads the record.
+        // IMPL 21.1.3: size, alignment and stride are equal; arguments pass the computation Type.
         var value = Layout.Row(BoundType.Primitives[type]);
         Assert.Equal((storage, size, size, size, computation, computation), Row(value));
-        Assert.Same(value, WindowsLowering.GetValue(BoundType.Primitives[type]));
     }
 
     // DECISIONS R5-M92: no Layout alignment exceeds 16, the heap's (SPEC 5.6, 21.4.3), which Raw.allocate's row relies on in place of the
@@ -68,25 +67,23 @@ public partial class LayoutTest
         Assert.Same(RuntimeAbi.Unit, Layout.Row(BoundType.Unit));
         Assert.Same(RuntimeAbi.String, Layout.Row(BoundType.String));
 
-        // IMPL 21.1.3: Never has size 0, alignment 1 and stride 0, laid out as Unit; the old gate keeps it without a record (X31).
+        // IMPL 21.1.3: Never has size 0, alignment 1 and stride 0, laid out as Unit (X31).
         var never = Layout.Row(BoundType.Never);
         Assert.Same(RuntimeAbi.Unit, never);
         Assert.Equal(("void", 0, 1, 0, "void", null), Row(never));
-        Assert.Null(WindowsLowering.GetValue(BoundType.Never));
     }
 
     [Fact]
-    public void ANeverPayloadIsZeroSizedWhileTheOldPoolKeepsItsNull()
+    public void ANeverPayloadIsZeroSized()
     {
         // SPEC 3.1.3: Option<Never> is valid. Layout lays the stored Never out as zero-sized (X31): the tag, then an empty payload
-        // union; the old pool keeps its null (STATUS).
+        // union.
         var c = CompilationTestHelper.BindSuccess("let a: Option<Never> = .None");
         var option = Variable(c, "a");
         Assert.Same(BoundType.Never, option.Components[0]);
         var value = c.Layout.Of(option).Value!;
         Assert.Equal(("{ i32, { [0 x i8], [0 x i8] } }", 4, 4, 4, "{ i32, { [0 x i8], [0 x i8] } }", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 4 }, value.Layout.FieldOffsets.ToArray());
-        Assert.Null(new AggregateLayoutPool(c.Layout).Get(option));
     }
 
     [Fact]
@@ -116,13 +113,12 @@ public partial class LayoutTest
     public void PlacementGroupsByAlignmentOrKeepsTheWrittenCOrder(string declarations, string type, string storage, int size, int alignment, string offsets)
     {
         // IMPL 21.1.2: Kimigayo mode groups the parts by descending alignment, each group in written order (a zero-sized part last);
-        // C mode keeps the written order; an enum is an i32 tag, then its payload union. The old pool's record is Layout's.
+        // C mode keeps the written order; an enum is an i32 tag, then its payload union.
         var c = CompilationTestHelper.BindSuccess(declarations + "\nfunc probe(value: " + type + ") => ()");
         var probed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
         var value = c.Layout.Of(probed).Value!;
         Assert.Equal((storage, size, alignment, size, storage, "ptr"), Row(value));
         Assert.Equal(offsets, string.Join(',', value.Layout.FieldOffsets.ToArray()));
-        Assert.Same(value, new AggregateLayoutPool(c.Layout).Get(probed)!.Value);
     }
 
     [Fact]
@@ -134,7 +130,6 @@ public partial class LayoutTest
         var environment = c.Layout.Of(closure).Value!;
         Assert.Equal(("{ [0 x i64], [16 x i8] }", 16, 8), (environment.Layout.StorageType, environment.Layout.Size, environment.Layout.Alignment));
         Assert.Equal(new[] { 8, 0 }, environment.Layout.FieldOffsets.ToArray());
-        Assert.Same(environment, new AggregateLayoutPool(c.Layout).Get(closure)!.Value);
 
         var item = Variable(c, "item");
         Assert.Equal(BoundTypeKind.FunctionItem, item.Kind);
@@ -149,7 +144,7 @@ public partial class LayoutTest
         // S2-S4 X1: B places its C-layout Field (8 bytes, alignment 4) at 0 and t at 8, so its data ends at 9 and its size 12
         // includes 3 bytes of tail padding. E's u follows the complete base at 12 (in the padding it would be at 9, size 12); D's
         // Fields follow it in their groups (w at 16, u at 24). A derived struct has no C layout (SPEC 6.7.1), so the base precedes
-        // only Kimigayo-mode Fields. The old pool's records are Layout's.
+        // only Kimigayo-mode Fields.
         var c = CompilationTestHelper.BindSuccess("#Layout(\"C\")\nstruct C\n    var x: u8\n    var y: i32\nopen struct B\n    var c: C\n    var t: u8\nstruct E: B\n    var u: u8\nstruct D: B\n    var u: u8\n    var w: i64\nlet p: raw/" + derivedName + " = null");
         var derived = Variable(c, "p").Components[0];
         var whole = c.Layout.Of(derived).Value!;
@@ -158,10 +153,6 @@ public partial class LayoutTest
         Assert.Equal(new[] { 0, 8 }, prefix.Layout.FieldOffsets.ToArray());
         Assert.Equal((storage, size, alignment), (whole.Layout.StorageType, whole.Layout.Size, whole.Layout.Alignment));
         Assert.Equal(offsets, string.Join(',', whole.Layout.FieldOffsets.ToArray()));
-
-        var old = new AggregateLayoutPool(c.Layout).Get(derived)!;
-        Assert.Same(whole, old.Value);
-        Assert.Same(prefix, old.Base!.Value);
     }
 
     [Theory]
@@ -170,8 +161,7 @@ public partial class LayoutTest
     [InlineData("let x: Option<(i32, Q<P<[0 of u8]>>)> = .None")]
     public void ACLayoutInstanceWithAZeroSizedFieldHasNoLayoutAtAnyDepth(string use)
     {
-        // S2-S4 X18, X31: the result names the C-layout instance that stores a zero-sized Field (a stored Never counts), however deep;
-        // the old pool refuses the Type without a resource limit.
+        // S2-S4 X18, X31: the result names the C-layout instance that stores a zero-sized Field (a stored Never counts), however deep.
         var c = CompilationTestHelper.Parse(CLayoutGeneric + "struct Q<T>\n    var value: T\n" + use);
         c.Bind();
         var option = Variable(c, "x");
@@ -179,9 +169,6 @@ public partial class LayoutTest
         Assert.Equal((Layout.Outcome.CLayout, null), (result.Outcome, result.Value));
         Assert.Equal("P", result.Instance!.Name);
         Assert.Equal(0, c.Layout.Of(result.Instance.Components[0]).Value!.Layout.Size);
-        var pool = new AggregateLayoutPool(c.Layout);
-        Assert.Null(pool.Get(option));
-        Assert.Null(pool.ResourceLimitFailure);
     }
 
     [Fact]
@@ -351,7 +338,7 @@ public partial class LayoutTest
         // R5-M37: P<X> placed at `level` beside a Type 65 high, in either part order and either query order (the parts first, then
         // the whole, or the whole first in a fresh compilation). A CLayout whose zero-sized Field is laid out within the 64-level window
         // outranks DepthLimit; one placed at level 64 or below, or whose Field reaches past the window (a placed zero-sized Field, the
-        // 0-Tuple, is 1 high, so its P is visible down to level 62), stays behind DepthLimit, as in the old pool.
+        // 0-Tuple, is 1 high, so its P is visible down to level 62), stays behind DepthLimit.
         var expected = Enum.Parse<Layout.Outcome>(outcome);
         for (var first = 0; first < 2; first++)
         {
@@ -492,7 +479,6 @@ public partial class LayoutTest
             {
                 var shared = c.Layout.Of(tuples[40]);
                 Assert.Equal((Layout.Outcome.Ok, 0), (shared.Outcome, shared.Value!.Layout.Size));
-                Assert.Same(shared.Value, new AggregateLayoutPool(c.Layout).Get(tuples[40])!.Value);
                 Assert.Equal(Layout.Outcome.DepthLimit, c.Layout.Of(tuples[100]).Outcome);
             },
             TestContext.Current.CancellationToken);
@@ -522,7 +508,6 @@ public partial class LayoutTest
         var value = Layout.Row(handle);
         Assert.Equal(("[8 x i8]", 8, 8, 8, "[8 x i8]", "ptr"), Row(value));
         Assert.Same(value, Layout.Row(new BoundType("h", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String])));
-        Assert.Same(value, new AggregateLayoutPool(new Layout()).Get(handle)!.Value);
     }
 
     [Fact]
@@ -533,7 +518,6 @@ public partial class LayoutTest
         var value = Layout.Row(function);
         Assert.Equal(("[16 x i8]", 16, 8, 16, "[16 x i8]", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 8 }, value.Layout.FieldOffsets.ToArray());
-        Assert.Same(value, new AggregateLayoutPool(new Layout()).Get(function)!.Value);
     }
 
     [Theory]
@@ -542,7 +526,7 @@ public partial class LayoutTest
     [InlineData(BoundTypeKind.Dictionary, 7)]
     public void SequenceHandlesArePointerAlignedWordsForEveryElement(BoundTypeKind kind, int words)
     {
-        // SPEC 4.8.6, 4.9.5: the buffer pointer, then the length and further words; the old pool's handle record is Layout's.
+        // SPEC 4.8.6, 4.9.5: the buffer pointer, then the length and further words.
         BoundType[] components = kind == BoundTypeKind.Dictionary ? [BoundType.String, BoundType.I32] : [BoundType.I32];
         var sequence = new BoundType("s", kind, components: components);
         var value = Layout.Row(sequence);
@@ -550,10 +534,6 @@ public partial class LayoutTest
         Assert.Equal((storage, words * 8, 8, words * 8, storage, "ptr"), Row(value));
         Assert.Equal(Enumerable.Range(0, words).Select(static x => x * 8), value.Layout.FieldOffsets.ToArray());
         Assert.Same(value, Layout.Row(new BoundType("s", kind, components: [.. components.Select(static _ => BoundType.Boolean)])));
-
-        var layout = new AggregateLayoutPool(new Layout()).Get(sequence)!;
-        Assert.Same(value, layout.Value);
-        Assert.Equal(words, layout.Fields.Length);
     }
 
     // SPEC 4.7.3, 22.2 (DECISIONS R5-M124): each handle row names its length word, which a Len reads: a Slice's and an Array's Field 1, a
@@ -584,7 +564,6 @@ public partial class LayoutTest
         var value = c.Layout.Of(loan).Value!;
         Assert.Equal(("{ [0 x i8], [0 x i8] }", 0, 1, 0, "{ [0 x i8], [0 x i8] }", "ptr"), Row(value));
         Assert.Equal(0, value.Layout.FieldOffsets.Length);
-        Assert.Same(value, new AggregateLayoutPool(c.Layout).Get(loan)!.Value);
     }
 
     // SPEC 22.2 (DECISIONS R5-M121): borrowStorageUniq over a UniqSlice runs the Array's BorrowStorage helper, which reads the buffer and the

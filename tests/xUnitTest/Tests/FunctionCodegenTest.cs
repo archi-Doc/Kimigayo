@@ -1258,6 +1258,44 @@ public sealed partial class FunctionCodegenTest
         Assert.True(Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library).Generate(TextWriter.Null));
     }
 
+    // DECISIONS R5-M58, R5-M89: an import edited without changing its C signature (a parameter renamed) keeps its signature: the
+    // module's Write after the edit returns the same FunctionAbi, as the compilation's pooled module does across edits.
+    [Fact]
+    public void AnEditedImportKeepsItsSignature()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        const string Source = "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n" +
+            "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, t)\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
+        var before = Signature(c, module);
+        var original = Mix(c.Kotonoha.RootKoto);
+        var donor = ParseTestHelper.ParseSuccess(Source.Replace("mix(a: i8", "mix(x: i8", StringComparison.Ordinal));
+        var edited = Mix(donor.RootKoto);
+        var replacement = ParseTestHelper.Detach(edited, new FunctionKoto(edited.CodeContext, "placeholder"));
+        Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
+        Assert.Same(before, Signature(c, module));
+
+        static FunctionKoto Mix(Koto root) => KotoTree.Walk(root).OfType<FunctionKoto>().Single(static x => x.Name == "mix");
+
+        // The program bound and analyzed, every body item written by the module, and the signature its Write gave the import.
+        static FunctionAbi Signature(Compilation c, ModuleCodegen module)
+        {
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            c.Binding.CheckStartup(OutputKind.Application);
+            c.Analyze();
+            var program = c.BuildMir();
+            var collector = new InstanceCollector(c.Types, c.Layout);
+            var set = collector.Run(program, 1);
+            var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
+            set.Mark(bodies);
+            Assert.True(module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null), string.Join(", ", module.Records));
+            return Assert.IsType<FunctionAbi>(module.Import(Mix(c.Kotonoha.RootKoto).SymbolOf()!));
+        }
+    }
+
     // SPEC 7.7.4, 22.6 (DECISIONS R5-M146): a safe #LibraryImport function's Item, which has no body target, is called by the import's C
     // signature, as its direct call is (fail-before: one located Unsupported_Kd at the Value call).
     [Fact]
