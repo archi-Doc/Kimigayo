@@ -136,7 +136,7 @@ public class ReferenceEmissionTest
 
     // IMPL 21.3.1 (AbiRecords; DECISIONS R5-M145 under R5-M12): a shared borrow of a string is passed as its address, noundef nonnull align 8
     // dereferenceable(24) and never noalias, at the callee's parameters and at its call alike, and the callee is not readonly; the string is
-    // neither copied nor destroyed by the borrow, which the native audit's single destruction shows under either generator.
+    // neither copied nor destroyed by the borrow, which the native audit's single destruction shows.
     [Fact]
     public void BorrowedValuesNeedNoPhysicalCopyOrStorage()
     {

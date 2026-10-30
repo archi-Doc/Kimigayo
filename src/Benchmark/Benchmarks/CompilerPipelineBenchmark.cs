@@ -79,7 +79,7 @@ public class CompilerPipelineBenchmark
     // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds, validates and analyzes
     // the MIR and collects its checked set (BuildMir), each memoized per program version, so stage 4's Analyze, which runs the same on
     // the legacy and the mir pipeline (DECISIONS R5-M156), reuses them and keeps them for the generation gate. The old analysis still
-    // decides (R3-R6). Under MIR code generation stage 5 is empty and stage 6 is the generation entry (R5-M94).
+    // decides (R3-R6). Stage 5 is empty and stage 6 is the generation entry, MIR code generation (R5-M94, R5-M160).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {
         if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != Boundaries || allocations.Length != Boundaries))
@@ -105,20 +105,9 @@ public class CompilerPipelineBenchmark
         this.Require(result.Analyze().IsVerified, "Analysis failed.");
         Capture(4, timestamps, allocations);
 
-        // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage; G4 deletes the branch with
-        // Compilation.Codegen.
-        if (result.Codegen == CompilerCodegen.Mir)
-        {
-            Capture(5, timestamps, allocations);
-            this.Require(result.WriteIr(output, out var failure), failure);
-        }
-        else
-        {
-            this.Require(result.Emission.TryPrepare(out var module, out var failure), failure);
-            Capture(5, timestamps, allocations);
-            module.WriteIr(output);
-        }
-
+        // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage (DECISIONS R5-M94).
+        Capture(5, timestamps, allocations);
+        this.Require(result.WriteIr(output, out var failure), failure);
         Capture(6, timestamps, allocations);
         return result;
     }

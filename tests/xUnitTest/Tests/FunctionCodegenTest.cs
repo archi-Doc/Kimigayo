@@ -14,8 +14,7 @@ namespace XunitTest;
 /// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a, X2; package C 3.2 and 3.3; DECISIONS R5-M65, R5-M77, R5-M83, R5-M146):
 /// <c>ModuleCodegen</c> writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue,
 /// slots, runtime-reached blocks, the Places of its place writer and every form of an accepted program, and a broken input is one
-/// <c>InternalInvariant_Kd</c> with no module. The fixtures run under the process's generator (MIR code generation by default, the old one
-/// under <c>-Codegen legacy</c> until G4); the other tests select MIR code generation themselves.</summary>
+/// <c>InternalInvariant_Kd</c> with no module.</summary>
 public sealed partial class FunctionCodegenTest
 {
     private const string Branches =
@@ -1240,7 +1239,6 @@ public sealed partial class FunctionCodegenTest
     public void AnImportIsCalledByItsCSignature()
     {
         var imported = Compilation.CreateForTest();
-        imported.Codegen = CompilerCodegen.Mir;
         imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(imported.Prepare(WindowsProfile.Target));
         const string Source =
@@ -1301,7 +1299,7 @@ public sealed partial class FunctionCodegenTest
 
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
     // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
-    // entry and the profile attributes for both generators).
+    // entry and the profile attributes).
     [Fact]
     public void EachLocalOfNonzeroSizeHasOneSlot()
     {
@@ -1367,10 +1365,9 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
-    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (PD11's coverage rows, a located Unsupported_Kd
-    // per form not written yet, ended at X2; a requirement whose witness has no MIR body is the collector's BodylessWitness gap at check,
-    // InstanceCollectorTest). A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
-    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
+    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness has no MIR body is
+    // the collector's BodylessWitness gap at check, InstanceCollectorTest). A string's Move into another local is written since C2b
+    // (DECISIONS R5-M87), a function's call since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
     // (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since C3c (R5-M141); a Fn call of a formatting row is written
     // since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included, and Text.toString of an i32 since C9b wrote its target,
     // the BuiltinFormat item (R5-M130); the records of a for loop's statement and of the siblings its expansion synthesizes with its span
@@ -1547,8 +1544,7 @@ public sealed partial class FunctionCodegenTest
         Assert.All(closures, x => Assert.True(c.Instances!.IsGenerated(c.Instances.Find(set.Items[x].Key))));
     }
 
-    // DECISIONS R5-M146: every milestone check accepts under MIR code generation is generated with no record (no coverage row remains);
-    // one check rejects is not generated and adds no record.
+    // DECISIONS R5-M146: every milestone check accepts is generated with no record; one check rejects is not generated and adds no record.
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void TheMilestonesGenerate(string name)
@@ -1616,9 +1612,8 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(0, allocated);
     }
 
-    // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed under
-    // MIR code generation, whatever the process's generators, and the definitions of the body items its generation marks Generated; any
-    // record fails (DECISIONS R5-M146).
+    // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
+    // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
     {
         var c = Analyze(source);
@@ -1631,12 +1626,11 @@ public sealed partial class FunctionCodegenTest
         return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
     }
 
-    // A program analyzed under MIR code generation for an output form; a source that declares a test is a test build's test-only source,
-    // its catalog discovered after acceptance as Project discovers it.
+    // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
+    // after acceptance as Project discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
-        c.Codegen = CompilerCodegen.Mir;
         c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source, isTestOnly: c.IsTestBuild));

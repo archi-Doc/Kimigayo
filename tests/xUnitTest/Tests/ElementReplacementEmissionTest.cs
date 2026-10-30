@@ -64,7 +64,7 @@ public class ElementReplacementEmissionTest
     }
 
     // SPEC 13.7.1 (DECISIONS R5-M159): the right side, a constant, an aggregate or a call's result, is secured at the element Type before
-    // the diverging key, which leaves the old element; the transfer destroys the secured value, under either generator (before R5-M159
+    // the diverging key, which leaves the old element; the transfer destroys the secured value (before R5-M159
     // MIR secured none, the target's Type being Never). The String row's right side is a call's result, as G157 (45)'s cleanup audits
     // take it (DECISIONS R5-M158).
     [Theory]

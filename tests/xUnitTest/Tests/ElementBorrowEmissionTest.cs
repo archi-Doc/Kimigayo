@@ -146,8 +146,7 @@ public class ElementBorrowEmissionTest
             Counter + "func bump(s: uniq/string) => Console.writeLine(\"bad\")\nfunc f() -> i32\n    var a: [1 of string] = [\"old\"]\n" +
             "    var b: [1 of Counter] = [Counter.init(1)]\n    var t: [1 of (i32, string)] = [(1, \"x\")]\n" +
             "    defer => if a[0] != \"old\" or b[0].value != 1 or t[0].1 != \"x\" => Console.writeLine(\"bad\")\n    " + statement +
-            "\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")",
-            codegen: CompilerCodegen.Mir);
+            "\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")");
         ScalarEmissionTest.WriteFixture("ElementBorrowPlaceTransfer" + name, CompilationTestHelper.WriteIr(c), "ok\n");
     }
 
