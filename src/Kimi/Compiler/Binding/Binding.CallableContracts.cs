@@ -89,7 +89,7 @@ public sealed partial class Binding
             }
         }
 
-        if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType, default))
+        if (this.FailedCallOriginRelation(implementation.Binder, origins, inputs, requirement.Binder, declaringType, default) is not null)
         {
             return ConstraintProof.Refuted;
         }

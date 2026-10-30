@@ -267,7 +267,7 @@ public sealed partial class Binding
             return expected;
         }
 
-        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        if (expected is not null && actual is not null && (node.BindingFailure == BindingFailure.OriginContract || this.FailsFunctionConversion(node, actual, expected)))
         {
             return null;
         }

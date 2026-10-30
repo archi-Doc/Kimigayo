@@ -166,7 +166,12 @@ public sealed partial class Binding
             }
 
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
+            var header = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
+
+            // SPEC 10.7, 15.6.1: a header that fails the expected signature only in a condition is that comparison's one record, from the
+            // header's judgment as a Function value's conversion (ConversionFits; DECISIONS R4-M155); any other difference is a Type mismatch.
+            return !this.ConversionFits(header, expected, function) && function.BindingFailure == BindingFailure.OriginContract ? null
+                : this.FailMismatch(function, function, header, expected);
         }
         finally
         {

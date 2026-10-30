@@ -191,7 +191,7 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (this.ErasureSignatureFits(actual, type, node))
+        if (this.ErasureSignatureFits(actual, type, node, out _))
         {
             // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its receiver
             // and Owned conditions are judged once the call is selected (SPEC 10.5).

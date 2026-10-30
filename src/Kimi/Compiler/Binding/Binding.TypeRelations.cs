@@ -33,14 +33,25 @@ public sealed partial class Binding
     // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
     // result Never when the implementation's is (CompatibleResult), judged without recording a bound; `own` is the declaration whose
     // per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
-    internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own) => IsSubtype(actual, this.CompatibleSignature(actual, expected), own);
+    internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
+    {
+        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
+        failure = walk.Failure;
+        return fits;
+    }
 
-    // SPEC 10.7, 15.3.7: callable compatibility of a Closure's or a Function value's signature with a required one: CallableSubtype and
-    // the implementation's conditions, its own well-formedness proven from the required signature's and the premises at `use` under
-    // the instantiation in position (the owner's (a); FailedSignatureWellFormedness, the one judgment FunctionFits makes too).
-    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use)
-        => this.CallableSubtype(actual, expected, own) && (actual is not { Kind: BoundTypeKind.Function, Components.Count: 2 } ||
-            this.FailedSignatureWellFormedness(actual, Comparison(actual, own, this.CompatibleSignature(actual, expected), null), use) is null);
+    // SPEC 10.7, 15.3.7, 15.6.1: the one judgment of a Closure's or a Function value's signature against a required one at `use`: the
+    // relation's walk, which compares each member's Origin part as written under the instantiation in position and judges the
+    // implementation's own well-formedness at `use` at every nesting (the owner's (a)); on failure, where (`failure`, which its record
+    // reads; DECISIONS R4-M155).
+    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, out ComparisonFailure failure)
+    {
+        var walk = new RelationWalk(this, use, OriginPart.Written);
+        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
+        failure = walk.Failure;
+        return fits;
+    }
 
     // SPEC 3.8 at a use whose premises and Origins the relation reads.
     internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected);
@@ -133,95 +144,6 @@ public sealed partial class Binding
 
         return ReferenceEquals(CompatibleResult(implementation.Components[1], required.Components[1]), required.Components[1]) ? required
             : this.types.Rebuild(required, [required.Components[0], BoundType.Never], required.Origin, (BoundOrigin[])required.OriginArguments);
-    }
-
-    // SPEC 10.7, 15.6.1, 23.1: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
-    // parameter, whose required input must outlive the implementation's, or the result, which must outlive the required one. Both ends
-    // are instantiated, so neither is a call-time Origin of the implementation.
-    private OriginContractFact? ConversionContractFailure(BoundType actual, BoundType expected, Koto? own, Koto at, Koto use)
-    {
-        if (actual.Components.Count != 2 || expected.Components.Count != 2)
-        {
-            return null;
-        }
-
-        var instance = Comparison(actual, own, expected, null);
-        var inputs = actual.Components[0];
-        var required = expected.Components[0];
-        for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
-        {
-            var input = inputs.Components[i];
-            var part = instance.IsQuantifiedInput(input, i)
-                ? this.FailedInstancePart(required.Components[i].Components[0], input.Components[0], input.Semantics == SemanticsKind.Uniq, instance, use)
-                : this.FailedInstancePart(required.Components[i], input, false, instance, use);
-            if (part is { } failed)
-            {
-                return new(at, $"the {Ordinal(i + 1)} parameter", failed.Longer, failed.Shorter, failed.Equality);
-            }
-        }
-
-        if (this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result)
-        {
-            return new(at, "the result", result.Longer, result.Shorter, result.Equality);
-        }
-
-        // The owner's (a): the implementation's own well-formedness, proven from the required signature's (the one judgment).
-        if (this.FailedSignatureWellFormedness(actual, instance, use) is not { } formed)
-        {
-            return null;
-        }
-
-        var member = formed.Part < inputs.Components.Count ? $"the {Ordinal(formed.Part + 1)} parameter's well-formedness" : "the result's well-formedness";
-        return new(at, member, this.Instantiated(formed.Longer, instance), this.Instantiated(formed.Shorter, instance), false);
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
-    }
-
-    // The first Origin position, in the order of FailedOriginRelation, at which `longer` does not fit `shorter` under the instantiation.
-    private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality)? FailedInstancePart(BoundType longer, BoundType shorter, bool invariant, in CallableInstance instance, Koto use, int depth = 0)
-    {
-        if (depth > 64 || longer.Components.Count != shorter.Components.Count || longer.OriginArguments.Count != shorter.OriginArguments.Count)
-        {
-            return null;
-        }
-
-        if (FitOuterOrigins(longer, shorter, this, use, out var a, out var b) == OuterOriginFit.Relation &&
-            (!InstanceOutlives(a, b, instance, this, use, 0) || (invariant && !InstanceOutlives(b, a, instance, this, use, 0))))
-        {
-            return (instance.Instantiate(a), instance.Instantiate(b), invariant);
-        }
-
-        var exclusive = longer.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || this.InvariantAdmitted(longer);
-        for (var i = 0; i < longer.Components.Count && longer.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
-        {
-            if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant || exclusive, instance, use, depth + 1) is { } target)
-            {
-                return target;
-            }
-        }
-
-        for (var i = 0; i < longer.OriginArguments.Count; i++)
-        {
-            var a2 = longer.OriginArguments[i];
-            var b2 = shorter.OriginArguments[i];
-            var variance = longer.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
-            var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
-            if (!ReferenceEquals(a2, b2) && (both ? !InstanceOutlives(a2, b2, instance, this, use, 0) || !InstanceOutlives(b2, a2, instance, this, use, 0)
-                : variance == OriginVariance.Covariant ? !InstanceOutlives(a2, b2, instance, this, use, 0) : !InstanceOutlives(b2, a2, instance, this, use, 0)))
-            {
-                return (instance.Instantiate(a2), instance.Instantiate(b2), both);
-            }
-        }
-
-        for (var i = 0; i < longer.Components.Count && longer.Kind is not (BoundTypeKind.Semantics or BoundTypeKind.Function); i++)
-        {
-            if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant, instance, use, depth + 1) is { } argument)
-            {
-                return argument;
-            }
-        }
-
-        return null;
     }
 
     private BoundType DirectTarget(BoundType whole)

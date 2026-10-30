@@ -51,13 +51,28 @@ public sealed partial class Binding
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
     {
         var pending = this.pendingRelations.Count;
-        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant);
+        var fits = NeverFits(actual) || (actual.Kind == BoundTypeKind.Function ? this.ConversionFits(actual, expected, use) : this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant));
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
         }
 
         return fits;
+    }
+
+    // SPEC 10.7, 15.6.1: a Function value's conversion at a use compares whole contracts by the one judgment (CallableSignatureFits'
+    // walk, without the Never result rule of an implementation); a condition that fails is its one record at the value (DECISIONS R4-M155),
+    // any other failure the caller's.
+    private bool ConversionFits(BoundType actual, BoundType expected, Koto use)
+    {
+        var walk = new RelationWalk(this, use, OriginPart.Judged);
+        if (walk.Fits(actual, expected))
+        {
+            return !HasLocalRegion(actual) && !HasLocalRegion(expected);
+        }
+
+        _ = this.RecordsCondition(use, walk.Failure, actual, expected);
+        return false;
     }
 
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as RelationWalk composes it: a

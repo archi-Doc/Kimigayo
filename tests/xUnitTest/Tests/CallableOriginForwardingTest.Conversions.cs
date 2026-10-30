@@ -58,6 +58,10 @@ public partial class CallableOriginForwardingTest
 
     private const string NestedTarget = "((ref/(ref/i32 during b) during a) -> i32) -> ";
 
+    private const string Nested2Head = "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (((ref/(ref/i32 during c) during a) -> i32) -> i32) -> i32) -> i32\n";
+
+    private const string Nested2Target = "    let g: (((ref/(ref/i32 during b) during a) -> i32) -> i32) -> i32 = f@move\n    return 0\n";
+
     // Conversions of Function values and Items: a relation the converted signature needs follows from the target's own well-formedness by
     // transitivity (t1c, t1d, t1o, t1j), by a meet (t1p) or combined with a premise of the use (e1, e1a, e1f, e1r); a Closure body assumes
     // its own result's well-formedness (rv1), which each call proves. The invalid twins drop the use premise, take a target that does not
@@ -111,7 +115,9 @@ public partial class CallableOriginForwardingTest
     // argument e1arg2, judged after selection, SPEC 15.6.1) and at the Callable proof of a Closure subject (cal2), whose body assumes it;
     // each valid twin takes a target whose own well-formedness gives the relation, or an implementation that needs none (cal2_c). A
     // comparison nested in another assumes the enclosing required signature's well-formedness too (nest1, R4-N8); without it the nested
-    // input is not proven (nest1_n, recorded as the conversion's TypeMismatch_Kd: its record names no part inside a nested Function Type).
+    // input is not proven (nest1_n), at any depth (nest2_n, its twin nest2_c), and the one judgment that decided records it: the
+    // conversion's UnprovenOriginContract_Kd names the member inside the nested Function Type (it was TypeMismatch_Kd, R2-B1). A
+    // conversion failing in several conditions is one record naming the first (two: the 1st parameter, SPEC 15.6.1).
     [Theory]
     [InlineData("e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: (ref/i32) -> (Option<ref/(ref/i32) during s>, ref/i32 during static) = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c", LeakLabel)]
     [InlineData("e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static) = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
@@ -122,7 +128,10 @@ public partial class CallableOriginForwardingTest
     [InlineData("cal2", CallableApply + "    let c = func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None\n    return apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
     [InlineData("cal2_c", CallableApply + "    let c = func [] (x: ref/i32) -> Option<ref/(ref/i32 during static) during x> => .None\n    return apply(c@ref)\n", "", null)]
     [InlineData("nest1", NestedHead + "Option<ref/(ref/i32 during b) during a>) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "Option<ref/(ref/i32 during b) during a> = f@move\n    return 0\n", "", null)]
-    [InlineData("nest1_n", NestedHead + "i32) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "i32 = f@move\n    return 0\n", "TypeMismatch_Kd f@move", null)]
+    [InlineData("nest1_n", NestedHead + "i32) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "i32 = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's well-formedness requires b outlives a, which is not proven")]
+    [InlineData("nest2_n", Nested2Head + "    origin c outlives b\n" + Nested2Target, "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's 1st parameter requires b outlives c, which is not proven")]
+    [InlineData("nest2_c", Nested2Head + "    origin c outlives b\n    origin b outlives c\n" + Nested2Target, "", null)]
+    [InlineData("two", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter requires r outlives q, which is not proven")]
     public void EveryCallableComparisonJudgesTheImplementationsWellFormedness(string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 

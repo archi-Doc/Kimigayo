@@ -94,11 +94,13 @@ public sealed partial class Binding
 
             var signature = (subject.Kind == BoundTypeKind.Closure ? this.ClosureSignature(subject) : null) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             var at = ArgumentBinding(call, function, mapping, slot) ?? call;
-            // SPEC 15.3.7: with matching members, a Function Item's failing condition (a clause or a result premise) is the member.
-            if (signature is not null && (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(subject, signature, required, at, call)
-                : this.ConversionContractFailure(signature, required, SignatureOwner(subject), at, call)) is { } contract)
+            // SPEC 15.3.7: the comparison's one judgment at the call, whose failure is the record: a member, the implementation's own
+            // well-formedness, or a Function Item's clause or result premise (DECISIONS R4-M155).
+            var failure = default(ComparisonFailure);
+            if (signature is not null && !(subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, required, call, out failure)
+                : this.CallableSignatureFits(signature, required, SignatureOwner(subject), call, out failure)) && failure.IsCondition)
             {
-                return new(at, clause, subject, contract);
+                return new(at, clause, subject, this.ContractFact(at, failure, call));
             }
         }
 

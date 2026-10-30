@@ -579,7 +579,7 @@ public sealed partial class Binding
     // erasure, judged now as at a selected call (ErasePart), any other part by its one implicit operation (ExpectedAdaptation).
     private void AdaptAtPosition(Koto part, BoundType actual, BoundType type)
     {
-        if (this.ErasureSignatureFits(actual, type, part))
+        if (this.ErasureSignatureFits(actual, type, part, out _))
         {
             this.ErasePart(part, actual, type);
         }
@@ -665,7 +665,7 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureSignatureFits(actual, target, node) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
+        var adapted = this.ErasureSignatureFits(actual, target, node, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
         if (adapted is null)
         {
             return actual;

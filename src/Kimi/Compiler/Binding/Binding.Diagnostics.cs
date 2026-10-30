@@ -399,33 +399,6 @@ public sealed partial class Binding
     // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
     // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
     // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
-    // The signature and own binder an implementation converts to a common Function Type with (SPEC 7.7.4): a Function value, a Function
-    // Item proven Owned, or a closure with a Shared receiver and a proven Owned environment. Other failures stay Type mismatches.
-    private bool ConversionSignature(BoundType implementation, Koto use, out BoundType signature, out Koto? own)
-    {
-        own = SignatureOwner(implementation);
-        signature = implementation;
-        if (implementation.Kind == BoundTypeKind.Function)
-        {
-            return implementation.Components.Count == 2;
-        }
-
-        if (implementation.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(implementation) is { } item && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            signature = item;
-            return true;
-        }
-
-        if (BoundClosure.Of(implementation) is { Receiver: SemanticsKind.Ref } &&
-            this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            signature = closure;
-            return true;
-        }
-
-        return false;
-    }
-
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
@@ -435,16 +408,8 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is
-        // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
-            this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
-            (implementation.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(implementation, signature, required, at, node)
-            : this.ConversionContractFailure(signature, required, own, at, node)) is { } contract)
-        {
-            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
-        }
-
+        // SPEC 10.7, 15.6.1: a common Function conversion whose condition fails is recorded where its judgment fails (ErasesToFunction,
+        // CheckTypeUse; DECISIONS R4-M155), so it never reaches a Type mismatch here.
         // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
         if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
             this.RecordOriginFitFailure(node, at, actualType, expectedType))

@@ -543,16 +543,19 @@ public sealed partial class Binding
         }
     }
 
-    private bool CheckCallOriginRelations(Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, in CallableInstance comparison)
+    // The first of `function`'s declared relations, substituted, that the premises at `use` do not prove, with its ends (no relation: the
+    // declaration failed); null when every one holds.
+    private (OriginRelation? Relation, BoundOrigin Longer, BoundOrigin Shorter)? FailedCallOriginRelation(
+        Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, in CallableInstance comparison)
     {
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {
-            return true;
+            return null;
         }
 
         if (declaration.Failure is not null)
         {
-            return false;
+            return (null, BoundOrigin.Static, BoundOrigin.Static);
         }
 
         foreach (var relation in declaration.Relations)
@@ -561,11 +564,11 @@ public sealed partial class Binding
             var b = Substitute(relation.Shorter);
             if (!this.ProvesOriginOutlives(a, b, use, comparison) || (relation.Equality && !this.ProvesOriginOutlives(b, a, use, comparison)))
             {
-                return false;
+                return (relation, a, b);
             }
         }
 
-        return true;
+        return null;
 
         BoundOrigin Substitute(BoundOrigin origin)
         {

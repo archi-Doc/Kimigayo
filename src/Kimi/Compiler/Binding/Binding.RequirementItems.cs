@@ -39,7 +39,7 @@ public sealed partial class Binding
                 var item = this.types.Intern(BoundTypeKind.FunctionItem, member, SemanticsKind.Owner, [group.Self, contract.Type!]);
                 var signature = this.FunctionItemSignature(item);
                 signatures[i] = signature is null ? null : this.ContractType(signature, scope);
-                if (required is not null && (signatures[i] is not { } bound || !this.ItemContractFits(item, bound, required, use)))
+                if (required is not null && (signatures[i] is not { } bound || !this.ItemContractFits(item, bound, required, use, out _)))
                 {
                     continue;
                 }

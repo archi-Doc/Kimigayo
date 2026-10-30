@@ -322,22 +322,36 @@ public sealed partial class Binding
     // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits under its conditions
     // (CallableSignatureFits), its minimum receiver is Shared and its complete environment is Owned. Initializations, returns and call
     // arguments share this judgment.
+    // A condition that fails is the conversion's one record at `node`, made here from the judgment's failure (DECISIONS R4-M155).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
-        => (actual.Kind == BoundTypeKind.Closure
-            ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && this.ClosureSignature(actual) is { } signature &&
-                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node)
-            : this.ErasureSignatureFits(actual, expected, node)) &&
-            this.ProveOwned(actual, node) == ConstraintProof.Proven;
+    {
+        var failure = default(ComparisonFailure);
+        var signature = actual.Kind == BoundTypeKind.Closure ? this.ClosureSignature(actual) : this.FunctionItemSignature(actual);
+        if (actual.Kind == BoundTypeKind.Closure
+            ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && signature is not null &&
+                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
+            : this.ErasureSignatureFits(actual, expected, node, out failure))
+        {
+            return this.ProveOwned(actual, node) == ConstraintProof.Proven;
+        }
+
+        // SPEC 15.2.3: an environment that is not Owned is the conversion's record first (RecordMismatch's Constraint record).
+        _ = signature is not null && this.ProveOwned(actual, node) == ConstraintProof.Proven && this.RecordsCondition(node, failure, signature, expected);
+        return false;
+    }
 
     // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver, the Owned
     // environment and a Closure's Origin conditions are judged after selection, at the argument (SPEC 15.6.1), and a failure there never
     // selects another candidate. A Function Item's Origin conditions belong to its signature, proven from the required contract at `use`
     // (SPEC 15.3.7).
-    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
-        => expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        failure = default;
+        return expected.Kind == BoundTypeKind.Function &&
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual))));
+            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out _)));
+    }
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract that does not fit fails the value
@@ -351,7 +365,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var fails = !NamesInferredOrigin(expected) && !this.CheckTypeUse(actual, expected, node);
+        var fails = !NamesInferredOrigin(expected) && !this.CheckTypeUse(actual, expected, node); // A failed condition is recorded there.
         if (fails)
         {
             this.FailMismatch(node, node, actual, expected);
@@ -363,9 +377,12 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
-    // `container` with `arguments` bound, or those of the Function Item `item`.
-    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false, BoundLength?[]? lengths = null)
+    // `container` with `arguments` bound, or those of the Function Item `item`. The solve is a selection's (representatives, no bound
+    // judged), so every relation is judged once, at the member, clause or premise it comes from, and the first that fails is `failure`,
+    // the comparison's one record (DECISIONS R4-M155); a representative never admits the contract, since those judgments follow.
+    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, out ComparisonFailure failure, BoundLength?[]? lengths = null)
     {
+        failure = default;
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
         var parameters = required.Components[0];
@@ -392,7 +409,7 @@ public sealed partial class Binding
             this.CollectOriginInference(produced, required.Components[1], inference, result: true);
         }
 
-        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
+        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true))
         {
             return false;
         }
@@ -400,10 +417,21 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) ||
-                !new RelationWalk(this, use, OriginPart.Judged).Fits(parameters.Components[i], parameter, instance: comparison) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+            var walk = new RelationWalk(this, use, OriginPart.Judged);
+            if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
+                failure = walk.Failure.Within((byte)(i + 1));
+                return false;
+            }
+
+            if (HasUnsubstitutedOrigin(parameter, function))
+            {
+                return false;
+            }
+
+            if (!this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+            {
+                failure = this.PremiseFailure(ComparisonFailureKind.WellFormedness, comparison) with { Part = i };
                 return false;
             }
 
@@ -416,11 +444,32 @@ public sealed partial class Binding
             }
         }
 
-        return this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison) &&
-            symbol.Type is { } result && Bound(result) is { } boundResult &&
-            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-            new RelationWalk(this, use, OriginPart.Judged).Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison) &&
-            this.ProvesResultPremises(function, result, use, comparison);
+        if (this.FailedCallOriginRelation(function, origins, inputs, use, null, comparison) is { } clause)
+        {
+            failure = clause.Relation is { } relation
+                ? new ComparisonFailure(ComparisonFailureKind.Clause, clause.Longer, clause.Shorter, relation.Equality, comparison) { Clause = relation.Syntax } : default;
+            return false;
+        }
+
+        if (symbol.Type is not { } result || Bound(result) is not { } boundResult || HasUnsubstitutedOrigin(result = Substitute(boundResult), function))
+        {
+            return false;
+        }
+
+        var resultWalk = new RelationWalk(this, use, OriginPart.Judged);
+        if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
+        {
+            failure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
+            return false;
+        }
+
+        if (!this.ProvesResultPremises(function, result, use, comparison))
+        {
+            failure = this.PremiseFailure(ComparisonFailureKind.ResultPremise, comparison);
+            return false;
+        }
+
+        return true;
 
         BoundType? Bound(BoundType type)
         {

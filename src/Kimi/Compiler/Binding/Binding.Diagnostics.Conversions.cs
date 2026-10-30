@@ -22,7 +22,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
-            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSubtype(itemSignature, signature, SignatureOwner(item))
+            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSubtype(itemSignature, signature, SignatureOwner(item), out _)
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -42,7 +42,7 @@ public sealed partial class Binding
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration, node)
+            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration, node, out _)
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
@@ -69,6 +69,49 @@ public sealed partial class Binding
                 _ => prefix + "no binding fits it, or a bound argument fails its Constraints",
             };
         }
+    }
+
+    // SPEC 10.7, 15.6.1, 23.1 (DECISIONS R4-M155): the one record of a whole-contract comparison that failed in a condition, from the
+    // failure its judgment found: the member from the root ("the 1st parameter's 1st parameter's well-formedness"), a clause or a result
+    // premise, with both ends instantiated under the comparison; a meet at the longer end of a clause or premise names its failing operand.
+    private OriginContractFact ContractFact(Koto at, in ComparisonFailure failure, Koto use)
+    {
+        var member = string.Empty;
+        for (var depth = failure.Depth - 1; depth >= 0; depth--)
+        {
+            var step = (byte)(failure.Path >> (8 * depth));
+            member += (member.Length == 0 ? "the " : "'s ") + (step == ComparisonFailure.ResultStep ? "result" : $"{Ordinal(step)} parameter");
+        }
+
+        var instance = failure.Instance;
+        switch (failure.Kind)
+        {
+            case ComparisonFailureKind.WellFormedness:
+                var part = failure.Part < 0 ? "result's well-formedness" : $"{Ordinal(failure.Part + 1)} parameter's well-formedness";
+                return new(at, (member.Length == 0 ? "the " : member + "'s ") + part, this.Instantiated(failure.Longer!, instance), this.Instantiated(failure.Shorter!, instance), false);
+            case ComparisonFailureKind.Clause:
+                return this.ConditionFact(at, $"the clause '{failure.Clause}'", failure.Longer!, failure.Shorter!, failure.Equality, instance, use);
+            case ComparisonFailureKind.ResultPremise:
+                return this.ConditionFact(at, "the result's well-formedness", failure.Longer!, failure.Shorter!, false, instance, use);
+            default:
+                return new(at, member, instance.Instantiate(failure.Longer!), instance.Instantiate(failure.Shorter!), failure.Equality);
+        }
+
+        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // SPEC 10.7, 15.6.1: whether a failed comparison of `implementation` with `required` is that comparison's one record at `node`, which
+    // it then is: a condition, with the comparison's structure holding (a structural difference is a Type mismatch, even where the walk
+    // met an Origin first).
+    private bool RecordsCondition(Koto node, in ComparisonFailure failure, BoundType implementation, BoundType required)
+    {
+        if (!failure.IsCondition || !ReferenceTypes.StorageMatches(required, implementation))
+        {
+            return false;
+        }
+
+        this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
+        return true;
     }
 
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
