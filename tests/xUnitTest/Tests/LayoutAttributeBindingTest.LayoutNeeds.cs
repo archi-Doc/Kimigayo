@@ -9,7 +9,6 @@ namespace XunitTest;
 // or element projected through a borrow, raw pointer, object handle or a sequence's storage needs its container's offsets or its stride; a
 // raw pointer's displacement, a whole-value update through references and a Dictionary operation need their Types' sizes; a comparison of a
 // Tuple's parts through a reference needs its offsets (SPEC 13.4). The twins, the same forms without the unavailable layout, are accepted.
-// The sel column is InstanceCollectorTest.CLayoutUses.cs over the same rows.
 public partial class LayoutAttributeBindingTest
 {
     private const string EquatableP = "#Layout(\"C\")\nstruct P<T>\n    Self is Equatable\n    public var n: i32\n    public var value: T\n" +
@@ -99,5 +98,5 @@ public partial class LayoutAttributeBindingTest
     [Theory]
     [MemberData(nameof(NeedRows))]
     public void AFormReadingALayoutPastItsRootsStorageIsAUse(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
+        => AssertUses(form, source, records);
 }

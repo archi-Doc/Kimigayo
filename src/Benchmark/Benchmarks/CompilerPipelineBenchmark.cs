@@ -77,10 +77,9 @@ public class CompilerPipelineBenchmark
     }
 
     // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds, validates and analyzes
-    // the MIR and collects its checked set (BuildMir, on either pipeline since DECISIONS BU-48), each memoized per program version, so
-    // stage 4's Analyze reuses them (a legacy Analyze builds and collects without the MIR analyses) and keeps them for the generation
-    // gate. The old analysis still decides (R3-R5). Under MIR code generation stage 5 is empty and stage 6 is the generation entry
-    // (R5-M94).
+    // the MIR and collects its checked set (BuildMir), each memoized per program version, so stage 4's Analyze, which runs the same on
+    // the legacy and the mir pipeline (DECISIONS R5-M156), reuses them and keeps them for the generation gate. The old analysis still
+    // decides (R3-R6). Under MIR code generation stage 5 is empty and stage 6 is the generation entry (R5-M94).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {
         if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != Boundaries || allocations.Length != Boundaries))

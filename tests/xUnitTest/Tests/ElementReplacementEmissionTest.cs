@@ -63,21 +63,22 @@ public class ElementReplacementEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementReplacementEvaluation", ir, Output, "rhs=1;outer=1;inner=1;old=1;new=1;ok=1", order: [0, 1, 2, 3, 5, 4]);
     }
 
+    // SPEC 13.7.1 (DECISIONS R5-M159): the right side, a constant, an aggregate or a call's result, is secured at the element Type before
+    // the diverging key, which leaves the old element; the transfer destroys the secured value, under either generator (before R5-M159
+    // MIR secured none, the target's Type being Never). The String row's right side is a call's result, as G157 (45)'s cleanup audits
+    // take it (DECISIONS R5-M158).
     [Theory]
-    [InlineData("String", "string", "\"old\"", "\"new\"")]
+    [InlineData("String", "string", "\"old\"", "echo(\"new\")")]
     [InlineData("Aggregate", "(string, i32)", "(\"old\", 0)", "(\"new\", 42)")]
+    [InlineData("Constant", "string", "\"old\"", "\"new\"")]
     public void IndexTransferCleansSecuredInputWithoutReplacingOldValue(string name, string type, string initial, string value)
     {
-        var source = $"func f() -> i32\n    var a: [1 of {type}] = [{initial}]\n    defer => Console.writeLine(\"cleanup\")\n    a[(return 42)] = {value}\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
+        var source = "func echo(text: string) -> string => text@move\n" +
+            $"func f() -> i32\n    var a: [1 of {type}] = [{initial}]\n    defer => Console.writeLine(\"cleanup\")\n    a[(return 42)] = {value}\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
         const string Output = "cleanup\nok\n";
         var fixture = "ElementReplacementTransfer" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, Output);
-        StringEmissionTest.WriteAuditedFixture(
-            fixture,
-            ir,
-            Output,
-            Codegen.Expect("old=1;new=0;cleanup=1;ok=1", "old=1;new=1;cleanup=1;ok=1", CodegenDeviations.ConstantTemporaries),
-            order: Codegen.Expect<int[]>([2, 0, 3], [1, 2, 0, 3], CodegenDeviations.ConstantTemporaries));
+        StringEmissionTest.WriteAuditedFixture(fixture, ir, Output, "old=1;new=1;cleanup=1;ok=1", order: [1, 2, 0, 3]);
     }
 
     [Fact]

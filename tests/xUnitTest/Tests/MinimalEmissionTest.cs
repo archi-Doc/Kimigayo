@@ -338,32 +338,33 @@ public class MinimalEmissionTest
     }
 
     // SPEC 8.15.3, 23.1.1: a valid program past a generation resource limit is refused with GenerationResourceLimit_Kd and no output, checked
-    // and then generated as a build runs them. MIR code generation reports the checked set's limit at check (K13b); the old generator's
-    // failure text is checked on a compilation pinned to it until G2 (DECISIONS R5-M85).
-    internal static void AssertGenerationResourceLimit(string source, string legacyFailure)
+    // and then generated as a build runs them: check reports the checked set's limit at its location (K13b), on every pipeline and under
+    // either code generator (DECISIONS R5-M156), and generation adds nothing.
+    internal static void AssertGenerationResourceLimit(string source, string at)
     {
         var c = Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, Describe(c, null));
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), Describe(c, null));
+        Assert.Equal("GenerationResourceLimit_Kd " + at, Problems(c));
         c.ReportAnalysis();
         using var output = new StringWriter();
         Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(("GenerationResourceLimit_Kd", DiagnosticSeverity.Error), (error.Code, error.Severity));
-
-        var old = Analyze(source, codegen: CompilerCodegen.Legacy);
-        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
-        Assert.True(old.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains(legacyFailure, failure, StringComparison.Ordinal);
     }
 
-    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and,
-    // under mir, the problems with their Op. It only reads, since a message argument is evaluated whether or not the assertion fails.
+    // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the old path's, then the MIR's
+    // records, which check publishes on every pipeline (DECISIONS R5-M156).
+    internal static string Problems(Compilation c)
+        => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
+
+    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and
+    // the problems with their Op, the MIR's records among them on every pipeline (DECISIONS R5-M156). It only reads, since a message
+    // argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c, string? error)
         => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) +
-            (c.Pipeline == CompilerPipeline.Mir ? "; " + string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) : string.Empty);
+            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}"));
 
     // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
     // for the destructions the implementation's bodies actually perform (their planned cleanups).

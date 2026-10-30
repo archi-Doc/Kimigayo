@@ -27,19 +27,14 @@ public class AggregateDefaultTest
     public void OwnedExpressionsExecute(string name, string source, string output)
         => ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, output);
 
-    // An abandoned argument's constant is never materialized by MIR code generation, its target claims (DECISIONS R5-M145).
+    // The abandoned argument's component is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
     [Theory]
-    [InlineData("TupleCleanup", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nf()", "first=1;second=1", new[] { 1, 0 }, null, null)]
-    [InlineData("LocalCleanup", "func f(x: string = label work: do\n    let unused = \"local\"\n    exit to work \"result\"\n) => ()\nf()", "local=1;result=1", new[] { 0, 1 }, null, null)]
-    [InlineData("Abandoned", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nlabel done: do => f(x: (\"first\", (exit to done)))", "first=1", new[] { 0 }, "first=0", new int[0])]
-    public void AggregateAcquisitionHasExactCleanup(string name, string source, string destructions, int[] order, string? target, int[]? targetOrder)
+    [InlineData("TupleCleanup", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nf()", "first=1;second=1", new[] { 1, 0 })]
+    [InlineData("LocalCleanup", "func f(x: string = label work: do\n    let unused = \"local\"\n    exit to work \"result\"\n) => ()\nf()", "local=1;result=1", new[] { 0, 1 })]
+    [InlineData("Abandoned", "func echo(text: string) -> string => text@move\nfunc f(x: (string, string) = (\"first\", \"second\")) => ()\nlabel done: do => f(x: (echo(\"first\"), (exit to done)))", "first=1", new[] { 0 })]
+    public void AggregateAcquisitionHasExactCleanup(string name, string source, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, string.Empty);
-        if (target is not null)
-        {
-            (destructions, order) = (Codegen.Expect(target, destructions, CodegenDeviations.ConstantTemporaries), Codegen.Expect(targetOrder!, order, CodegenDeviations.ConstantTemporaries));
-        }
-
         StringEmissionTest.WriteAuditedFixture("AggregateDefault" + name, ir, string.Empty, destructions, order: order);
     }
 

@@ -212,7 +212,7 @@ public class GenericDestructorEmissionTest
     [InlineData("raw/T")]
     [InlineData("(T, T)")]
     public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
-        => MinimalEmissionTest.AssertGenerationResourceLimit($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()", "grows");
+        => MinimalEmissionTest.AssertGenerationResourceLimit($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()", $"let next = Grow<{argument}>.init()");
 
     // SPEC 16.3.1: no Field of drop's self is Moved out, so each Move is Binding's record, in a generic body too.
     [Fact]
