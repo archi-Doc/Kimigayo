@@ -9097,6 +9097,7 @@ structure is recorded here by the unit that first implements it.
   for A5 step 1, so the fallback (d) below loses its meaning. Reason: `check` never runs it (`Project.cs:502-515`), and its
   only callers are in the Emission R6-gen deletes. Rejected: (b) a check-only Subst→CallPlan bridge (a transitional structure
   of difficulty 4, +150–200 lines); (d) R6-gen waiting for R4's exit, which stays the fallback if A5 step 1 has not merged by X3.
+  - Amended by R5-M162 (G7): `AnalyzeInstance` is deleted with its callers.
 - **R5-M6 Native deviations at R5's exit** (owner, 2026-10-18; OQ7; extends PLAN10 §12.2's "match or (e)") A native outcome
   of MIR code generation may differ from the legacy run's only as (e) a form not ported under D2, (a) a legacy-wrong outcome
   or (d) an intended change, each with its item, reason and SPEC clause (the plan's examples: the static cycle code at the
@@ -9662,6 +9663,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
     rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
     collector would key a generic closure as closed).
+  - Amended by R5-M162 (G7): `InstantiatesInLegacy` and `GenericThroughSpecialization` are deleted with their reader; the class is
+    the memo's `bool`.
 - **R5-M35 `InstanceCollector`, `CheckedSet` and the code generator selector** (2026-10-18, planning session; plan K1, package K
   §4.3-4.5, §5 and §9, S2-S4 X7, X15, X27, PD4, PD5; under R5-M18) A permanent Backend component, `InstanceCollector`
   (`Backend/Instances/InstanceCollector.cs`, contract entry), owns the checked set of a program version (SPEC 8.15.3, IMPL 21.3.1) and
@@ -9722,6 +9725,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each warm
     rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (A5P's C2: a fact outside R7's shape); a
     comparer modulo Origins (D1's Design B).
+  - Amended by R5-M162 (G7): `Binding.ClosureCall` and its memo are deleted with their readers, `ResetCallContexts` is inlined, and
+    `TyCtxt.StorageSubst`'s Emission readers are gone (its old-analysis and Binding readers stay until R6-check and R7).
 - **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18, planning session; plan P7c, full process,
   `draft/Sketches/R5 P7c/P7c-package.md`; package C §3.5 and §3.13, K §4.3 and §4.8, S2-S4 X18; supersedes R5-M19's static
   `Layout.Of`, and R5-M29's rejected per-compilation instance, its records "shared by every Type, compilation and thread" and its
@@ -10952,6 +10957,7 @@ structure is recorded here by the unit that first implements it.
   (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
   `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
   (once the old Emission is gone nothing calls it, and acceptance never read it).
+  - Amended by R5-M162 (G7): done; `AnalyzeInstance` goes with the instance half it alone reached.
 - **R5-M89 The call rows of MIR code generation, the signature owner and copy slots** (2026-10-21, C lane; plan C3a, package C 3.2 I8,
   3.3 and 3.9, plan 5.6.2, IMPL 21.3.1 and 21.4.7, SPEC 3.5, 14.10.3 and 22.6; the planning session's decisions on C3a's design; under
   R5-M65, R5-M77 and R5-M87)
@@ -11163,6 +11169,8 @@ structure is recorded here by the unit that first implements it.
     gate, roots and mark, not layout); the benchmark copying GenerateMir's steps (a second copy of the gate); a sel-only shape filter
     (a shape allowlist for one interim use); a separate E14b for the comparison.
   - Amended by R5-M160 (G4): the benchmark's old-generator branch is deleted.
+  - Amended by R5-M162 (G7): the check's comparison of the measured IR with `WriteIr` is deleted (stage 6 is `WriteIr`);
+    `CompilerPlanMeasurements` and `InheritanceLifecycleMeasurements` generate through `Analyze()` and `WriteIr`.
 - **R5-M95 The drop glue of MIR code generation, one level per Type (C4a-1)** (2026-10-21, C lane; plan C4a, package C 3.6 and §4's C4a
   row, X3 and X27, PD18; the planning session's decisions on C4a's design and its split; under R5-M18 form 1, R5-M60 and R5-M78)
   - Rows: `DropGlue.Row` gives a closed Type's glue row, which `FunctionCodegen.Glue.cs` writes: a string's calls the runtime release
@@ -13260,6 +13268,8 @@ structure is recorded here by the unit that first implements it.
     deviation for the P42 rows (R5-M144 (b); keyed by the code generator, which G2 does not switch); a third G1 file for the records.
   - Amended by R5-M160 (G4): S6's rollback has ended. S7's "re-pointed to `Compilation.Emission`" applies only where a test already
     reads `Compilation.Emission`; a pin reaching the old generator through `Compilation.WriteIr`/`Validate` goes with its test.
+  - Amended by R5-M162 (G7): S7's G7 step is done; `StaticScalarEntry`, `LegacyRuntimeHelpers`' formatting requests and
+    `AggregateLayoutPool`'s remaining hooks join G8, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` G9.
 - **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
   g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
   Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
@@ -13581,6 +13591,8 @@ structure is recorded here by the unit that first implements it.
     - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.
   - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites;
     ratchets: ownership bodies 84 → 30, prepared modules 112 → 0, instance reads 1 → 0, failure facts 1 → 0.
+  - Amended by R5-M162 (G7): no reader of `Compilation.Emission` is left, so it is deleted with `LlvmEmitter`; a
+    publication failure's record is `Compilation.ReportPublicationFailure` until G9b.
 - **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, R6-gen; plan §4.9 rows G5 and G6, PD14,
   §5.1 M8; R5-M152 S7; under R5-M12 and R5-M160; the planning session's rulings Q1-Q5 on the unit's census; Major, G:R6-gen-del)
   - Rule: a test that observes the old generator's own representation goes; a rule it stood for stays where MIR code generation
@@ -13611,3 +13623,48 @@ structure is recorded here by the unit that first implements it.
     - keeping VirtualPlanReuseTest's reads for R6-check (they observe no rule of the old analysis).
   - Amends, each with its amendment line: R3-3's `TryPrepare` reads, R4-M13a's R5 and R6 counts, and the G5 clauses of R5-M64,
     R5-M158 and R5-M160.
+  - Amended by R5-M162 (G7): the zeroed rows' members are deleted; the rows stay at limit 0 until G10's zero-reference rows.
+- **R5-M162 The old generator's driver, lowering, plans and instance machinery deleted (R6-gen G7)** (2026-10-30, R6-gen; plan §4.9
+  row G7, §5.1 M4 and M8; R5-M152 S7; design `draft/Sketches/R6-gen/G7-design.md` revision 1 with the planning session's rulings
+  Q1-Q8; under R5-M5, R5-M88, R5-M160 and R5-M161; Major, G:R6-gen-del)
+  - Rule: a component goes with its last caller (S7). Deleted: `LlvmEmitter*`, `BodyLowering*` (37 files), `GenericStoragePlan*`,
+    `ObjectGenerationPlan`, `VirtualGenerationPlan`, `DefaultGenerationPlan`, `CompilerFunctionAdapters` and `NumericArithmetic`
+    (47 files, 13,202 lines) with `Compilation.Emission`, and every member whose callers, readers and writers all lay in them,
+    except members of the files G8 deletes whole and Binding members G9 owns.
+  - Product: no product path has run the old generator since G4. Its one remaining reach, `Project.PublishArtifacts`' publication
+    failure through `LlvmEmitter.ReportFailure`, is `Compilation.ReportPublicationFailure` (`[Transitional("R6-gen")]`, until G9b)
+    with the same record: `GenerationFailed_Kd` at the project with the failure's text, the branch `ReportFailure` took at every
+    call since G4 (no `FailedInstance`, no resource limit). No vocabulary entry.
+  - `src/Benchmark` (Q2, per reader): `CompilerPlanMeasurements`' emission phase times warm MIR generation of each workload, and
+    `InheritanceLifecycleMeasurements` times fresh, edited and warm compilations through generation, so both are re-pointed to
+    `Compilation.Analyze()` and `WriteIr` (the gate needs the program `Analyze` keeps, R5-M94); every workload generates. The
+    pipeline check's comparison of `WriteIr` with itself (stage 6 has been `WriteIr` since G4) is deleted; its instrumentation
+    comparison stays.
+  - The old Analysis's instance half (D5's deletion), what only `AnalyzeInstance` reached: `AnalyzeInstance`, `ClearInstances`,
+    `FailedInstance`, `InstanceStorageLimit`, `ReportInstanceDiagnostics`, the instance state, `Resolve`'s and `Concrete`'s instance
+    branches, the `this.instance` guards, `OwnershipBody.Instance` and `ReportDiagnostics`' instance parameters. The old generator's
+    views of the analysis, read by it alone (Q5): `UsesImport` with its set, `GetBorrowInputState`, `TrySymbolPlaceAt`,
+    `GetElementState`, `IsPathWithin`, `ParameterCount` and `DeclaredResultType`. The Semantics-case substitution in the same file
+    (`Substituting`, the pair-layer helpers) is the old analysis's own and stays until R6-check (SPEC 8.15).
+  - Binding (BU's review; the unit's last commit): the `ClosureCall` bridge and its memo (R5-M36; `ResetCallContexts` inlined),
+    `TyCtxt.InstantiatesInLegacy` and `InstanceClass.GenericThroughSpecialization` (R5-M34; the class is a `bool`), the
+    instance-only parameters of `ReportEffectViolation`, `StartupResult.Function`, and the root helpers `ElementAccess.ReceiverMatches`
+    and `ScalarTypes.IsCharacterValue`. Backend: `AbiParameterKind.PreparedSlot`.
+  - Unit mapping (Q1, Q7): `StaticScalarEntry` (its readers are `EmissionModule.Statics` and `LlvmModuleWriter.Statics`),
+    `LegacyRuntimeHelpers`' formatting requests with their lists and loops, and `AggregateLayoutPool`'s remaining hooks
+    (`IsSealedObjectTarget`, `CollectionDrop`, the `GenericDestructor` field) join G8; `AdtDef.IsOrInherits` and
+    `KimiLibraryCatalog.IsArrayOperation` join G9's list. `AggregateLayoutPool.InstantiateDestructor` goes with its one producer,
+    `GenericStoragePlan.RequireDestructor`.
+  - Records: ARCH's freeze drops BU-24's two exceptions for the old Emission (their code is deleted); its Transitional list gains
+    `ReportPublicationFailure` and loses the bridge and the legacy view; CODEMAP's rows lose the deleted stems; STATUS's generic
+    generation row loses the old generator's per-instance ownership checking.
+  - Shown behavior-preserving against a base Session of dev `70b530151` in the unit's worktree: the diagnostic snapshot and the
+    semantic snapshot (HIR, MIR) equal; every `'*.ll'` fixture's `.ll`, sidecar and native result identical (`compare-fixtures.ps1`);
+    the 40 harnessed milestones and the five CLI harnesses pass.
+  - Ratchets: Emission failure strings 446 → 0 (G9's item, done here); the zeroed rows stay at limit 0 until G10's zero-reference
+    rows (Q3). M4: the Emission's `.cs` lines 18,284 → 5,078 (30 files), the Backend's 14,758 → 14,756.
+  - Rejected: keeping `LlvmEmitter` for `ReportFailure`; an inline record in `Project`; deleting the Benchmark's emission phases (they
+    still time MIR code generation); deleting `OwnershipAnalysis.Instances.cs` whole (its case helpers are the old analysis's own);
+    inlining `GenericStoragePlan.IsGeneric` into `AggregateLayout` (it would keep `InstantiatesInLegacy` past its stage).
+  - Amends, each with its amendment line: R5-M5 and R5-M88 (done), R5-M94, R5-M152 S7, R5-M160 and R5-M161; R5-M34 and R5-M36 with
+    the Binding commit.
