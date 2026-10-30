@@ -29,6 +29,17 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-62): the one writer of PendingFailure. A declaration that ends without completing its pending Origins leaves them
+    // unbound, resting on the part that failed: its failed clause (CompleteOriginDeclaration), or, when completion is skipped, its Type,
+    // alias target or payload operand (path c). No State change: a later bind in State 1 keeps the same pending atom.
+    private static void RestPendingOn(OriginDeclaration? declaration, Koto part)
+    {
+        if (declaration is { State: 1 })
+        {
+            declaration.PendingFailure ??= part;
+        }
+    }
+
     private static bool OriginVisible(BoundOrigin origin, Koto use)
     {
         if (origin.Binder is FunctionTypeKoto binder)
@@ -384,6 +395,12 @@ public sealed partial class Binding
         return origin;
     }
 
+    // The part an Unbound atom rests on: its declaration's PendingFailure (paths a and c), else its binder, the slot whose own omission
+    // failed (OmittedOrigin, path b). The declaration is the atom's binder's owner (PendingOrigin made it there).
+    private Koto UnboundCause(BoundOrigin atom)
+        => OriginOwner(atom.Binder!) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) && declaration.PendingFailure is { } failure
+            ? failure : atom.Binder!;
+
     private void CompleteOriginDeclaration(OriginDeclaration? declaration)
     {
         if (declaration is null || declaration.State != 1)
@@ -427,8 +444,12 @@ public sealed partial class Binding
 
         if (declaration.Failure is { } failure)
         {
+            RestPendingOn(declaration, failure);
+
             // The contract is unavailable. In particular, its missing relations cannot justify defaulting a result to
-            // static, or supply premises through the valid-looking subset of the same rejected declaration.
+            // static, or supply premises through the valid-looking subset of the same rejected declaration; only the
+            // declaration judge reads that subset (RejectedRelations).
+            (declaration.RejectedRelations ??= new(declaration.Relations.Count)).AddRange(declaration.Relations);
             declaration.Relations.Clear();
             declaration.State = 3;
             this.originStateVersion++;

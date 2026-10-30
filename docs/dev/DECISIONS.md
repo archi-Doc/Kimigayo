@@ -8719,6 +8719,63 @@ resumed by R4-M86 (2026-10-20).
     object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
     either sweep order (a four-cycle does under alternation).
 
+- **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
+  copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (2026-10-30; PLAN G206 (7),
+  unit bu71, Major; designs rounds 0–2 under `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g206-7\`, joint design review 3, BU's and
+  R4's, ACCEPT; the owner, 2026-10-30, on round 2, verbatim 「もう1回だけ直す でお願いします」, the recommended option: every row to the
+  whole rule with no pre-filter, records at the edge where the chain fails, the staged move recorded) SPEC 23.1.2: each independent
+  failed requirement is reported; a declaration's rows (BU-26) reach no slice (R4-M101), so Binding is their only judge.
+  - The fact: `PendingFailure`, the failed part a declaration's pending Origins rest on: its failed clause (path a), or the Type, alias
+    target or Case payload operand that failed before completion (path c). One writer, `RestPendingOn`, at path a's failure branch and
+    the three path-c sites (`BindType`'s null and recovery returns, `PrepareStorage`'s payload, `AliasTarget`); no State change, so a
+    later bind in State 1 keeps the pending atom. `UnboundCause(atom)` reads the atom's declaration's `PendingFailure`, else its
+    binder (path b, `OmittedOrigin`'s own failure). It is written for every owner and read only for a declaration's rows: a local's
+    pending Origins reach body rows, A5's. Not the rejected lookups: R4-M118 rejected a failure lookup per binder for the view's class
+    (a MIR read; a binder a later pass resolves; path c) and BU-36 a per-declaration lookup beside a null part; here path c is written
+    at its failure site, a later-resolved binder does not reproduce for a declaration row (round 0), the fact is reset each pass, and
+    its one reader is Binding's own prerequisite.
+  - The rule, `JudgeDeclarationRows`: a `CallBorrows` row stays the calls'; a row the published premises at its use entail forms no
+    edge (`ProvesOriginOutlives` only, never region inference or the rejected clauses: Binding's direct proof, A5's 2a0-D D1; BU-26 E3,
+    a signature's well-formed input), the input rule of both holders; a fixed-fixed row is judged at once by the position judge (an
+    equality row one problem, R4-M114); a row with an Unbound end is never judged itself (`Binding.OriginClauses.Chains`): an Unbound
+    atom, or a meet with one, is a Dependent node, nodes are canonical Origins resolved at the use, edges follow MeetNode's rule at both
+    ends, a Fixed→Fixed edge is judged at once, each Fixed source is searched through any number of Dependent nodes, and every edge from
+    a Dependent node into a Fixed node X is a last edge where S >= X is judged at its use, once per (edge, source), under each minimal
+    condition until one records; no pair is merged; a chain that starts or ends at a Dependent node records nothing; such rows fail
+    `Unsupported`, derived on `UnboundCause`.
+  - The Semantics condition (SPEC 15.6.5): `BindingObligation.Condition` is the set of pair binders that must all be borrows for a row
+    to be required (bits of `PairBinders`' order at its use, outer scopes first), and a premise serves a request only when its binders
+    lie within the request's (`OriginPremiseClosure.Close`). A chain is required where each of its rows is: its condition is the OR of
+    its rows' Conditions, the conjunction of their cases; a Dependent node adds none.
+  - The premise contract: the rule judges from the premises at the edge's use and the clauses that bound in a failed enclosing
+    declaration (`RejectedRelations`, kept before path a's `Relations.Clear()`, read by `ExtractOriginPremises`' R1 only while
+    `judgingDeclarationRows`), which only ever remove a dependent report; every other request still sees the contract unavailable.
+  - The staged move (`[Transitional("R6-check")]`): the rule has two holders with one contract, A5's (`MirOrigins.Chains`) for a body's
+    rows and this copy for a declaration's, each judging only what Binding does not prove (D1) and each chain under its rows' minimal
+    conditions. PLAN G318 (R4 with BU, Full, accepted by R4; due at R6-check) moves A5's core below both phases, which both read, and
+    deletes the copy; the stage ledger's R6 row lists it. Its declaration adapter keeps the premise contract above.
+  - R4-M118 site (1) is superseded (BU writes, R4 approves, joint review 3): dependence is a property of the chain (bu68 item 5). Until
+    G318 the chain rule has two holders with one contract, A5's for body rows and the declaration judge's Transitional copy for
+    declaration rows. A record at an edge with a Dependent end is derived, unless that edge is the last edge of a chain through
+    Dependent nodes that fails between its non-Dependent ends; site (1)'s two clauses fall away. Binding's fit records stay direct until
+    A5's chain judgment is published at R6-check and H11 retires the fit twins (PLAN G206 (6)). Site (2) is applied by this entry.
+  - Supersedes BU-26's pre-filter (`JudgeOriginObligation`'s verdict on a row with an Unbound end, which region inference or a rejected
+    clause could prove) and its clause "derived when that end's binder failed".
+  - Records (probes: round 1's 76 and R4's review-2 29 forms, both pipelines with one delta; reviews 3's 52 and 46): chains path a hid
+    are reported at their last edge (x-chain-a, t-two-a, m-meet-a, m-operand-a, fan-a, eq-cycle-a, mp-a, nest-a, m-shared-a, pu-a); on
+    path c a dependent `Unsupported_Kd` gives way to the chain's record or to nothing (Field Type, Case payload, alias Type argument,
+    base); independent records stay; each matches its valid twin. Open in PLAN G206 (7), each an extra dependent report published as
+    direct, never a hidden error: a premise the failure removed (p-base-c, pf-c on path c; pz-a and pf-a, new on path a, where dev
+    derived every row; f-param-c, f-init-c). A pre-existing hidden independent error (SPEC 23.1.2) is PLAN G319's (two-decl-a,
+    two-decl-ac, eq-field-a; base reproducer two-decl-a-uses).
+  - Tests: `OriginRelationDiagnosticTest.Chains` (each form with its valid twin; every row but the premise guard p-base-a fails on dev
+    fe6133860, 23 of 24) and its warm rebind (0 B; a node with two records allocates its second, as on dev: PLAN G321).
+  - Rejected: round 0's per-row derivation (hides x-chain-a's chain); widening `Failure` to path c (`FailedOriginEnvironment` keeps
+    structural Type failures independent; it hid a method's independent record); round 1's one-hop rule and pair records (a narrowed
+    copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
+    Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
+    premises; R4's lanes are full).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
