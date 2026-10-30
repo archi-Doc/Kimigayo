@@ -267,28 +267,28 @@ rules that result from them.
     CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
     and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
 - **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
-  "Working-time limit" and "Owner decisions").
-  - Adopted: the owner's draft, verbatim, 「設計作業や実装作業において、エージェントの実働時間が1時間を超えたら、作業を中断する。
-    作業内容、課題、今後の予定を記録する。記録を元に、作業を小さく検証可能な単位に分けた、具体的な作業計画を作成する。オーナーに作業
-    中断を報告し、作業計画の承認を得る。"GO"が得られたら、分割した作業を開始する。」, with the R4 planning session's additions,
-    which the owner approved (「Record revised version」).
-  - Rule: as WORKFLOW states. The additions are:
-    - working time per unit, summed over rounds, without heavy runs and waits;
-    - how to stop;
-    - findings carry over;
+  "Working-time limit", "Repeated reviews" and "Owner decisions").
+  - The owner's draft (verbatim):
+    「・設計作業や実装作業において、エージェントの実働時間が1時間を超えたら、作業を中断する。
+    ・作業内容、課題、今後の予定を記録する。
+    ・記録を元に、作業を小さく検証可能な単位に分けた、具体的な作業計画を作成する。
+    ・オーナーに作業中断を報告し、作業計画の承認を得る。
+    ・"GO"が得られたら、分割した作業を開始する。」
+    The owner approved it with the R4 planning session's additions (「Record revised version」).
+  - Rule: as WORKFLOW states. The additions:
+    - working time is logged per agent and summed per phase over rounds, without heavy runs and waits;
+    - the stopping steps, with the findings carried over;
     - the shape of a split unit;
-    - independent units continue while waiting for GO;
-    - a unit split twice for one problem does not converge;
     - sizing before a unit starts;
-    - every session's agents are covered, reviews are not.
-  - Reason: large units took long and did not converge.
-    - G216 (a) went through five proposal revisions, three implementation reviews and a redesign review round.
-    - G264's option (A) lost its premise only at the SPEC draft's review.
-    - Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time.
+    - every session's agents are covered, and reviews are not.
+  - Amends Q11 by one non-convergence signal: a unit that the limit stops for the same problem a third time, after two
+    splits. Q11's other signals and the review counts stand.
+  - Reason: large units took long and did not converge. G216 (a) went through five proposal revisions, three
+    implementation reviews and a redesign review round, and G264's option (A) lost its premise only at the SPEC draft's
+    review. Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time, so one hour fits a small unit.
   - Rejected:
-    - elapsed time, because other sessions' builds and heavy runs load the machine;
-    - a clock reset per fix round, because it lets repeated rounds escape the limit.
-  - Q11 stands. The limit adds a stop before reviews accumulate; it does not replace their counts.
+    - elapsed time: other sessions' builds and heavy runs load the machine;
+    - resetting the clock per fix round: it lets repeated rounds escape the limit.
 
 ## Code rules (2026-10-12)
 
