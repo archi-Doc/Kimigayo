@@ -4764,8 +4764,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     landing with it; R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved).
 - **R4-M143 A5 reads Binding's referent stores: a 4.6–4.9 operation's receiver store reaches refs(S) alone, with a destruction guard
   (G255 C3)** (2026-10-26; R4's lane A under the combined design's revision 1, items 1, 3, 4, 6, 7, and BU's design review 2, ACCEPT, with
-  its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`; class Full with BU; superseded in part by BU-67: its known false
-  errors are correct errors).
+  its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`; class Full with BU).
   - Rule (SPEC 4.9.6, 15.6.4, which defers to 4.9.6; R4-M131): an operation of SPEC 4.6 to 4.9 writes, through its exclusive borrowed
     receiver, only the storage that receiver refers to, and no layer stored there. So at a call's referent store, A5's rule G stores the
     row's value into refs(S), W's first step (`MirBorrows.Referents`, split out of `Writes` behavior-preserving first), never W's passes.
@@ -4777,8 +4776,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the written argument's referent, the one `referent` rule W derives in `Call`, destroys shallowly by A5's one classifier
     (`MirBorrows.Destruction` over `MirTypes.Observes`: `Destroy`). Anything else keeps W: a declared drop, a Function value, an abstract
     part not proven Copy, an owning handle whose payload is not proven Sealed, and deep counts as observing. Removal condition: PLAN
-    G264 (A5 composes a destruction's retention at callers). The errors at appendDrop2Ok, clearDrop2Ok, clearDropOk2 and clearObjOk
-    are correct under SPEC 15.6's whole-holder text (the owner's 「(B)」, BU-67), not false errors meanwhile.
+    G264 (A5 composes a destruction's retention at callers). Known false errors meanwhile: appendDrop2Ok, clearDrop2Ok, clearDropOk2,
+    clearObjOk.
   - `Destruction` is memoized per case Type for the body's definition and the program version (a dictionary by reference, cleared when
     either changes). `Observes` reads the definition's Copy and Sealed proofs, so the memo is never a bare per-Type memo across
     definitions (O5). Every reader (Dropping, Activations, the guard) shares it, so the guard walks a Type once per body, never per call.
@@ -4795,9 +4794,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - `MirBorrowsTest.Referents`: `AReferentStoreWritesOnlyWhatItsReceiverRefersTo` holds the valid forms of the Array literal,
       append, pop and swap, Dictionary `insertOrReplace`, an Array of exclusive references, a fixed array's `sliceUniq` and a
       UniqSlice's `indexUniq`, with their twins and the edges `appendParamBad` and `userWriteBad`; it fails first.
-    - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a correct error (the owner's 「(B)」,
-      BU-67), the drop forms keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says (since R4-M147 by its
-      abstract-referent Limit at `a.clear()`, the hold removed).
+    - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
+      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says (since R4-M147 by its abstract-referent
+      Limit at `a.clear()`, the hold removed).
     - `TheReferentStoresStayDense` (V16) fails first.
     - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
       where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
@@ -4827,6 +4826,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and R4-M145 S2 reserved; R4-M140 the last on dev).
   - R4-M148: a Closure contract has no referent stores, so its receiver takes W; a Closure argument a 4.6–4.9 operation calls inside
     itself is composed at the caller through that Closure contract (this family).
+  - Superseded in part under BU-67's reading (2026-10-30, the owner's 「(B)」 on G264 S1): the known false errors above
+    (appendDrop2Ok, clearDrop2Ok, clearDropOk2, clearObjOk) are correct errors by the same whole-holder text of SPEC 15.6; the guard
+    and its removal condition (PLAN G264) stand.
 - **R4-M145 One consumed-by-value rule: ClosureEffects reads the Adjust rule, and a discarded Place's bare acquisition is its plan
   row (consumed-by-value S2)** (2026-10-26; R4's lane A under the owner's design B with the review's C1–C7 (OQ1 (a), 2026-10-25) and
   the owner's discard answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2
@@ -8483,7 +8485,8 @@ resumed by R4-M86 (2026-10-20).
     (its default-pipeline source is the ledger's one (b) acceptance program of this entry, `classification.tsv` a5-writes), and
     R5-M129's test re-expected.
   - Superseded in part by BU-67 (2026-10-30, the owner's 「(B)」 on G264 S1): the interim class and S2's forms are correct errors under SPEC
-    15.6's whole-holder text; rule A is SPEC's rule.
+    15.6's whole-holder text; rule A is SPEC's rule. Its test is now
+    `MirBorrowsTest.ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn` (R4's 15.6.4 example unit).
 
 - **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
   struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)
