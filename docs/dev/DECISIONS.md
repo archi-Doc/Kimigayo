@@ -928,8 +928,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
   - Amended by R5-M161 (G5, G6): the R5 reads are gone (library reach at K12, 75 injection reads at G4, the other 12 and the 40 pairing
-    reads at G5 and G6); R6's are 22 (VirtualPlanReuseTest's two compared old-body storage around MIR code generation) and U10's 8
-    (OwnershipJoinTest's left with G4's pinned tests).
+    reads at G5 and G6); R6's are 22 (VirtualPlanReuseTest's two, which compared old-body storage around MIR code generation, are
+    deleted) and U10's 8 (OwnershipJoinTest's left with G4's pinned tests).
 - **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; superseded by Q5) Binding's token cap rises from 375,051 to
   377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
   measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
@@ -13449,7 +13449,7 @@ structure is recorded here by the unit that first implements it.
     - R5-M18's temporary sel-only behaviors;
     - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers);
     - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.
-  - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and three other sites;
+  - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites;
     ratchets: ownership bodies 84 → 30, prepared modules 112 → 0, instance reads 1 → 0, failure facts 1 → 0.
 - **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, R6-gen; plan §4.9 rows G5 and G6, PD14,
   §5.1 M8; R5-M152 S7; under R5-M12 and R5-M160; the planning session's rulings Q1-Q5 on the unit's census; Major, G:R6-gen-del)
