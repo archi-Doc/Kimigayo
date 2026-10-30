@@ -8969,7 +8969,8 @@ resumed by R4-M86 (2026-10-20).
     calls the row publishes (-1 none), called through a shared borrow of it, the receiver its Callable premise declares (every 4.9.6
     "Calls of" row: `removeAll`, `sort(by:)`, `firstIndexWhere`), and destroyed after the last call (15.6.4, 16.3.3: a by-value input's
     cleanup is the callee's, as 8.11.4's owner acquisition destroys the remaining environment). `TyCtxt.Published`, where the row is formed,
-    checks that the premise declares `ref` (`Binding.CallableReceiver`; a violated catalog contract is an internal error). Rows:
+    checks once, before it forms the first Calls row, that every Calls row's premise declares `ref` (`CheckCallsRows` through
+    `Binding.CallableReceiver`; a violated catalog contract is an internal error); a later read costs what any row's does. Rows:
     `ArrayTruncate` `Target` (as `clear`), `ArrayRemoveAll` `CallsThenTarget` (`Destroys: 0, Calls: 1`; 4.9.7: destroyed after the last
     call). `KimiDeclarationId.ArrayRemoveAll` is one more ID (not a closed vocabulary; R5-M28's precedent).
   - Readers: `TyCtxt.Published` gives `Calls` to A4, where `MirEffects.Function` and `Enter` compose, after the row's `Runs` and `Destroys`,

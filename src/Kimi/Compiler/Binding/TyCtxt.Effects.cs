@@ -9,6 +9,8 @@ namespace Kimi.Compiler;
 // read, all under one premise scope per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
+    private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
+
     // SPEC 8.11.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
     // definition Binding rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.6) an
     // environment effect; any other is unclassified.
@@ -31,10 +33,9 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        // The catalog's contract (DECISIONS BU-70): a row's Callable input is called through a shared borrow, which its premise declares.
-        if (row.Calls >= 0 && binding.CallableReceiver(operation, Signature(operation, null, row.Calls, out _)!) != SemanticsKind.Ref)
+        if (row.Calls >= 0 && !this.callsRowsChecked)
         {
-            throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
+            this.CheckCallsRows();
         }
 
         var requirement = row.Runs is { } runs ? this.OwnRequirement(runs) : null; // The one its Contract declares, not an inherited one.
@@ -70,4 +71,20 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
+
+    // The catalog's contract (DECISIONS BU-70), checked for every row once, before the first Calls row is formed: a row's Callable input is
+    // called through a shared borrow, which its premise declares; a violation is a defect of the compiler build.
+    private void CheckCallsRows()
+    {
+        foreach (var entry in KimiLibraryCatalog.Entries)
+        {
+            if (entry.Row is { Calls: >= 0 and var calls } && library.GetSymbol(entry.Id) is { } operation &&
+                binding.CallableReceiver(operation, Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
+            {
+                throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
+            }
+        }
+
+        this.callsRowsChecked = true;
+    }
 }
