@@ -278,51 +278,40 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P). With `destructions`, the values each
-        // reached body destroys are summarized too.
-        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null, BoundType? publishedCallable = null)
+        // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P), through the call of a witness or of a Callable
+        // binding with `receiver`. With `destructions`, the values each reached body destroys are summarized too.
+        internal bool Check(
+            BindingSymbol implementation,
+            BindingScope scope,
+            bool destructions,
+            BoundType? callable = null,
+            SemanticsKind receiver = SemanticsKind.Ref)
         {
-            this.published = published;
-            this.publishedCallable = publishedCallable;
-            this.scope = scope;
-            this.valid = true;
-            this.destructions = destructions;
-            this.seen.Clear();
-            this.destroyed.Clear();
-            this.pending.Clear();
-            this.contexts.Clear();
-            this.contextIndex.Clear();
-            this.contexts.Add(null);
-            this.context = 0;
-            this.site = null;
-            this.last = null;
-            this.Violation = EffectViolation.None;
-            this.ViolationNode = null;
-            this.ViolationSite = null;
-            this.stepUse = null;
-            if (implementationBody && implementation.Declaration is FunctionKoto body)
-            {
-                // The obligation checks this body; all calls inside it still use their own dispatch kind.
-                this.Body(body, null);
-            }
-            else
-            {
-                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
-            }
-
+            this.Begin(scope, destructions);
+            this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
             if (receiver == SemanticsKind.Owner && BoundClosure.Of(callable) is { Receiver: not SemanticsKind.Owner })
             {
                 this.Destruction(callable, implementation.Declaration);
             }
 
-            for (var i = 0; this.valid && i < this.pending.Count; i++)
+            return this.Finish();
+        }
+
+        // The obligation of a definition's own body (a virtual function under its slot's bound, a published operation under its row) checks
+        // that body; all calls inside it still use their own dispatch kind.
+        internal bool CheckBody(BindingSymbol definition, BindingScope scope, bool destructions)
+        {
+            this.Begin(scope, destructions);
+            if (definition.Declaration is FunctionKoto body)
             {
-                this.context = this.pending[i].Context;
-                this.site = this.pending[i].Site;
-                this.Visit(this.pending[i].Node);
+                this.Body(body, null);
+            }
+            else
+            {
+                this.Function(definition, null);
             }
 
-            return this.valid;
+            return this.Finish();
         }
 
         private static BoundType? Dictionary(BoundType? type)
@@ -344,6 +333,40 @@ public sealed partial class Binding
 
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
+
+        // A check's start: the scope and mode, and a fresh summary.
+        private void Begin(BindingScope scope, bool destructions)
+        {
+            this.scope = scope;
+            this.valid = true;
+            this.destructions = destructions;
+            this.seen.Clear();
+            this.destroyed.Clear();
+            this.pending.Clear();
+            this.contexts.Clear();
+            this.contextIndex.Clear();
+            this.contexts.Add(null);
+            this.context = 0;
+            this.site = null;
+            this.last = null;
+            this.Violation = EffectViolation.None;
+            this.ViolationNode = null;
+            this.ViolationSite = null;
+            this.stepUse = null;
+        }
+
+        // A check's end: the queued nodes, each in its context, until the first violation.
+        private bool Finish()
+        {
+            for (var i = 0; this.valid && i < this.pending.Count; i++)
+            {
+                this.context = this.pending[i].Context;
+                this.site = this.pending[i].Site;
+                this.Visit(this.pending[i].Node);
+            }
+
+            return this.valid;
+        }
 
         private SemanticsMask AdaptationSemantics(BoundType type, Koto use)
         {

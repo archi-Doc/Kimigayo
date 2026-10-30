@@ -31,6 +31,12 @@ internal sealed partial class TyCtxt
             return null;
         }
 
+        // The catalog's contract (DECISIONS BU-70): a row's Callable input is called through a shared borrow, which its premise declares.
+        if (row.Calls >= 0 && binding.CallableReceiver(operation, Signature(operation, null, row.Calls, out _)!) != SemanticsKind.Ref)
+        {
+            throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
+        }
+
         var requirement = row.Runs is { } runs ? this.OwnRequirement(runs) : null; // The one its Contract declares, not an inherited one.
         return (requirement, row.On, row.Destroys, row.InPlace, row.Calls);
     }
