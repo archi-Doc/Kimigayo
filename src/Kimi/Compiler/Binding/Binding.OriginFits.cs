@@ -80,7 +80,7 @@ public sealed partial class Binding
         {
             // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
             // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
-            if (unproven.Longer.Kind != OriginKind.Unbound && unproven.Shorter.Kind != OriginKind.Unbound && this.FailedOriginEnvironment(node) is null)
+            if (unproven.Longer.Kind != OriginKind.Unbound && unproven.Shorter.Kind != OriginKind.Unbound && this.FailedOriginEnvironment(node, unproven) is null)
             {
                 this.Fail(node, BindingFailure.Unsupported);
                 return true;
@@ -104,7 +104,8 @@ public sealed partial class Binding
     // SPEC 15.6.1, 23.1.2 (DECISIONS R4-M133): the one recording of an Origin relation failure's chains, a fit's at binding time and a
     // pending relation's at its Closure's classification: the chains in `relationScratch`, `recorded` the node's own record and the
     // others published with it (RecordMoreRelation), each at `at` with the destination Type (none for a relation without one). A
-    // failure that no chain refutes in a failed Origin environment is a dependent of that failure instead. Returns whether a recorded
+    // failure that no chain refutes is a dependent of the failed clause its failed Origin environment names (FailedOriginEnvironment;
+    // DECISIONS BU-69) instead. Returns whether a recorded
     // chain is a body chain of `body`, its ends resolved at the use; the node is then a twin (DECISIONS R4-M108, R4-M111).
     private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded)
     {
@@ -115,7 +116,7 @@ public sealed partial class Binding
             refuted |= all[i].Refuted;
         }
 
-        if (!refuted && this.FailedOriginEnvironment(node) is { } cause)
+        if (!refuted && this.FailedOriginEnvironment(node, recorded) is { } cause)
         {
             all.Clear();
             this.CompleteDependent(node, cause);
@@ -262,7 +263,7 @@ public sealed partial class Binding
             }
 
             var refuted = RefutesOriginRelation(actual, expected, body);
-            OriginRelationFact equality = new(use, actual, binding.SuppliedAtUse(actual, use), expected, true, null, refuted);
+            OriginRelationFact equality = new(use, actual, binding.SuppliedAtUse(actual, use), expected, true, null, refuted, Condition: condition);
             all?.Add(equality);
             return equality;
         }
@@ -278,7 +279,7 @@ public sealed partial class Binding
         {
             var operand = this.FailingOperand(longer, shorter, true, condition) ?? this.FailingOperand(longer, shorter, false, condition) ?? longer;
             var refuted = RefutesOriginRelation(operand, shorter, body);
-            OriginRelationFact chain = new(use, operand, binding.SuppliedAtUse(operand, use), shorter, false, null, refuted);
+            OriginRelationFact chain = new(use, operand, binding.SuppliedAtUse(operand, use), shorter, false, null, refuted, Condition: condition);
             if (all is not null && (ReferenceEquals(operand, longer) || !this.AddFailingChains(longer, shorter, condition)))
             {
                 all.Add(chain);
@@ -308,7 +309,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                all!.Add(new(use, origin, binding.SuppliedAtUse(origin, use), shorter, false, null, RefutesOriginRelation(origin, shorter, body)));
+                all!.Add(new(use, origin, binding.SuppliedAtUse(origin, use), shorter, false, null, RefutesOriginRelation(origin, shorter, body), Condition: condition));
                 return true;
             }
 

@@ -4443,7 +4443,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (「70%を超えても、今の実装者・レビュアー体制で作業を継続してください」), recorded as R5-M120 (batch 41), which supersedes R5-M113's
   clause for R5.
 - **R4-M133 ρ, containment through the receiver layer, one receiver resolution and pending relations (2c-3B)** (2026-10-25, R4's
-  implementer lane under R4-M126 §2.2-§2.5, §2.12, §2.14 and D-2, D-3, D-12-D-15; PLAN G65's G6 and n2b)
+  implementer lane under R4-M126 §2.2-§2.5, §2.12, §2.14 and D-2, D-3, D-12-D-15; PLAN G65's G6 and n2b; superseded in part by BU-69:
+  fixed-fixed records)
   - ρ (P2): a Closure k's call receiver Origin is `OriginAtom(k, Projection, ClosureValueSlot)`, no storage. Containment (P3): one
     function, `Binding.PlaceOrigins.EnvironmentContainment`, gives an environment binding's root its containment ρ (any other root
     none); the containment walk meets it at a root reached through a dereferenced layer with no shared layer first (`ContainedOrigin`
@@ -8827,7 +8828,8 @@ resumed by R4-M86 (2026-10-20).
     (R5-M155 (c)).
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
-  copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (2026-10-30; PLAN G206 (7),
+  copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
+  the premise contract's second reader, the fit judge's dependence query) (2026-10-30; PLAN G206 (7),
   unit bu71, Major; designs rounds 0–2 under `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g206-7\`, joint design review 3, BU's and
   R4's, ACCEPT; the owner, 2026-10-30, on round 2, verbatim 「もう1回だけ直す でお願いします」, the recommended option: every row to the
   whole rule with no pre-filter, records at the edge where the chain fails, the staged move recorded) SPEC 23.1.2: each independent
@@ -8980,6 +8982,40 @@ resumed by R4-M86 (2026-10-20).
     Dependent end (they test that end, not the clause); in the Dependent-chain theory the assignment's form (`var p`, `x.s outlives zz`),
     whose slot `x.t` now completes, records at `p.q` instead of `return p.q`.
   - Rejected: resting every slot of a local (the cause above); a failure lookup per binder (R4-M118).
+
+- **BU-69 A fixed-fixed fit record rests on a failed contract only when that contract could prove it** (2026-10-31; PLAN G306 (3),
+  unit bu85 U2, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g306\u2-design-r1.md`, review REVISE and re-review ACCEPT;
+  R4 agreed to the partial supersession of R4-M133 on three conditions; supersedes in part BU-62's premise contract and R4-M133's clause
+  "a failure no chain refutes in a failed Origin environment a dependent of it") SPEC 23.1.2: a failed fit is a dependent only of a
+  failure whose repair could remove it. FailedOriginEnvironment derived every non-refuted record under any failed ancestor without asking
+  whether that contract could have proven it, which hid independent records (a-base-method, a-fn-clause) and, one way, published
+  dependent ones (r-fn-other).
+  - The contract: a failed contract's bound clauses (`RejectedRelations`) and its failed clauses' bound Origins with their direction (on
+    `OriginDeclaration`) are read only by dependence queries. A dependence query decides whether a relation that already failed is
+    derived, so it only ever removes a dependent report: the declaration judge's rows and the fit judge's records with no Unbound end.
+    Each reads them wherever the premise extraction reads that contract (R1 and a Type's premises, substituted). Every other request
+    still sees the contract unavailable. The state is `readingFailedContracts` in `Binding.OriginPremises.cs` (the premise component),
+    set by both judges, replacing Chains.cs's `judgingDeclarationRows`; it outlives R6-check, since fixed-fixed fit records stay
+    Binding's until R7.
+  - The query (`DependenceCause`, Binding.OriginDeclarations.Failures.cs; R4's conditions): decided once, where the record is formed
+    (RecordOriginChains), as its typed cause; no consumer re-runs a proof to decide or explain it. One premise extraction at the use,
+    run only for a failed record with no Unbound end (that one keeps the ancestor walk, R4-M118, until R6-check). The record is derived
+    iff, under its Semantics condition (`OriginRelationFact.Condition`), the premises with the failed contracts' bound clauses entail it,
+    added contract by contract (the cause: that contract's failed clause), or one repair of a failed clause does (the cause: that
+    clause): `L outlives ?` when longer >= L; `? outlives L` when L >= shorter and longer outlives an Origin visible at the clause; `==`
+    either; a clause with no bound Origin or a guessed operator when longer outlives a visible Origin. Visible: `static`, a declared
+    Origin of the failed declaration or of one enclosing it, an Origin argument of the occurrence. An `==` record is derived only when
+    both directions are.
+  - Limits: repairs are judged one failed clause at one read at a time, so t2-bridge (one Type clause's repair at two occurrences) and
+    n2-combo (two contracts' repairs together) publish an extra dependent report, never hiding an error (re-review N3). The declaration
+    judge reads R1 only: no declaration row reaching a failed Type's premises was found, so that read stays the fit query's (N4 (b)).
+  - Records (probes `g306\probe-r1-*`, `u2-review\probe-r1-*`, `rr-r1-*`, mir = legacy; this unit's 123 forms equal the prototype's but
+    U1's): Unproven like their twins at a-base-method, a-base-method-dep, a-fn-clause, a-fn-out-indep, r-dir-left, r-m-unnameable,
+    r-m-whole, r-nest-unnameable, n2-indep, m2-indep, g-guessed-method and c-store-failed (`ClosureEnvironmentOriginTest`'s
+    FailedClauseStore gains UnprovenOriginRelation_Kd `p`); derived like their repairs: r-fn-other, t2-same, t2-static, as-fail, t2-cross.
+  - Tests: `OriginRelationDiagnosticTest.FailedContracts` (29 forms with twins; 17 of them and FailedClauseStore fail on U1 a66438dbc).
+  - Rejected: one walk over enclosing declarations only (B1: a contract reaching the use through a Type's premises); a repair ranging
+    over every Origin (B2: an enclosing contract's clause cannot name a nested signature's own Origins).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

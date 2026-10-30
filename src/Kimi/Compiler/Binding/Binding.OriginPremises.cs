@@ -15,6 +15,11 @@ public sealed partial class Binding
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
     private int originPremiseDepth;
 
+    // DECISIONS BU-62, BU-69: set by the two dependence queries, the declaration judge (JudgeDeclarationRows) and the fit judge's
+    // (DependenceCause); while it is set the extraction reads each failed contract it meets (ReadFailedContract). Every other request
+    // sees a failed contract unavailable.
+    private bool readingFailedContracts;
+
     // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
     // whether any of them still references an Origin, a Type, a declaration or syntax.
     internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
@@ -203,11 +208,9 @@ public sealed partial class Binding
                 this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
             {
                 this.AddDeclarationPremises(environment, declaration.Relations);
-
-                // DECISIONS BU-62: a declaration's rows are judged with the clauses its failure cleared, so a row they establish rests on it.
-                if (this.judgingDeclarationRows && declaration.RejectedRelations is { } rejected)
+                if (this.readingFailedContracts && declaration.Failure is not null)
                 {
-                    this.AddDeclarationPremises(environment, rejected);
+                    this.ReadFailedContract(environment, declaration, OriginPremiseRule.Declaration, null);
                 }
             }
         }
@@ -233,6 +236,41 @@ public sealed partial class Binding
         {
             this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
         }
+    }
+
+    // DECISIONS BU-62, BU-69: a failed contract read where the extraction reads that contract (R1, or a Type's premises substituted with
+    // the occurrence's Origin `arguments`): its bound clauses (RejectedRelations) are premises of the declaration judge; the fit judge's
+    // dependence query keeps them by contract, with one repair per failed clause (DependenceCause).
+    private void ReadFailedContract(OriginPremiseEnvironment environment, OriginDeclaration declaration, OriginPremiseRule rule, BoundOrigin[]? arguments)
+    {
+        var read = environment.Reads.Count;
+        foreach (var relation in declaration.RejectedRelations!)
+        {
+            var a = Substitute(relation.Longer)!;
+            var b = Substitute(relation.Shorter)!;
+            if (environment.Dependence)
+            {
+                environment.Rejected.Add((a, b, relation.Equality, rule, read));
+            }
+            else
+            {
+                this.AddPremise(environment, a, b, relation.Equality, rule);
+            }
+        }
+
+        if (!environment.Dependence)
+        {
+            return;
+        }
+
+        environment.Reads.Add(declaration.Failure!);
+        foreach (var (clause, left, right) in declaration.FailedClauses!)
+        {
+            environment.Repairs.Add((clause, Substitute(left), Substitute(right), arguments is null ? declaration.Owner : null, arguments));
+        }
+
+        BoundOrigin? Substitute(BoundOrigin? origin)
+            => origin is null || arguments is null ? origin : this.SubstituteStoredOrigin(origin, declaration.Owner, arguments);
     }
 
     // SPEC 8.5.4: an associated application's inherited formation and its requirement's clauses, substituted with its
@@ -316,6 +354,12 @@ public sealed partial class Binding
                 var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 this.AddPremise(environment, a, b, relation.Equality, rule);
+            }
+
+            // The declaration judge reads R1 only (DECISIONS BU-69's limit: no declaration row reaches a failed Type's premises here).
+            if (environment.Dependence && declaration.Failure is not null)
+            {
+                this.ReadFailedContract(environment, declaration, rule, (BoundOrigin[])type.OriginArguments);
             }
         }
 
@@ -410,6 +454,16 @@ public sealed partial class Binding
 
         internal BindingScope? Scope { get; set; }
 
+        // A dependence query's reads of failed contracts (DECISIONS BU-69): each read's failed clause, its bound clauses by read, and a
+        // repair of each failed clause with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
+        internal bool Dependence { get; set; }
+
+        internal List<Koto> Reads { get; } = new();
+
+        internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginPremiseRule Rule, int Read)> Rejected { get; } = new();
+
+        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right, Koto? Owner, BoundOrigin[]? Arguments)> Repairs { get; } = new();
+
         internal void Clear()
         {
             this.Closure.Clear();
@@ -419,6 +473,10 @@ public sealed partial class Binding
             this.Resolvers.Clear();
             this.Use = null!;
             this.Scope = null;
+            this.Dependence = false;
+            this.Reads.Clear();
+            this.Rejected.Clear();
+            this.Repairs.Clear();
         }
     }
 }
