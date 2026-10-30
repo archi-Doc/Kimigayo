@@ -51,7 +51,7 @@ public class DefaultInitializationTest
         c.ReportAnalysis();
         var issue = c.Problems.First(x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
         Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.UninitializedPlace_Kd) && x.Span == c.SyntaxOf(issue.Subject).Span);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
 #if DEBUG
@@ -75,7 +75,7 @@ public class DefaultInitializationTest
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.Equal(!invalid, c.Analyze().IsVerified);
-            Assert.Equal(!invalid, c.Validate(out _));
+            Assert.Equal(!invalid, c.Generate(TextWriter.Null));
             if (invalid)
             {
                 Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
@@ -85,10 +85,10 @@ public class DefaultInitializationTest
             Assert.Equal(0, allocated);
             Assert.Equal(!invalid, c.Analysis.IsVerified);
             c.Bind();
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.Equal(!invalid, c.Analyze().IsVerified);
-            Assert.Equal(!invalid, c.Validate(out _));
+            Assert.Equal(!invalid, c.Generate(TextWriter.Null));
         }
     }
 }

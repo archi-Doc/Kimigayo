@@ -26,7 +26,7 @@ public class DiagnosticPrecisionTest
         Assert.True(c.Binding.Issues.Count == 3, string.Join("\n", c.Binding.Issues));
         Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == Kimi.DiagnosticCode.UnresolvedBinding_Kd));
         Assert.Single(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 23.1.2 (PLAN G260): a loop binding of a failed iterable rests on it, as a pattern binding rests on a failed Subject, so a
@@ -67,7 +67,7 @@ public class DiagnosticPrecisionTest
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         Assert.Empty(TestDiagnostics.Of(c));
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 23.3: a mismatch names both Types, a write names its target, each at the smallest syntax that shows it.
@@ -166,7 +166,7 @@ public class DiagnosticPrecisionTest
         Assert.True(errors.Length != 0, detail);
         Assert.True(errors.All(x => mutation.Expected.Contains(x.Code)), detail);
         Assert.True(mutation.Expected.All(code => errors.Any(x => x.Code == code)), detail);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 23.1.2: syntax that failed to parse, including a token the lexer rejected, is the prerequisite of every check of

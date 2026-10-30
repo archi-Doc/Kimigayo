@@ -176,12 +176,12 @@ public class GenericDestructorEmissionTest
     public void InstantiatedDestructorsReuseWarmEmissionState()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    drop\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.WriteIr(TextWriter.Null, out var error))
+            if (!c.Generate(TextWriter.Null))
             {
-                throw new InvalidOperationException(error);
+                throw new InvalidOperationException(MinimalEmissionTest.Describe(c));
             }
         }));
     }
@@ -199,7 +199,7 @@ public class GenericDestructorEmissionTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n        let again = self.value@move\nlet value = Box<i32>.init(7)");
         Assert.Equal([DiagnosticCode.ExclusivePathTake_Kd, DiagnosticCode.ExclusivePathTake_Kd], c.Binding.Issues.Select(static x => x.Code));
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 }

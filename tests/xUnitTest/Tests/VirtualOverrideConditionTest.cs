@@ -23,7 +23,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
             ? "contract Marker\nopen struct Base<T>\n    Self is Marker when T is Copy\n        public virtual func copy(self: objref/Self, value: ref/T) -> T => Operations.duplicate(value)\n"
             : "open struct Base<T>\n    public virtual func copy(self: objref/Self, value: ref/T) -> T\n        T is Copy\n        return Operations.duplicate(value)\n";
         var c = MinimalEmissionTest.Analyze(Helper + original + "struct Derived<U> : Base<U>\n    override func copy(self: objref/Self, value: ref/U) -> U => Operations.duplicate(value)\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -35,7 +35,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n" + condition + "        return 1\nstruct Derived<U> : Base<U>\n    Self is Marker when U is Copy\n        override func read(self: objref/Self) -> i32 => 2\n()");
         if (inherited)
         {
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         }
         else
         {
@@ -48,14 +48,14 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     public void EnclosingDerivedConstraintsCanEstablishTheCondition()
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived<U> : Base<U>\n    U is Copy\n    Self is Marker when U is Copy\n        override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void InheritedPremisesFollowTheCompleteBoundBasePath()
     {
         var c = MinimalEmissionTest.Analyze(Helper + "open struct Base<T>\n    public virtual func copy(self: objref/Self, value: ref/T) -> T\n        T is Copy\n        return Operations.duplicate(value)\nopen struct Middle<V> : Base<V>\nstruct Derived<U> : Middle<U>\n    override func copy(self: objref/Self, value: ref/U) -> U => Operations.duplicate(value)\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -70,9 +70,9 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     public void ClosedInapplicabilityIsNotAContradictoryDefinitionPremise()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Binding.Issues);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     {
         const string Source = "contract Marker\nopen struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived<U> : Base<U>\n    Self is Marker when U is Copy\n        override func read(self: objref/Self) -> i32 => 2\n()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var donor = MinimalEmissionTest.Analyze(Source.Replace("T is Copy", "T is Owned", StringComparison.Ordinal));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsVirtual);
         var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsVirtual);
@@ -100,7 +100,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Helper + "contract Marker\nopen struct Base<T>\n    public virtual func copy(self: objref/Self, value: ref/T) -> T\n        T is Copy\n        return Operations.duplicate(value)\nstruct Derived<U> : Base<U>\n    Self is Marker when U is Copy\n        override func copy(self: objref/Self, value: ref/U) -> U => Operations.duplicate(value)\n()");
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

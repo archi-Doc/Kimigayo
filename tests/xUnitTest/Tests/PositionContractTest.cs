@@ -28,8 +28,8 @@ public class PositionContractTest
     public void ThePositionRequirementSuppliesItsCapabilities()
     {
         var c = MinimalEmissionTest.Analyze("func twice<P>(p: P) -> bool\n    P is Position\n    let a = p\n    let b = p\n    Console.writeLine(\"\\(a)\")\n    return a == b\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -42,7 +42,7 @@ public class PositionContractTest
     public void UserTypesCannotConform(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ClosedContractConformance_Kd);
     }
 
@@ -51,7 +51,7 @@ public class PositionContractTest
     public void ARefiningContractIsAnOrdinaryConstraint()
     {
         var c = MinimalEmissionTest.Analyze("contract MyPos: Position\nfunc f<P>(p: P) -> bool\n    P is MyPos\n    return p == p\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

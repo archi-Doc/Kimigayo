@@ -795,7 +795,7 @@ public class ClosureEnvironmentOriginTest
     {
         var source = function + "public func main() => ()\n";
         var c = VerifiedSpecExampleTest.Bind(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Analyze();
         var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
         Assert.Empty(Errors([.. common, .. mir]));
@@ -838,10 +838,10 @@ public class ClosureEnvironmentOriginTest
         var nested = LocalView.Replace("use", "nested", StringComparison.Ordinal) + "    let t = \"a\"\n    var outer = func [u, t@move] () -> i32\n" +
             "        consumeText(t@move)\n        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n    return 0\n";
         var c = MinimalEmissionTest.Analyze(G6c + nested + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -849,13 +849,13 @@ public class ClosureEnvironmentOriginTest
     public void WarmEnvironmentBorrowsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.EnvironmentBorrows);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // One record of ARecordShowsTheBorrowThatSuppliedItsEnd: its code, label, location, related Borrow and destination.

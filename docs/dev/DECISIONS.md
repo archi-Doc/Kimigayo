@@ -7057,6 +7057,13 @@ resumed by R4-M86 (2026-10-20).
   exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
   arguments' raw Origins; for Type slots since BU-34); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops:
   superseded by BU-34.
+  - Amended by R5-M164 (G9a): `SameModuloOpenOrigins` is deleted (no reader since G7). The `PlaceOriginSource` exception's first
+    reason, that the old Emission reads it, ended at G7; its second reason, measured at BU's review of G9a: the walks differ for a
+    stored Field with a custom getter (`PlaceOriginSource` stops at the getter's result; `NextPathStep`'s `InlinePart` steps it) and a
+    UniqSlice view range selection (a `NextPathStep` root that `PlaceOriginSource` steps to its receiver), not for an Array range
+    selection, which both pass. Removal condition: BU's reslice unit (PLAN G177) makes every range selection and every getter result a
+    `NextPathStep` root (SPEC 4.8.2; `IsBarePlace`); `PlaceOriginSource` then walks `NextPathStep`'s Place steps up to the first node
+    carrying an Origin, and the exception ends.
 - **BU-27** (2026-10-23; amended by R4-M145: a Place in Discard Context is a bare acquisition position; the BU planning session
   after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
@@ -9469,6 +9476,8 @@ structure is recorded here by the unit that first implements it.
     for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
   - Amended by R5-M160 (G4): the temporary sel-only behaviors and the R5 tooling of the package end with the code generator selection.
+  - Amended by R5-M165 (G9b): the owner's choice is implemented: `EmissionArtifacts.Publish` records `ArtifactPublicationFailed_Kd`
+    (Input) and `GenerationFailed_Kd` is gone (net 0 codes); contract failures are `InternalInvariant_Kd`.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
   `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
@@ -9676,6 +9685,8 @@ structure is recorded here by the unit that first implements it.
   (a temporary view in a held file); one symbol property per function (each consumer would map a row's callee to its property);
   a key beside `DictionaryCallee` (two names for one concept); reading the symbol from the declaration's HIR column (a forwarding
   property, removed at R6); keeping appendSlot and clearLinks (no legacy text calls them).
+  - Amended by R5-M164 (G9a): `Binding.DictionaryStorageCall(key, value)` builds only a dictionary literal's findEntry call; its
+    callee parameter and the fail-closed arm for other callees went with their last caller, the old emitter (G7).
 - **R5-M29 `Layout.Of` placement and its result** (2026-10-18, planning session; plan P7b, package C §3.5, S2-S4 X1, X18, X31 and
   X34, under R5-M18 and R5-M19) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
   with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither, when
@@ -10377,6 +10388,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M160 (G4): `verify.ps1 -Codegen` and the old-generator branch of `Generate`, `WriteIr` and `Validate` are deleted.
   - Amended by R5-M161 (G5): the direct test readers are deleted; only the two `src/Benchmark` measurements run the old generator,
     until G7.
+  - Amended by R5-M165 (G9b): the out-string adapters `WriteIr` and `Validate` are deleted (tests and `src/Benchmark` call `Generate`
+    and read its records), and a publication failure is `EmissionArtifacts.Publish`'s own record (`ArtifactPublicationFailed_Kd`).
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -13847,6 +13860,10 @@ structure is recorded here by the unit that first implements it.
     the Binding commit.
   - Amended by R5-M163 (G8): the unit mapping's G8 items are deleted: `StaticScalarEntry` and `AggregateLayoutPool`'s hooks with
     their files, and `LegacyRuntimeHelpers`' whole instance half, not only its formatting requests (one instance, one rule).
+  - Amended by R5-M164 (G9a): G9's list is done; `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` are deleted with
+    the row's other members.
+  - Amended by R5-M165 (G9b): `Compilation.ReportPublicationFailure` is deleted; `EmissionArtifacts.Publish` records the publication
+    failure (`ArtifactPublicationFailed_Kd`).
 - **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
   design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
   G:R6-gen-del)
@@ -13886,3 +13903,44 @@ structure is recorded here by the unit that first implements it.
     destruction half (no reader).
   - Amends, each with its amendment line: R5-M16, R5-M17, R5-M27, R5-M46, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's
     unit mapping.
+- **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, R6-gen; plan §4.9 row G9, R5-M18's G9a/G9b split;
+  design `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q1-Q10; under R5-M162; Major, G:R6-gen-del; BU
+  reviews the Binding commit)
+  - Rule: a member goes with its last reader (S7). Deleted, each without a reader in `src`, `tests` or `src/Benchmark` since G7:
+    `Binding.IsInapplicableVirtualBody`, `ImplementationContext`, `IsVerifiedSpecialization`, both `SameModuloOpenOrigins`
+    overloads, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` (the last two from R5-M162's list).
+  - Kept: `PrepareTypeStorage`, which Binding's retention, dispatch, identity and Item contexts read. `DictionaryStorageCall` builds
+    only a dictionary literal's findEntry call, which `CallPlan.Of` gives to MIR construction and HIR completeness; its callee
+    parameter, the clearEntries arm and the throw for other callees lost their last caller, the old emitter, at G7.
+  - Made redundant (ruling Q2): `FunctionItemContext`'s closed-only mode `requireClosed`. Its `true` arm had only
+    `ImplementationContext` and tests, whose Items are closed; every product caller passed `false`.
+  - Text: Binding's comments and Transitional reasons that named the old generator or the old Emission as a reader, and
+    `DictionaryCallee`'s comments (the Related index, the initialization bridge and the old emitter went at G8).
+  - Behavior-preserving: the diagnostic snapshot and the semantic snapshot (HIR, MIR) equal the base's.
+  - Amends, each with its amendment line: BU-24 (`SameModuloOpenOrigins`; the `PlaceOriginSource` exception's first reason),
+    R5-M28 (`DictionaryStorageCall`'s callee) and R5-M162 (G9's list).
+- **R5-M165 Publication records its failure; `GenerationFailed_Kd` and the out-string adapters removed (R6-gen G9b)** (2026-10-31,
+  R6-gen; plan §4.9 row G9, §5.4 item 5; R5-M18's G9b with the owner's choice of `ArtifactPublicationFailed_Kd`; design
+  `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q4-Q9; under R5-M64 and R5-M162; Major, G:R6-gen-del)
+  - Rule: publication owns its failure (R5-M64 rejected reporting it in `Generate`). `EmissionArtifacts.Publish` records, replacing
+    the Emission partition's records as a generation does, at the project: `ArtifactPublicationFailed_Kd` (Input, "The build artifacts
+    cannot be published"), its cause as a note (the Input precedent of `ProjectPreparationFailed_Kd` and `SourceReadFailed_Kd`; typed
+    facts are a later Diagnostics unit, Q5), for output I/O and publication-time native configuration and supplies, a dependency
+    module's supplies among them (C-package §3.10, Q4; PLAN's open issue owns its `Unsupported_Kd`); `InternalInvariant_Kd` when the
+    compiler's embedded backend record is missing (a contract failure, Q6) and for a contract exception of code generation while it
+    writes into the output: `EmissionArtifacts.GenerateInto` maps the output's I/O exceptions to the publication code and code
+    generation's argument, data and support exceptions to `InternalInvariant_Kd` (C-package §3.10; implementation review 1, B1).
+    Every generation request clears the Emission partition first, a gate refusal included, so the partition is the latest request's.
+    `GenerationFailed_Kd` is replaced in place (net 0 codes); `DiagnosticPartition.Emission` and the `Emission` requirement stay
+    through R6 (R5-M18).
+  - Deleted: `Compilation.ReportPublicationFailure`, `Publish`'s failure text and its public 3-argument overload (Q8), the repeated
+    `NativeConfiguration.Validate` (preparation's `DependencyConfiguration` owns it, C-package §3.10), and at G9b2 the out-string adapters
+    `WriteIr`, `Validate` and their texts. Tests and `src/Benchmark` call `Generate` and read its records; `MinimalEmissionTest.Describe`
+    prints the Emission partition. No `[Transitional("R6-gen")]` remains (plan §5.4 item 5).
+  - Tests: the publication failures assert the record and its note; the native-configuration cases publication no longer repeats are
+    asserted at `NativeConfiguration.Validate`; the four "no `GenerationFailed_Kd`" assertions read `InternalInvariant_Kd`, the
+    generation entry's catch-all (Q7); a publication failure's record and its CLI rendering have a Fact.
+  - Rejected: reusing `ProjectPreparationFailed_Kd` or recategorizing `GenerationFailed_Kd` (C-package §3.10); keeping a string adapter
+    for tests (a second form of the entry).
+  - Amends, each with its amendment line: R5-M18 (the owner's choice, implemented), R5-M64 (the adapters and the publication record) and
+    R5-M162 (`ReportPublicationFailure`).

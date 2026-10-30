@@ -69,10 +69,10 @@ public class GenericCompositeValueTest
     public void RejectsInvalidOwnershipUniversally(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -90,7 +90,7 @@ public class GenericCompositeValueTest
     {
         var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
         using var before = new StringWriter();
-        Assert.True(c.WriteIr(before, out var error), error);
+        Assert.True(c.Generate(before), MinimalEmissionTest.Describe(c));
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -101,7 +101,7 @@ public class GenericCompositeValueTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var after = new StringWriter();
-        Assert.True(restored.WriteIr(after, out error), error);
+        Assert.True(restored.Generate(after), MinimalEmissionTest.Describe(restored));
         Assert.Equal(before.ToString(), after.ToString());
         ScalarEmissionTest.WriteFixture("GenericCompositeReload", after.ToString(), "received\ntwo\none\n");
     }

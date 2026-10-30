@@ -73,11 +73,11 @@ public class RequirementTypeParsingTest
     {
         var c = MinimalEmissionTest.Analyze($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value\nlet result = identity({argument})");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 
@@ -92,12 +92,12 @@ public class RequirementTypeParsingTest
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is {requirement}\n        ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Bind().IsComplete);
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
 
         var restored = Compilation.CreateForTest();
@@ -133,7 +133,7 @@ public class RequirementTypeParsingTest
         var tree = ParseTestHelper.Parse(source);
         Assert.True(tree.Compilation.Diagnostics.HasErrors);
         Assert.All(TestDiagnostics.Of(tree), x => Assert.InRange(x.Span.Start, 0, source.Length));
-        Assert.False(MinimalEmissionTest.Analyze(source).Validate(out _));
+        Assert.False(MinimalEmissionTest.Analyze(source).Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

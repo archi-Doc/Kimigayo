@@ -115,7 +115,7 @@ internal static class CompilerPlanMeasurements
                     var valid = phase switch
                     {
                         "binding" => c.Bind().IsComplete,
-                        "emission" => c.WriteIr(TextWriter.Null, out _),
+                        "emission" => c.Generate(TextWriter.Null),
                         _ => c.Ownership.Analyze().IsVerified,
                     };
                     if (!valid)

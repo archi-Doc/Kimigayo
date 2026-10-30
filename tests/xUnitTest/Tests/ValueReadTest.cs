@@ -52,8 +52,8 @@ public class ValueReadTest
     public void BranchesUnifyReadTypesThroughReferences(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
         Assert.Equal(SemanticsKind.Owner, result.NameKoto.TypeOf()?.Semantics);
     }
@@ -76,7 +76,7 @@ public class ValueReadTest
     public void AnUnannotatedLocalKeepsTheReference()
     {
         var c = MinimalEmissionTest.Analyze("let values: [4 of i32] = [1, 2, 3, 4]\nlet whole = values.indices\nlet w = whole@ref\nlet kept = w");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var kept = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "kept");
         Assert.Equal(SemanticsKind.Ref, kept.NameKoto.TypeOf()?.Semantics);
     }
@@ -85,7 +85,7 @@ public class ValueReadTest
     public void MatchingReferenceLayersKeepTheirDependency()
     {
         var c = MinimalEmissionTest.Analyze("var a = ^1\nlet b = ^2\nlet r = if true => a@ref\nelse => b@ref\na = ^3\nlet p: FromEnd<i32> = r");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
         Assert.Equal(SemanticsKind.Ref, result.NameKoto.TypeOf()?.Semantics);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);

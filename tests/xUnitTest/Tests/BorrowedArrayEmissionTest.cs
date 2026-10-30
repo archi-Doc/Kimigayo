@@ -36,7 +36,7 @@ public class BorrowedArrayEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
@@ -64,13 +64,13 @@ public class BorrowedArrayEmissionTest
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Analyze();
-            c.WriteIr(TextWriter.Null, out _);
+            c.Generate(TextWriter.Null);
         }));
     }
 
@@ -79,7 +79,7 @@ public class BorrowedArrayEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func identity<T>(x: T) -> T => x\nlet a: [1 of i32] = [42]\nlet r = identity(a@ref)\nlet n = r[0]");
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 }

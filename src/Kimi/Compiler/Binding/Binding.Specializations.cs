@@ -34,8 +34,6 @@ public sealed partial class Binding
     private readonly Dictionary<FunctionKoto, Specialization> specializationStorage = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<List<FunctionKoto>> siblingPool = new();
 
-    internal bool IsVerifiedSpecialization(FunctionKoto function) => this.specializations.ContainsKey(function);
-
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
 

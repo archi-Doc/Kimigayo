@@ -39,7 +39,7 @@ public class ClosureReceiverClassificationTest
     public void BorrowingBodiesAreNotConsuming(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ClosureReceiver" + name, source, string.Empty);
     }
 
@@ -48,7 +48,7 @@ public class ClosureReceiverClassificationTest
     {
         const string Source = Bag + "let b = Bag.init([1, 2], .None)\nlet take = func [b@move] () -> Array<i32> => b.items@move\nlet items = take@move()\nrequire items.length == 2 else => $abort(\"take\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         Assert.Equal(SemanticsKind.Owner, closure.ClosureOf()!.Receiver);
     }
@@ -184,7 +184,7 @@ public class ClosureReceiverClassificationTest
     public void ObjectCalleesSupplyOnlyTheirPayloadAuthority(string source, string code, string at, string? note, bool authority)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
         if (note is not null)
@@ -351,7 +351,7 @@ public class ClosureReceiverClassificationTest
     public void TheMarksAreThePublishedByCaseTakes(string body)
     {
         var c = MinimalEmissionTest.Analyze(PairHead + body + PairMain);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         foreach (var function in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsAnonymous))
         {
@@ -454,10 +454,10 @@ public class ClosureReceiverClassificationTest
         var c = MinimalEmissionTest.Analyze(PairHead + "    let text = \"abc\"\n    var k: i32 = 0\n    var h = func [value, var k, text@move] () -> ()\n" +
             "        var g = func [value] () -> ()\n            let local = value\n            _ = local\n        g()\n        k += 1\n        let t = text@move\n" +
             "    var e = func [value] () -> ()\n        let local = value\n        _ = local\n    e()\n" + PairMain);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         var closures = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => x.IsAnonymous).Select(x => x.ClosureOf()!).ToArray();
         Assert.Equal(
             ["Owner Owner value", "Ref Uniq value", "Ref Uniq value"],

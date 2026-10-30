@@ -44,9 +44,9 @@ public class FixedStorageTest
             Console.writeLine("fixed storage")
             """);
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, Probe);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.WriteFixture("FixedStorageTraversal", CompilationTestHelper.WriteIr(c), "fixed storage\n");
     }
 }

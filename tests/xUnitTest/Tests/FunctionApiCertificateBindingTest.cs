@@ -39,7 +39,7 @@ public class FunctionApiCertificateBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(hiddenAccess, typeAccess));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
     }
 

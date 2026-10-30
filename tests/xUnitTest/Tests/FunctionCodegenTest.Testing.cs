@@ -294,7 +294,7 @@ public sealed partial class FunctionCodegenTest
             c.Kotonoha.AddSource(new SourceDocument(file, source, isTestOnly: true));
         }
 
-        Assert.True(Checked(c), MinimalEmissionTest.Describe(c, null));
+        Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
         return c;
     }
 

@@ -47,7 +47,7 @@ public class DynamicArrayCostTest
         var source = used ? "let values = Array<i32>.init(repeating: 1, count: 3)\nrequire values[2] == 1 else => $abort(\"value\")"
             : "let values = Array<i32>.init(capacity: 3)\nrequire values.length == 0 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
         Assert.Equal(used, generated.Contains(sel.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation)!.Declaration));
     }
@@ -172,8 +172,8 @@ public class DynamicArrayCostTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _)));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Generate(TextWriter.Null)));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -189,7 +189,7 @@ public class DynamicArrayCostTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")
@@ -200,7 +200,7 @@ public class DynamicArrayCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
                 {
                     throw new InvalidOperationException("Array warm compilation failed.");
                 }
@@ -212,8 +212,8 @@ public class DynamicArrayCostTest
             {
                 "Binding" => c.Bind().IsComplete,
                 "Ownership" => c.Analyze().IsVerified,
-                "Validation" => c.Validate(out _),
-                _ => c.WriteIr(TextWriter.Null, out _),
+                "Validation" => c.Generate(TextWriter.Null),
+                _ => c.Generate(TextWriter.Null),
             };
             if (!valid)
             {
@@ -227,7 +227,7 @@ public class DynamicArrayCostTest
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"before\"]\nlet first = values@uniq.remove(0)\nConsole.writeLine(first)");
         using var initial = new StringWriter();
-        Assert.True(c.WriteIr(initial, out var error), error);
+        Assert.True(c.Generate(initial), MinimalEmissionTest.Describe(c));
         Assert.Contains("@__kimi_array_remove_", initial.ToString()); // A generator names its helper (DECISIONS R5-M121).
         var replacement = MinimalEmissionTest.Analyze("var values: Array<i32> = [20, 22]\nrequire values[0] + values[1] == 42 else => $abort(\"values\")\nvalues@uniq.clear()");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
@@ -239,7 +239,7 @@ public class DynamicArrayCostTest
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         using var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out error), error);
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         var ir = output.ToString();
         Assert.DoesNotContain("@__kimi_array_remove_", ir);
 

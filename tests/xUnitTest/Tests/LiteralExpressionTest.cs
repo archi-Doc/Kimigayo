@@ -63,8 +63,8 @@ public class LiteralExpressionTest
     public void AControlFlowArgumentOfLiteralsIsALiteral(string source)
     {
         var c = MinimalEmissionTest.Analyze("let c = true\nlet d = false\n" + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.9.2 step 3, 4.3, 12.3: a literal source of a join, or a literal leaf of a Tuple, array or dictionary literal source or of an
@@ -107,11 +107,11 @@ public class LiteralExpressionTest
     {
         var c = MinimalEmissionTest.Analyze("struct P\n    public var x: i64 = 5\nfunc f(c: bool, d: bool, n: i64, p: P) -> i64\n    " + statement + "\n    return 0\n" +
             "let r = f(true, false, 1, P.init())");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == literal).ToArray();
         Assert.NotEmpty(nodes);
         Assert.All(nodes, x => Assert.Equal(type, TyCtxt.Name(x.TypeOf()!)));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.9.2 step 4, 12.3: a literal source is checked once, at its join's Type or, with none decided, at its default, so one that
@@ -147,7 +147,7 @@ public class LiteralExpressionTest
     public void RejectsWhatLiteralFittingDoesNotAdmit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && TestDiagnostics.Of(c, "Hello.kimi").Length == 0, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete && TestDiagnostics.Of(c, "Hello.kimi").Length == 0, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

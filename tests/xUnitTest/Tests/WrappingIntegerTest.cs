@@ -33,7 +33,7 @@ public class WrappingIntegerTest
         var source = $"let a: Wrapping<{integer}> = 1\nlet b: Wrapping<{integer}> = a + 1\nlet c = a@{integer}\nlet d: {integer} = 2\nlet e = d@Wrapping<{integer}>\n" +
             "let eq = a == b\nlet lt = a < b\nlet r = a@ref\nlet f: Wrapping<" + integer + "> = r\nlet g = a & b\nlet h = a << 1\nlet n = -a\nlet m: Wrapping<" + integer + "> = -(1)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
         var primitive = BoundType.Primitives[integer];
         var wrapping = BoundType.WrappingOf(primitive);
@@ -92,7 +92,7 @@ public class WrappingIntegerTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -180,7 +180,7 @@ public class WrappingIntegerTest
     public void DirectLiteralsFitTheArgumentRange()
     {
         var c = MinimalEmissionTest.Analyze("let w = 5@Wrapping<u32>\nlet s = -5@Wrapping<i8>\nlet g = (-128)@Wrapping<i8>");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
         Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u32"]), variables["w"].NameKoto.TypeOf());
         Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["s"].NameKoto.TypeOf());

@@ -90,8 +90,8 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -104,9 +104,9 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         var source = $"struct View{{source}}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\nvar n = 7\nlet h = View.init(n@ref)@{mode}\nrequire h.value@follow == 7 else => $abort(\"loan\")";
         NativeAllocationAudit.WriteFixture("ObjectCreationLoan" + mode, source, 1, 1, 24);
         var invalid = MinimalEmissionTest.Analyze(source.Replace("require h.value", "n = 8\nrequire h.value", StringComparison.Ordinal));
-        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
+        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid));
         Assert.False(invalid.Analysis.IsVerified);
-        Assert.False(invalid.WriteIr(TextWriter.Null, out _));
+        Assert.False(invalid.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -136,7 +136,7 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -146,11 +146,11 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
     public void NeverDoesNotFormAPayloadType(string mode)
     {
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => $abort(\"stop\")\nfunc run() => stop()@{mode}\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Same(BoundType.Never, conversion.TypeOf());
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -198,11 +198,11 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         var donor = KotoTree.Walk(MinimalEmissionTest.Analyze("let n = 7@rc").Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.True(KotoHelper.Replace(conversion, conversion.Right, ParseTestHelper.Detach(donor.Right, new CodeBlockKoto(conversion.CodeContext))));
         Assert.Null(conversion.ConversionOf().Creation);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(CompilerFunctionKind.MakeRc, conversion.ConversionOf().Creation!.CallOf()!.Target.CompilerFunction);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -211,12 +211,12 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
     {
         const string Source = "func box<T>(value: T) -> rc/T\n    T is ObjectPayload\n    return value@move@rc\nlet n = box(7)\nlet b = box(true)\nlet direct = 1@obj";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

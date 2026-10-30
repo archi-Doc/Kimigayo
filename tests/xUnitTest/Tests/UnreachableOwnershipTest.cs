@@ -19,7 +19,7 @@ public class UnreachableOwnershipTest
     public void DeadSourceWithoutVariableUsesVerifies(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -31,7 +31,7 @@ public class UnreachableOwnershipTest
     public void NonCompletingBodiesDoNotRequireSyntheticResults(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -47,7 +47,7 @@ public class UnreachableOwnershipTest
     public void FirstDeadLocalUseIsUnsupported(string source, string use, int line)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Problems);
         Assert.Equal((DiagnosticCode.Unsupported_Kd, use, line), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), LineOf(source, c.SyntaxOf(issue.Subject).Span.Start)));
     }
@@ -59,7 +59,7 @@ public class UnreachableOwnershipTest
     public void LoopLocalUsesStillRequireOrdinaryOwnershipChecks(string body, DiagnosticCode failure, string at)
     {
         var c = MinimalEmissionTest.Analyze("let x = 1\nloop\n    " + body + "\nlet y = x");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Problems);
         Assert.Equal((failure, at), (issue.Code, c.SyntaxOf(issue.Subject).ToString()));
     }
@@ -70,7 +70,7 @@ public class UnreachableOwnershipTest
     {
         const string Source = "func inspect(a: ref/string, b: string) => ()\nfunc f()\n    let x = \"s\"\n    return\n    inspect(x, x@move)\nf()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Problems);
         Assert.Equal((DiagnosticCode.ComparisonLoanConflict_Kd, "x", Source.IndexOf("x@move", StringComparison.Ordinal)), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), c.SyntaxOf(issue.Subject).Span.Start));
     }
@@ -110,7 +110,7 @@ public class UnreachableOwnershipTest
 
             source.Append("    return\n");
             var c = Parse(source.ToString());
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
             var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
             var analysisBytes = AllocationMeasurement.Measure(() => c.Analyze());
             var combinedBytes = AllocationMeasurement.Measure(() =>
@@ -121,7 +121,7 @@ public class UnreachableOwnershipTest
             Assert.True(
                 bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
                 $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
     }
 }

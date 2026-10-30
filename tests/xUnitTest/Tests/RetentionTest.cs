@@ -1261,7 +1261,7 @@ public sealed class RetentionTest
             equality: true);
         ParseTestHelper.Detach(replacement, placeholder);
         Assert.True(KotoHelper.Replace(relation.Parent!, relation, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal([after], Calls(c, "f"));
     }
 
@@ -1333,7 +1333,7 @@ public sealed class RetentionTest
     private static Compilation Bind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         return c;
     }
 

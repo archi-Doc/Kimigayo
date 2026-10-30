@@ -214,8 +214,8 @@ public class AbstractCallReachTest
     public void AcceptsLaterCallsThatReachNoKeptLoan(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // An implementation body is an ordinary body: its abstract calls on stored values, of one requirement or of a Callable, reach their
@@ -231,8 +231,8 @@ public class AbstractCallReachTest
     public void AnImplementationBodyReachesByPaths(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // The old Emission generates the abstract calls the adoption accepts (the proposal's section 6 forms): a Take-only takeTwo over a
@@ -262,7 +262,7 @@ public class AbstractCallReachTest
         var start = source.LastIndexOf(write, StringComparison.Ordinal);
         Assert.True(start >= 0, write);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Contains(errors, x => x.Code is nameof(DiagnosticCode.ComparisonLoanConflict_Kd) or nameof(DiagnosticCode.CallActivationConflict_Kd) &&
@@ -274,7 +274,7 @@ public class AbstractCallReachTest
     public void ALendingItemKeepsItsActivationDiagnostic()
     {
         var c = MinimalEmissionTest.Analyze(LendingTwice + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
@@ -303,7 +303,7 @@ public class AbstractCallReachTest
     public void WarmRequirementCallAnalysisDoesNotAllocate()
     {
         var c = MinimalEmissionTest.Analyze(Source + TakeTwo + Main);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var verified = true;
         var allocated = AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified);
         Assert.True(verified);
@@ -352,7 +352,7 @@ public class AbstractCallReachTest
     private static ((int Owner, int Line, string Text)[] Mir, (int Owner, int Line, string Text)[] Old) Records(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var old = LegacyRecords.Of(c).Where(static x => x.Node.CodeContext?.SourceDocument?.Path == "Hello.kimi").Select(static x => (x.Code, x.Node));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);

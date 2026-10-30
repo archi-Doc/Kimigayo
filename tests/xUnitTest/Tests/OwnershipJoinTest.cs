@@ -15,9 +15,9 @@ public class OwnershipJoinTest
     public void Milestone15()
     {
         var c = MinimalEmissionTest.Analyze(Source());
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -31,9 +31,9 @@ public class OwnershipJoinTest
         var source = Source();
         Assert.Contains(before, source, StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source.Replace(before, after, StringComparison.Ordinal));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, issue => issue.Code == failure);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 14.9.2, 15.6 (F1): a joined borrow's Type names both Origins and its value carries both Loans, so a write of either owner while
@@ -51,7 +51,7 @@ public class OwnershipJoinTest
         {
             var source = Pair + "    let selected" + annotation + " = " + expression + "\n    let n = selected.value\n    a.value = n\n    b.value = n\ninspect(true)\ninspect(false)";
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var program = c.BuildMir();
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "inspect");
             var selected = Assert.Single(body.Locals.ToArray(), static x => x.Name == "selected");
@@ -64,7 +64,7 @@ public class OwnershipJoinTest
                 Assert.True(invalid.Binding.Result.IsComplete);
                 Assert.Contains(invalid.Problems, issue => issue.Code.IsLoanConflict());
                 Assert.Contains(invalid.BuildMir().Problems.All.ToArray(), static x => x.Code.IsLoanConflict());
-                Assert.False(invalid.Validate(out _));
+                Assert.False(invalid.Generate(TextWriter.Null));
             }
         }
     }
@@ -73,14 +73,14 @@ public class OwnershipJoinTest
     public void JoinedBorrowCannotOutliveEitherLocalSource()
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected = label choose: do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
 
         // SPEC 15.6.6, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
         var conflict = Assert.Single(c.Ownership.Issues);
         Assert.Equal((OwnershipRequirement.ComparisonLoanConflict, "local"), (conflict.Failure, conflict.Destroyed));
         Assert.IsType<Kimi.Compiler.Parsing.ExitKoto>(conflict.Source);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -91,7 +91,7 @@ public class OwnershipJoinTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected: " + annotation + " = if c => " + first + " else => " + second + "\ninspect(true)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 10.2, 12.3.1: a fixed shared result adapts each source, including a written exclusive Borrow, without strengthening it.
@@ -123,7 +123,7 @@ public class OwnershipJoinTest
         var source = "func pick(c: bool, z: ref/i32) -> i32\n    let n = 5\n    " + join + "\n    return r@follow\nlet z = 1\nConsole.writeLine(\"\\(pick(true, z@ref))\")";
         ScalarEmissionTest.EmitFixture("OwnershipJoinLocalFixed" + name, source, stdout);
         var invalid = MinimalEmissionTest.Analyze(source.Replace("    return r@follow", "    n = 6\n    return r@follow", StringComparison.Ordinal).Replace("    let n = 5", "    var n = 5", StringComparison.Ordinal));
-        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
+        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid));
         Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
     }
 

@@ -156,7 +156,7 @@ public enum DiagnosticCode
     UnreachablePattern_Kd,
     OuterCloserInBody_Kd,
 
-    GenerationFailed_Kd,
+    ArtifactPublicationFailed_Kd,
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,

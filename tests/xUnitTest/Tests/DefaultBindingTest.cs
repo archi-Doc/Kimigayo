@@ -21,7 +21,7 @@ public class DefaultBindingTest
         var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
         var value = function.Parameters[0].DefaultValue!;
         Assert.True(KotoHelper.IsValueContext(value));
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -38,7 +38,7 @@ public class DefaultBindingTest
         Assert.Null(KotoHelper.ResolveTransferTarget(jump));
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Span == jump.Span && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class DefaultBindingTest
         Assert.Same(function.Parameters[1].DefaultValue, omitted.Expression);
         Assert.Same(c.Binding.ParameterSymbol(function, 0), omitted.Expression.SymbolOf());
         Assert.Same(BoundType.I32, omitted.ParameterType);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -233,20 +233,20 @@ public class DefaultBindingTest
     public void DefaultsBindPrecedingParametersInDeclarationScope(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         // This theory checks declaration Binding. Scalar defaults now execute;
         // generic signatures remain outside the executable subset.
         if (source.Contains("<T>", StringComparison.Ordinal))
         {
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
         else if (source.Contains("\nf(", StringComparison.Ordinal))
         {
-            Assert.True(c.Validate(out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
         else
         {
-            Assert.False(c.Validate(out _)); // No executable startup expression.
+            Assert.False(c.Generate(TextWriter.Null)); // No executable startup expression.
         }
     }
 
@@ -260,14 +260,14 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void APrecedingParameterWinsOverAContainerMember()
     {
         var c = MinimalEmissionTest.Analyze("group Defaults\n    let x = 7\n    func f(x: i32, y: i32 = x) => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var function = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>());
         Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.SymbolOf());
     }

@@ -98,9 +98,9 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     public void AtomicOwnershipUsesTheCommonStoragePlan(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func consume(value: {type}) => ()\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -111,7 +111,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     public void RcOwnershipUsesOrdinaryStorageAndCleanup(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func consume(value: {type}) => ()\n()");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

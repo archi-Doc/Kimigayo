@@ -59,7 +59,7 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
     public void TheFixedShapesAreAccepted(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Empty(Errors(c));
     }
 

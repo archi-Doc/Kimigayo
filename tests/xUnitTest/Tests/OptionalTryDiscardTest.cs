@@ -156,7 +156,7 @@ public partial class OptionalTryDiscardTest
             Assert.True(c.Bind().IsComplete, Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified, Describe(c));
-            Assert.True(c.Validate(out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -331,6 +331,6 @@ public partial class OptionalTryDiscardTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.FailureOf() + ":" + x.Node)) +
+        => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.FailureOf() + ":" + x.Node)) +
             "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message));
 }

@@ -74,7 +74,7 @@ public class SequenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -87,7 +87,7 @@ public class SequenceEmissionTest
             c.Bind();
             c.Binding.CheckStartup(OutputKind.Application);
             c.Analyze();
-            Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 }

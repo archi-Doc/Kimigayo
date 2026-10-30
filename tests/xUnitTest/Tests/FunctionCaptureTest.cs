@@ -65,7 +65,7 @@ public class FunctionCaptureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("let inner: () -> i32 = func () => 7\n" + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -73,9 +73,9 @@ public class FunctionCaptureTest(ITestOutputHelper output)
     public void WarmNestedFunctionEmissionAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let inner: () -> i32 = func () => 7\nlet outer: () -> i32 = func [inner@move] () => inner() + 1\nrequire outer() == 8 else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

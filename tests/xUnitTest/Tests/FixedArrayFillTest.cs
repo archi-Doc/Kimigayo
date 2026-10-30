@@ -62,7 +62,7 @@ public class FixedArrayFillTest
     {
         var compilation = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(compilation.WriteIr(output, out _));
+        Assert.False(compilation.Generate(output));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class FixedArrayFillTest
     {
         var compilation = MinimalEmissionTest.Analyze("let bytes: [4096 of u8] = [4096 of 0]\nrequire bytes[4095] == 0 else => $abort(\"fill\")");
         using var output = new StringWriter();
-        Assert.True(compilation.WriteIr(output, out var error), error ?? MinimalEmissionTest.Describe(compilation, null));
+        Assert.True(compilation.Generate(output), MinimalEmissionTest.Describe(compilation));
         Assert.True(output.ToString().Length < 100_000);
     }
 }

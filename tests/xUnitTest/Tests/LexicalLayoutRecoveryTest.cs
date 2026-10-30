@@ -28,7 +28,7 @@ public class LexicalLayoutRecoveryTest(ITestOutputHelper output)
         var function = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();
         Assert.Equal(2, function.Body!.Items.Count);
         Assert.Equal("n", Assert.IsType<FieldKoto>(function.Body.Items[0]).NameKoto.IdentifierName);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         c.Bind();
         c.Binding.ReportDiagnostics();
