@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 //   a verified contract) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, become
 //   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
-// - Inputs: the two Types, the use, and the Type relation (FitsTypeCore, Binding.TypeRelations.cs), which relates Never only to itself.
+// - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
 // - Outputs: the verdict; CheckTypeUse records the obligations of a fit whose structure holds.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type).
@@ -21,14 +21,16 @@ public sealed partial class Binding
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
     /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected) => NeverFits(actual) || FitsTypeCore(actual, expected, null, null);
+    public static bool FitsType(BoundType actual, BoundType expected)
+        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected);
 
     // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
     // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
     internal static bool FitsStructurally(BoundType actual, BoundType expected)
-        => NeverFits(actual) || FitsTypeCore(actual, expected, null, null, structural: true);
+        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Structural).Fits(actual, expected);
 
-    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => NeverFits(actual) || FitsTypeCore(actual, expected, this, use);
+    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use)
+        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected);
 
     // Lowering rechecks the already verified contract without adding constraints or reopening inference.
     internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
@@ -37,7 +39,7 @@ public sealed partial class Binding
             new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Verified).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is null);
 
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || FitsTypeCore(actual, expected, this, use, structural: true);
+        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
 
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
@@ -45,7 +47,7 @@ public sealed partial class Binding
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
     // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
     // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
-    // itself, FitsTypeCore forms none), so the entries appended before it returns are exactly this fit's.
+    // itself, RelationWalk forms none), so the entries appended before it returns are exactly this fit's.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
     {
         var pending = this.pendingRelations.Count;
@@ -58,14 +60,15 @@ public sealed partial class Binding
         return fits;
     }
 
-    // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as FitsTypeCore composes it: a
+    // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as RelationWalk composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,
     // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
     private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity)
     {
         // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
         if ((polarity == OriginVariance.Contravariant ?
-                FitsTypeCore(expected, actual, this, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)) &&
+                new RelationWalk(this, use, OriginPart.Judged).Fits(expected, actual) :
+                new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected, polarity == OriginVariance.Invariant)) &&
             !HasLocalRegion(actual) && !HasLocalRegion(expected))
         {
             return true;

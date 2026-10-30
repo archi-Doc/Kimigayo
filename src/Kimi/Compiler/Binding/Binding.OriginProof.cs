@@ -459,7 +459,7 @@ public sealed partial class Binding
         return this.ProvesOriginOutlives(longer, shorter, use, condition);
     }
 
-    // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
+    // SPEC 10.1: the Origin part of a fit (RelationWalk). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives).
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
         => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, condition) : this.FitOriginOutlives(longer, shorter, use, condition);

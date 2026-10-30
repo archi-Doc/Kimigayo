@@ -102,7 +102,7 @@ public sealed partial class Binding
     // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
     // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
     // Without a Binding no failure is visible, so only written Origins relate and every other difference stays a mismatch.
-    // FitsTypeCore, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
+    // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
     private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter)
     {
         longer = shorter = null!;

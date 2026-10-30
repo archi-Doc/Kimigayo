@@ -4,6 +4,15 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// Function Types and their conversions (SPEC 7.7.4, 8.10, 10.7, 15.3.7, 15.6.4).
+// - Responsibility: a Function Type's syntax (BindFunctionType); the shape of a signature's per-call inputs (FunctionTypeBinder,
+//   SignatureOwner, PerCallSignature, InputDependentBinder, PerCallInputs, InputOrigins); the erasure of a Closure or Function Item to
+//   a common Function Type (ErasesToFunction, and ErasureSignatureFits, its signature part that applicability reads); and the solved
+//   comparison of a named function's contract with a required signature (ContractFits).
+// - Inputs: the Types compared, the use whose premises the comparison reads, and the Type relation (Binding.TypeRelations).
+// - Outputs: the verdicts and, for ContractFits, the solved Origins and argument operations.
+// - Invariants: an erasure's Shared receiver and Owned environment are judged after selection, never during applicability.
+// - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
 {
     // The binder of a Function Type's own per-call inputs: its syntax, which quantifies an outer input Origin at that input's slot.
@@ -268,6 +277,22 @@ public sealed partial class Binding
 
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
+
+    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
+    // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
+    private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
+        => this.ErasureSignatureFits(actual, expected, node) &&
+            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }) &&
+            this.ProveOwned(actual, node) == ConstraintProof.Proven;
+
+    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
+    // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
+    // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
+        => expected.Kind == BoundTypeKind.Function &&
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
+            (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
+            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
