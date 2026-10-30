@@ -221,7 +221,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var part = call.ArgumentNodes[i];
-                contextualInputs |= this.KindOf(part) == ArgumentKind.Composite;
+                contextualInputs |= this.KindOf(part) is PartKind.Aggregate or PartKind.Join;
                 contextualCallables |= KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(part);
                 var type = function.Parameters[mapping[i]].Type.BoundType;
                 if (type is null)
@@ -332,7 +332,7 @@ public sealed partial class Binding
                 {
                     var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
                     if (argument is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(argument) ? pass != ordinaryPasses :
-                        pass == ordinaryPasses || (contextualInputs && (this.KindOf(argument) == ArgumentKind.Composite) != (pass == 1)))
+                        pass == ordinaryPasses || (contextualInputs && (this.KindOf(argument) is PartKind.Aggregate or PartKind.Join) != (pass == 1)))
                     {
                         continue;
                     }
@@ -377,7 +377,7 @@ public sealed partial class Binding
                         // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
-                            if (this.KindOf(argument) != ArgumentKind.Literal &&
+                            if (this.KindOf(argument) != PartKind.Literal &&
                                 MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at

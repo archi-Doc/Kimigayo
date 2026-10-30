@@ -214,7 +214,7 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 3, 4.3, 10.5.1, 12.3: an unfitted literal reached without an expected Type waits, unbound, while its position's Type
     // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). An anonymous
     // function that is a result of a call's control-flow argument, at a position its call completes (CallableTarget), waits for that call
-    // (SPEC 10.5.1: such an argument is Waiting; DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
+    // (SPEC 10.5.1: such an argument waits; DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
     private bool WaitsForPosition(Koto node, BoundType? expected)
         => expected is null && node.BindingState == BindingState.Unvisited &&
             (IsUnfittedLiteral(node) ? this.DecidedLater(node) :

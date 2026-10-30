@@ -299,7 +299,7 @@ public sealed partial class Binding
         this.ResetPrerequisites();
         this.objectPayloadCauses?.Clear();
         this.ResetMatches();
-        this.argumentKinds.Clear();
+        this.argumentParts.Clear();
         this.argumentProbe = null;
         this.resultContexts.Clear();
         this.resultLocalEvidence.Clear();

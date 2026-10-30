@@ -358,7 +358,7 @@ public sealed partial class Binding
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
             var operandExpectation = semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) &&
-                this.KindOf(conversion.Left) == ArgumentKind.Literal &&
+                this.KindOf(conversion.Left) == PartKind.Literal &&
                 expected is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && expected.Semantics == semantics ? referent : null;
             var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
             if (operandType is null || (IsExclusive(semantics) && this.HolderPlaceFailure(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion)))

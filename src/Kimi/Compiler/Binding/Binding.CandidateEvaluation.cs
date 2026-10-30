@@ -182,7 +182,7 @@ public sealed partial class Binding
         {
             if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
                 left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
-                this.KindOf(source) == ArgumentKind.Waiting)
+                AwaitsCall(this.KindOf(source)))
             {
                 continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
             }

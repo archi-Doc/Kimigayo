@@ -7,17 +7,18 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
-    // operation that adapts it (unset when it does not fit, but for a literal's range shape). A waiting nested call is checked only by
-    // the selected candidate (Waiting); an anonymous function fits by its signature and a function group by conversion (SPEC 7.7.4). A
-    // Composite fits by its shape and parts; a Literal by its Type (SPEC 12.3), shared-borrowed at ref/T as an owner temporary; a typed
-    // part by erasure or the common adaptation, structurally (SPEC 15.6.1). Fitting publishes nothing.
+    // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
+    // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
+    // group (Reference) by conversion (SPEC 7.7.4). An Aggregate or Join fits by its shape and parts; a Literal by its Type (SPEC
+    // 12.3), shared-borrowed at ref/T as an owner temporary; a typed part by erasure or the common adaptation, structurally (SPEC
+    // 15.6.1). Fitting publishes nothing.
     private CandidateApplicability FitArgument(Koto part, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         var node = KotoHelper.UnwrapParentheses(part);
         operation = default;
         switch (this.KindOf(node))
         {
-            case ArgumentKind.Waiting when node is FunctionKoto closure:
+            case PartKind.Function when node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -25,7 +26,7 @@ public sealed partial class Binding
 
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
-            case ArgumentKind.Waiting when IsWaitingFunctionReference(node):
+            case PartKind.Reference:
                 if (type.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(node, node.BoundSymbol!, type, scope))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -33,12 +34,12 @@ public sealed partial class Binding
 
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
-            case ArgumentKind.Waiting:
+            case var kind when AwaitsCall(kind):
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
                 return CandidateApplicability.Waiting;
-            case ArgumentKind.Composite:
+            case PartKind.Aggregate or PartKind.Join:
                 return this.FitComposite(part, node, type, scope, out operation);
-            case ArgumentKind.Literal:
+            case PartKind.Literal:
                 return this.FitLiteral(part, node, type, scope, out operation);
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
@@ -93,7 +94,7 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (ControlFlowExpression(source) is { } join && this.KindOf(source) == ArgumentKind.Composite)
+        if (ControlFlowExpression(source) is { } join && this.KindOf(source) == PartKind.Join)
         {
             // SPEC 10.5.1, 14.9.2 step 3 (DECISIONS BU-43): a join its call classifies fits by its results' late Type, waiting literals
             // fitting as literals.

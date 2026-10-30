@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
-//   child positions are formed part by part (SPEC 14.9.2). A position of several parts has one kind (PositionKind): Waiting when a
-//   part waits, Typed at its typed parts' common Type (one evidence), Composite when its parts are aggregates, Literal when only
+//   child positions are formed part by part (SPEC 14.9.2). A position of several parts has one kind (PositionKind): Join when a
+//   part waits, Typed at its typed parts' common Type (one evidence), Aggregate when its parts are aggregates, Literal when only
 //   literals remain; with no part (Never in every source) it is Typed with no Type: no evidence, and no Type at a slot that takes the
 //   whole (SPEC 10.8, BU-2 U3's D6).
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
@@ -87,12 +87,12 @@ public sealed partial class Binding
     }
 
     // The join of a control-flow part its call classifies by element (ClassifiedByCall), or null.
-    private Koto? ComposedJoin(Koto part) => this.KindOf(part) == ArgumentKind.Composite ? ControlFlowExpression(part) : null;
+    private Koto? ComposedJoin(Koto part) => this.KindOf(part) == PartKind.Join ? ControlFlowExpression(part) : null;
 
-    // The kind of a position of several parts, a join's: Waiting when a part waits for its call, Typed at the common Type of its typed
-    // parts (literals of it beside them), Composite when its parts are aggregates, Literal when only literals remain; with no part, Typed
+    // The kind of a position of several parts, a join's: Join when a part waits for its call, Typed at the common Type of its typed
+    // parts (literals of it beside them), Aggregate when its parts are aggregates, Literal when only literals remain; with no part, Typed
     // with no Type.
-    private ArgumentKind PositionKind(int start, int end, out BoundType? type)
+    private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;
         var literal = false;
@@ -105,16 +105,16 @@ public sealed partial class Binding
             }
             else if (!this.IsAggregatePart(part) && part.BindingState != BindingState.Resolved)
             {
-                return ArgumentKind.Waiting;
+                return PartKind.Join;
             }
         }
 
         if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), out var typed)) is not null || typed)
         {
-            return ArgumentKind.Typed;
+            return PartKind.Typed;
         }
 
-        return this.PartsShape(start, end) is not null ? ArgumentKind.Composite : literal ? ArgumentKind.Literal : ArgumentKind.Typed;
+        return this.PartsShape(start, end) is not null ? PartKind.Aggregate : literal ? PartKind.Literal : PartKind.Typed;
     }
 
     // The first literal part of [start, end), whose default a Literal position takes (SPEC 10.5.1, 10.2.1).

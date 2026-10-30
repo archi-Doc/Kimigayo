@@ -185,9 +185,9 @@ public sealed partial class Binding
 
             switch (binding.KindOf(node))
             {
-                case ArgumentKind.Composite:
+                case PartKind.Aggregate or PartKind.Join:
                     return this.InferComposite(pattern, start, end, late);
-                case ArgumentKind.Literal:
+                case PartKind.Literal:
                     return this.InferLiteral(pattern, node, late);
                 default:
                     if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
@@ -274,17 +274,17 @@ public sealed partial class Binding
 
         // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one at
         // its parts' common Type, which the join's step 2 forms (value reads included), in the early pass; a Literal one by its first
-        // literal's default in the late pass; a Composite one by its child positions; a Waiting one and one Never in every source none.
+        // literal's default in the late pass; an Aggregate one by its child positions; a Join one and one Never in every source none.
         private bool InferParts(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;
             switch (binding.PositionKind(start, end, out var type))
             {
-                case ArgumentKind.Composite:
+                case PartKind.Aggregate:
                     return this.InferComposite(pattern, start, end, late);
-                case ArgumentKind.Literal:
+                case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
-                case ArgumentKind.Typed when type is not null && !late:
+                case PartKind.Typed when type is not null && !late:
                     binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
                     return binding.Infer(pattern, type, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
@@ -447,7 +447,7 @@ public sealed partial class Binding
             }
 
             var source = KotoHelper.UnwrapParentheses(binding.positionParts[start]);
-            if (binding.KindOf(source) == ArgumentKind.Literal)
+            if (binding.KindOf(source) == PartKind.Literal)
             {
                 return this.Default(source, binding.PartDefault(source, this.Scope), ref applied);
             }
@@ -465,13 +465,13 @@ public sealed partial class Binding
         }
 
         // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26): a join's Literal position takes its first literal's default, which each of its
-        // literals must fit (its own record otherwise); a Composite one defaults by its child positions; the others take none.
+        // literals must fit (its own record otherwise); an Aggregate one defaults by its child positions; the others take none.
         private readonly Koto? DefaultParts(int start, int end, BoundType pattern, SlotSet unsolved, ref bool applied)
         {
             var binding = this.Binding;
             switch (binding.PositionKind(start, end, out _))
             {
-                case ArgumentKind.Literal:
+                case PartKind.Literal:
                     var type = binding.PartDefault(binding.FirstLiteral(start, end), this.Scope);
                     Koto? misfit = null;
                     for (var i = start; i < end; i++)
@@ -480,7 +480,7 @@ public sealed partial class Binding
                     }
 
                     return misfit;
-                case ArgumentKind.Composite:
+                case PartKind.Aggregate:
                     return this.DefaultChildren(start, end, pattern, unsolved, ref applied);
                 default:
                     return null;
@@ -522,7 +522,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type);
+            binding.argumentParts[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(PartKind.Literal, type);
             applied = true;
             if (binding.FitsLiteralPart(literal, type, this.Scope))
             {
