@@ -232,6 +232,57 @@ public sealed partial class Binding
         return holds;
     }
 
+    // SPEC 15.6.4's abstract-Type sentence, rule 2 (DECISIONS BU-66, R4-M154): the premises make a carrier one that can hold a raw input's
+    // own value where the closure from the node of the input's own layer Origin reaches the carrier's node, as an abstract part holds a
+    // value whose Origin reaches it (a carrier stored below a layer of that Origin, R2; an unstated layer has none and reaches nothing),
+    // into retentionFills.
+    private void RawReach(OriginPremiseEnvironment environment)
+    {
+        foreach (var (input, pointer) in this.retentionRawInputs)
+        {
+            var layer = OwnedOrigin(pointer) is { Kind: not OriginKind.Unstated } origin ? this.PremiseNode(environment, origin) : -1;
+            foreach (var (carrier, node) in this.retentionCarriers)
+            {
+                if (layer >= 0 && this.Closure(environment, layer).Contains(node))
+                {
+                    this.retentionFills.Add((input, carrier));
+                }
+            }
+        }
+    }
+
+    // Whether an abstract part can hold a raw input's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): a fill of the
+    // input (retentionFills) at any part or at a carrier that, Origins erased, is the part or occurs in it (an associated projection's base).
+    private bool HoldsRaw(BoundType part, int input)
+    {
+        foreach (var (filled, at) in this.retentionFills)
+        {
+            if (filled == input && (at is null || this.Occurs(part, at, 0)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a carrier, Origins erased, is a Type or occurs among its components, to the depth bound.
+    private bool Occurs(BoundType? type, BoundType carrier, int depth)
+    {
+        if (type is null || depth > StorageBound)
+        {
+            return false;
+        }
+
+        var occurs = ReferenceEquals(this.types.Erase(type), this.types.Erase(carrier));
+        for (var i = 0; !occurs && i < type.Components.Count; i++)
+        {
+            occurs = this.Occurs(type.Components[i], carrier, depth + 1);
+        }
+
+        return occurs;
+    }
+
     // Whether a position's Type and a value's are one, Origins erased (TyCtxt.Erase), a pair layer by one of its admitted cases.
     private bool Fits(BoundType position, BoundType value)
         => ReferenceEquals(this.types.Erase(position), this.types.Erase(value)) || this.CaseFits(position, value) || this.CaseFits(value, position);

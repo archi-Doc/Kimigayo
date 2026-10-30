@@ -7270,6 +7270,8 @@ resumed by R4-M86 (2026-10-20).
     (MirCensusTest, the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118
     rows and adds 2, both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike.
     MirCensusTest passes on the default pipeline too. The untied results and stores change no verdict of today's A5; their Φ_E is 4b's.
+  - Superseded in part by BU-66 (2026-10-31, PLAN G297): the hold walk's "or an abstract part" is gone; an abstract part holds a raw
+    input's own value only by R4-M154 rules 2 and 3 (`HoldsRaw`).
 
 - **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
   design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
@@ -8909,6 +8911,31 @@ resumed by R4-M86 (2026-10-20).
   - No code changes. PLAN G303 (part-level raw reach) closes without implementation and its row goes; no `Own` split per root storage Type
     is needed. The test names and comments that say "interim" or "flip back" (MirBorrowsTest.Raw.cs, MirBorrowsTest.Referents.cs) change
     with R4's 15.6.4 example unit.
+- **BU-66 The hold walk keeps a raw input's own value at an abstract part only by R4-M154 rules 2 and 3** (2026-10-31; the BU planning
+  session on R4's design option 3 for PLAN G297 (R4 notes `g297\design.md`), the owner's 「すべて推奨どおり」 (2026-10-30); unit bu83,
+  split under DECISIONS Q12 into G297-1 (rule 2's reach) and G297-2 (rows, records, checks) on the owner's 「GO」 (2026-10-31), landed
+  as one commit; supersedes BU-30's "or an abstract part") SPEC 15.6.4 (the abstract-Type sentence), 5.7.
+  - Cause: `Binding.Held`'s arm `type.IsAbstract ||` gave every raw input but the output a Value row at any abstract part of an output's
+    writable storage, so the builder-served `placeEntry<i32, s/T>` kept the Dictionary handle in `T` and A5 stored its Loan in storage
+    the body does not own (ledger class a5-dict-pair; user calls of that shape alike). The arm is now `HoldsRaw`
+    (Binding.Retention.Sources.cs) at an abstract part (`Abstract`), which reads `retentionFills`, the computation's (raw input, carrier)
+    pairs; a fill with no carrier stands for every abstract part.
+  - Rule 2 (an abstract part holds a value whose Origin reaches it): `RawReach` fills a carrier where the premise closure from the node
+    of the raw input's own layer Origin reaches the carrier's node (a carrier stored below a layer of that Origin outlives it, R2); an
+    unstated layer has none and reaches nothing. G297-1 found the first implementation closing from the carrier, which reaches only
+    itself (TwoRawLayersOfOneOriginKeepTheirRows lost its rows).
+  - Rule 3 (a callable the contract hands the body may retain the input there): `ErasedFills`, from `AddErasedSignature`, fills each
+    carrier a handed callable's result holds or it writes (the atoms `AddErasedRelations` reads) with each contract raw input passed as
+    one of its raw inputs whose Type fits, never in that raw input's own pointee; `RetainsErased` fills every abstract part of an erased
+    callee's outputs with each of its raw inputs. The owner on SPEC 15.6.4 (2026-10-30, verbatim 「(a) 今の文面に含まれると読み、今の
+    動作のまま進める」): the sentence covers an erased callee's own abstract result, so `T.make` keeps the raw input (e1 stays an error).
+  - A pair layer keeps at its own position only its raw case (an unstated raw layer the call writes, where rule A keeps the raw inputs'
+    own values, what the arm gave); its owning cases are its target, now walked. Rule A's other rows there stay open (PLAN G329).
+  - No new `RetentionSource` form and no second rule. Moved rows: RetentionTest's `f<T>(dst: uniq/Array<T>, p: raw/i32)` loses `1 Value`
+    (SPEC 15.6.4: no premise makes `T` a `raw/i32`; not a weakening); MirBorrowsTest's rawArg rows err only at putSlotBad, rawReq's at
+    makeRawBad and fillRawBad; the ledger's a5-dict-pair rows close, and its classification row goes (no other ledger row moves).
+  - Rejected (R4's design): filtering in A5 (A5 derives no retention, and its record is per storage); building the literal another way
+    (a clause for one form, user calls stay rejected).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

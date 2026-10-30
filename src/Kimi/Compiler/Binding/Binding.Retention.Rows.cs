@@ -146,6 +146,7 @@ public sealed partial class Binding
             this.retentionKindPool.Clear();
         }
 
+        this.RawReach(environment);
         var whole = (result, (BoundType?)null, (BoundType?)null);
         var untied = this.Hold(CallRetention.ResultOutput, new(in whole), inputs, kept, (key, callee, premises), ref transfer);
         if (within >= 0)
@@ -570,9 +571,10 @@ public sealed partial class Binding
         }
 
         RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
+        var rawCase = (this.LayerAdmitted(type) & SemanticsMask.Raw) != 0;
         foreach (var (input, pointer) in this.retentionRawInputs)
         {
-            var holds = type.IsAbstract || (step is not (null or RawStep.Unstated) && this.Fits(type, pointer));
+            var holds = rawCase || (Abstract(type) && this.HoldsRaw(type, input)) || (step is not (null or RawStep.Unstated) && this.Fits(type, pointer));
             kept[input] |= input != output && holds ? RetentionKind.Value : RetentionKind.None;
         }
 
@@ -586,6 +588,11 @@ public sealed partial class Binding
         var below = lent ||
             (output == CallRetention.ResultOutput && (this.BorrowReferent(type, out _, out _) is not null || step is RawStep.Exclusive or RawStep.Shared));
         met |= nominal ? this.Stores(type, output, kept, below) : Holding.None;
+        if (TryPairLayer(type, out _, out var target))
+        {
+            return met | this.Held(target, null, null, output, kept, below);
+        }
+
         for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
         {
             met |= this.Held(type.Components[i], InlinePart(written, i), holder, output, kept, below);
