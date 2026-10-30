@@ -184,9 +184,11 @@ public sealed partial class OwnershipAnalysis
 
     // The old analysis's one stop (the owner's D5 exceptions until R6-check, which deletes this analysis): a program with a form this
     // analysis cannot judge gets the located Unsupported_Kd at each such form and nothing else of it is reported, as if nothing else were
-    // analyzed: R1's receiver-dependent calls (the gate above, R4-M126 (vi)) and every Type SupportsType refuses (the owner's (a) of
-    // 2026-10-31, 「すべて推奨の内容でお願いします」, DECISIONS R4-M159: a Type it does not model, such as a Closure Type with Origin
-    // arguments, would otherwise reach its Loan analysis).
+    // analyzed: R1's receiver-dependent calls (the gate above, R4-M126 (vi)) and a Place whose Type SupportsType refuses for Origin
+    // arguments its symbol does not declare (TypeSupport.UndeclaredOriginArguments: a Closure Type with its maker's images, whose Loans
+    // this analysis would misjudge), by the owner's (a) of 2026-10-31, 「すべて推奨の内容でお願いします」 (DECISIONS R4-M159). Any other
+    // refusal (a Never-holding Type) keeps its located Unsupported_Kd and the analysis goes on, so its independent records stay
+    // (SPEC 23.1.2).
     [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
     private void Stop(Koto at)
     {
@@ -696,15 +698,15 @@ public sealed partial class OwnershipAnalysis
             DefaultContext = this.defaultContext,
             CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
-        var supported = neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type);
-        if (invalidCopy || !supported)
+        var support = neverResult || type.Kind == BoundTypeKind.Parameter ? TypeSupport.Supported : this.Support(type);
+        if (invalidCopy || support != TypeSupport.Supported)
         {
             this.Unsupported(source);
         }
 
-        if (!supported)
+        if (support == TypeSupport.UndeclaredOriginArguments)
         {
-            this.Stop(source); // The owner's (a) (DECISIONS R4-M159): the analysis stops where SupportsType refuses a Type.
+            this.Stop(source); // The owner's (a) (DECISIONS R4-M159): the analysis stops at a Type whose Origins it cannot model.
         }
 
         return id;

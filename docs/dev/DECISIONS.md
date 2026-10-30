@@ -5861,10 +5861,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     through the raw-Origin owner's `OwnedOrigin`, so BU-24's raw-role sites are unchanged. R4-M152's interim limit's cause
     (images reach the Callable proof); the q rows keep PLAN G326's class.
   - Default pipeline (the owner's (a), a larger D5 exception until R6-check, which deletes the old Analysis): the old Analysis stops
-    wherever `SupportsType` refuses a Type, reporting its located `Unsupported_Kd` and nothing else of the program, as R4-M126 (vi)'s
-    gate does at its calls: one stop (`OwnershipAnalysis.Stop`, `Stopped`) for both. `SupportsType` refuses a Closure Type with Origin
-    arguments, which it does not model; before the stop its refusal left the Loan analysis running, so a valid kept value got a false
-    Loan record (v13_param_kept_ok, v60_kept_move_ok, v63, v64: implementation reviews 1 B2 and 2 R2-B1). The reduction regression is
+    where `SupportsType` refuses a Type for Origin arguments its symbol does not declare, reporting its located `Unsupported_Kd` and
+    nothing else of the program, as R4-M126 (vi)'s gate does at its calls: one stop (`OwnershipAnalysis.Stop`, `Stopped`) for both,
+    keyed by the refusal's reason, which `SupportsType` publishes (`TypeSupport.UndeclaredOriginArguments`, a part's included). Such a
+    Type is a Closure Type with its maker's images, which the old Analysis does not model; before the stop its refusal left the Loan
+    analysis running, so a valid kept value got a false Loan record (v13_param_kept_ok, v60_kept_move_ok, v63, v64: implementation
+    reviews 1 B2 and 2 R2-B1). The owner's approval was for this case (the planning session, 2026-10-31: a subset of the approved
+    exception). Any other refusal (a Never-holding Type, `Option<(string, Never)>`) keeps its located `Unsupported_Kd` and the analysis
+    goes on: stopping there dropped independent records SPEC 23.1.2 keeps (14.9.2-joined-result's `ComparisonLoanConflict_Kd`,
+    NeverContinuationTest's Loans and Moves; the first G273-r3 Session). The reduction regression is
     a class (K5): every program with a Closure value whose Type carries Origin arguments, a literal in its maker's body (i6, i7) or a
     maker-returned value kept or called (a16, a18_raw_input_store, a21, v3_reassign_nocall, w3_var_nocall), is `Unsupported_Kd` on
     the default where dev accepted it.
