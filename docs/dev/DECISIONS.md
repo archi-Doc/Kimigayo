@@ -8718,6 +8718,29 @@ resumed by R4-M86 (2026-10-20).
     keeping the per-read check with a re-entry set (the order-dependent records above); rounds until the limit itself (the cause
     object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
     either sweep order (a four-cycle does under alternation).
+- **BU-61 A projection Type names its formation use, `Binding.ProjectionUseOf`; a check that fails only because its Type is a projection
+  rests on that use, judged at publication (`AddPendingPrerequisite`)** (2026-10-30; PLAN G293's BU part, bu78 fix round 1 on the
+  review's B1; the planning session's decision after the addendum `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g293\design.md` A1–A8;
+  class Minor) SPEC 23.1.2. Binding keeps a rejected projection as the binding's Type (R5-M155's (c)), so a capture of it (`[t@move]`,
+  `[t]`) failed with a located Unsupported_Kd without prerequisite, beside the rejection it depends on.
+  - Fact: `BindAssociatedProjection` (Type formation) publishes, per interned associated projection Type, the first projection use
+    that formed it in the pass (`projectionForms`, cleared with `projectionUses`; reused storage). That use's conformance check
+    (`ValidateConformances`' final projection loop) owns the record that rejects it. The rejection is decided after the bodies, so a
+    reader during the bodies sees the use Unvisited or Resolved and can only name it.
+  - Reader: `Capture`'s environment-Type check records the use as the closure's part prerequisite with the closure's first failure.
+    `AddPendingPrerequisite` keeps the first part whatever its state now (AddPrerequisite drops a part already Resolved), and
+    `UnresolvedPart` reads it at publication. The existing rule then decides: derived when the use was rejected (a parameter, an
+    annotated local, `let u = t`, a primitive, Tuple or Type parameter subject), direct when it resolved (an abstract `T.Tag`). It
+    replaces bu78's `TypeSource` there, which stays only as ConsultTypeSource's mapping for a binding without a Type (G260).
+  - Limit: one use per interned Type. A projection with a Type parameter that is valid in one scope of a declaration and rejected in
+    another (a method clause adding a premise) reads its first formation, so a capture Unsupported for another reason in the valid
+    scope is derived wrongly when the first formation was rejected; the program is still rejected. Per use it would need a key from
+    the captured value to the use that formed its Type (a value's Type carries no syntax, and `let u = t` has no failed part on its
+    path), a new key on every binding.
+  - Open: the annotated local's initializer TypeMismatch_Kd (kept by R5-M155) also fails only because the Type names no Type; its fix
+    reads this fact (PLAN G293). Rejected: the binding's written Type as the fact (bu78: misses `let u = t` and the primitive and Tuple
+    subjects, whose bindings rest on no failed written part); re-running the conformance proof at the capture (a consumer
+    re-running a check); Binding's null for a rejected projection (R5-M155 (c)).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

@@ -179,20 +179,30 @@ public class CaptureDiagnosticTest
         Assert.Equal(twin, Records(source.Replace("MISSING", valid, StringComparison.Ordinal) + Main));
     }
 
-    // SPEC 23.1.2 (PLAN G293): a binding whose written Type was rejected keeps the projection that names no Type (R5-M155); a capture
-    // that fails on it rests on that Type, so `[t@move]`, `[t]` and an annotated local's entry publish only the rejection (a located
-    // Unsupported_Kd at the entry beside it before). A capture Unsupported for its own reason (an abstract projection) stays beside
-    // the rejection. Each twin writes `i32`, under which the projection is `bool`.
+    // SPEC 23.1.2 (PLAN G293, DECISIONS BU-61): a projection whose use's conformance check rejects it names no Type, and Binding keeps it
+    // as the binding's Type (R5-M155). A capture that fails on it rests on that use whatever carries the Type: `[t@move]`, `[t]`, an
+    // annotated local, `let u = t`, and a primitive, Tuple or Type parameter subject publish only the rejection (a located Unsupported_Kd
+    // at the entry beside it before). A capture Unsupported for its own reason stays: an abstract projection that resolves, in a list
+    // after or before the dependent entry, in another closure, or in a local whose initializer failed. HOLE takes `bad`, then `good`.
     [Theory]
-    [InlineData("func f(t: B.(Iter<ARG>).Tag) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "", "")]
-    [InlineData("func f(t: B.(Iter<ARG>).Tag) -> ()\n    let c = func [t] () -> () => ()\n    return", "", "")]
-    [InlineData("func f() -> ()\n    let t: B.(Iter<ARG>).Tag = true\n    let c = func [t@move] () -> () => ()\n    return", " | TypeMismatch_Kd true", "")]
-    [InlineData("func f<T>(t: B.(Iter<ARG>).Tag, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [x@move] () -> () => ()\n    return", " | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
-    public void ACaptureOfARejectedTypeRestsOnIt(string body, string other, string twin)
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f() -> ()\n    let t: HOLE = true\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | TypeMismatch_Kd true", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let u = t\n    let c = func [u@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "i32.(Iter<i32>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd i32.(Iter<i32>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "(i32, u8).(Iter<i32>).Tag", "B.(Iter<i32>).Tag", "UnprovenConstraint_Kd (i32, u8).(Iter<i32>).Tag", "")]
+    [InlineData("func f<T>(t: HOLE) -> ()\n    T is Iter<i32>\n    let c = func [t@move] () -> () => ()\n    return", "T.(Iter<u8>).Tag", "T.(Iter<i32>).Tag", "UnprovenConstraint_Kd T.(Iter<u8>).Tag", "Unsupported_Kd t@move")]
+    [InlineData("func f<T>(t: HOLE, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [x@move, t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(t: HOLE, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [t@move] () -> () => ()\n    let d = func [x@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "1", "y", "TypeMismatch_Kd 1 | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "missing", "y", "UnresolvedBinding_Kd missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func h<T>(a: T.Tag) -> T.Tag\n    T is Iter<i32>\n    return a\nfunc f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "h<T>(y, y)", "h<T>(y@move)", "NoApplicableOverload_Kd h<T>(y, y) | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "y.missing", "y", "UnresolvedBinding_Kd y.missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    public void ACaptureOfARejectedTypeRestsOnIt(string body, string bad, string good, string records, string twin)
     {
         const string Tag = "contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n";
-        Assert.Equal($"UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag{other}", Records(Tag + body.Replace("ARG", "u8", StringComparison.Ordinal) + Main));
-        Assert.Equal(twin, Records(Tag + body.Replace("ARG", "i32", StringComparison.Ordinal) + Main));
+        Assert.Equal(records, Records(Tag + body.Replace("HOLE", bad, StringComparison.Ordinal) + Main));
+        Assert.Equal(twin, Records(Tag + body.Replace("HOLE", good, StringComparison.Ordinal) + Main));
     }
 
     // SPEC 7.7.3, 8.10: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in

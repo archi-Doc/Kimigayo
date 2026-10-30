@@ -64,8 +64,8 @@ public sealed partial class Binding
         => node.BindingState != BindingState.Resolved || IsRecovery(node, out _);
 
     // SPEC 23.1.2: the declaration part that gives a binding its Type: a parameter's written Type, an accessor parameter's annotation or
-    // Property Type, or a local's or Pattern's declaration; null for any other binding. A check that fails on a binding's Type rests on
-    // this part when it did not resolve, also where the binding kept a Type (a projection that names no Type, R5-M155).
+    // Property Type, or a local's or Pattern's declaration; null for any other binding. A use or a written capture entry of a binding
+    // without a Type rests on it.
     private static Koto? TypeSource(BindingSymbol symbol)
     {
         if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
@@ -219,6 +219,12 @@ public sealed partial class Binding
             this.partPrerequisites[node] = part;
         }
     }
+
+    /// <summary>Records a part that a later check of the pass judges, such as a projection use, whose conformance is checked after the
+    /// bodies (DECISIONS BU-61): the first part is kept whatever its state now, and UnresolvedPart reads its state at publication.</summary>
+    /// <param name="node">The failed node.</param>
+    /// <param name="part">The part its failure rests on when that part fails.</param>
+    private void AddPendingPrerequisite(Koto node, Koto part) => this.partPrerequisites.TryAdd(node, part);
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.
