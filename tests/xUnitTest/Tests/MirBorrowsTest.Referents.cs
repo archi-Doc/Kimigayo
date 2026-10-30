@@ -343,14 +343,15 @@ public sealed partial class MirBorrowsTest
     // The destruction guard (DECISIONS R4-M143; PLAN G264): where a referent store's referent may observe a destruction, which the row
     // leaves to its callers (SPEC 4.9.6, 16.3), W stays. clear over an object whose leaf's destruction stores through its raw slot, held
     // through its base's handle (whose payload is not proven Sealed), errs at `y = 5` (clearObjBad), as its twin does where the slot is
-    // used before (clearObjOk, a known false error until G264); a destruction a struct, an Option, a Tuple, a nested Array or a Dictionary
-    // runs keeps its error (clearLeafBad, clearWrapBad, clearOptBad, clearTupBad, clearArrBad, dictClearBad, dictReplaceBad); over an
-    // abstract `T` not proven Copy, whose instance decides, W past refs(S) is undecided where it would store a Loan or an address
-    // (R4-M147): `a.clear()`, whose receiver holds the element's addresses, is the located Unsupported_Kd and stores into refs(S) alone, so
-    // clearGenOk reports nothing else and clearGenBad its true `y = 5` (append met an empty Array); where it would store only Φ_E, W stays
-    // and changes nothing (reversedGen, Array.appendAll's form, valid). The classifier answers per definition: one generic struct's element
-    // Type destroys shallowly in a method proving it Copy (copied, valid) and not in one that does not (kept: the record, and the true
-    // `y = 5` its Array's later drop causes).
+    // used before (clearObjOk, a correct error by SPEC 15.6, the owner's 「(B)」: the payload holds `WLeaf.init`'s result, which reaches
+    // storage the body does not own, so `clear`'s erased destruction may store y's Loan there); a destruction a struct, an Option, a
+    // Tuple, a nested Array or a Dictionary runs keeps its error (clearLeafBad, clearWrapBad, clearOptBad, clearTupBad, clearArrBad,
+    // dictClearBad, dictReplaceBad); over an abstract `T` not proven Copy, whose instance decides, W past refs(S) is undecided where it
+    // would store a Loan or an address (R4-M147): `a.clear()`, whose receiver holds the element's addresses, is the located
+    // Unsupported_Kd and stores into refs(S) alone, so clearGenOk reports nothing else and clearGenBad its true `y = 5` (append met an
+    // empty Array); where it would store only Φ_E, W stays and changes nothing (reversedGen, Array.appendAll's form, valid). The
+    // classifier answers per definition: one generic struct's element Type destroys shallowly in a method proving it Copy (copied, valid)
+    // and not in one that does not (kept: the record, and the true `y = 5` its Array's later drop causes).
     [Fact]
     public void ADestructionAReferentMayObserveKeepsW()
     {
@@ -528,13 +529,12 @@ public sealed partial class MirBorrowsTest
 
     // DECISIONS R5-M129: an Array literal is one aggregate, which places its elements at construction through no receiver store, so their
     // Loans reach only the Array: litPairOk, a generic literal of a pair layer's value removed again, is valid (fail-before: it erred at
-    // `v@follow = x`, the literal's append keeping W), and so are litDropOk, lit2DropOk (another element first) and litObjOk (an object
-    // through its base's handle), whose element's drop stores through its raw slot, consumed, then the slot used before `y = 5`. Those three
-    // err on the MIR at `y = 5` as the interim of DECISIONS BU-52 (the owner's 「暫定として認める (推奨)」, then 「類として認める」): the
-    // consuming call's cleanup writes through the element's raw layers (PLAN G266), and in A5's whole-value Φ_E at calls (DECISIONS
-    // R4-M120, departure 1, the class of dev's viaRefOk) W from the Array, whose element carries an untied constructor's Φ_E, reaches E,
-    // which receives every input the row retains and keeps every chain the whole value carries, y's Loan with it. They flip back to valid
-    // when part-level raw reach lands (PLAN G303, G264 U2); the default pipeline's old analysis reports no conflict at `y = 5`.
+    // `v@follow = x`, the literal's append keeping W). litDropOk, lit2DropOk (another element first) and litObjOk (an object through its
+    // base's handle), whose element's drop stores through its raw slot, consumed, then the slot used before `y = 5`, are correct errors
+    // at `y = 5` by SPEC 15.6 (the owner's 「(B)」 of 2026-10-30, PLAN G264 S1; DECISIONS BU-67): the element, an untied constructor's
+    // result (Writer.init's or WLeaf.init's), reaches storage the body does not own through the whole holder, also after its raw Field
+    // was rewritten, so the consuming call's cleanup (PLAN G266) may store y's Loan there. The default pipeline's old analysis reports no
+    // conflict at `y = 5`.
     [Fact]
     public void AnArrayLiteralPlacesItsElementsThroughNoReceiverStore()
         => Assert.Equal(["litDropOk: y = 5", "lit2DropOk: y = 5", "litObjOk: y = 5"], Problems(RawShapes + ReferentShapes + """

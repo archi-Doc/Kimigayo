@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -19,7 +20,7 @@ public class KimiLibraryShapeTest
         return c;
     });
 
-    // Code generation and the runtime call these bodiless functions by position (WindowsLowering): parameter order,
+    // Code generation and the runtime call these bodiless functions by position: parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
@@ -455,7 +456,7 @@ public class KimiLibraryShapeTest
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
     // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
-    // (LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
+    // (Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
@@ -555,10 +556,10 @@ public class KimiLibraryShapeTest
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
         var (layout, type) = Layout(path);
-        Assert.Equal(size, layout.Value.Layout.Size);
+        Assert.Equal(size, layout.Size);
         for (var i = 0; i < offsets.Length; i += 2)
         {
-            Assert.Equal((int)offsets[i + 1], layout.Offset(type, (string)offsets[i]));
+            Assert.Equal((int)offsets[i + 1], layout.FieldOffsets.Span[AdtDef.IndexOf(type, (string)offsets[i])]);
         }
     }
 
@@ -580,10 +581,10 @@ public class KimiLibraryShapeTest
             """;
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         var (writer, writerType) = Layout("Utf8Writer");
-        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.Offset(writerType, "failed")}\n", ir, StringComparison.Ordinal);
+        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.FieldOffsets.Span[AdtDef.IndexOf(writerType, "failed")]}\n", ir, StringComparison.Ordinal);
         foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
         {
-            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Value.Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Value.Layout.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
+            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
         }
     }
 
@@ -666,17 +667,10 @@ public class KimiLibraryShapeTest
         }
     }
 
-    private static (AggregateLayout Layout, BoundType Type) Layout(string path)
+    private static (TypeLayout Layout, BoundType Type) Layout(string path)
     {
-        var record = Record(path);
-        var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
-        var pool = new AggregateLayoutPool(Library.Value.Layout);
-        if (AdtDef.Destructor(type) is { } destructor)
-        {
-            pool.RegisterDestructor(destructor, 0);
-        }
-
-        return (Assert.IsType<AggregateLayout>(pool.Get(type)), type);
+        var type = Library.Value.Binding.SelfType(Record(path).SymbolOf()!);
+        return (Library.Value.Layout.Of(type).Value!.Layout, type);
     }
 
     // The trimmed source line holding the node's start: a declaration header with its modifiers, or a Field.

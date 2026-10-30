@@ -166,17 +166,16 @@ public readonly record struct OwnershipCleanupStep(int Operation, int Place, Kot
 public readonly record struct OwnershipCleanupPlan(int Edge, int Start, int Count, CleanupReason Reason);
 
 /// <summary>One deferred execution, including empty bodies; endpoints are explicit CFG operations.</summary>
-public readonly record struct OwnershipDeferredPlan(Koto Source, int Edge, int Entry, int Continuation, int End, int Parent, bool CanComplete);
+public readonly record struct OwnershipDeferredPlan(Koto Source, int Edge, int Entry, int End, int Parent, bool CanComplete);
 
 /// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous. Case is null for tuples and fixed arrays.</summary>
 public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase? Case, int PayloadStart, int PayloadCount);
 
 /// <summary>Analysis fans out to every arm; runtime selection tests these Patterns in source order.</summary>
-public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result, int ArmStart, int ArmCount);
+public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result);
 
 /// <summary>One successful Pattern test and its ownership decomposition before the arm body.</summary>
-public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
-    int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
+public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int GuardEntry = -1, int GuardLoan = -1);
 
 /// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
 public readonly record struct OwnershipLending(Koto Input, Koto Call);
@@ -235,11 +234,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipSequence> Sequences = new();
     internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
-    internal readonly List<OwnershipSlotResult> SlotResults = new();
-    internal readonly List<OwnershipResultArrival> ResultArrivals = new();
-    internal readonly List<OwnershipResultWrite> ResultWrites = new();
     internal readonly Dictionary<Koto, int> SlotResultPlaces = new(ReferenceEqualityComparer.Instance);
-    internal readonly List<OwnershipDelivery> Deliveries = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipDeferredPlan> DeferredPlanStorage = new();
@@ -250,9 +245,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly List<OwnershipProjection> Projections = new();
     internal readonly List<OwnershipElementUpdate> ElementUpdates = new();
-    internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
-    internal readonly List<OwnershipCallLoans> CallLoans = new();
     internal readonly List<OwnershipCallReservation> CallReservations = new();
     internal readonly List<int> LoanInputs = new();
     internal readonly List<int> LoanStates = new();
@@ -298,8 +291,6 @@ public sealed partial class OwnershipBody
     public IReadOnlyList<OwnershipIssue> Issues => this.IssueStorage;
 
     public bool IsVerified { get; internal set; }
-
-    public bool IsConcrete { get; internal set; }
 
     internal int DefaultParameter { get; set; } = -1;
 
@@ -347,7 +338,6 @@ public sealed partial class OwnershipBody
         this.caseCount = cases.Length;
         this.InstanceBinding = cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
-        this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
         this.DefaultContexts?.Clear();
@@ -364,11 +354,7 @@ public sealed partial class OwnershipBody
         this.Anchors?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
-        this.SlotResults.Clear();
-        this.ResultArrivals.Clear();
-        this.ResultWrites.Clear();
         this.SlotResultPlaces.Clear();
-        this.Deliveries.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.DeferredPlanStorage.Clear();
@@ -383,9 +369,7 @@ public sealed partial class OwnershipBody
         this.movePathIndex.Clear();
         this.movePathOrder.Clear();
         this.ElementUpdates.Clear();
-        this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
-        this.CallLoans.Clear();
         this.CallReservations.Clear();
         this.LoanInputs.Clear();
         this.LoanStates.Clear();
@@ -533,18 +517,7 @@ internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Star
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.
 internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write);
 
-// The value is captured before cleanup; Write is the operation that secured it.
-internal readonly record struct OwnershipDelivery(int Operation, int Value, int Write);
-
 internal readonly record struct OwnershipIdentity(ConversionKoto Source, int Place);
-
-// A dynamic expression result lifetime; deferred replicas can share Place but not Declare/Join.
-internal readonly record struct OwnershipSlotResult(int Place, int Declare, int Join, int Start, int Count);
-
-internal readonly record struct OwnershipResultArrival(int Edge, int Write);
-
-// Includes secured results whose cleanup prevents arrival.
-internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
 // Persistent stack links preserve independent branch environments.
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
@@ -553,10 +526,6 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, Koto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
 
 internal readonly record struct OwnershipCallReservation(Koto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
-
-internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
-
-internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 
 // Parent is another projection index. Output is the final Copy/Move acquisition, Write the replacement.
 // An update has both and links its numeric calculation/result through ElementUpdates.

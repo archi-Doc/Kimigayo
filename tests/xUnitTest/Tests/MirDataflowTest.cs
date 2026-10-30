@@ -7,12 +7,13 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The dataflow's own contract (docs/dev/DECISIONS.md R4-M20, R4-M34) through a backward problem, the liveness of whole locals, which
-/// <see cref="MirDataflow.Backward"/> solves and <see cref="MirDataflow.ReplayBackward"/> reads.</summary>
+/// <summary>The dataflow's own contract (docs/dev/DECISIONS.md R4-M20, R4-M34, R4-M158) through a backward problem, the liveness of whole
+/// locals, which <see cref="MirDataflow.Backward"/> solves and <see cref="MirDataflow.ReplayBackward"/> reads.</summary>
 public sealed class MirDataflowTest
 {
-    // R4-M34: over every body of the MIR goldens' sources, each block's entry state after the backward solve is the least fixed point of
-    // the blocks themselves, a P1 block joining its runtime successors' states and any other block every successor's (SPEC 14.9, 14.10.3).
+    // R4-M158: over every body of the MIR goldens' sources, each block's entry state after the backward solve is the least fixed point of
+    // the blocks themselves, a block joining the state of each successor its state flows into forward: a P1 block its runtime successors'
+    // and a successor's only the checks reach, any other block its successors' only the checks reach (SPEC 14.10.3).
     [Fact]
     public void BackwardSolvesTheLeastFixedPoint()
     {
@@ -30,21 +31,24 @@ public sealed class MirDataflowTest
         Assert.True(bodies > 100, $"{bodies} bodies");
     }
 
-    // SPEC 14.10.3, 14.9: a use only the checks reach keeps nothing live on a runtime path. x, read after a return, is live in that check-only
-    // code but not at the entry; read after a conditional return, it is live at the entry.
+    // SPEC 14.10.3, 15.6 (PLAN G305, R4-M158): a Never form's continuation, which only the checks reach, continues from the form's state, so
+    // x, read after a return, is live in that continuation and back across the return, at the entry. A P1 join takes no assumed state:
+    // x, read after a conditional return, is live at the entry but in no block only the checks reach (the return's continuation flows
+    // into the join).
     [Fact]
-    public void CheckOnlyUsesKeepNothingLiveOnRuntimePaths()
+    public void ValuesStayLiveIntoACheckOnlyContinuation()
     {
         var program = MirBuildTest.Compile("func use(n: i32) => ()\nfunc after(x: i32) -> i32\n    return 1\n    use(x)\n    return 2\n" +
             "func branch(x: i32, flag: bool) -> i32\n    if flag => return 1\n    use(x)\n    return 2\n").BuildMir();
-        foreach (var (name, entry) in new[] { ("after", false), ("branch", true) })
+        foreach (var (name, checkOnly) in new[] { ("after", true), ("branch", false) })
         {
             var body = program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name);
             var (flow, entries) = Solve(body);
             var x = body.Locals.ToArray().ToList().FindIndex(static local => local.Name == "x");
             var words = Words(body);
-            Assert.Equal(entry, Live(entries, words, 0, x));
-            Assert.Contains(Enumerable.Range(0, body.Blocks.Length), b => !flow.Runtime(b) && Live(entries, words, b, x));
+            Assert.True(Live(entries, words, 0, x), name);
+            Assert.Contains(Enumerable.Range(0, body.Blocks.Length), b => !flow.Runtime(b));
+            Assert.Equal(checkOnly, Enumerable.Range(0, body.Blocks.Length).Any(b => !flow.Runtime(b) && Live(entries, words, b, x)));
         }
     }
 
@@ -96,7 +100,7 @@ public sealed class MirDataflowTest
     }
 
     // The same liveness as a fixed point of every block, iterated over all blocks until no entry state grows, a block's phase from its own
-    // runtime walk.
+    // runtime walk; a successor only the checks reach takes any edge, a runtime one only a P1 block's runtime edges.
     private static ulong[] FixedPoint(MirBody body)
     {
         var words = Words(body);
@@ -112,9 +116,9 @@ public sealed class MirDataflowTest
             {
                 live.Entry();
                 var terminator = body.Blocks[b].Terminator;
-                for (var i = runtime[b] ? 0 : -1; i < MirUses.Successors(terminator); i++)
+                for (var i = -1; i < MirUses.Successors(terminator); i++)
                 {
-                    if (MirUses.Successor(body, terminator, i) is >= 0 and var successor)
+                    if (MirUses.Successor(body, terminator, i) is >= 0 and var successor && (!runtime[successor] || (runtime[b] && i >= 0)))
                     {
                         MirDataflow.Union(state, entries.AsSpan(successor * words, words));
                     }
