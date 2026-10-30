@@ -1,0 +1,84 @@
+// O2 timing corpus (O2Corpus.md): Tuple comparison operators: an insertion sort by `<` over three leaves, `==` over
+// flat and nested pairs, and `<=` and `>` over float pairs with a NaN and signed zeros.
+
+// A short Static string: most share their first byte, so the third leaf compares the bytes after it.
+func label(code: i64) -> string
+    match code
+        0 => return "ka"
+        1 => return "kai"
+        2 => return "ki"
+        3 => return "k"
+        4 => return "mi"
+        5 => return "kimi"
+        6 => return "kim"
+        _ => return "ga"
+
+// The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
+// from 16 up, whose periods are long.
+func next(state: i64) -> i64 => (state * 1103515245 + 12345) & 0x7FFF_FFFF
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible,
+// so a wrong value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+public func main()
+    var checksum: i64 = 0
+    var state: i64 = 1
+    let nan: f64 = 0.0 / 0.0
+    var triples: Array<(i32, f64, string)> = []
+    var wide: Array<(i64, i64)> = []
+    var nested: Array<((i32, i32), (i32, i32))> = []
+    var floats: Array<(f64, f64)> = []
+    for round in 0..512
+        // Four first fields and eight second fields over 512 elements: many ties, decided by the later leaves.
+        triples.clear()
+        for i in 0..512
+            state = next(state)
+            triples.append((((state >> 16) & 3)@i32, ((state >> 18) & 7)@f64 * 0.5 - 1.0, label((state >> 21) & 7)))
+        var placed: isize = 1
+        while placed < triples.length
+            var j = placed
+            while j > 0 and triples[j] < triples[j - 1]
+                triples.swap(j, j - 1)
+                j -= 1
+            placed += 1
+        var sum: i64 = 0
+        for k in 1..triples.length
+            sum += k@i64 * triples[k].0@i64
+            if triples[k] == triples[k - 1]
+                sum += k@i64 * 3
+            if triples[k].1 > triples[k - 1].1
+                sum += k@i64 * 5
+            if triples[k].2 != triples[k - 1].2
+                sum += k@i64 * 7
+        wide.clear()
+        nested.clear()
+        for i in 0..128
+            state = next(state)
+            wide.append(((state >> 16) & 3, (state >> 18) & 3))
+            let left = (((state >> 20) & 1)@i32, ((state >> 21) & 1)@i32)
+            nested.append((left, (((state >> 22) & 1)@i32, ((state >> 23) & 3)@i32)))
+        for a in 0..wide.length
+            for b in 0..wide.length
+                if wide[a] == wide[b]
+                    sum += 1
+                if nested[a] == nested[b]
+                    sum += 16
+        // The sign factor makes -0.0 from a zero first value; NaN stands first in one pair and second in another.
+        floats.clear()
+        floats.append((nan, 1.0))
+        floats.append((1.0, nan))
+        for i in 0..30
+            state = next(state)
+            let first = (((state >> 16) & 3)@f64 - 1.0) * (1.0 - 2.0 * ((state >> 18) & 1)@f64)
+            floats.append((first, ((state >> 19) & 3)@f64 * 0.5))
+        for a in 0..floats.length
+            for b in 0..floats.length
+                if floats[a] <= floats[b]
+                    sum += (a * 32 + b)@i64
+                if floats[a] > floats[b]
+                    sum ^= (a * 32 + b)@i64 << 12
+        checksum = fold(checksum, sum + round@i64)
+    Console.writeLine("checksum \(checksum)")

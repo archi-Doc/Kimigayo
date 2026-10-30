@@ -29,8 +29,8 @@
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
 // a DropGlue's direct parts, DropGlue.Parts, a Dictionary's the clearEntries instance its Drop row declares when an entry may need a drop,
 // and a LegacyRow's declared callee and needs, placeEntry's append body and an ElementGlue need its Element parts' glue;
-// InstanceCollector.Witnesses.cs: a comparison shim's leaf
-// witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
+// InstanceCollector.Witnesses.cs: a comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a
+// property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
@@ -41,7 +41,7 @@
 // each type-driven item's Type and a DropGlue's collection element Types (X34), and each layout need a form's generated code has past its
 // root's storage (LayoutNeeds, DECISIONS R5-M149: a projection step past a Deref, PairLayer or sequence handle, a raw pointer's
 // displacement, a call's Type arguments where its intrinsic or legacy row's need says so, a compared Tuple past a reference layer of a
-// comparison shim's tree), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
+// comparison call's node, at the call, R5-M166), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
 // 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
 // first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
@@ -90,6 +90,7 @@ internal sealed partial class InstanceCollector
     private readonly Dictionary<MirDefKey, int> counts = new(); // Items per definition (X19).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
+    private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int rootModules;
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>

@@ -8992,7 +8992,7 @@ resumed by R4-M86 (2026-10-20).
   - Pending with the owner: whether SPEC 5.2's fit rule applies to a punned Place (R4's unsafe forms m1-m6); option (A) is sound if it
     does, and G297 lands only after that answer.
   - A pair layer keeps at its own position only its raw case (an unstated raw layer the call writes, where rule A keeps the raw inputs'
-    own values, what the arm gave); its owning cases are its target, now walked. Rule A's other rows there stay open (PLAN G332).
+    own values, what the arm gave); its owning cases are its target, now walked. Rule A's other rows there stay open (PLAN G334).
   - No new `RetentionSource` form and no second rule. Moved rows (none a weakening; SPEC 15.6.4 as above): RetentionTest's
     `f<T>(dst: uniq/Array<T>, p: raw/i32)` loses `1 Value`, `T is MakeW` with `p: raw/i32` gains it, TwoRawLayers loses its Values at
     `T`; MirBorrowsTest's rawArg rows err only at putSlotBad, rawReq's at makeRawBad, fillRawBad, fill32Bad, fillPBad and useHBad,
@@ -10657,6 +10657,8 @@ structure is recorded here by the unit that first implements it.
     premise scope); Witness's Body Subst as the leaf's (its Origins are the requirement's own atoms, foreign to a synthesized call);
     `ComparisonProof` on the same rule (an acceptance proof under the caller's premises, which proves built-in Types through the
     constraint solver: another contract).
+  - Amended by R5-M166 (provisional, G308): A4 now reads `TyCtxt.Comparison` directly for a tuple operator's call (its distinct leaves),
+    while its `Require` on a composite Type keeps the legacy plan (`TyCtxt.Witnesses`) until A-12: A4 holds both resolvers until then.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19, planning session; plan K6, the K package's §4.3 and §4.5 row 3 with its
   witness results, package F §4.5, S2-S4 X14, X16, X28; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1; `MonoKind.Builtin`,
   `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11, `ExclusiveInheritedWitness` being KD10's and
@@ -10913,6 +10915,8 @@ structure is recorded here by the unit that first implements it.
   Contract-mapping comparisons, the shims' remaining producers). Rejected: a string leaf as a call (F6's Builtin leaf names no callee;
   a second form of one comparison); testing the last pair too and deciding all-equal by a constant (a redundant test, two string
   passes); deciding `==` by recomputing the pair (a second comparison); the legacy four-valued relation code (a new form).
+  - Amended by R5-M166 (provisional, G308): the expansion is superseded by one call per tuple operator; the operand rule and the root
+    Limit stay.
 - **R5-M76 The operator rows of MIR code generation** (2026-10-19, C lane; plan C1a, package C §3.2 I5 and I9, §3.9, audit row
   "Rvalue BinaryOp (16), UnaryOp (2)"; under R5-M18 form 1, R5-M17, R5-M20 and R5-M65) `FunctionCodegen.Arithmetic` writes a BinaryOp
   or UnaryOp into an unprojected local through `LlvmScalarText` by one table, `Rows`: a row per `MirBinaryOp`, then per `MirUnaryOp`.
@@ -12485,6 +12489,8 @@ structure is recorded here by the unit that first implements it.
     `WriteBuiltinComparison` text (per-instruction text C8c left in D5, R5-M118); `MirBodyKind.Shim` bodies (PD3); the builder expanding
     generic comparisons per instance (MIR is per template; held); new IntrinsicIds or catalog rows (PD21); Kimigayo bodies for built-in
     witnesses now (R8).
+  - Amended by R5-M166 (provisional, G308): "one function per tree node" is adopted for comparison items; the reason (more
+    functions and calls) no longer holds against a shared node written once per root-to-leaf path.
 - **R5-M127 The owner confirms C8f's departure** (owner, 2026-10-26, to the R5 planning session directly, on its explanation after
   C8f's design; verbatim 「C8f の逸脱 (i)も承認します」; the consequences are the planning session's) The departure R5-M126 records is
   confirmed: K package 4.3's Builtin row (and PropertyWitness's) gives "Representative: Self Type"; a shim item also records its
@@ -13465,6 +13471,9 @@ structure is recorded here by the unit that first implements it.
     sel +1.3 % and +0.4 % cold, +1.4 % and +2.0 % re-collect; cold allocation +7,184 B (Hello) and +7,216 B (Milestone26), the need
     list's and the marks' first growth; warm 0 B (raw rows `r5\proj\ab-final.txt`). The owner accepted this cost (2026-10-29, to the R5
     planning session directly, verbatim 「受け入れる」).
+  - Amended by R5-M166 (provisional, G308): the comparison shim's past-storage walk (`Leaves`' bit, `LayoutNeeds.TypeOf(ComparisonNode)`,
+    `FunctionCodegen.Needed(node)`) is replaced by each comparison item's layout at its admission and a comparison call's per-site walk
+    (`InstanceCollector.Uses`) over its node with the instance Type; `LayoutNeeds.Of(ComparisonNode)` stays the row.
 - **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import
   signatures (unit G288)** (2026-10-29, R5; PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim
   「みなす (推奨)」, PLAN `63f54877e`; extends BU-48; Major, design accepted by the R5 planning session; BU reviews the Binding part and
@@ -14045,3 +14054,32 @@ structure is recorded here by the unit that first implements it.
     for tests (a second form of the entry).
   - Amends, each with its amendment line: R5-M18 (the owner's choice, implemented), R5-M64 (the adapters and the publication record) and
     R5-M162 (`ReportPublicationFailure`).
+- **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
+  Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
+  expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
+  - Cause: `TyCtxt.Comparison` memoizes one node per (Contract, Type, mode), so a Type sharing parts is a DAG, which R5-M75's builder,
+    the collector's shim targets and the shim writer each walked per root-to-leaf path: exponential in the distinct Types (V16).
+  - Rule: a tuple operator is ONE `Requirement` call of its Contract's own requirement on its Self (`TyCtxt.Synthesized`, Contract null)
+    on shared borrows of its operands' terminal Places, the operands as R5-M75; `MirCallee.Arg` of a Requirement callee is its
+    `ComparisonMode` (`Mir/MirVocabulary.cs`: `Mapping` 0, every other requirement call; `Operator`, IEEE equality and an unordered
+    pair ordered greater, for `==`, `!=`, `<`, `<=`; `Reversed`, ordered less, for `>`, `>=`); `==` takes the bool, `!=` its negation,
+    an ordering the i32 against 0. The validator checks a mode names Equatable's or Comparable's own requirement on a composite Self.
+  - Items: the Builtin target of such a call is a comparison item keyed by the compiler function, the mode (`Variant`) and the node's
+    erased Type, at the template with the requesting instance (`Body.Erased`) when that Type has a parameter (SPEC 13.4's generic
+    rule), represented by the target's substitution (R5-M126's Abi unchanged). `InstanceCollector.Comparison(item)` publishes its node;
+    its targets are its direct parts': a composite part's item (every composite part, a ref layer's included), a Witness leaf's body,
+    a Requirement leaf's witness on the instance part (a body or a Mapping item). Code generation writes one function per item calling
+    its parts' targets; a Builtin leaf by mode. A4 runs a comparison call's distinct leaves' witnesses (a visited set), a None leaf
+    the Limit. The validator checks a mode's requirement, its own Contract (Contract null) and that the Self's comparison composes.
+  - Layout: each item is laid out at its admission; a comparison call also lays out, at its site, its Self and each Tuple past a
+    reference layer (one record per requesting site, SPEC 23.1.2).
+  - Rejected: a memo in the builder (Places differ per occurrence); one synthesized MIR body per node (a second mechanism, and the
+    Contract mapping stays exponential); operator items keyed by the instance Type (wrong for `(T, f64)` at `T = f64`); the whole
+    tuple through the Contract mapping (NaN-reflexive `==`, no float `Comparable`); an inline threshold; a four-valued result.
+  - Known limit: a comparison's composite parts are admitted one level each (K 4.3's depth, `DepthLimit` 128), so a comparison's
+    composite nesting (Tuples and reference layers) deeper than 128 less the admission chain's depth reaches `GenerationResourceLimit_Kd` at the comparison, as a constructor chain of
+    that depth already does (probes: an 80-deep generic chain comparing a closed 50-deep nest; nested generic constructors 50 deep at
+    the end of the same chain give it on the base too). Counting only recurring instantiation steps is a collector unit of its own.
+  - Owner: the departure from K package 4.3's Builtin row (the comparison mode in `Variant`; an operator node with an abstract part
+    keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
+    「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.

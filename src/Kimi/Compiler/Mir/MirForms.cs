@@ -112,7 +112,8 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 
 /// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Fn one's default template, plan 5.6.2, as
 /// its index plus 1 in <see cref="Arg"/>; a Virtual one's slot by the slot's function; a Requirement's dispatching Contract reference in
-/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>, its
+/// <see cref="Contract"/>, null for its requirement's own Contract; a Requirement's <see cref="ComparisonMode"/> in <see cref="Arg"/>, 0 but
+/// for a tuple operator's call, DECISIONS R5-M166) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>, its
 /// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
 /// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
 /// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
