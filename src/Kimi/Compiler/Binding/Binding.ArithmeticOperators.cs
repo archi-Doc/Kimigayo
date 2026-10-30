@@ -81,8 +81,8 @@ public sealed partial class Binding
         // A fixed left provider can give the other operand a bounded expected Type after selection.
         var right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
         var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);
-        if ((!leftLiteral && left is null && !this.IsWaitingPart(binary.Left) && !IsWaitingCallable(binary.Left)) ||
-            (!rightLiteral && right is null && !this.IsWaitingPart(binary.Right) && !IsWaitingCallable(binary.Right)))
+        if ((!leftLiteral && left is null && !this.IsWaitingPart(binary.Left) && !this.IsWaitingCallable(binary.Left)) ||
+            (!rightLiteral && right is null && !this.IsWaitingPart(binary.Right) && !this.IsWaitingCallable(binary.Right)))
         {
             // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions.
             var decision = this.OperatorApplicabilityOf(binary, left, right, scope);
@@ -236,7 +236,7 @@ public sealed partial class Binding
             {
                 var expected = candidate.Type!.Components[0];
                 if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) :
-                    counterpart is not null ? !FitsStructuralPart(counterpart, expected) : !this.IsWaitingPart(other) && !IsWaitingCallable(other))
+                    counterpart is not null ? !FitsStructuralPart(counterpart, expected) : !this.IsWaitingPart(other) && !this.IsWaitingCallable(other))
                 {
                     continue;
                 }

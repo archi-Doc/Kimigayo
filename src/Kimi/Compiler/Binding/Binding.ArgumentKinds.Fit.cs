@@ -16,9 +16,10 @@ public sealed partial class Binding
     {
         var node = KotoHelper.UnwrapParentheses(part);
         operation = default;
-        switch (this.KindOf(node))
+        var kind = this.KindOf(node);
+        switch (kind)
         {
-            case PartKind.Function when node is FunctionKoto closure:
+            case PartKind.Function when AwaitsCall(node, kind) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -34,13 +35,13 @@ public sealed partial class Binding
 
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
-            case var kind when AwaitsCall(kind):
-                operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-                return CandidateApplicability.Waiting;
             case PartKind.Aggregate or PartKind.Join:
                 return this.FitComposite(part, node, type, scope, out operation);
             case PartKind.Literal:
                 return this.FitLiteral(part, node, type, scope, out operation);
+            case PartKind.Case or PartKind.Call when AwaitsCall(node, kind):
+                operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                return CandidateApplicability.Waiting;
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
         }

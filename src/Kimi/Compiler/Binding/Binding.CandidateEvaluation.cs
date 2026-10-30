@@ -34,7 +34,7 @@ public sealed partial class Binding
         {
             if (candidate.State == CandidateApplicability.Waiting)
             {
-                if (!ComparableCallableSlots(call, candidates, operations, stride, true))
+                if (!this.ComparableCallableSlots(call, candidates, operations, stride, true))
                 {
                     return false;
                 }
@@ -79,13 +79,39 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
+    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
+    {
+        for (var a = 0; a < arguments; a++)
+        {
+            var erased = false;
+            var direct = false;
+            for (var i = 0; i < candidates.Length; i++)
+            {
+                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                {
+                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                }
+            }
+
+            if (erased && direct)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
     // unsolved slot or is absent (no Callable Constraint on F), compares equal there when the candidates acquire it in one mode.
-    private static bool ComparableCallableSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, bool premises = false)
+    private bool ComparableCallableSlots(
+        InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, bool premises = false)
     {
         for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)
         {
-            if (!IsWaitingCallable(call.ArgumentNodes[argument]))
+            if (!this.IsWaitingCallable(call.ArgumentNodes[argument]))
             {
                 continue;
             }
@@ -129,31 +155,6 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
-    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
-    {
-        for (var a = 0; a < arguments; a++)
-        {
-            var erased = false;
-            var direct = false;
-            for (var i = 0; i < candidates.Length; i++)
-            {
-                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
-                {
-                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
-                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
-                }
-            }
-
-            if (erased && direct)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
     private bool BetterCandidate(
         in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
@@ -182,7 +183,7 @@ public sealed partial class Binding
         {
             if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
                 left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
-                AwaitsCall(this.KindOf(source)))
+                this.IsWaiting(source))
             {
                 continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
             }
@@ -287,7 +288,7 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(argument, call);
             }
-            else if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
+            else if (this.IsWaitingCallable(argument) && KotoHelper.UnwrapParentheses(argument) is FunctionKoto closure)
             {
                 this.MarkOmittedHeaders(closure, call);
             }

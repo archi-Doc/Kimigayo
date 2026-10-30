@@ -58,7 +58,7 @@ public sealed partial class Binding
     private bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
         where T : IWaitingTaker, allows ref struct
     {
-        if (IsWaitingCallable(part))
+        if (this.IsWaitingCallable(part))
         {
             return CallableSlotType(pattern, owner) is not { } slot || taker.Take(part, pattern, slot);
         }
