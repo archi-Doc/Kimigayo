@@ -34,7 +34,7 @@
 // record was made; deterministic (admission order, item-indexed names); each item's signature is reused while Abi.Matches holds and every
 // buffer is kept, so a warm module allocates nothing; a request for an item outside Generated (its Signature or Glue, the requests naming an
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
-// Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
+// Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax or HIR, write a
 // partial module, use LINQ, Supports* or catch-alls.
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
