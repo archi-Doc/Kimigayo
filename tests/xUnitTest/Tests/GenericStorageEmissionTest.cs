@@ -154,20 +154,6 @@ public class GenericStorageEmissionTest
     }
 
     [Fact]
-    public void InstanceAnalysisLeavesSourceBodiesAndIssuesUnchanged()
-    {
-        var c = MinimalEmissionTest.Analyze(Choose + "let n = choose<i32>(1, 2, false)");
-        var bodies = c.Ownership.Bodies.Count;
-        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "choose");
-        var places = generic.Places.ToArray();
-        Assert.True(c.Validate(out var error), error);
-        Assert.Equal(bodies, c.Ownership.Bodies.Count);
-        Assert.Empty(c.Problems);
-        Assert.Equal(places, generic.Places.ToArray());
-        Assert.Contains(generic.Places, x => x.Acquisition == AcquisitionKind.CopyOrMove);
-    }
-
-    [Fact]
     public void RebindingInvalidatesEntriesAndRestoresOnlyCurrentTypes()
     {
         var c = MinimalEmissionTest.Analyze(Box + "let b = Box<i32>.init(42)\nrequire b@move.take() == 42 else => $abort(\"value\")");

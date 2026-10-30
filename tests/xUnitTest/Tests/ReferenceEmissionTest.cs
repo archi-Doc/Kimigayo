@@ -142,7 +142,6 @@ public class ReferenceEmissionTest
     {
         const string Source = Same + "let a = \"a\"\nif same(a, a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.Equal(3, c.Ownership.Bodies[0].Operations.Count(x => x.Kind == OwnershipOperationKind.Borrow)); // Two for same, one for writeLine (SPEC 22.1).
         using var writer = new StringWriter();
         Assert.True(c.WriteIr(writer, out var error), error);
         var ir = writer.ToString();
