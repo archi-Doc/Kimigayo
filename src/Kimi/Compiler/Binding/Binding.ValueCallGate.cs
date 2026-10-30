@@ -1,10 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// The old analysis's gate input (SPEC 15.6.4, 15.8.2; DECISIONS R4-M126 §2.13, R4-M152, R4-M159; removed with the old analysis at
-// R6-check).
-// - Responsibility: the calls the old analysis does not analyze, kept as a fact once Binding binds them: R1's condition, the call whose
-//   result depends on its receiver, and F1's, the call that reads a maker's images (ReadsMakerImages; R4-M159, pending the owner's
-//   approval of the wider D5 exception):
+// The old analysis's gate input (SPEC 15.6.4, 15.8.2; DECISIONS R4-M126 §2.13, R4-M152; removed with the old analysis at R6-check).
+// - Responsibility: R1's condition, the call whose result depends on its receiver, kept as a fact once Binding binds such calls:
 //   ResultFixedForCall, whether a value call's result that names none of the callee's per-call inputs is fixed for the call (each Origin
 //   static, carried only by Copy captures of a Copy result, or, carried by no capture, a fixed Origin of a function enclosing the call:
 //   FixedInBody, FixedInBodyOrigin); RecordReceiverDependence, the fact on the call's plan, overwritten by each binding of the call, and
@@ -97,28 +94,7 @@ public sealed partial class Binding
         => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
             (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
 
-    // F1's condition (DECISIONS R4-M152, R4-M159): the call reads its maker's images, its callee's definition naming, as an Origin argument,
-    // an atom of a Closure that does not enclose the call; the old analysis has no reading of those images (SupportsType).
-    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
-    private static bool ReadsMakerImages(FunctionKoto closure, Koto call)
-    {
-        if (closure.ClosureDefinition?.EnvironmentType is not { } definition)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < definition.OriginArguments.Count; i++)
-        {
-            if ((CallAtomsOf(definition.OriginArguments[i], closure, call) & CallAtoms.Foreign) != 0)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // The gate's condition at a value call's binding: the fact on its plan, overwritten by each binding (a consultation's and a candidate
+    // R1's condition at a value call's binding: the fact on its plan, overwritten by each binding (a consultation's and a candidate
     // trial's included), and the call listed once per pass when the fact holds, the pass's first listing starting the list afresh.
     [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
     private void RecordReceiverDependence(InvocationKoto call, bool dependent)
