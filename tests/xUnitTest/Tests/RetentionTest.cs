@@ -755,9 +755,10 @@ public sealed class RetentionTest
     // inside its pointee is Content: the result keeps what a read through `p` carries (a Value row lost it once the addressed holder was
     // replaced: `snap`), and its own layer's Origin gives no row (R-B3: a `ref/i32 during b` result cannot hold the pointer). Its own
     // value is a Value row only of an output that can hold a value of its Type: a raw layer agreeing with it with Origins fitted (R-B4),
-    // or an abstract part (Array's `T`); never its own pointee (no `head` row into `head`). An unstated layer the call writes, at a
-    // position (`slot`'s pointee, which it unties) or in a struct's stored content (Node's `next`, both ways), retains every argument
-    // with its chain and every other argument's own value (rule A, DECISIONS R4-M131, BU-40).
+    // or an abstract part where the premises or an erased callable make it one (DECISIONS BU-66: no premise makes Array's `T` a
+    // `raw/i32`, so SPEC 15.6.4 gives `p` no row there); never its own pointee (no `head` row into `head`). An unstated layer the call
+    // writes, at a position (`slot`'s pointee, which it unties) or in a struct's stored content (Node's `next`, both ways), retains every
+    // argument with its chain and every other argument's own value (rule A, DECISIONS R4-M131, BU-40).
     [Theory]
     [InlineData("func f(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p", "result {0 Content}, store 0: own {0 Content}, reached {}")]
     [InlineData("func f(b: ref/i32, p: raw/i32 during b) -> ref/i32 during b => b", "result {0 Value}")]
@@ -765,9 +766,36 @@ public sealed class RetentionTest
     [InlineData(
         "struct Node\n    public var next: raw/Node\n    public init(next: raw/Node) => self.next = next\nfunc f(head: raw/Node, n: raw/Node) => ()",
         "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied")]
-    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "store 0: own {0 Content}, reached {}")]
     public void RawArgumentsRetainAsBorrowedOnes(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66, R4-M154 rules 2 and 3): an abstract part holds a raw argument's own value
+    // only where the premises make it one (TwoRawLayersOfOneOriginKeepTheirRows) or where an erased callable the call may run may store
+    // a value of its Type there: `make`, which `T is MakeW` hands the body, returns a `T` from a `raw/u8` (`p`'s Type, not `raw/i32`'s);
+    // a requirement on an abstract Self is such a callee itself (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、今の動作のまま進
+    // める」), so `T.make`'s result keeps both. A pair layer admitting `raw` is, in that case, a raw layer without an Origin the call
+    // writes (rule A); one admitting only owner and uniq holds what its target `T` holds. `putRaw<s/T>`'s `value` keeps no handle
+    // (PLAN G297; fails before: `store 1: own {0 Value, 1 Content}`).
+    [Theory]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {1 Value}, reached {}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {1 Value}, reached {}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "")]
+    public void AnAbstractPartHoldsARawArgumentWhereThePremisesOrAnErasedCallableMakeItOne(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" + function + "\n"), "f"));
+
+    // The call records of the rule above: a user call of the G297 shape and an erased requirement callee (DECISIONS BU-66).
+    [Fact]
+    public void AnAbstractPartHoldsARawArgumentAtACall()
+    {
+        var c = Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\nunsafe func putRaw<V>(handle: raw/i32, value: V) => ()\n" +
+            "func f<s/T>(x: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var b: i32 = 0\n    let r = b@uniq\n    unsafe => putRaw(r@follow@raw, x)\n" +
+            "func g<T>() -> ()\n    T is MakeW\n    var slot: raw/u8 = null\n    let t = T.make(p: slot@raw, q: slot)\n");
+        Assert.Equal(["store 1: own {1 Content}, reached {}"], Calls(c, "putRaw"));
+        Assert.Equal(["result {0 Value, 1 Value}"], Calls(c, "make"));
+    }
 
     // SPEC 5.7 Calls, 15.6 (the design review's S2 and R-B2; DECISIONS R4-M116 item 5): a raw pointer in an unstated or `static` Field or
     // Case payload is stated by the Type's Fields alone, so a call that forms it ties it to no argument: a result that stores one, at any
