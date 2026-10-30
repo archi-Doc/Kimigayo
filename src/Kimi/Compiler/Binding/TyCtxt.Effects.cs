@@ -53,7 +53,7 @@ internal sealed partial class TyCtxt
         => binding.CallableBounds(definition, input, receiver);
 
     // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
-    internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item, requireClosed: false)?.RequirementContract;
+    internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
     // SPEC 8.7.2, 16.3.3: whether a Type is proven Copy, whose destruction does nothing, or Sealed, whose handle's destruction runs only its
     // own destructor, under a definition's premises.

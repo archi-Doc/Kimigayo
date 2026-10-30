@@ -319,7 +319,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable, requireClosed: false));
+                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
             }
 
             if (receiver == SemanticsKind.Owner && BoundClosure.Of(callable) is { Receiver: not SemanticsKind.Owner })
@@ -702,7 +702,7 @@ public sealed partial class Binding
             if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
             {
                 this.stepUse = use;
-                this.Function(symbol, binding.FunctionItemContext(type, requireClosed: false));
+                this.Function(symbol, binding.FunctionItemContext(type));
                 this.stepUse = null;
                 if (call.ReceiverKind == SemanticsKind.Owner && BoundClosure.Of(type) is { Receiver: not SemanticsKind.Owner })
                 {

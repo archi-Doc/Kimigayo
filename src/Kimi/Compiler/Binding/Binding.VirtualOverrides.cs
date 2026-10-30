@@ -190,13 +190,6 @@ public sealed partial class Binding
             true);
     }
 
-    internal bool IsInapplicableVirtualBody(FunctionKoto function)
-    {
-        var slot = function.IsVirtual ? new VirtualSlot(function, this.SelfType(function.BoundSymbol!.Scope.Owner.BoundSymbol!))
-            : function.IsOverride && this.virtualOverrides.TryGetValue(function, out var implementation) ? implementation.Slot : default;
-        return slot.Original is not null && this.VirtualApplicability(slot) == ConstraintProof.Refuted;
-    }
-
     // Called by the common call-plan setter, including instantiated calls and Function Item contexts.
     // Target and its defaults always remain the original public contract.
     internal void SelectVirtualCall(CallPlan call, FunctionKoto original)

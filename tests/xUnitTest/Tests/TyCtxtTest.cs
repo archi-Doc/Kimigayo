@@ -1795,7 +1795,7 @@ public sealed class TyCtxtTest
                 }
             }
 
-            if (node.TypeOf() is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item, false) is { } context)
+            if (node.TypeOf() is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item) is { } context)
             {
                 foreach (var parameter in function.Parameters)
                 {

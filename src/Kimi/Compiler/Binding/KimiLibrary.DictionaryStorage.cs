@@ -14,16 +14,18 @@ internal enum DictionaryCallee : byte
 {
     None,
 
-    // Generic over the entry Types: a Dictionary helper reaches its instance through its Related index.
+    // Generic over the entry Types, instantiated at them: a dictionary literal's find call (Binding.DictionaryStorageCall) and the
+    // Dictionary drop helper's entry callee (InstanceCollector).
     FindEntry,
     ClearEntries,
 
-    // Called by the Dictionary helpers (requireAbsent, append) and the Dictionary runtime's initialization bridge (initialize).
+    // Not generic: the placement helper's callee (append), a Dictionary's construction (initialize, LegacyRuntimeHelpers.Construction)
+    // and requireAbsent, whose body the old analysis collects.
     RequireAbsent,
     Append,
     Initialize,
 
-    // Called by no legacy text: tests read its compiled name, and the old emitter has no other path to a source function's ABI.
+    // Called by no legacy text: tests read its symbol.
     Reserve,
 }
 

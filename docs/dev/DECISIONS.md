@@ -7056,6 +7056,9 @@ resumed by R4-M86 (2026-10-20).
   exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
   arguments' raw Origins; for Type slots since BU-34); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops:
   superseded by BU-34.
+  - Amended by R5-M164 (G9a): `SameModuloOpenOrigins` is deleted (no reader since G7). The `PlaceOriginSource` exception's first
+    reason, that the old Emission reads it, ended at G7; its second (it passes forms `NextPathStep` treats as roots, an Array range
+    selection) stays. Its removal condition: BU states it at review.
 - **BU-27** (2026-10-23; amended by R4-M145: a Place in Discard Context is a bare acquisition position; the BU planning session
   after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
@@ -9608,6 +9611,8 @@ structure is recorded here by the unit that first implements it.
   (a temporary view in a held file); one symbol property per function (each consumer would map a row's callee to its property);
   a key beside `DictionaryCallee` (two names for one concept); reading the symbol from the declaration's HIR column (a forwarding
   property, removed at R6); keeping appendSlot and clearLinks (no legacy text calls them).
+  - Amended by R5-M164 (G9a): `Binding.DictionaryStorageCall(key, value)` builds only a dictionary literal's findEntry call; its
+    callee parameter and the fail-closed arm for other callees went with their last caller, the old emitter (G7).
 - **R5-M29 `Layout.Of` placement and its result** (2026-10-18, planning session; plan P7b, package C §3.5, S2-S4 X1, X18, X31 and
   X34, under R5-M18 and R5-M19) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
   with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither, when
@@ -13779,6 +13784,8 @@ structure is recorded here by the unit that first implements it.
     the Binding commit.
   - Amended by R5-M163 (G8): the unit mapping's G8 items are deleted: `StaticScalarEntry` and `AggregateLayoutPool`'s hooks with
     their files, and `LegacyRuntimeHelpers`' whole instance half, not only its formatting requests (one instance, one rule).
+  - Amended by R5-M164 (G9a): G9's list is done; `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` are deleted with
+    the row's other members.
 - **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
   design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
   G:R6-gen-del)
@@ -13818,3 +13825,19 @@ structure is recorded here by the unit that first implements it.
     destruction half (no reader).
   - Amends, each with its amendment line: R5-M16, R5-M17, R5-M27, R5-M46, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's
     unit mapping.
+- **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, R6-gen; plan §4.9 row G9, R5-M18's G9a/G9b split;
+  design `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q1-Q10; under R5-M162; Major, G:R6-gen-del; BU
+  reviews the Binding commit)
+  - Rule: a member goes with its last reader (S7). Deleted, each without a reader in `src`, `tests` or `src/Benchmark` since G7:
+    `Binding.IsInapplicableVirtualBody`, `ImplementationContext`, `IsVerifiedSpecialization`, both `SameModuloOpenOrigins`
+    overloads, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` (the last two from R5-M162's list).
+  - Kept: `PrepareTypeStorage`, which Binding's retention, dispatch, identity and Item contexts read. `DictionaryStorageCall` builds
+    only a dictionary literal's findEntry call, which `CallPlan.Of` gives to MIR construction and HIR completeness; its callee
+    parameter, the clearEntries arm and the throw for other callees lost their last caller, the old emitter, at G7.
+  - Made redundant (ruling Q2): `FunctionItemContext`'s closed-only mode `requireClosed`. Its `true` arm had only
+    `ImplementationContext` and tests, whose Items are closed; every product caller passed `false`.
+  - Text: Binding's comments and Transitional reasons that named the old generator or the old Emission as a reader, and
+    `DictionaryCallee`'s comments (the Related index, the initialization bridge and the old emitter went at G8).
+  - Behavior-preserving: the diagnostic snapshot and the semantic snapshot (HIR, MIR) equal the base's.
+  - Amends, each with its amendment line: BU-24 (`SameModuloOpenOrigins`; the `PlaceOriginSource` exception's first reason),
+    R5-M28 (`DictionaryStorageCall`'s callee) and R5-M162 (G9's list).

@@ -18,9 +18,9 @@ public sealed partial class Binding
             : ComparisonTypes.IsBuiltin(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
-    // One verified tree supplies both effect traversal and generation. Selection of a leaf uses
-    // the conformance witness map, exactly like an explicit requirement invocation.
-    [Transitional("R6", Reason = "H11 deletes it with its readers, the old effect walk (H5) and the old generator (G7).")]
+    // The verified tree the old effect traversal reads. Selection of a leaf uses the conformance witness map, exactly like an explicit
+    // requirement invocation.
+    [Transitional("R6", Reason = "H11 deletes it with its reader, the old effect walk (H5).")]
     internal BoundComparison? ComparisonPlan(CallPlan site)
         => site.ConformingType is { } self ? this.ComparisonPlan(site.Target, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
 
