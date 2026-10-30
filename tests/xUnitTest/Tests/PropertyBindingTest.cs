@@ -52,7 +52,10 @@ public class PropertyBindingTest
     private const string WrongRequirement = "contract HasX\n    property x: i32\n        get() -> i64\npublic func read<T>(t: T) -> i32\n    T is HasX\n    return t.x\n" +
         "public func readb<T>(t: T) -> bool\n    T is HasX\n    return t.x\n";
 
-    // Accessors of another Type whose receiver Type is missing, and one inside a failed declaration context (PLAN G322).
+    // Accessors of another Type whose receiver Type is missing, or with an access or receiver-shape error of their own, and one inside a
+    // failed declaration context (PLAN G322).
+    private const string AccessWrongGetter = ClosedField + "        public get() -> i64\n            return 1\n" + ClosedInit;
+    private const string ShapeWrongGetter = ClosedField + "        get(self: uniq/Self) -> i64\n            return 1\n" + ClosedInit;
     private const string MissingReceiverGetter = ClosedField + "        get(self: ref/Missing) -> i64\n            return 1\n" + ClosedInit;
     private const string MissingReceiverSetter = ClosedField + "        set(self: uniq/Missing, value: i64) -> ()\n            storage = 1\n" + ClosedInit;
     private const string FailedContext = "struct HW<S>\n    S is Missing\n    public var x: i32\n        get() -> i64\n            return 1\n    public init(x: i32) => self.x = x\n" +
@@ -426,8 +429,9 @@ public class PropertyBindingTest
     // the Property's Type, which those rules fix, and after validation rests on the declaration's TypeMismatch_Kd. A consumer that accepts
     // that Type adds no record (updates, a generic Field, a qualified group update, reads and writes, a computed `get`, a requirement);
     // one that rejects it keeps its own record (dev's read the accessor's Type), as do a user arithmetic `+=`, G295's bare group limit, a
-    // missing or string operand, and a use through the standard accessor beside a failed one. Beside a missing receiver Type the accessor
-    // still fails its own Type check, so its uses rest and record no InternalInvariant_Kd. The valid twin: a `get` of the Field's Type.
+    // missing or string operand, and a use through the standard accessor beside a failed one. An accessor resting on its missing receiver
+    // Type rests its uses too, which record no InternalInvariant_Kd; one with an access or shape error keeps that record, its mismatch
+    // unreported (one failure per node). The valid twin: a `get` of the Field's Type.
     [Theory]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd get() -> i64")]
@@ -458,9 +462,11 @@ public class PropertyBindingTest
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += \"a\"")]
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x = true")]
-    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1", "TypeMismatch_Kd get(self: ref/Missing) -> i64;UnresolvedBinding_Kd Missing")]
-    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd get(self: ref/Missing) -> i64;UnresolvedBinding_Kd Missing;TypeMismatch_Kd let v: bool = h.x")]
-    [InlineData(MissingReceiverSetter, "var h = HW.init(x: 3)\n    let n: i32 = 3\n    h.x = n\n    h.x += 1", "TypeMismatch_Kd set(self: uniq/Missing, value: i64) -> ();UnresolvedBinding_Kd Missing")]
+    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1", "UnresolvedBinding_Kd Missing")]
+    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "UnresolvedBinding_Kd Missing;TypeMismatch_Kd let v: bool = h.x")]
+    [InlineData(MissingReceiverSetter, "var h = HW.init(x: 3)\n    let n: i32 = 3\n    h.x = n\n    h.x += 1", "UnresolvedBinding_Kd Missing")]
+    [InlineData(AccessWrongGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1\n    let v: bool = h.x", "InaccessibleBinding_Kd public get() -> i64;TypeMismatch_Kd let v: bool = h.x")]
+    [InlineData(ShapeWrongGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1\n    let v: bool = h.x", "AccessorReceiverShape_Kd get(self: uniq/Self) -> i64;TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(RightGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++\n    let v: i32 = h.x", "")]
     public void AUseOfAWronglyTypedAccessorIsJudgedAgainstItsPropertysType(string holder, string use, string records)
     {

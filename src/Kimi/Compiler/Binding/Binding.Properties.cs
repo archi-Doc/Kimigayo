@@ -322,14 +322,6 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        // SPEC 11.3, 11.4, 23.1.2: the Type a use takes is the Property's. The check reads neither the receiver nor the declaration
-        // context, so it is the declaration's own failure beside theirs, and a use formed under that Type always rests on it.
-        if (AccessorTypeMismatch(accessor))
-        {
-            this.Fail(syntax!, BindingFailure.TypeMismatch);
-            return ConstraintProof.Error;
-        }
-
         if (syntax is not null)
         {
             // Header failures leave the operation unavailable, not a disproven receiver or conformance.
@@ -339,6 +331,41 @@ public sealed partial class Binding
             if (missing is not null)
             {
                 this.CompleteDependent(syntax, missing);
+                return ConstraintProof.Error;
+            }
+        }
+
+        // SPEC 11.3, 11.4, 23.1.2: the accessor's own checks read neither its declaration context nor a formation proof, so they run
+        // before both and report beside their failures: its access, its receiver's Type and shape, then the Type a use takes, the
+        // Property's. One node holds one failure, so a mismatch beside another of them goes unreported.
+        if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
+        {
+            this.Fail(syntax, BindingFailure.Access);
+            return ConstraintProof.Error;
+        }
+
+        var owner = property.Symbol.Scope.Owner;
+        if (!accessor.IsStandard)
+        {
+            if (owner is StructKoto or ContractKoto
+                ? !this.IsReceiverType(accessor.Receiver, owner.BoundSymbol!)
+                : accessor.Receiver is not null)
+            {
+                this.Fail(syntax!, BindingFailure.InvalidTypeFormation);
+                return ConstraintProof.Error;
+            }
+
+            // SPEC 11.3: the receiver has the shape of its operation. The body was checked with the written receiver, so this
+            // declaration error adds no body errors; a use that only the written shape rejects rests on it (ReceiverRestsOnAccessorShape).
+            if (owner is StructKoto or ContractKoto && AccessorReceiverShapeMismatch(accessor))
+            {
+                this.Fail(syntax!, BindingFailure.AccessorReceiverShape);
+                return ConstraintProof.Error;
+            }
+
+            if (AccessorTypeMismatch(accessor))
+            {
+                this.Fail(syntax!, BindingFailure.TypeMismatch);
                 return ConstraintProof.Error;
             }
         }
@@ -373,32 +400,9 @@ public sealed partial class Binding
             return formation;
         }
 
-        if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
-        {
-            this.Fail(syntax, BindingFailure.Access);
-            return ConstraintProof.Error;
-        }
-
         if (accessor.IsStandard)
         {
             return ConstraintProof.Proven;
-        }
-
-        var owner = property.Symbol.Scope.Owner;
-        if (owner is StructKoto or ContractKoto
-            ? !this.IsReceiverType(accessor.Receiver, owner.BoundSymbol!)
-            : accessor.Receiver is not null)
-        {
-            this.Fail(syntax!, BindingFailure.InvalidTypeFormation);
-            return ConstraintProof.Error;
-        }
-
-        // SPEC 11.3: the receiver has the shape of its operation. The body was checked with the written receiver, so this
-        // declaration error adds no body errors; a use that only the written shape rejects rests on it (ReceiverRestsOnAccessorShape).
-        if (owner is StructKoto or ContractKoto && AccessorReceiverShapeMismatch(accessor))
-        {
-            this.Fail(syntax!, BindingFailure.AccessorReceiverShape);
-            return ConstraintProof.Error;
         }
 
         var compared = accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Input;
