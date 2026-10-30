@@ -791,7 +791,7 @@ public sealed partial class InstanceCollectorTest
     }
 
     // DECISIONS R5-M36, R5-M43, S2-S4 X10: two closures of equal result Type in one generic function are two items per enclosing
-    // instance, each the instance of its own body (before: one shared call per closure in the old generator's bridge).
+    // instance, each the instance of its own body.
     [Fact]
     public void TwoClosuresOfOneInstanceAreItsTwoItems()
     {

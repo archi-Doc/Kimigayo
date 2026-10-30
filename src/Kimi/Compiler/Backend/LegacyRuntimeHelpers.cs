@@ -199,7 +199,7 @@ internal readonly record struct StoredValue(ValueLowering Value, string? Drop, b
     internal static bool TravelsAsScalar(ValueLowering value) => value.ArgumentType == value.ComputationType;
 }
 
-/// <summary>A module's legacy runtime helper requests, and the text kernels and routines its helpers share.</summary>
+/// <summary>The legacy runtime helpers' rows and writers, and the text kernels and routines its helpers share.</summary>
 [Transitional("R8", Reason = Removal)]
 internal static partial class LegacyRuntimeHelpers
 {

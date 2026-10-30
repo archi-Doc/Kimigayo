@@ -186,7 +186,7 @@ public sealed partial class OwnershipAnalysis
             this.Connect(arm.Syntax.Guard is null ? test : guardBranch, bodyEntry, OwnershipEdgeKind.True);
             this.current = bodyEntry;
             this.AcquirePattern(plan, arm.Pattern, subject, neededStart, armStart + i);
-            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, guardEntry, bodyEntry, guardLoan);
+            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, guardEntry, guardLoan);
 
             var secured = -1;
             if (arm.Syntax.Body is CodeBlockKoto block)

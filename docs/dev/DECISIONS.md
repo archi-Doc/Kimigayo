@@ -9280,6 +9280,7 @@ structure is recorded here by the unit that first implements it.
   the component as `%v<Id>` and `b<n>` (codegen names values and blocks by MIR location, package §2.10); typed bound values
   (a second operand form beside spellings, and the hexadecimal float spelling copied into the Backend); a ≤ 64-bit width
   precondition or failure (the `Int128` minimum is correct at every width without a branch).
+  - Amended by R5-M163 (G8): the position conversion (`WritePositionConversion`, the old writer's alone) is deleted.
 - **R5-M18 The R5 design package S2–S4** (owner, 2026-10-18; OQ4, R5-M1;
   「S2〜S4パッケージを承認します。X33は(a)、GenerationFailed_Kdの後継はArtifactPublicationFailed_Kd、F11はX30′のとおりで進めてください。」)
   The step-0 package in `draft/Sketches/R5 Step 0/`
@@ -9512,6 +9513,8 @@ structure is recorded here by the unit that first implements it.
   as its own field (a seventh parameter, over ARCH's six); declaring `reserve`, `shrinkToFit`, `appendSlot` or `clearLinks` as
   row callees (no helper calls them); the Dictionary runtime for every Dictionary request (Place and Drop use neither the
   adapter nor the bridge); helpers written only under the runtime flag, or flags set by their requesters (G133).
+  - Amended by R5-M163 (G8): the CheckKey row, `HelperNeeds.DictionaryRuntime`, the Dictionary runtime's adapter and bridge and
+    `DictionaryHelper.Related` are deleted; no MIR site requests a key check (R5-M124), and MIR passes an Entries ABI directly.
 - **R5-M28 The `DictionaryStorage` symbol view** (2026-10-18, planning session; plan F2c, package F §4.10 and §5, S2-S4 X4,
   under R5-M18; applies R5-M25, refines R5-M27) A `[Transitional("R8")]` Binding view,
   `KimiLibrary.DictionaryStorage(DictionaryCallee)` (`Binding/KimiLibrary.DictionaryStorage.cs`), gives the `BindingSymbol` of each
@@ -10014,6 +10017,8 @@ structure is recorded here by the unit that first implements it.
   capacity routines, because one member names them with the memory declarations; splitting it adds a vocabulary entry. Rejected:
   that split here (beyond G134's rows); keeping the hand-set flag for every Array operation (G133's cause, a flag set by its
   requester instead of its row).
+  - Amended by R5-M163 (G8): the CheckKey row and its `DictionaryRuntime` need are deleted; the module's flags went with the
+    old module, and MIR code generation requests a row's parts by its needs (`ModuleCodegen.Request`).
 - **R5-M49 A virtual receiver borrows the whole payload** (2026-10-18, planning session; plan F14, PLAN G147 (4) from R4's 1b-5
   ledger; SPEC 6.4.5) Rule (`MirBuilder.Dispatched`, call assembly): a dispatched virtual call (`CallPlan` Virtual, not direct)
   borrows its receiver as the view of the receiver payload's own Type, in the slot view's Semantics and Origin, and upcasts that
@@ -13728,16 +13733,17 @@ structure is recorded here by the unit that first implements it.
   - G8c (D5's deletion, Q5's rule of R5-M162): the old Analysis's plans that only the deleted generator read go with the writes that
     only filled them: `OwnershipBody.SlotResults`, `ResultArrivals`, `ResultWrites`, `Deliveries`, `StringComparisons`, `CallLoans`
     and `IsConcrete`, their records, and the unread fields `OwnershipMatchPlan.ArmStart`/`ArmCount`, `OwnershipMatchArmPlan`'s
-    decomposition range, `GuardBranch`, `GuardValue` and `GuardCleanupStart`, and `OwnershipDeferredPlan.Continuation`; with them the
-    slot results' result joins, the result declarations' table, `Deliver`'s secured value, `HasCallInspection` and
+    decomposition range, `GuardBranch`, `BodyEntry`, `GuardValue` and `GuardCleanupStart`, and `OwnershipDeferredPlan.Continuation`;
+    with them the slot results' result joins, the result declarations' table, `Deliver`'s secured value, `HasCallInspection` and
     `Condition`'s cleanup start. The operations they annotated (Declare, Write, Deliver, the joins' edges) stay, and so does
     `SlotResultPlaces`, which chooses a result's Place. The diagnostic and semantic snapshots are unchanged.
   - G8d (tests): `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` asserts one item per Closure per enclosing instance,
     each its own body, in place of `GenericClosureIdentityTest`'s `Assert.NotSame` (G7's review); R5-M58's edited-import reuse,
-    which the deleted pool's test held, is `FunctionCodegenTest.AnEditedImportKeepsItsSignatureWithoutAllocating` on the MIR side
-    (a parameter renamed in place; the first generation after the edit allocates 0 B), since no test showed it there.
+    which the deleted pool's test held, is `FunctionCodegenTest.AnEditedImportKeepsItsSignature` on the MIR side (a parameter renamed
+    in place: the module's next Write returns the same `FunctionAbi` object), since no test showed it there.
   - Records: ARCH drops `EmissionOpcode` (49) and the old pool's clauses of its Layout and Abi rows; CODEMAP drops the old layer's
     row and stems; the Backend's contracts drop the deleted types.
   - Rejected: moving the survivors at G8 (resource names, harness paths; G11's CODEMAP decides the folder); keeping the pool's
     destruction half (no reader).
-  - Amends, each with its amendment line: R5-M16, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's unit mapping.
+  - Amends, each with its amendment line: R5-M16, R5-M17, R5-M27, R5-M46, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's
+    unit mapping.

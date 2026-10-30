@@ -175,7 +175,7 @@ public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase
 public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result);
 
 /// <summary>One successful Pattern test and its ownership decomposition before the arm body.</summary>
-public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int GuardEntry = -1, int BodyEntry = -1, int GuardLoan = -1);
+public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int GuardEntry = -1, int GuardLoan = -1);
 
 /// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
 public readonly record struct OwnershipLending(Koto Input, Koto Call);

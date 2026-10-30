@@ -68,7 +68,7 @@ public sealed partial class OwnershipAnalysis
         this.Connect(test, enter, OwnershipEdgeKind.True);
         this.current = enter;
         this.AcquirePattern(plan, 0, subject, neededStart, armStart);
-        this.body.MatchArmStorage[armStart] = new(matchIndex, 0, test, BodyEntry: enter);
+        this.body.MatchArmStorage[armStart] = new(matchIndex, 0, test);
         this.Block(source.Body);
         this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);
@@ -83,7 +83,7 @@ public sealed partial class OwnershipAnalysis
         var done = this.New(OwnershipOperationKind.Branch, none.Syntax.Body);
         this.Connect(exhausted, done, OwnershipEdgeKind.True);
         this.current = done;
-        this.body.MatchArmStorage[armStart + 1] = new(matchIndex, none.Pattern, exhausted, BodyEntry: done);
+        this.body.MatchArmStorage[armStart + 1] = new(matchIndex, none.Pattern, exhausted);
         this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, exit);
         this.temporaries.RemoveRange(loopTempMark, this.temporaries.Count - loopTempMark);

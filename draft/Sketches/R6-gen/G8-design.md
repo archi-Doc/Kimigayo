@@ -10,11 +10,11 @@ Revision 0 is `claude/r6-g8-design` `b4d5b9abf`.
 | Item | Revision 0 | Revision 1 | Source |
 | --- | --- | --- | --- |
 | Q1 split, G8b's scope | G8a-G8d; the whole instance half | yes | ruling |
-| Q2 edited-import reuse | delete the pool's test; MIR twin open | deleted in G8a; no MIR test showed it, so G8d adds `FunctionCodegenTest.AnEditedImportKeepsItsSignatureWithoutAllocating` (passes: 0 B) | ruling |
+| Q2 edited-import reuse | delete the pool's test; MIR twin open | deleted in G8a; no MIR test showed it, so G8d adds `FunctionCodegenTest.AnEditedImportKeepsItsSignature`: one module writes the program before and after a parameter rename, and its `Import` returns the same `FunctionAbi` (review 1's B1: an allocation window cannot see the rebuild, since `AllocationMeasurement` warms up over the first generation; under a probe that reuses only for the same declaration the identity assertion fails) | ruling, review 1 |
 | Q3 stale Binding text | G9 or G11 | G9: `Binding.ComparisonPlans.cs:22`, `TyCtxt.Substitutions.cs:65`, `Binding.PlaceAuthority.cs:200-201`, DECISIONS `:6790`; STATUS, `O2Corpus.md`, `LLVM_OPTIMIZATION.md` stay G11's | ruling |
 | Q4 Sessions | one base, one candidate | base `20261030-160406-055-session-g8-base` + semantic base `g8-semantic-base` | ruling |
 | G8b, found by the re-scan | §2.2 | also the CheckKey Dictionary row (no MIR site requests it, R5-M124) with `WriteKeyCheck`, its callback and `HelperNeeds.DictionaryRuntime`; `DictionaryHelper.Related` (MIR passes -1); `RuntimeAbi.DictionaryInit`; `Compilation.cs`' two "both generators" summaries; ARCH's and CODEMAP's "both/every generator" wording | implementer |
-| G8c, found by scan (3) and the writers | §4 | also `OwnershipDeferredPlan.Continuation` (read only by G7's `BodyLowering`), the result declarations' table, `Deliver`'s secured value, `HasCallInspection`, `Condition`'s cleanup start; slot results get no result join | implementer |
+| G8c, found by scan (3) and the writers | §4 | also `OwnershipDeferredPlan.Continuation` (read only by G7's `BodyLowering`) and, on review 1's N1, `OwnershipMatchArmPlan.BodyEntry`, the result declarations' table, `Deliver`'s secured value, `HasCallInspection`, `Condition`'s cleanup start; slot results get no result join | implementer |
 | G8d | a collector row | `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` over `GenericClosureIdentityTest.TwoClosures` (now shared) | implementer |
 | As implemented | §6.1 | a1 Emission −3,746, tests −230, Backend −3, docs +22, this file; b1 Backend −388, docs +9; c1 Analysis −97, docs +7; d1 tests +51, docs +4. M4: Emission `.cs` 5,078 → 1,332 (8 files), Backend 14,756 → 14,365 | `git diff --numstat` |
 
