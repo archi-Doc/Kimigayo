@@ -5830,7 +5830,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Old path: such forms without an unreachable local use stay accepted until R6-check (STATUS, Unreachable code).
 - **R4-M159 A Closure Type's Origin arguments carry its maker's images (G273, F1's representation)** (2026-10-31; R4's
   design-first candidate of the Full change, `r4-notes\g273-df\design.md`, adopted after implementation review 1
-  (`r4-notes\g273-choiceevision-1.md`); the default side by the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」
+  (`r4-notes\g273-choice\revision-1.md`); the default side by the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」
   (PLAN 7f3e61b1b), unit G273-r3) SPEC 3.2.1, 7.7.3, 15.3.4, 15.3.5, 15.6.4, 15.8.2, 5.7.
   - Representation (a new meaning of an existing slot): a Closure definition's Type (`Binding.ClosureType`) lists as its Origin
     arguments each atom of another, enclosing Closure that its call signature names (receiver, environment binding, call result,
@@ -5863,8 +5863,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Default pipeline (the owner's (a), a larger D5 exception until R6-check, which deletes the old Analysis): the old Analysis stops
     where `SupportsType` refuses a Type for Origin arguments its symbol does not declare, reporting its located `Unsupported_Kd` and
     nothing else of the program, as R4-M126 (vi)'s gate does at its calls: one stop (`OwnershipAnalysis.Stop`, `Stopped`) for both,
-    keyed by the refusal's reason, which `SupportsType` publishes (`TypeSupport.UndeclaredOriginArguments`, a part's included). Such a
-    Type is a Closure Type with its maker's images, which the old Analysis does not model; before the stop its refusal left the Loan
+    keyed by the refusal's reason, which `SupportsType` publishes (`TypeSupport.UndeclaredOriginArguments`, a part's included). The
+    declared Origins are the symbol's schema's, its enclosing declarations' included (SPEC 6.1.3), so a nested struct's inherited
+    Origin is declared and its refusal goes on (implementation review 3's R3-B1, n01_inherited_bad). Such a Type is a Closure Type with
+    its maker's images, which the old Analysis does not model; before the stop its refusal left the Loan
     analysis running, so a valid kept value got a false Loan record (v13_param_kept_ok, v60_kept_move_ok, v63, v64: implementation
     reviews 1 B2 and 2 R2-B1). The owner's approval was for this case (the planning session, 2026-10-31: a subset of the approved
     exception). Any other refusal (a Never-holding Type, `Option<(string, Never)>`) keeps its located `Unsupported_Kd` and the analysis

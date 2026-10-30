@@ -106,10 +106,14 @@ public sealed partial class OwnershipAnalysis
 
     private static TypeSupport Join(TypeSupport left, TypeSupport right) => left >= right ? left : right;
 
-    // A Type's Origin arguments beyond the `declared` ones its symbol declares are undeclared (fewer is an incomplete Type, refused).
-    private static TypeSupport Arguments(BoundType type, int declared)
-        => type.OriginArguments.Count > declared ? TypeSupport.UndeclaredOriginArguments
-            : type.OriginArguments.Count < declared ? TypeSupport.Refused : TypeSupport.Supported;
+    // SPEC 6.1.3: the Origin parameters a Type's symbol declares, its enclosing declarations' included (the symbol's schema); a
+    // symbol without one, a Tuple's, an array's or a Closure's, declares none.
+    private static int DeclaredOrigins(BoundType type) => type.Symbol?.Schema?.Origins.Count ?? 0;
+
+    // A Type's Origin arguments beyond the ones its symbol declares are undeclared (fewer is an incomplete Type, refused).
+    private static TypeSupport Arguments(BoundType type)
+        => type.OriginArguments.Count > DeclaredOrigins(type) ? TypeSupport.UndeclaredOriginArguments
+            : type.OriginArguments.Count < DeclaredOrigins(type) ? TypeSupport.Refused : TypeSupport.Supported;
 
     // This is a conservative subset gate, not the language's finite-storage validation.
     // Every Case is checked because a whole value can arrive from a parameter or branch.
@@ -192,8 +196,10 @@ public sealed partial class OwnershipAnalysis
             this.supportedTypes[type] = TypeSupport.Refused;
             var parent = AdtDef.Base(type);
             supported = parent is null ? TypeSupport.Supported : this.Support(parent);
+            // An inherited Origin is declared (DeclaredOrigins) but outside this subset, refused as before with the analysis going on.
             supported = supported != TypeSupport.Supported ? supported
-                : type.OriginArguments.Count > structure.OriginNames.Count ? TypeSupport.UndeclaredOriginArguments : TypeSupport.Supported;
+                : type.OriginArguments.Count > DeclaredOrigins(type) ? TypeSupport.UndeclaredOriginArguments
+                : type.OriginArguments.Count > structure.OriginNames.Count ? TypeSupport.Refused : TypeSupport.Supported;
             for (var i = 0; i < AdtDef.Count(type) && supported == TypeSupport.Supported; i++)
             {
                 // Collection fields retain their recursive destruction plans (SPEC 16.3.2).
@@ -206,7 +212,7 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)
         {
-            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null ? Arguments(type, 0) : TypeSupport.Refused;
+            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null ? Arguments(type) : TypeSupport.Refused;
             for (var i = 0; i < type.Components.Count; i++)
             {
                 supported = Join(supported, this.Part(type.Components[i]));
@@ -224,7 +230,7 @@ public sealed partial class OwnershipAnalysis
             return TypeSupport.Refused;
         }
 
-        if (Arguments(type, type.Symbol.Schema?.Origins.Count ?? 0) is not TypeSupport.Supported and var arguments)
+        if (Arguments(type) is not TypeSupport.Supported and var arguments)
         {
             this.supportedTypes[type] = arguments;
             return arguments;
