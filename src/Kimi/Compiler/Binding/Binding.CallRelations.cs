@@ -269,7 +269,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
         {
-            var variance = actual.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var variance = OriginArgumentVariance(actual, i, this);
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (both || variance == OriginVariance.Covariant)
             {

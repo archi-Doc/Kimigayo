@@ -79,14 +79,20 @@ public sealed partial class Binding
 
     // SPEC 15.3.5: the variance of a Type's component within it, which ComposeVariance composes: a layer's target invariant where the
     // layer is (IsInvariantLayer), else covariant; a Function Type's inputs contravariant and its result covariant; a declared Type
-    // argument by its slot's inferred variance; any other component covariant.
-    private OriginVariance ComponentVariance(BoundType type, int component) => type.Kind switch
+    // argument by its slot's inferred variance; any other component covariant. A comparison without a Binding sees only the concrete
+    // layers (IsInvariantLayer).
+    private static OriginVariance ComponentVariance(BoundType type, int component, Binding? binding) => type.Kind switch
     {
-        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, this) => OriginVariance.Invariant,
+        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding) => OriginVariance.Invariant,
         BoundTypeKind.Function when type.Components.Count == 2 && component == 0 => OriginVariance.Contravariant,
         BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
         _ => OriginVariance.Covariant,
     };
+
+    // SPEC 15.3.5: the variance of a Type's Origin argument `index`, the one reading every relation, fit and walk takes: a declared
+    // Type's by its schema's inferred variance; an argument without one is invariant.
+    private static OriginVariance OriginArgumentVariance(BoundType type, int index, Binding? binding)
+        => type.Symbol?.Schema?.Origins[index].Variance ?? OriginVariance.Invariant;
 
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {
