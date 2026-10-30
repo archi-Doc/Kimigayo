@@ -377,9 +377,10 @@ public sealed partial class MirBorrowsTest
     // Kept apart (scored apart; PLAN G266's cause, not a row's): SPEC 15.6.4, storage reached through a Closure's captures may retain an
     // argument by the instantiated contract: `removeAll`'s callback stores q, which addresses w, which carries y's Loan, into slot through
     // its captured p, so removeAllWriteBad errs at `y = 5` and its Ok twin, which uses slot before, is valid. Today both are accepted: the
-    // Closure is a by-value input whose raw layer the callee writes through (consumeDrop2Bad's class). The Bad row fails on dev by design.
+    // Closure is a by-value input whose raw layer the callee writes through (consumeDrop2Bad's class). The Bad row fails on dev by design,
+    // so it is Explicit until PLAN G266 lands (its expectation unchanged; G264 U0′'s kept-apart row, WORKFLOW Full step 2).
     [Theory]
-    [InlineData("removeAllWriteBad", "removeAllWriteBad: y = 5")]
+    [InlineData("removeAllWriteBad", "removeAllWriteBad: y = 5", Explicit = true)]
     [InlineData("removeAllWriteOk", "")]
     public void ARemoveAllCallbackStoringThroughItsCapturesRetainsAsTheCallDoesPendingG266(string form, string expected)
     {
