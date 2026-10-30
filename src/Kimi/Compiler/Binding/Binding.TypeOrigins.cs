@@ -8,7 +8,9 @@ public sealed partial class Binding
 {
     private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
 
-    // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
+    // Complete stored Origin identity, including declared slots and intersections: the old analysis's walk (its three calls); Binding reads
+    // MentionsOrigin, a test of the Type's Origin summary (DECISIONS BU-63).
+    [Transitional("R6-check", Reason = "The old analysis's copy of MentionsOrigin goes with the old analysis (DECISIONS BU-63, PLAN G309).")]
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
         if (Contains(type.Origin, origin))

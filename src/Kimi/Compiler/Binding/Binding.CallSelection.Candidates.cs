@@ -496,7 +496,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (result is not null && (HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
+            if (result is not null && (this.HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
                 this.OpenResultOnlyOrigins(call, function, origins, defaults))
             {
                 // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
@@ -508,7 +508,7 @@ public sealed partial class Binding
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
             // still checked against an expected result (SPEC 10.3).
             var openResult = result is null && resultPattern is not null && MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots);
-            if ((result is null && !waitingCallables && !openResult) || (result is not null && HasUnsubstitutedOrigin(result, function)))
+            if ((result is null && !waitingCallables && !openResult) || (result is not null && this.HasUnsubstitutedOrigin(result, function)))
             {
                 // Result-only Origin inference needs the later call-site solver. Never retain a
                 // requirement's abstract binder as though it were this call's concrete Origin.

@@ -8783,6 +8783,43 @@ resumed by R4-M86 (2026-10-20).
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
 
+- **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
+  them read it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` and
+  `design-r1.md`, design review 1 REVISE (B1: the summary as BoundType fields; B2: ReplaceHolder), re-check ACCEPT) SPEC 3.8, R4's V16:
+  a walk's work is linear in the distinct parts of an interned Type.
+  - Census (BU-55's instrumentation, with root entries told apart from entries once per visit of an outer walk; `g309\census\`): on
+    `D1<ref/i32 during a>` (a member path, a generic callee, `T is Copy`, called Closures) at n = 16 the root walks HasUnsubstitutedOrigin
+    (688,997 visits), HasUnsubstitutedInput, CallAtomsOf and ResultFixedForCall's FixedType (about 98,300 each) grow as 2^n; FixedType
+    asks ContainsOrigin and ProveCopy once per Origin position (ContainsOrigin 524,288 visits, OperandContexts 1.69 M through the Copy
+    proofs). A Closure with two captures (`func [v, u] () => v`, u `during b`) makes ContainsOrigin 4^n (201 M visits, Bind 7.1 s at n =
+    14). On BU-58's projection chains with raw leaves HoldsHolder takes 131,247 visits at n = 16.
+  - The summary (`Binding.OriginSummaries`): per interned Type the Origin expression nodes its parts' Origins and Origin arguments state
+    (Nodes) and those its raw layers state (RawNodes), each distinct, a meet node and its operands included, in the order a walk of the
+    parts meets them first (own Origin, Origin arguments, then each component's), and the holder bit (a `during self` layer inline: the
+    layer, or a Tuple or fixed array with a component holding one). It is formed on its first read from the components' summaries; a Type
+    without CarriesAnyOrigin has the empty summary and no entry; an array equal element by element to a component's is that component's.
+  - Readers, each a loop over the nodes with its own per-node test, a meet node passed over where the walk recursed into its operands
+    (Meet's operands are atoms): HasUnsubstitutedOrigin (both roles), HasUnsubstitutedInput, HasEnvironmentOrigin, CallAtomsOf (CallAtomOf
+    per node), ResultFixedForCall (its FixedOrigin per node), FixedInBody, MentionsOrigin (also Binding's two ContainsOrigin calls:
+    FixedOrigin's capture test and OriginDiagnostics), HoldsHolder (its six sites and NonNullAtLayers). Each becomes an instance member.
+    ∃, ∀ and ∪ folds of a pure per-node test are equal over the set of nodes, and the first-visit order keeps ResultFixedForCall's Copy
+    proofs in dev's order, repeats removed. BU-24's raw-role sites (ArchitectureRulesTest) follow the reads: HasUnsubstitutedOrigin's
+    (ContractCalls) and HoldsHolder's (RawOrigins.Holder) move to the summary, two sites out and two in (OriginSummaries).
+  - Stay walks (the sweep of BU-19's ungated Origin walks): ContainsOrigin's static walk for the old analysis's three calls, marked
+    `[Transitional("R6-check")]` (PLAN G309's residue); StaticOnly and OverInputs, reached from the static Type relation (`PerCallShape`)
+    without a Binding; OriginInheritance's local MentionsOrigin, which compares whole expressions, not meet operands; FirstUnownedOrigin
+    (a depth bound, a Function stop, components before arguments); HasLocalRegion, CarrierOf and RegionBoundsPart, which stop at
+    Function and FunctionItem parts (HasLocalRegion takes BU-55's table in G309's next unit).
+  - Not a shared representation (B1): BoundType's fields, constructor and interning are unchanged; the table is private to Binding, keyed
+    by identity as TypeMemo is, derived only from fields BoundType holds, and read by no other phase. BU-19's rejection of new BoundType
+    summaries and BU-58's of a BoundType bit stand. Nor is it BU-19's rejected "memo across queries (one `Apply` still walks its DAG as a
+    tree)": no query input enters a summary, which is built components-first through the table, so no walk of a DAG as a tree remains.
+    A summary is a function of its Type alone (an interned Type and its Origins never change; a test that reads a binding state, such as
+    PendingAtom or BorrowCondition, runs when a walk reads the nodes), so the table is never cleared, as interning is not (Binding's
+    constructor creates its TyCtxt), and a warm pass allocates nothing.
+  - Tests: TypeDagScalingTest's rows at n = 40 with G309's later units, whose walks the same forms reach; this unit changes no verdict
+    (diagnostic snapshot and Unit runs on both pipelines).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

@@ -295,7 +295,7 @@ public sealed partial class Binding
                 }
 
                 result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
-                if (HasUnsubstitutedOrigin(result, accessor.Binder))
+                if (this.HasUnsubstitutedOrigin(result, accessor.Binder))
                 {
                     this.Fail(node, BindingFailure.Unsupported, true);
                     return false;

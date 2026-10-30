@@ -321,7 +321,7 @@ public sealed partial class Binding
             }
 
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
-                !HasUnsubstitutedOrigin(
+                !this.HasUnsubstitutedOrigin(
                     this.SubstituteStoredOrigins(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)), solution.SlotOwner))
             {
                 settled.Add(i);
@@ -461,7 +461,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
+            if (this.HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
             {
                 Complete(use, null);
                 return false;
