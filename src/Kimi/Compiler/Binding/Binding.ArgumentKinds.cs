@@ -150,7 +150,7 @@ public sealed partial class Binding
     // SPEC 10.5.1, 14.9.2: whether a join is a Literal or waiting control-flow part under the argument probe, or nested in one, so that
     // its call decides the Type its literal sources take (DecidedLater).
     private bool WaitsForCall(Koto target)
-        => this.argumentProbe is { } probe && this.RecordedPart(probe).Kind is PartKind.Literal or PartKind.Call && this.UnderArgumentProbe(target);
+        => this.argumentProbe is { } probe && this.RecordedPart(probe).Kind is PartKind.Literal or PartKind.Call or PartKind.Join && this.UnderArgumentProbe(target);
 
     // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
     // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
@@ -321,13 +321,14 @@ public sealed partial class Binding
         }
 
         if (part.CodeContext.RecoveryCause(part) is null && ControlFlowExpression(part) is { } flow &&
-            this.SurveyResult(flow, scope) is { Literal: true, Typed: false } survey)
+            this.SurveyResult(flow, scope) is { Literal: true, Typed: false, Unknown: false })
         {
             // SPEC 10.5.1 (DECISIONS BU-2, its owner decision (1) as the owner revised it on 2026-10-26, BU-43): control flow is Literal
-            // when every result source other than Never is a literal, since Never supplies nothing at any position; with an unknown
-            // source beside its literals it needs an expectation or a default, so it waits. It is bound once its call selects a
-            // candidate, as an anonymous function is. A recovered part is bound as any other.
-            this.RecordPart(part, survey.Unknown ? PartKind.Join : PartKind.Literal);
+            // when every result source other than Never is a literal, since Never supplies nothing at any position. It is bound once
+            // its call selects a candidate, as an anonymous function is. With an unknown source beside its literals it is bound under the
+            // probe as any other part, where that source call defers and the join waits as a Join (P3). A recovered part is bound as any
+            // other.
+            this.RecordPart(part, PartKind.Literal);
             return true;
         }
 

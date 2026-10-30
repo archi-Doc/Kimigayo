@@ -652,7 +652,7 @@ public sealed partial class Binding
         }
 
         var kind = this.KindOf(node);
-        if (kind != PartKind.Call && !this.AwaitsPosition(node) && !this.Deferred(node))
+        if (!AwaitsCall(node, kind) && !this.AwaitsPosition(node) && !this.Deferred(node))
         {
             return this.LateAdaptation(node, target); // A bound part; one holding what its call completed is formed from its parts below.
         }
