@@ -197,7 +197,10 @@ public class ParameterNameDefaultTest
         void Verify()
         {
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+            if (!c.Generate(TextWriter.Null))
+            {
+                Assert.Fail(MinimalEmissionTest.Describe(c)); // only on failure: the function is measured
+            }
         }
 
         Verify();

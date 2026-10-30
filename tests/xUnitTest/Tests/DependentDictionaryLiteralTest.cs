@@ -157,7 +157,10 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+            if (!c.Generate(TextWriter.Null))
+            {
+                Assert.Fail(MinimalEmissionTest.Describe(c)); // only on failure: the function is measured
+            }
         }
 
         Compile();
