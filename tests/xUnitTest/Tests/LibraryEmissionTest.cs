@@ -56,7 +56,7 @@ public class LibraryEmissionTest
         c.Project.Directory = directory;
         try
         {
-            Assert.True(EmissionArtifacts.Publish(c, out var path, out var failure), failure);
+            Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
             using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
             var root = manifest.RootElement;
             Assert.Equal(testBuild ? "Application" : "Library", root.GetProperty("outputKind").GetString());

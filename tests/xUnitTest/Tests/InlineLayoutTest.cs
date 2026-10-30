@@ -152,7 +152,7 @@ public class InlineLayoutTest
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             Assert.Contains("InvalidCLayout_Kd", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("InternalInvariant_Kd", console.Text, StringComparison.Ordinal);
         }
         finally
         {

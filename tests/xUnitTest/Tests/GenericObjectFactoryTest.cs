@@ -37,7 +37,7 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
-        Assert.DoesNotContain(result.Diagnostics, x => x.Code == "GenerationFailed_Kd");
+        Assert.DoesNotContain(result.Diagnostics, x => x.Code == "InternalInvariant_Kd");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);

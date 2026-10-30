@@ -27,6 +27,14 @@ they land. Base of revision 0: dev `f406b0905` (G2-G7 landed, R5-M162), G8 count
 | G9b2 | 12 residual hand forms; the 3 text asserts plus `FloatEmissionTest.AssertEmissionSupport`'s and `AggregateEmissionTest`'s, which restated the bool (an adapter returned text exactly when false); `AggregateEmissionTest` asserts an Error explains the refusal; Benchmark ×3 (`Require`'s message no longer nullable); the 4 adapters deleted; ARCH, CODEMAP, VERIFICATION | ARCH's Generation row cites R5-M64 (R5-M165 lands with G9b3) |
 | Net | G9b1: tests +1; G9b2: Core −37, Benchmark 0, tests −3, docs 0 | the design's ≈ −45 |
 
+## G9b3 as implemented (rulings Q4-Q9)
+
+| Item | As implemented | Departure |
+| --- | --- | --- |
+| §2.1-§2.2 | `EmissionArtifacts.Publish(compilation, paths, out irPath)` records its failure (`Fail`: invalidate the Emission partition, report at the project with the cause as a note); the missing embedded backend record is `InternalInvariant_Kd` before the `try`; the repeated `NativeConfiguration.Validate` is gone; the 3-argument overload is deleted (Q8); `Project.PublishArtifacts` renders; `ReportPublicationFailure` deleted; the code replaced in place, Input, "The build artifacts cannot be published" (Q9) | none |
+| §2.4 | `EmissionArtifactsTest`: 16 `Publish` calls on the record (`PublicationFailure` reads its note); the 4 rows only `Validate` rejected (`kernel32` static, `unused` with an unknown or no Kind, a packaged supply with a Kind) move to a new theory at `NativeConfiguration.Validate`, with the kernel32 migration and the "disagrees" step; a new Fact for the record (Input, Error, Emission partition) and `kimi build`'s rendering; `LibraryEmissionTest`, `PipelineSwitchTest`; the four `DoesNotContain` read `InternalInvariant_Kd` (Q7) | the 4 rows' move (their rule is preparation's) |
+| §3 | DIAGNOSTICS §4.2 row; ARCH temporaries lose `ReportPublicationFailure` (R6-gen Transitional 1 → 0); CODEMAP's artifacts row; DECISIONS R5-M165 with amendment lines on R5-M18, R5-M64, R5-M162 | history comments naming the old code left as history |
+
 "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
 `src/Kimi/Compiler/`, `Bi/` = `C/Binding/`, `T/` = `tests/xUnitTest/Tests/`. Line numbers are at `f406b0905`. No build, test or
 probe was run. Reach comes from word-boundary greps over `src` (with `src/Benchmark` and `src/Playground`) and `tests`. One history

@@ -103,7 +103,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             output.WriteLine(console.Text);
             Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("InternalInvariant_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
         }
         finally

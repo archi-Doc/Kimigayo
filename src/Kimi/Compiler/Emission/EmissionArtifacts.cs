@@ -2,37 +2,38 @@
 
 using System.Text;
 using System.Text.Json;
+using Kimi.Diagnostics;
 using static Kimi.Compiler.ArtifactFiles;
 
 namespace Kimi.Compiler;
 
-/// <summary>Publication of a checked, matched pre-optimization IR/manifest pair. Does not run native tools.</summary>
+/// <summary>Publication of a checked, matched pre-optimization IR/manifest pair, which records its own failure. Does not run native tools.</summary>
 public static class EmissionArtifacts
 {
-    /// <summary>Publishes both files, with the manifest last, or reports a failure without claiming old files.</summary>
+    /// <summary>Publishes both files, with the manifest last, or records why not in the Emission partition without claiming old files
+    /// (DECISIONS R5-M165): the generation entry's records; <c>ArtifactPublicationFailed_Kd</c> at the project, its cause as a note, for an
+    /// output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the project when the
+    /// compiler's embedded backend record is missing. The publication inputs are checked first, since the generation entry writes into
+    /// the temporary IR file (R5 C0a); preparation has validated the native configuration (DependencyConfiguration).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
+    /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="irPath">The published IR path on success.</param>
-    /// <param name="failure">The publication failure, or null when generation failed: its records are in the Emission partition.</param>
     /// <returns>Whether the complete matched pair was published.</returns>
-    public static bool Publish(Compilation compilation, out string? irPath, out string? failure)
-        => Publish(compilation, null, out irPath, out failure);
-
-    // The publication inputs are checked first, since the generation entry writes into the temporary IR file (R5 C0a).
-    internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath, out string? failure)
+    internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath)
     {
         irPath = null;
-        failure = null;
+        if (WindowsProfile.BackendVersion.Length == 0 || WindowsProfile.BackendSha256.Length != 64)
+        {
+            Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
+            return false;
+        }
+
         string? tempIr = null;
         string? tempManifest = null;
         try
         {
             var project = compilation.Project;
             var settings = project.ProjectFile;
-            if (WindowsProfile.BackendVersion.Length == 0 || WindowsProfile.BackendSha256.Length != 64)
-            {
-                throw new InvalidDataException("The native backend has no adopted version/hash; a candidate cannot certify artifact publication.");
-            }
-
             var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
             paths ??= ArtifactPaths.Create(project);
             var destination = paths.Ir;
@@ -82,7 +83,7 @@ public static class EmissionArtifacts
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            failure = ex.Message;
+            Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
             return false;
         }
         finally
@@ -92,14 +93,17 @@ public static class EmissionArtifacts
         }
     }
 
-    // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.4).
+    // A publication failure, at the project, replaces the partition's records as a generation does.
+    private static void Fail(Compilation compilation, DiagnosticCode code, string? cause)
+    {
+        compilation.Diagnostics.Invalidate(DiagnosticPartition.Emission);
+        compilation.Diagnostics.Report(DiagnosticPartition.Emission, code, compilation.Project.FilePath, note: cause);
+    }
+
+    // Checks every configured library's input, even when unused, and selects the backend supply (SPEC 20.4) of the configuration
+    // preparation validated.
     private static NativeLibraryInput? ResolveBackend(ProjectFile settings)
     {
-        if (NativeConfiguration.Validate(settings) is { } failure)
-        {
-            throw new InvalidDataException(failure);
-        }
-
         NativeLibraryInput? backend = null;
         if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
         {

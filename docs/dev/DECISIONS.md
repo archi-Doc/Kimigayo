@@ -9404,6 +9404,8 @@ structure is recorded here by the unit that first implements it.
     for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
   - Amended by R5-M160 (G4): the temporary sel-only behaviors and the R5 tooling of the package end with the code generator selection.
+  - Amended by R5-M165 (G9b): the owner's choice is implemented: `EmissionArtifacts.Publish` records `ArtifactPublicationFailed_Kd`
+    (Input) and `GenerationFailed_Kd` is gone (net 0 codes); contract failures are `InternalInvariant_Kd`.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
   `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
@@ -10314,6 +10316,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M160 (G4): `verify.ps1 -Codegen` and the old-generator branch of `Generate`, `WriteIr` and `Validate` are deleted.
   - Amended by R5-M161 (G5): the direct test readers are deleted; only the two `src/Benchmark` measurements run the old generator,
     until G7.
+  - Amended by R5-M165 (G9b): the out-string adapters `WriteIr` and `Validate` are deleted (tests and `src/Benchmark` call `Generate`
+    and read its records), and a publication failure is `EmissionArtifacts.Publish`'s own record (`ArtifactPublicationFailed_Kd`).
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -13786,6 +13790,8 @@ structure is recorded here by the unit that first implements it.
     their files, and `LegacyRuntimeHelpers`' whole instance half, not only its formatting requests (one instance, one rule).
   - Amended by R5-M164 (G9a): G9's list is done; `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` are deleted with
     the row's other members.
+  - Amended by R5-M165 (G9b): `Compilation.ReportPublicationFailure` is deleted; `EmissionArtifacts.Publish` records the publication
+    failure (`ArtifactPublicationFailed_Kd`).
 - **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
   design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
   G:R6-gen-del)
@@ -13841,3 +13847,24 @@ structure is recorded here by the unit that first implements it.
   - Behavior-preserving: the diagnostic snapshot and the semantic snapshot (HIR, MIR) equal the base's.
   - Amends, each with its amendment line: BU-24 (`SameModuloOpenOrigins`; the `PlaceOriginSource` exception's first reason),
     R5-M28 (`DictionaryStorageCall`'s callee) and R5-M162 (G9's list).
+- **R5-M165 Publication records its failure; `GenerationFailed_Kd` and the out-string adapters removed (R6-gen G9b)** (2026-10-31,
+  R6-gen; plan §4.9 row G9, §5.4 item 5; R5-M18's G9b with the owner's choice of `ArtifactPublicationFailed_Kd`; design
+  `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q4-Q9; under R5-M64 and R5-M162; Major, G:R6-gen-del)
+  - Rule: publication owns its failure (R5-M64 rejected reporting it in `Generate`). `EmissionArtifacts.Publish` records, replacing
+    the Emission partition's records as a generation does, at the project: `ArtifactPublicationFailed_Kd` (Input, "The build artifacts
+    cannot be published"), its cause as a note (the Input precedent of `ProjectPreparationFailed_Kd` and `SourceReadFailed_Kd`; typed
+    facts are a later Diagnostics unit, Q5), for output I/O and publication-time native configuration and supplies, a dependency
+    module's supplies among them (C-package §3.10, Q4; PLAN's open issue owns its `Unsupported_Kd`); `InternalInvariant_Kd` when the
+    compiler's embedded backend record is missing (a contract failure, Q6). `GenerationFailed_Kd` is replaced in place (net 0 codes);
+    `DiagnosticPartition.Emission` and the `Emission` requirement stay through R6 (R5-M18).
+  - Deleted: `Compilation.ReportPublicationFailure`, `Publish`'s failure text and its public 3-argument overload (Q8), the repeated
+    `NativeConfiguration.Validate` (preparation's `DependencyConfiguration` owns it, C-package §3.10), and at G9b2 the out-string adapters
+    `WriteIr`, `Validate` and their texts. Tests and `src/Benchmark` call `Generate` and read its records; `MinimalEmissionTest.Describe`
+    prints the Emission partition. No `[Transitional("R6-gen")]` remains (plan §5.4 item 5).
+  - Tests: the publication failures assert the record and its note; the native-configuration cases publication no longer repeats are
+    asserted at `NativeConfiguration.Validate`; the four "no `GenerationFailed_Kd`" assertions read `InternalInvariant_Kd`, the
+    generation entry's catch-all (Q7); a publication failure's record and its CLI rendering have a Fact.
+  - Rejected: reusing `ProjectPreparationFailed_Kd` or recategorizing `GenerationFailed_Kd` (C-package §3.10); keeping a string adapter
+    for tests (a second form of the entry).
+  - Amends, each with its amendment line: R5-M18 (the owner's choice, implemented), R5-M64 (the adapters and the publication record) and
+    R5-M162 (`ReportPublicationFailure`).

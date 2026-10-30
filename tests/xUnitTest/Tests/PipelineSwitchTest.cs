@@ -149,9 +149,8 @@ public sealed class PipelineSwitchTest
             using var writer = new StringWriter();
             Assert.False(c.Generate(writer));
             Assert.Empty(writer.ToString());
-            Assert.False(EmissionArtifacts.Publish(c, out var path, out var failure));
+            Assert.False(EmissionArtifacts.Publish(c, null, out var path));
             Assert.Null(path);
-            Assert.Null(failure);
             Assert.Empty(Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories));
             Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         }
@@ -178,7 +177,7 @@ public sealed class PipelineSwitchTest
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             Assert.Null(project.PrepareTests(TestContext.Current.CancellationToken));
             Assert.Contains("Unsupported_Kd\n --> main.kimi:3:12", console.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("InternalInvariant_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
         }
         finally
