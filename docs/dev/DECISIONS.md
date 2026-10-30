@@ -13725,6 +13725,13 @@ structure is recorded here by the unit that first implements it.
     row (no MIR site requests it; a literal checks its duplicates itself, R5-M124) with `HelperNeeds.DictionaryRuntime`,
     `DictionaryHelper.Related` (MIR passes -1), `WriteRawSlice` and `LlvmScalarText.WritePositionConversion` (the old writer's
     alone). The Backend's contracts and ARCH's rows name one generator.
+  - G8c (D5's deletion, Q5's rule of R5-M162): the old Analysis's plans that only the deleted generator read go with the writes that
+    only filled them: `OwnershipBody.SlotResults`, `ResultArrivals`, `ResultWrites`, `Deliveries`, `StringComparisons`, `CallLoans`
+    and `IsConcrete`, their records, and the unread fields `OwnershipMatchPlan.ArmStart`/`ArmCount`, `OwnershipMatchArmPlan`'s
+    decomposition range, `GuardBranch`, `GuardValue` and `GuardCleanupStart`, and `OwnershipDeferredPlan.Continuation`; with them the
+    slot results' result joins, the result declarations' table, `Deliver`'s secured value, `HasCallInspection` and
+    `Condition`'s cleanup start. The operations they annotated (Declare, Write, Deliver, the joins' edges) stay, and so does
+    `SlotResultPlaces`, which chooses a result's Place. The diagnostic and semantic snapshots are unchanged.
   - Records: ARCH drops `EmissionOpcode` (49) and the old pool's clauses of its Layout and Abi rows; CODEMAP drops the old layer's
     row and stems; the Backend's contracts drop the deleted types.
   - Rejected: moving the survivors at G8 (resource names, harness paths; G11's CODEMAP decides the folder); keeping the pool's

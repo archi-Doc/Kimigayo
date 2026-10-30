@@ -98,7 +98,7 @@ public sealed partial class OwnershipAnalysis
             this.body.MatchArmStorage.Add(default);
         }
 
-        this.body.MatchStorage.Add(new(plan, subject, output, armStart, plan.Arms.Count));
+        this.body.MatchStorage.Add(new(plan, subject, output));
         var dispatch = this.Emit(OwnershipOperationKind.MatchDispatch, syntax, subject);
         this.body.OperationSteps[dispatch] = matchIndex;
         var completes = this.flow.Nodes[syntax].CanCompleteNormally;
@@ -139,8 +139,6 @@ public sealed partial class OwnershipAnalysis
             previousGuard = -1;
             var guardEntry = -1;
             var guardBranch = -1;
-            var guardValue = -1;
-            var guardCleanupStart = -1;
             var guardLoan = -1;
             if (arm.Syntax.Guard is { } guard)
             {
@@ -167,10 +165,9 @@ public sealed partial class OwnershipAnalysis
                     }
                 }
 
-                var condition = this.Condition(guard, out guardCleanupStart);
+                var condition = this.Condition(guard);
                 this.EndComparisonLoans(guardDepth, guard);
                 this.comparisonDepth = guardDepth;
-                guardValue = condition;
                 this.candidates.RemoveRange(candidateMark, this.candidates.Count - candidateMark);
                 if (condition >= 0 && this.current >= 0 && this.flow.Nodes[guard].CanCompleteNormally)
                 {
@@ -188,9 +185,8 @@ public sealed partial class OwnershipAnalysis
             var bodyEntry = this.New(OwnershipOperationKind.Branch, arm.Syntax.Body);
             this.Connect(arm.Syntax.Guard is null ? test : guardBranch, bodyEntry, OwnershipEdgeKind.True);
             this.current = bodyEntry;
-            var decompositionStart = this.body.DecompositionStorage.Count;
             this.AcquirePattern(plan, arm.Pattern, subject, neededStart, armStart + i);
-            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart, guardEntry, guardBranch, bodyEntry, guardValue, guardCleanupStart, guardLoan);
+            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, guardEntry, bodyEntry, guardLoan);
 
             var secured = -1;
             if (arm.Syntax.Body is CodeBlockKoto block)

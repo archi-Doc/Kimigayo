@@ -49,7 +49,7 @@ public sealed partial class OwnershipAnalysis
         this.temporaries.Add(new(subject, protocol.Next, this.registrationSequence++, true));
         var matchIndex = this.body.MatchStorage.Count;
         var armStart = this.body.MatchArmStorage.Count;
-        this.body.MatchStorage.Add(new(plan, subject, -1, armStart, 2));
+        this.body.MatchStorage.Add(new(plan, subject, -1));
         this.body.MatchArmStorage.Add(default);
         this.body.MatchArmStorage.Add(default);
         var dispatch = this.Emit(OwnershipOperationKind.MatchDispatch, protocol.Match, subject);
@@ -67,9 +67,8 @@ public sealed partial class OwnershipAnalysis
         var enter = this.New(OwnershipOperationKind.Branch, source.Body);
         this.Connect(test, enter, OwnershipEdgeKind.True);
         this.current = enter;
-        var decomposition = this.body.DecompositionStorage.Count;
         this.AcquirePattern(plan, 0, subject, neededStart, armStart);
-        this.body.MatchArmStorage[armStart] = new(matchIndex, 0, test, decomposition, this.body.DecompositionStorage.Count - decomposition, BodyEntry: enter);
+        this.body.MatchArmStorage[armStart] = new(matchIndex, 0, test, BodyEntry: enter);
         this.Block(source.Body);
         this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);
@@ -84,7 +83,7 @@ public sealed partial class OwnershipAnalysis
         var done = this.New(OwnershipOperationKind.Branch, none.Syntax.Body);
         this.Connect(exhausted, done, OwnershipEdgeKind.True);
         this.current = done;
-        this.body.MatchArmStorage[armStart + 1] = new(matchIndex, none.Pattern, exhausted, this.body.DecompositionStorage.Count, 0, BodyEntry: done);
+        this.body.MatchArmStorage[armStart + 1] = new(matchIndex, none.Pattern, exhausted, BodyEntry: done);
         this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, exit);
         this.temporaries.RemoveRange(loopTempMark, this.temporaries.Count - loopTempMark);
