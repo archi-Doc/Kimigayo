@@ -5779,11 +5779,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     its frozen-P1 shortcut. Every Never form of 14.10.3 shares it (a Never call, also in a `defer`, `$abort`, a transfer, `loop`
     without exit, a diverging operand), and so does every check that reads holder liveness: Loan conflicts and reservations (`k.bump(lose(k@move))`:
     `CallReservationConflict_Kd`). A Drop on an assumed continuation observes like any other cleanup (SPEC 14.10.3: "Cleanup is
-    checked the same way"; 15.6.6: what destruction may observe must be valid there; R4-M33 superseded R4-M24's "observes
-    nothing"), so `Flows` now also keeps a Loan such a Drop observes live before the Never form: `let g = Guard.init(x@ref)`, `g`'s
-    Type with a `drop`, then `x = "z"` before `take("t")` or inside a `loop` without exit, is an error at the write (it was valid on
-    A5). A4's effect rule (R4-M6a, `MirEffects.Dropped`: a Drop only the checks reach runs no destructor) is unchanged: it concerns
-    what runs.
+    checked the same way"; 15.6.6: what destruction may observe must be valid there; its access is R4-M57's one rule `Dropping`,
+    `Observe` where its case Type observes and its A2 group's verdict is not Elide, no group: the case Type alone; R4-M33 superseded
+    R4-M24's "observes nothing"), so `Flows` now also keeps a Loan such a Drop observes live before the Never form:
+    `let g = Guard.init(x@ref)`, `g`'s Type with a `drop`, then `x = "z"` before `take("t")` or inside a `loop` without exit, is an
+    error at the write (it was valid on A5). A4's effect rule (R4-M6a, `MirEffects.Dropped`: a Drop only the checks reach runs no destructor) is
+    unchanged: it concerns what runs.
   - Supersedes R4-M34's backward clause ("a P1 chain's runtime successors only and a P2 chain's every successor"). Its reason, "uses on
     continuations never merge into runtime paths", holds for P1 heads, not for a P2 continuation, which by SPEC 14.10.3 continues from
     its P1 predecessor's state.

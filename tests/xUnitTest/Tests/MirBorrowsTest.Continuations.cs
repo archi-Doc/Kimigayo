@@ -35,10 +35,11 @@ public sealed partial class MirBorrowsTest
 
     // A Move or write before a Never form, in its operands or earlier, conflicts with a Loan a use on its continuation keeps (a Never
     // call, also in a `defer`, `$abort`, `return`, `exit`, `exit to`, `yield`, `continue`, `loop`; a placement's secured right side, a
-    // shared argument, a later statement, a reservation's activation, a holder's `drop` as cleanup, SPEC 14.10.3, 15.6.6), at the location
-    // of its reachable twin (the row after it, named with an n); without a conflicting access (ad4m, r3, d1v, d1x) or with the use after
-    // a P1 join (s4, s5, s6) the program is valid. Each row is a body of `func <name>(c: bool) -> i32` after `var x = "x"`, returning 0,
-    // and its one problem or none.
+    // shared argument, a later statement, a reservation's activation, a holder's `drop` as cleanup, SPEC 14.10.3, 15.6.6). Every error
+    // row asserts its location. A reachable twin, named with an n, errs at the corresponding location: ad4n for ad4, ad4r and ad4a; s1n
+    // for s2, ab1 and s8; exton, yldn, df2n, s7bn, df1n, d1n and d2n each for the row before it; contn for s9 and cont. c1, s3, s7 and
+    // r2 have no twin. Without a conflicting access (ad4m, r3, d1v, d1x) or with the use after a P1 join (s4, s5, s6) the program is
+    // valid. Each row is a body of `func <name>(c: bool) -> i32` after `var x = "x"`, returning 0, and its one problem or none.
     [Theory]
     [InlineData("ad4", "    let y = \"y\"\n    var us: [1 of ref/string] = [y@ref]\n    us[take(x@move)] = x@ref\n", "x")]
     [InlineData("ad4r", "    let y = \"y\"\n    var us: [1 of ref/string] = [y@ref]\n    us[(return cnt(x@move))] = x@ref\n", "x")]
