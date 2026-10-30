@@ -258,10 +258,10 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   R5-M16, R5-M116, R5-M128, R5-M130, R5-M131); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's
   temporaries, recorded by their first units (DECISIONS R5-M18) and reviewed with the owner at R5's exit (DECISIONS R5-M148):
   gate step 2's arena-skip `Unsupported_Kd` (H3, DECISIONS R5-M96, R5-M148); `MonoKind.LegacyRow` (R8; first implemented by C8d, DECISIONS R5-M121); the out-string `WriteIr`/`Validate` adapters (C0a to G9b) and the publication failure's record `Compilation.ReportPublicationFailure` (G7 to G9b, DECISIONS R5-M162) in the generation entry (DECISIONS R5-M64; its sel `build`
-  refusal, K1 to C0b1, went with C0b1, R5-M65); Binding's i128 division and remainder and its 128-bit float conversion gates beside the capability table's operation rows (H7, DECISIONS R5-M53); the legacy comparison composition (A-12, else R7; DECISIONS R5-M68, R5-M148); the F2c Dictionary-storage view and its TyCtxt forward, `TyCtxt.DictionaryStorage`, whose one reader is the instance collector (R8, deleted with `KimiLibrary.DictionaryStorage.cs`; DECISIONS R5-M28, R5-M124); the
-  `Binding.ClosureCall` bridge (R6-gen); `TyCtxt.StorageSubst`, the Self-less substitution of the CallPlan form of
-  `Binding.InstantiateStorageType` (R7, DECISIONS R5-M36); the old generator's specialization view `TyCtxt.InstantiatesInLegacy` and the class
-  `InstanceClass.GenericThroughSpecialization` it reads (G7, DECISIONS R5-M34). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
+  refusal, K1 to C0b1, went with C0b1, R5-M65); Binding's i128 division and remainder and its 128-bit float conversion gates beside the capability table's operation rows (H7, DECISIONS R5-M53); the legacy comparison composition (A-12, else R7; DECISIONS R5-M68, R5-M148); the F2c Dictionary-storage view and its TyCtxt forward, `TyCtxt.DictionaryStorage`, whose one reader is the instance collector (R8, deleted with `KimiLibrary.DictionaryStorage.cs`; DECISIONS R5-M28, R5-M124);
+  `TyCtxt.StorageSubst`, the Self-less substitution of the CallPlan form of `Binding.InstantiateStorageType` (R7, DECISIONS R5-M36; the
+  `Binding.ClosureCall` bridge and the old generator's specialization view `TyCtxt.InstantiatesInLegacy` went at R6-gen's G7, DECISIONS
+  R5-M162). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
   contract is unmarked; only its publisher walk and private state disappear at R7.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the

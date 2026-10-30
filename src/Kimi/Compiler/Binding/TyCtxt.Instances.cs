@@ -6,9 +6,8 @@
 // function's calls dispatch (Dispatches), and the Origin-erased form of a Type and a substitution (Erase), the one identity of instance
 // keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3).
 // Input: a definition's BindingSymbol (a named or anonymous function, an accessor's executing function, a property) once the pass has bound
-// its schemas, or for EnclosingFunction a scope; for Erase, an interned Type or substitution. Output: a class per definition (Closed,
-// Generic, GenericThroughSpecialization), kept across passes with no edit and discarded at an edit (Binding.Invalidate); an interned erased
-// value, memoized like the interning.
+// its schemas, or for EnclosingFunction a scope; for Erase, an interned Type or substitution. Output: whether a definition instantiates,
+// kept across passes with no edit and discarded at an edit (Binding.Invalidate); an interned erased value, memoized like the interning.
 // Erase: every Origin becomes static (a reference's or a Slice's, written or inferred, every Origin argument and every Origin binding of a
 // substitution or closure context) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self and
 // the declaring Type are kept; idempotent; Types whose instances differ in Origins only erase to one value; it only interns, never
@@ -16,8 +15,6 @@
 // Invariants: true exactly when the definition or a declaration enclosing it on its scope chain has a Type, Semantics or length slot, even an
 // unused one (SPEC 6.1.3). A specialization declares no slot (SPEC 8.13.1), so one in a generic container, and every declaration nested in
 // it, is generic in the container's slots, its instance key holding the container's arguments (SPEC 8.13.3). Origin slots never count.
-// Temporary (R6-gen; G7 deletes it with the old generator, its one reader): InstantiatesInLegacy, the old generator's view, which counts a
-// specialization and the declarations nested in it as closed (R5-M21's former rule, the only one under which it generates them correctly).
 // Must not: decide by syntax what a declaration's schema publishes, write any state other than its memos and the interning, or prove
 // anything on an erased value (proofs read Origins; an instance's proofs run on its representative).
 
@@ -27,30 +24,26 @@ namespace Kimi.Compiler;
 
 internal sealed partial class TyCtxt
 {
-    // Per definition; its scope chain and the schemas on it change only at an edit.
-    private readonly Dictionary<BindingSymbol, InstanceClass> instances = new();
+    // Per definition, whether it instantiates; its scope chain and the schemas on it change only at an edit.
+    private readonly Dictionary<BindingSymbol, bool> instances = new();
 
     // Per Type and per substitution, the erased form, its own erasure included; erasure is structural, so like the interning they stay.
     private readonly Dictionary<BoundType, BoundType> erasedTypes = new();
     private readonly Dictionary<Subst, Subst> erasedSubsts = new();
     private BoundOrigin[] statics = []; // Every entry is BoundOrigin.Static.
 
-    // Whether the walk from a definition meets a slot, and whether a specialization lies before it.
-    private enum InstanceClass : byte
-    {
-        Closed,
-        Generic,
-        [Transitional("R6-gen", Reason = "G7 deletes the old generator, the one reader that tells it from Generic.")]
-        GenericThroughSpecialization,
-    }
-
     // SPEC 6.1.3, 8.15.1: whether a body keyed by the definition is generated per closed substitution of its own and its enclosing
     // declarations' slots rather than once.
-    internal bool Instantiates(BindingSymbol definition) => this.Classify(definition) != InstanceClass.Closed;
+    internal bool Instantiates(BindingSymbol definition)
+    {
+        if (!this.instances.TryGetValue(definition, out var result))
+        {
+            result = Walk(definition);
+            this.instances.Add(definition, result);
+        }
 
-    // The old generator's view (GenericStoragePlan.IsGeneric): a specialization and the declarations nested in it count as closed.
-    [Transitional("R6-gen", Reason = "G7 deletes the old generator, its one reader (DECISIONS R5-M34).")]
-    internal bool InstantiatesInLegacy(BindingSymbol definition) => this.Classify(definition) == InstanceClass.Generic;
+        return result;
+    }
 
     // R4-M51: discarded with the source analysis at an edit.
     internal void ResetInstances() => this.instances.Clear();
@@ -108,24 +101,21 @@ internal sealed partial class TyCtxt
     private static bool HasOwnOrigin(BoundType type) => type.Origin is not null || type.Kind == BoundTypeKind.Slice ||
         (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq);
 
-    // The definition, then each declaration its scope chain passes, up to the first with a slot.
-    private static InstanceClass Walk(BindingSymbol definition)
+    // Whether the definition, or a declaration its scope chain passes, has a slot.
+    private static bool Walk(BindingSymbol definition)
     {
-        var specialized = false;
         BindingSymbol? declaration = definition;
         for (var scope = definition.Scope; ; scope = scope.Parent)
         {
             if (declaration?.Schema is { GenericSlots.Count: > 0 })
             {
-                return specialized ? InstanceClass.GenericThroughSpecialization : InstanceClass.Generic;
+                return true;
             }
 
             if (scope is null)
             {
-                return InstanceClass.Closed;
+                return false;
             }
-
-            specialized |= declaration?.Declaration is FunctionKoto { IsSpecialization: true };
 
             // A scope's owner contributes the slots of the declaration it is, never those of a symbol it names (a Pattern's Type).
             declaration = scope.Owner.BoundSymbol is { } owner && ReferenceEquals(owner.Declaration, scope.Owner) ? owner : null;
@@ -192,16 +182,5 @@ internal sealed partial class TyCtxt
         }
 
         return this.statics.AsSpan(0, count);
-    }
-
-    private InstanceClass Classify(BindingSymbol definition)
-    {
-        if (!this.instances.TryGetValue(definition, out var result))
-        {
-            result = Walk(definition);
-            this.instances.Add(definition, result);
-        }
-
-        return result;
     }
 }
