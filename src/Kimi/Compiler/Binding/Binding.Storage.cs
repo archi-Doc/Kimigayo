@@ -296,20 +296,37 @@ public sealed partial class Binding
     }
 
     // WithUnstatedOrigins' inverse (DECISIONS BU-50): a kept part with each Unstated layer stating no Origin, the Type a body reads, so no
-    // MIR local states Unstated (MirValidator's Local row). Only a part carrying a raw Origin is walked.
+    // MIR local states Unstated (MirValidator's Local row). Only a part carrying a raw Origin is walked, and a part's result depends on the
+    // part alone, so each distinct part is rewritten once per call (DECISIONS BU-19, PLAN G309).
     private BoundType? WithoutUnstated(BoundType? kept)
+        => kept is null || !kept.CarriesRawOrigin ? kept : this.UnmarkedParts(kept, this.rewrittenParts.Begin(this.storageVersion));
+
+    // A component's result (WithoutUnstated), each distinct one carrying a raw Origin, so with components, rewritten once per query.
+    private BoundType UnmarkedPart(BoundType part, uint query)
     {
-        if (kept is null || !kept.CarriesRawOrigin)
+        if (!part.CarriesRawOrigin)
         {
-            return kept;
+            return part;
         }
 
+        if (!this.rewrittenParts.TryGet(part, query, out var result))
+        {
+            result = this.UnmarkedParts(part, query);
+            this.rewrittenParts.Set(part, query, result);
+        }
+
+        return result!;
+    }
+
+    // A kept part carrying a raw Origin, its components rewritten first (WithoutUnstated).
+    private BoundType UnmarkedParts(BoundType kept, uint query)
+    {
         var components = this.RentTypes(kept.Components.Count);
         try
         {
             for (var i = 0; i < kept.Components.Count; i++)
             {
-                components[i] = this.WithoutUnstated(kept.Components[i])!;
+                components[i] = this.UnmarkedPart(kept.Components[i], query);
             }
 
             var parts = components.AsSpan(0, kept.Components.Count);
@@ -642,14 +659,32 @@ public sealed partial class Binding
         return origin;
     }
 
+    // One call is one query of rewrittenParts, its binder, arguments, images and corresponding binder fixed: a part's result depends on the
+    // part alone, so each distinct part is substituted once per call (DECISIONS BU-19, PLAN G309).
     private BoundType SubstituteStoredOrigins(
         BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, Koto? correspondingBinder = null)
+        => arguments.IsEmpty && images.IsEmpty && correspondingBinder is null
+            ? type : this.StoredOriginParts(type, binder, arguments, images, correspondingBinder, this.rewrittenParts.Begin(this.storageVersion));
+
+    // A component's result (SubstituteStoredOrigins); a leaf is cheaper to substitute again than to record.
+    private BoundType StoredOriginPart(BoundType part, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images, Koto? correspondingBinder, uint query)
     {
-        if (arguments.IsEmpty && images.IsEmpty && correspondingBinder is null)
+        if (part.Components.Count == 0)
         {
-            return type;
+            return this.StoredOriginParts(part, binder, arguments, images, correspondingBinder, query);
         }
 
+        if (!this.rewrittenParts.TryGet(part, query, out var result))
+        {
+            result = this.StoredOriginParts(part, binder, arguments, images, correspondingBinder, query);
+            this.rewrittenParts.Set(part, query, result);
+        }
+
+        return result!;
+    }
+
+    private BoundType StoredOriginParts(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images, Koto? correspondingBinder, uint query)
+    {
         // Without a corresponding binder this rewrites Origins only, so an Origin-free
         // subtree is already its own result; skip its scratch frames and recursion.
         if (!type.CarriesAnyOrigin && correspondingBinder is null)
@@ -681,7 +716,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, images, correspondingBinder);
+                components[i] = this.StoredOriginPart(type.Components[i], binder, arguments, images, correspondingBinder, query);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 

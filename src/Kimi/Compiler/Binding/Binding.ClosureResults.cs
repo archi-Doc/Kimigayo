@@ -21,8 +21,29 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 15.8.2, 15.6.5: the inferred result a classified Closure publishes, each Origin by PublishedOrigin; a Function Type component
-    // keeps its own per-call Origins.
+    // keeps its own per-call Origins. A part's result depends on the part alone, so each distinct part is rewritten once per call
+    // (rewrittenParts; DECISIONS BU-19, PLAN G309).
     private BoundType PublishedResult(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType type)
+        => this.PublishedParts(function, receiver, body, type, this.rewrittenParts.Begin(this.storageVersion));
+
+    // A component's result (PublishedResult); a leaf is cheaper to rewrite again than to record.
+    private BoundType PublishedPart(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType part, uint query)
+    {
+        if (part.Components.Count == 0)
+        {
+            return this.PublishedParts(function, receiver, body, part, query);
+        }
+
+        if (!this.rewrittenParts.TryGet(part, query, out var result))
+        {
+            result = this.PublishedParts(function, receiver, body, part, query);
+            this.rewrittenParts.Set(part, query, result);
+        }
+
+        return result!;
+    }
+
+    private BoundType PublishedParts(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType type, uint query)
     {
         if (!type.CarriesAnyOrigin || type.Kind == BoundTypeKind.Function)
         {
@@ -36,7 +57,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.PublishedResult(function, receiver, body, type.Components[i]);
+                components[i] = this.PublishedPart(function, receiver, body, type.Components[i], query);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 

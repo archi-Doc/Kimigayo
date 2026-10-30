@@ -8817,8 +8817,19 @@ resumed by R4-M86 (2026-10-20).
     A summary is a function of its Type alone (an interned Type and its Origins never change; a test that reads a binding state, such as
     PendingAtom or BorrowCondition, runs when a walk reads the nodes), so the table is never cleared, as interning is not (Binding's
     constructor creates its TyCtxt), and a warm pass allocates nothing.
-  - Tests: TypeDagScalingTest's rows at n = 40 with G309's later units, whose walks the same forms reach; this unit changes no verdict
-    (diagnostic snapshot and Unit runs on both pipelines).
+  - The walks no summary answers take BU-19's tables, each entry call a query (G309's second unit): HasLocalRegion on `visitedParts`, as
+    RegionBoundsPart is; AddStoredPremises on `visitedParts` (a revisit adds the same premise edges, which the closure reaches anyway);
+    AccumulateRequirements on `visitedParts` with one state bit per polarity (a revisit at a met polarity repeats joins and keepers,
+    duplicates only, and a join a revisit would have made after a slot it reads changed is made when the declaration is visited again,
+    its self-edge queueing it, so the least fixed point is the same); and the leaf rewrites SubstituteStoredOrigins, WithoutUnstated and
+    PublishedResult on `rewrittenParts`, with WithoutRawOrigins and WithUnstatedOrigins (none calls a user of the table while it walks).
+    ReplaceHolder reads the holder bit: a part holding no `during self` layer is its own image (Rebuild of unchanged components returns
+    the interned part), which replaces its copy of HoldsHolder's rule; a declaration writes the parts holding one inline (no Type
+    argument or projection states `during self`, InvalidOriginBinding_Kd), so they form a tree of the text's size and need no table.
+  - Tests: TypeDagScalingTest's raw projection-chain rows (`AWrittenProjectionDagIsWalkedOncePerPart` at n = 40,
+    `AWrittenTypeDagIsWalkedOncePerWrittenType` at n = 30) lose Explicit; `AHolderReadRebuildsOnlyThePartsHoldingTheLayer` (n = 40: an
+    instance's holder Field at the end of the chain D_i, and a projection chain beside the layer). The summary's readers' verdicts are
+    dev's (diagnostic snapshot and Unit runs on both pipelines).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

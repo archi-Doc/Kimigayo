@@ -62,6 +62,9 @@ public sealed partial class Binding
         return this.ReplaceHolder(type, path.Origin);
     }
 
+    // A part holding no `during self` layer is its own image (HoldsHolder, its Origin summary's bit), so only the parts holding one are
+    // rebuilt, each a Tuple or fixed array a declaration writes inline: no Type argument or projection states `during self` (SPEC 5.7;
+    // PLAN G309).
     private BoundType ReplaceHolder(BoundType type, BoundOrigin? image)
     {
         if (type.RawOrigin?.Kind == OriginKind.Holder)
@@ -69,7 +72,7 @@ public sealed partial class Binding
             return this.types.Pointer(type.Components[0], image);
         }
 
-        if (!type.CarriesRawOrigin || type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
+        if (!this.HoldsHolder(type))
         {
             return type;
         }
