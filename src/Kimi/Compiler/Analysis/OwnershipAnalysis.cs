@@ -22,6 +22,10 @@ public sealed partial class OwnershipAnalysis
     private readonly List<LoopFrame> loops = new();
     private readonly List<int> arguments = new();
     private readonly HashSet<InvocationKoto> referenceCalls = new(ReferenceEqualityComparer.Instance);
+
+    // The located Unsupported_Kd at which this analysis stops (Stop, Stopped).
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private readonly List<OwnershipIssue> stops = new();
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
     private bool fixedArrayWitnesses;
@@ -87,9 +91,10 @@ public sealed partial class OwnershipAnalysis
             return this.Result;
         }
 
-        if (this.GateReceiverDependentCalls(binding))
+        this.GateReceiverDependentCalls(binding);
+        if (this.stops.Count != 0)
         {
-            return this.Result = new(false, 0, this.issues.Count);
+            return this.Stopped();
         }
 
         if (this.ReportUnprovenOriginObligations())
@@ -114,6 +119,11 @@ public sealed partial class OwnershipAnalysis
 
         this.AnalyzeLibraryBodies(0);
         this.ValidateEffectBounds();
+        if (this.stops.Count != 0)
+        {
+            return this.Stopped();
+        }
+
         var verified = this.flow.Issues.Count == 0 && binding.LintErrors == 0 && this.flow.PendingBinding.Count == 0 && this.issues.Count == 0;
         if (!verified)
         {
@@ -151,28 +161,58 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
+        this.stops.Clear();
         this.invalidDefaults.Clear();
         this.checkedDefaults.Clear();
         this.candidates.Clear();
     }
 
     // SPEC 15.8.2 (DECISIONS R4-M126 §2.13, R4-M152; the owner's D5 exception, OQ-F7-1 (vi)): Binding binds a value call whose result
-    // depends on its call receiver, which this analysis cannot judge, so a program with one gets the located Unsupported_Kd at each such
-    // call, the call's current plan deciding (F4), and nothing else of it is analyzed, as R1's Binding failure left it.
+    // depends on its call receiver, which this analysis cannot judge, so a program with one stops at each such call (Stop), the call's
+    // current plan deciding (F4), before any body is analyzed, as R1's Binding failure left it.
     [Transitional("R6-check", Reason = "The old analysis's gate goes with the old analysis.")]
-    private bool GateReceiverDependentCalls(Binding binding)
+    private void GateReceiverDependentCalls(Binding binding)
     {
-        var gated = false;
         foreach (var call in binding.ReceiverDependentCalls)
         {
             if (call.BoundValueCall is { ReceiverDependentResult: true })
             {
-                this.issues.Add(new(call, OwnershipRequirement.Unsupported));
-                gated = true;
+                this.Stop(call);
+            }
+        }
+    }
+
+    // The old analysis's one stop (the owner's D5 exceptions until R6-check, which deletes this analysis): a program with a form this
+    // analysis cannot judge gets the located Unsupported_Kd at each such form and nothing else of it is reported, as if nothing else were
+    // analyzed: R1's receiver-dependent calls (the gate above, R4-M126 (vi)) and every Type SupportsType refuses (the owner's (a) of
+    // 2026-10-31, 「すべて推奨の内容でお願いします」, DECISIONS R4-M159: a Type it does not model, such as a Closure Type with Origin
+    // arguments, would otherwise reach its Loan analysis).
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private void Stop(Koto at)
+    {
+        foreach (var stop in this.stops)
+        {
+            if (ReferenceEquals(stop.Source, at))
+            {
+                return;
             }
         }
 
-        return gated;
+        this.stops.Add(new(at, OwnershipRequirement.Unsupported));
+    }
+
+    // The analysis result of a program that stopped: its stops' located Unsupported_Kd alone, no body verified.
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private OwnershipResult Stopped()
+    {
+        this.issues.Clear();
+        this.issues.AddRange(this.stops);
+        for (var i = 0; i < this.bodies.Count; i++)
+        {
+            this.bodies[i].IsVerified = false;
+        }
+
+        return this.Result = new(false, 0, this.issues.Count);
     }
 
     private void ReportDiagnostics(IReadOnlyList<OwnershipIssue> reportedIssues)
@@ -656,9 +696,15 @@ public sealed partial class OwnershipAnalysis
             DefaultContext = this.defaultContext,
             CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
-        if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
+        var supported = neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type);
+        if (invalidCopy || !supported)
         {
             this.Unsupported(source);
+        }
+
+        if (!supported)
+        {
+            this.Stop(source); // The owner's (a) (DECISIONS R4-M159): the analysis stops where SupportsType refuses a Type.
         }
 
         return id;
