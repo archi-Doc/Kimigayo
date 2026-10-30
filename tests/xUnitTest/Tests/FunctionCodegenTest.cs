@@ -1454,8 +1454,7 @@ public sealed partial class FunctionCodegenTest
         Assert.NotEqual(0, writer.ToString().Length);
         Assert.Empty(Records(c));
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Null(failure);
+        Assert.True(c.Generate(TextWriter.Null));
     }
 
     // I1: the same program gives the same text, in one compilation and in two.

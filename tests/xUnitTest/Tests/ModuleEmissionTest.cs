@@ -88,9 +88,9 @@ public class ModuleEmissionTest
         Emit(c);
         void Write()
         {
-            if (!c.WriteIr(TextWriter.Null, out var failure))
+            if (!c.Generate(TextWriter.Null))
             {
-                throw new InvalidOperationException(failure);
+                throw new InvalidOperationException(MinimalEmissionTest.Describe(c));
             }
         }
 

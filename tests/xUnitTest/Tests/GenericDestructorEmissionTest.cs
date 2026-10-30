@@ -179,9 +179,9 @@ public class GenericDestructorEmissionTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.WriteIr(TextWriter.Null, out var error))
+            if (!c.Generate(TextWriter.Null))
             {
-                throw new InvalidOperationException(error);
+                throw new InvalidOperationException(MinimalEmissionTest.Describe(c));
             }
         }));
     }

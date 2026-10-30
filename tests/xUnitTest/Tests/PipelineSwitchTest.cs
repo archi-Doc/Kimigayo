@@ -125,8 +125,6 @@ public sealed class PipelineSwitchTest
         var items = set.Items.ToArray();
         Assert.Equal(generated, Enumerable.Range(0, items.Length).Where(set.IsGenerated).Select(x => items[x].Key.Body.Def.Decl?.Name ?? "top").Order());
 
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Null(failure);
         Assert.True(c.Generate(TextWriter.Null));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
     }
@@ -271,9 +269,8 @@ public sealed class PipelineSwitchTest
             c.ReportAnalysis();
             var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
             Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
-            Assert.False(c.WriteIr(TextWriter.Null, out var failure));
-            Assert.Contains("MIR", failure);
-            Assert.False(c.Generate(TextWriter.Null));
+            Assert.False(c.Generate(TextWriter.Null)); // the gate's step 1: the MIR's record, which check published, adds no Emission record
+            Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         }
     }
 

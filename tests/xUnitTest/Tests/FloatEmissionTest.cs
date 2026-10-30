@@ -187,17 +187,15 @@ public class FloatEmissionTest
     internal static void AssertEmissionSupport(Compilation c, bool expected)
     {
         using var writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Equal(expected, c.WriteIr(writer, out var error));
+        Assert.Equal(expected, c.Generate(writer));
         if (expected)
         {
             Assert.True(c.Binding.Result.IsComplete);
             Assert.True(c.Analysis.IsVerified);
-            Assert.Null(error);
             Assert.NotEmpty(writer.ToString());
         }
         else
         {
-            Assert.NotNull(error);
             Assert.Empty(writer.ToString());
         }
     }

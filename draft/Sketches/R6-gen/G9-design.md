@@ -17,6 +17,16 @@ they land. Base of revision 0: dev `f406b0905` (G2-G7 landed, R5-M162), G8 count
 | DECISIONS | R5-M164 with amendment lines on BU-24 (`PlaceOriginSource`'s removal condition: "BU states it at review", Q3), R5-M28 and R5-M162 | none |
 | Net | Binding −92, Analysis 0, tests 0, DECISIONS +23 | the design's ≈ −95 |
 
+## G9b1 and G9b2 as implemented
+
+| Item | As implemented | Departure |
+| --- | --- | --- |
+| G9b1 regex (510 files) | 1,227 `Describe` calls; 913 adapter calls: 634 `out _` forms, 155 `Assert.True(X.M(.., out var e), e)` forms, 124 forms whose text fed `Describe` | the 279 regex-able text forms moved here from G9b2: removing `Describe`'s text parameter needs them |
+| G9b1 by hand | 7 sites whose text fed `Describe` through a local, a helper or a reused variable; `Describe(Compilation)` adds the Emission partition's records | — |
+| G9b1, G8 review | `FunctionCodegenTest`'s `Signature` calls `WrittenModule(c, module, out written)`; `WrittenModule(c)` makes its own module | — |
+| G9b2 | 12 residual hand forms; the 3 text asserts plus `FloatEmissionTest.AssertEmissionSupport`'s and `AggregateEmissionTest`'s, which restated the bool (an adapter returned text exactly when false); `AggregateEmissionTest` asserts an Error explains the refusal; Benchmark ×3 (`Require`'s message no longer nullable); the 4 adapters deleted; ARCH, CODEMAP, VERIFICATION | ARCH's Generation row cites R5-M64 (R5-M165 lands with G9b3) |
+| Net | G9b1: tests +1; G9b2: Core −37, Benchmark 0, tests −3, docs 0 | the design's ≈ −45 |
+
 "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
 `src/Kimi/Compiler/`, `Bi/` = `C/Binding/`, `T/` = `tests/xUnitTest/Tests/`. Line numbers are at `f406b0905`. No build, test or
 probe was run. Reach comes from word-boundary greps over `src` (with `src/Benchmark` and `src/Playground`) and `tests`. One history

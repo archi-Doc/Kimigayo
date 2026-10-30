@@ -2,6 +2,7 @@
 
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -86,9 +87,10 @@ public class AggregateEmissionTest
     public void UnsupportedAggregateShapesRemainExplicit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
+        c.ReportAnalysis();
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out var error));
-        Assert.False(string.IsNullOrEmpty(error));
+        Assert.False(c.Generate(writer));
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error); // check's or Generate's record explains it
         Assert.Equal(string.Empty, writer.ToString());
     }
 

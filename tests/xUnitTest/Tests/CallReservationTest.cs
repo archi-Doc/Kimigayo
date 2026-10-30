@@ -64,7 +64,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.True(c.Analysis.IsVerified, name + "\n" + string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), name + ": " + error);
+        Assert.True(c.Generate(TextWriter.Null), name + ": " + MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("CallReservation" + name, Cell + body, string.Empty);
     }
 

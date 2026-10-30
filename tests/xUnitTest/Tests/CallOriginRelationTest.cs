@@ -225,7 +225,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         else
         {
             Assert.Empty(errors);
-            Assert.True(MinimalEmissionTest.Analyze(source).Validate(out var issue), issue);
+            var c = MinimalEmissionTest.Analyze(source);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
 
         Assert.Contains(text, source, StringComparison.Ordinal);

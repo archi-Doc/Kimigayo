@@ -107,7 +107,7 @@ public class CompilerPipelineBenchmark
 
         // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage (DECISIONS R5-M94).
         Capture(5, timestamps, allocations);
-        this.Require(result.WriteIr(output, out var failure), failure);
+        this.Require(result.Generate(output), "Generation failed; the Emission partition records why.");
         Capture(6, timestamps, allocations);
         return result;
     }
@@ -122,11 +122,11 @@ public class CompilerPipelineBenchmark
     }
 
     // A failure names its input, so a run that stops at one is identifiable without counting inputs.
-    private void Require(bool condition, string? failure)
+    private void Require(bool condition, string failure)
     {
         if (!condition)
         {
-            throw new InvalidOperationException($"size={this.Size}, shape={this.Shape}: {failure ?? "Compiler benchmark failed."}");
+            throw new InvalidOperationException($"size={this.Size}, shape={this.Shape}: {failure}");
         }
     }
 
