@@ -765,10 +765,12 @@ public class ClosureEnvironmentOriginTest
         "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
             "    c()\n    return 0\n",
         "b@uniq")]
+    // D-1 (the owner, 2026-10-29, 「選択肢 (a)：引数に記録し、payload を関連位置に添える」, G216 (a)): the call records the relation that its
+    // argument's contextual payload `a@uniq` supplies at the argument `.Some(a@uniq)`, with the payload as a related location.
     [InlineData(
         "func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n" +
             "        swap3(.Some(a@uniq), b@uniq)\n    c()\n    return 0\n",
-        "a@uniq")]
+        ".Some(a@uniq)")]
     [InlineData(
         ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let local: i32 = 1\n" +
             "        var l = local@ref\n        fu(l@uniq)\n        a = l\n    c()\n    return 0\n",

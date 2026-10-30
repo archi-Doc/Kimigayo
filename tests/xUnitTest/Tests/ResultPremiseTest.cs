@@ -12,7 +12,7 @@ namespace XunitTest;
 // SPEC 15.3.7, 15.6.1, 15.6.5: a signature's result-Type well-formedness is a premise of its definition and an obligation at each use.
 // A call solves its fresh Origins under the premise, so a result over body-local borrows is bounded by every Origin it holds; where an
 // argument pins an Origin so that no solution satisfies it, the substituted result's relation is a wellFormed record at the call.
-public class ResultPremiseTest
+public partial class ResultPremiseTest
 {
     private const string Main = "public func main() => ()\n";
 
