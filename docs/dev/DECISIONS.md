@@ -5777,12 +5777,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     answer. MirBorrowsTest's mb27 pins move under the planning session's mb27 decision (2026-10-29): 34 -> 33 causes, 27e4888a2ae9's
     derived conflict goes, one record at the call's result fit (SPEC 15.3.6). Kept apart (the owner's (i)): c2bg, c2dg,
     c2_fnvalue_converted_weaker, c15, p1b.
-  - Cost (D-2; 2026-10-30, A edfd4afee, A' a copy, B 3239f9bff, one folder, CPU 2 pinned, tiering off, interleaved): Bind (BindBench
-    minima) cold B/A' Hello 1.004, Milestone26 1.010, census (121 programs) 0.987; warm 1.007, 1.005, 0.992 (A'/A up to 1.016); cold
-    +24 B per program (census +3,864 B of 592.8 MB), warm 0 B. A5 step 4 on the census (G258 host, 3 runs x 8): B/A' 1.0046, Work,
-    Bytes, problems and allocation equal; MIR step 2 0.9954. Diagnostic snapshot: 0 differences against edfd4afee. Mir ledger:
-    3,413 -> 3,482 rows, all new rows from the shared tests' programs but swap3's row moving to its argument and one record becoming
-    an obligation (no old-only row); three A5 located Unsupported_Kd rows of nested Function Type results leave with G216 (b)'s cause.
+  - Cost (D-2; revision 2 remeasured on the final head, 2026-10-30: A dev 3e614b427, A' its byte copy, B ac1ae740e, one folder, CPU 2
+    pinned, tiering off, sides interleaved and rotated; R5's batch 62 window may have run beside it): Bind (BindBench minima over 3
+    rounds) cold B/A' Hello 1.015, Milestone26 1.015, census (121 programs, 2 rounds) 1.037; warm 1.015, 1.016, 1.036 (A'/A 0.994 to
+    1.008); cold allocation +19 KB per program (census +2.5 MB of 595.4 MB, +0.42%), warm 0 B on every program (BU's condition for
+    CallableInstance.Outer and ArgumentFact's storage). A5 on the census (G258 host, 3 runs x 8): step 4 B/A' 0.999 (B/A 0.993, A'/A
+    0.995), step 2 B/A' 1.006; Work, Bytes and problems equal, step 4 allocation +112 B of 88.6 MB, warm step 4 and step 2 allocation
+    equal. Round 1's line (B 3239f9bff against edfd4afee: cold B/A' 0.987 to 1.010, cold +24 B, warm 0 B, A5 1.0046) is superseded.
+    Verification of ac1ae740e: default Session 26,438 with the five kept-apart failures; diagnostic snapshot 0 differences against
+    shared-base/3e614b427 (verify-commit matched); mir ledger 3,429 -> 3,514 rows: swap3's row at its argument, mb27's at its return,
+    WrittenParameter's at `t` and its Loan conflict complete, three nested-result located Unsupported_Kd rows gone, the rest the new
+    tests' programs, and no both->old row.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
