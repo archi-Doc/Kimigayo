@@ -253,7 +253,11 @@ Kept: R5-M75's operand rule and root Limit; the legacy twin (A-12/H11).
 - Template key: a new key use of `MonoKind.Builtin` (template Type + `Body.Erased`); its representative must close the template Types
   (TypeOf) while the signature uses the instance Self. A reviewer checks `(T, f64)` at `T = f64` natively.
 - Admission depth: each nesting level is one admission (`DepthLimit` 128); Layout's 64-level window binds first for storage, but a deep
-  caller chain plus a 64-deep nest could reach a `GenerationResourceLimit_Kd` the inline form did not (unverified).
+  caller chain plus a 64-deep nest could reach a `GenerationResourceLimit_Kd` the inline form did not. Confirmed (review round 1,
+  2026-10-31): an 80-deep generic chain whose last function compares a closed 50-deep Tuple nest gives it at `x == y` on D, none on the
+  base; the same chain ending in nested generic constructors 50 deep gives it on the base too (body items to depth 128), so it is K 4.3's
+  depth rule, not a comparison exception. The planning session's ruling: no code change; a Known limit in R5-M166; counting only
+  recurring instantiation steps is a collector unit of its own (PLAN).
 - Layout records: R5-M75's MIR had a layout use per site for nodes past a ref layer; a shared item admits its children once (as the
   Mapping shims already do, R5-M149). §5.3 lays out the root per site; children past a ref per site need a walk per site (Q6).
 - (i) open issue for R4 (A-12): `Binding.Witnesses`' comparison clause walks the legacy plan per path (A4's `Require`); the same DAG

@@ -13849,4 +13849,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a memo in the builder (Places differ per occurrence); one synthesized MIR body per node (a second mechanism, and the
     Contract mapping stays exponential); operator items keyed by the instance Type (wrong for `(T, f64)` at `T = f64`); the whole
     tuple through the Contract mapping (NaN-reflexive `==`, no float `Comparable`); an inline threshold; a four-valued result.
+  - Known limit: a comparison's composite parts are admitted one level each (K 4.3's depth, `DepthLimit` 128), so a Tuple nested
+    deeper than 128 less the admission chain's depth reaches `GenerationResourceLimit_Kd` at the comparison, as a constructor chain of
+    that depth already does (probes: an 80-deep generic chain comparing a closed 50-deep nest; nested generic constructors 50 deep at
+    the end of the same chain give it on the base too). Counting only recurring instantiation steps is a collector unit of its own.
   - Open: the owner's question on K package 4.3's Builtin key (the mode, the template Type and instance), as R5-M127 did.
