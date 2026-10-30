@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -19,6 +20,19 @@ internal sealed partial class InstanceCollector
     {
         var entry = this.Set.Items[item];
         return this.StorageSignature(entry.RepresentativeType!, entry.Key.Symbol, (PropertyWitnessKind)entry.Key.Variant, slot, out count);
+    }
+
+    /// <summary>Gets the node a comparison item compares (SPEC 13.4, 13.4.1; DECISIONS R5-M166), the one its targets and its shim's function
+    /// follow: TyCtxt.Comparison of its function's Contract (TyCtxt.Contract) on its key's Type at the template when that has a parameter,
+    /// else on its representative Self, under source operators for an operator mode, else the Contract's mapping; its parts' Types in the
+    /// instance are the representative Self's components.</summary>
+    /// <param name="item">The BuiltinEquals or BuiltinCompare item.</param>
+    /// <returns>The node; null for a Self whose storage does not complete (Witness's Limit).</returns>
+    internal ComparisonNode? Comparison(int item)
+    {
+        var entry = this.Set.Items[item];
+        var self = entry.Key.Type!.ContainsParameter ? entry.Key.Type : entry.RepresentativeType!;
+        return this.types.Comparison(TyCtxt.Contract(entry.Key.Symbol!), self, operators: entry.Key.Variant != (byte)ComparisonMode.Mapping);
     }
 
     // K 4.5 rows 2, 3, 5, 6, 12 and 13: what a requirement runs in the item's instance, TyCtxt.Witness of it with the Contract reference its
@@ -154,10 +168,9 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
-    // K 4.3: a shim's targets, at its default site: a comparison shim's are its leaf witnesses (SPEC 13.4) by TyCtxt.Comparison of its
-    // Contract, the scope owner of its compiler function (F 4.6), on the representative Self under the Contract's mapping; a formatting or
-    // arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness
-    // drops the Field's old value (its glue), the Field Agrees found in the representative Self at admission.
+    // K 4.3: a shim's targets, at its default site: a comparison item's are its direct parts' (Parts); a formatting or arithmetic shim's
+    // scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness drops the Field's
+    // old value (its glue), the Field Agrees found in the representative Self at admission.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
         if (key.Kind == MonoKind.PropertyWitness)
@@ -179,7 +192,7 @@ internal sealed partial class InstanceCollector
         switch (key.Symbol!.CompilerFunction)
         {
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
-                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false), pastStorage: false);
+                this.Parts(program, item, site, key, self);
                 return;
             case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
@@ -188,41 +201,106 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // F 4.6: a comparison tree's targets in order: a Witness leaf's Body under its substitution, a Composite's parts', none for a Builtin. A
-    // Requirement or None leaf, which a closed Self's comparison has not, is a broken contract, and no tree, a Self whose storage does not
-    // complete, the storage-nesting gap, at the shim's site. K 4.8 (DECISIONS R5-M149): the shim's Self is laid out at its admission, its
-    // storage; below a node whose Type is laid out without its component (Layout.Indirect: a reference layer), the next node with a layout
-    // need (LayoutNeeds: a compared Tuple's parts) is past that storage, a use at the shim's site, after which its Type is the storage again.
-    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node, bool pastStorage)
+    // SPEC 13.4 (DECISIONS R5-M166): a tuple operator's call runs the comparison item of its Self under its mode (the callee's Arg), the
+    // Builtin target its requirement selects for a composite Self, keyed by the erased Self at the template and, when that has a parameter,
+    // the calling item's erased instance (SPEC 13.4's generic rule: the template decides which leaves run a Contract mapping), represented
+    // by the target's substitution (one Abi per key, R5-M126); the call is a use of each Tuple it compares past its operands' storage
+    // (Uses). A Limit is the storage-nesting gap at the call; any other target a broken contract.
+    private int Compared(int item, SourceRef subject, in MirCallee callee, in RequirementTarget target)
     {
-        DiagnosticCode? refused = node?.Kind switch
+        var template = callee.Subst!.Self!;
+        if (target.Kind == RequirementTargetKind.Builtin)
         {
-            null => Capability.Code(CapabilityGap.StorageNesting),
-            ComparisonKind.Composite or ComparisonKind.Builtin or ComparisonKind.Witness => null,
-            ComparisonKind.Requirement or ComparisonKind.None => DiagnosticCode.InternalInvariant_Kd,
-            _ => throw new InvalidOperationException($"The comparison kind {node!.Kind} has no target row."),
-        };
+            this.uses.Clear();
+            this.Uses(subject, this.types.Comparison(TyCtxt.Contract(callee.Symbol!), template, operators: true)!, target.Subst!.Self!, past: true);
+        }
 
-        if (refused is { } code)
+        return this.Comparing(item, subject, target, template, new(default, this.Set.Items[item].Key.Body.Erased), (byte)callee.Arg);
+    }
+
+    // DECISIONS R5-M166: the comparison item of a composite node's Type under a mode, requested at a site with the Builtin target its
+    // requirement selects on the instance Self: keyed by the target's compiler function, the mode and the node's erased Type, which is at
+    // the template, with the requesting instance, when it has a parameter; represented by the target's substitution and its Self. A Limit
+    // target is the storage-nesting gap at the site; any other a broken contract. -1 when refused.
+    private int Comparing(int item, SourceRef subject, in RequirementTarget target, BoundType node, Instantiation instance, byte mode)
+    {
+        if (target.Kind != RequirementTargetKind.Builtin)
         {
-            this.Report(code, site);
+            var limit = target.Kind == RequirementTargetKind.Limit;
+            this.Report(limit ? Capability.Code(CapabilityGap.StorageNesting) : DiagnosticCode.InternalInvariant_Kd, subject);
+            return -1;
+        }
+
+        var key = new MonoKey(MonoKind.Builtin, node.ContainsParameter ? instance : default, this.types.Erase(node), target.Target, mode, null);
+        return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
+    }
+
+    // SPEC 8.15.3, 23.1.2 (DECISIONS R5-M149, R5-M166): a comparison call is a use, at its site, of each compared Tuple's offsets past its
+    // operands' storage: its Self, and below a node laid out without its component (Layout.Indirect: a reference layer) the next node with
+    // a layout need (LayoutNeeds: a Tuple's parts), after which its Type is the storage again; its node and the instance Type in parallel
+    // (a part's Type is the instance's component), each distinct node once per position (uses).
+    private void Uses(SourceRef subject, ComparisonNode node, BoundType type, bool past)
+    {
+        var position = past ? (byte)2 : (byte)1;
+        if (node.Kind != ComparisonKind.Composite)
+        {
             return;
         }
 
-        if (node!.Kind == ComparisonKind.Witness)
+        ref var seen = ref CollectionsMarshal.GetValueRefOrAddDefault(this.uses, node, out _);
+        if ((seen & position) != 0)
         {
-            this.Target(item, this.Implementation(program, item, site, node.Target!, node.Subst));
+            return;
         }
 
-        var needed = pastStorage && LayoutNeeds.Of(node) != LayoutNeed.None;
+        seen |= position;
+        var needed = past && LayoutNeeds.Of(node) != LayoutNeed.None;
         if (needed)
         {
-            _ = this.LaysOut(site, LayoutNeeds.TypeOf(node));
+            _ = this.LaysOut(subject, type);
         }
 
-        foreach (var part in node.Parts)
+        for (var i = 0; i < node.Parts.Length; i++)
         {
-            this.Leaves(program, item, site, part, Layout.Indirect(node.Type) || (pastStorage && !needed));
+            this.Uses(subject, node.Parts[i], type.Components[i], Layout.Indirect(node.Type) || (past && !needed));
+        }
+    }
+
+    // SPEC 13.4, 13.4.1 (DECISIONS R5-M166): a comparison item's targets, one per direct part of its node (Comparison) that is not a
+    // Builtin leaf, in order, each at the part's instance Type (the representative's component): a Composite part's own item (the same
+    // function and mode, keyed at the template while the part's Type has a parameter, as Compared), a Witness leaf's body under its
+    // substitution, a Requirement leaf's witness on the instance part (Runs: a body or a Mapping item). No node, a Self whose storage does
+    // not complete, is the storage-nesting gap at the item's site, and a None leaf a broken contract.
+    private void Parts(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
+    {
+        if (this.Comparison(item) is not { } node)
+        {
+            this.Report(Capability.Code(CapabilityGap.StorageNesting), site);
+            return;
+        }
+
+        var contract = TyCtxt.Contract(key.Symbol!);
+        var requirement = contract.Contract!.OwnRequirement()!;
+        for (var i = 0; i < node.Parts.Length; i++)
+        {
+            var (part, type) = (node.Parts[i], self.Components[i]);
+            if (part.Kind == ComparisonKind.Composite)
+            {
+                var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, type, contract.Type!));
+                this.Target(item, this.Comparing(item, site, target, part.Type, key.Body, key.Variant));
+            }
+            else if (part.Kind == ComparisonKind.Witness)
+            {
+                this.Target(item, this.Implementation(program, item, site, part.Target!, part.Subst));
+            }
+            else if (part.Kind == ComparisonKind.Requirement)
+            {
+                this.Target(item, this.Runs(program, item, site, part.Target!, type));
+            }
+            else if (part.Kind != ComparisonKind.Builtin)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            }
         }
     }
 }

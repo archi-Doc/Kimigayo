@@ -2459,6 +2459,18 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         }));
     }
 
+    // G308 D3, SPEC 13.4: the left operand of a comparison of a DAG Tuple with string leaves is inspected through a shared Loan live while
+    // the right operand is evaluated, so moving it there is rejected; comparing it with another value is accepted.
+    [Fact]
+    public void ADagComparisonsInspectionLoanRejectsAMoveOfItsOperand()
+    {
+        const string Tuple = "(((\"a\", 1), (\"b\", 2)), ((\"c\", 3), (\"d\", 4)))";
+        Assert.Equal(
+            ["bad: t"],
+            Problems($"func take<T>(value: T) -> T => value@move\nfunc bad() -> bool\n    let t = {Tuple}\n    return t == take(t@move)\n" +
+                $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n"));
+    }
+
     // The Loan problems of a program's own bodies.
     private static string[] Problems(string source)
     {

@@ -21,6 +21,7 @@ invertible, so a wrong value in any round changes the line. Each runs a few tent
 | `ErasedCalls` | Calls through erased `(i64) -> i64` values of two function items and two closures (environments of 8 and 24 bytes) held in an Array, 2^27 calls |
 | `VirtualDispatch` | `virtual`/`override` calls through `objref` base views of four Dynamic Types, with direct base calls, 2^26 calls |
 | `SharedHandles` | rc creation, clone into an Array, owning iteration and release, and arc clone and release, 1,048,576 rounds |
+| `Tuples` | Tuple operators: an insertion sort of 512 `(i32, f64, string)` by `<` (later leaves decide ties), `==` over all pairs of 128 `(i64, i64)` and `((i32, i32), (i32, i32))`, and `<=`/`>` over all pairs of 32 `(f64, f64)` with a NaN and ±0, 512 rounds |
 
 The erased and virtual calls stay indirect calls in the optimized IR, so the kernels time dispatch rather than inlined code.
 

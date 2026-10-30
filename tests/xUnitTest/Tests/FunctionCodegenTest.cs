@@ -1646,6 +1646,41 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(0, allocated);
     }
 
+    // G308 S7: the program of P_n's equality (MirBuildTest.Dag) at n = 12 rebuilds (Binding and the MIR) and writes its module warm without
+    // allocating.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmDagComparisonRebuildsAndWritesWithoutAllocating()
+    {
+        var c = Analyze(MirBuildTest.Dag(12, MirBuildTest.DagOperator), OutputKind.Library);
+        Assert.True(c.Generate(TextWriter.Null), string.Join(", ", Records(c)));
+        var written = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null)));
+        Assert.True(written);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
+    }
+
+    // G308 S5 (V16): the module of S1's operator and of S4's Contract mapping over P_n's Tuple (MirBuildTest.Dag) at n = 6, 9, 12, a Library
+    // generating every root, has an IR text length and a function count linear in n, the distinct Types (the ratio rule of
+    // MirBuildTest.DropTreesScaleLinearly). Fails before G308: the comparison's code is written per leaf, 2^n of them, so the text's second
+    // increment is about 8 times the first.
+    [Theory]
+    [InlineData(MirBuildTest.DagOperator)]
+    [InlineData(MirBuildTest.DagContract)]
+    public void ADagComparisonsModuleGrowsWithItsDistinctTypes(string form)
+    {
+        var modules = new[] { 6, 9, 12 }.Select(n => Generate(Analyze(MirBuildTest.Dag(n, form), OutputKind.Library))).ToArray();
+        var lengths = modules.Select(static x => (long)x.Length).ToArray();
+        var functions = modules.Select(static x => (long)Regex.Count(x, "(?m)^define ")).ToArray();
+        var shown = $"IR text {string.Join(", ", lengths)}; functions {string.Join(", ", functions)}";
+        Assert.True(lengths[2] - lengths[1] <= (2 * (lengths[1] - lengths[0])) + 8, shown);
+        Assert.True(functions[2] - functions[1] <= (2 * (functions[1] - functions[0])) + 8, shown);
+    }
+
     // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
     // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)

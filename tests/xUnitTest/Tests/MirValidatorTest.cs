@@ -425,6 +425,42 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [(MirViolation.Operation, subject)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // DECISIONS R5-M166: a tuple operator's call names its Contract's own requirement under a ComparisonMode, through that Contract, on a
+    // composite Self whose comparison composes; the built call is valid, and a mode on a function that is no such requirement, a Reversed
+    // equals, a Contract reference, a scalar Self or a mode past the vocabulary is a Callee finding at the call, not an exception.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("function")]
+    [InlineData("reversed")]
+    [InlineData("contract")]
+    [InlineData("scalar")]
+    [InlineData("mode")]
+    public void AComparisonModeNamesItsContractsOwnRequirement(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f(a: (i32, i32), b: (i32, i32)) -> bool => a == b\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Arg: (int)ComparisonMode.Operator });
+        var callee = body.Blocks[call].Terminator.Callee;
+        var equatable = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
+        callee = broken switch
+        {
+            "function" => callee with { Symbol = body.Key.Decl },
+            "reversed" => callee with { Arg = (int)ComparisonMode.Reversed },
+            "contract" => callee with { Contract = equatable },
+            "scalar" => callee with { Subst = c.Types.Synthesized(callee.Symbol!, BoundType.I32, equatable.Type!) },
+            "mode" => callee with { Arg = 9 },
+            _ => callee,
+        };
+        Unsafe.AsRef(in body.Blocks[call]).Terminator = body.Blocks[call].Terminator with { Callee = callee };
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(
+            broken is null ? [] : [(MirViolation.Callee, body.Blocks[call].Terminator.Source.Syntax)],
+            findings.Select(static x => (x.Rule, x.Subject)));
+    }
+
     // F10 (plan 5.6.6, DECISIONS R5-M71): a staticEnsure names its static by an Integer constant indexing the calling body's statics, the
     // form MirProgram.StaticInit decodes; the built body is valid, and a slot past the statics, a Bool constant or a local's Copy as the
     // operand is a StaticSlot finding at the access, which then names no static, so the static's read is an Unensured one (G191).
