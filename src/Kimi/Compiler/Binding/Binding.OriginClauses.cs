@@ -8,18 +8,21 @@ namespace Kimi.Compiler;
 // per pass, after the bodies, the clauses of each completed declaration that proof alone does not establish, then the declaration rows.
 // - Responsibility: ValidateOriginRelations judges a clause by its owner's part, a local's (JudgeLocalClause) or a Field's, Case's,
 //   alias's or associated formation's (JudgeDeclaredRelation), both over FailedDeclaredRelation; JudgeDeclarationRows is the one judge
-//   of the Origin rows Binding formed with no executable body (DeclarationAtom, UnboundAtom).
+//   of the Origin rows Binding formed with no executable body (DeclarationAtom, UnboundAtom), through R4-M118's chain rule for a row with
+//   an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
 // - Inputs: the completed Origin declarations, the pass's obligations, and the proof and relation judge (Binding.OriginProof.cs,
 //   JudgeCallPosition).
-// - Outputs: Origin relation records (originRelations; a declaration row's through PublishCallRelations), the Unsupported failure of a
-//   row whose Unbound end is not proven, obligations for the clauses the judge leaves to region inference, and a local clause's row
-//   and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
+// - Outputs: Origin relation records (originRelations; a declaration row's and a chain's through PublishCallRelations), the derived
+//   Unsupported failure of a row with an Unbound end (UnboundCause), obligations for the clauses the judge leaves to region inference,
+//   and a local clause's row and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
 // - Invariants: a clause is judged by its owner's part only, and FailedDeclaredRelation takes no steering flag; a clause's rows are its
 //   owner's body's (a local's, or none for a declaration's); a judged declaration row leaves the obligations, and a row whose ends are
 //   not declaration atoms stays for the view's validation (R4-M101 E2).
 // - Prohibitions: no proof or judgment of its own (the proof and the judge decide); no message text (the diagnostics adapter writes it).
 public sealed partial class Binding
 {
+    private readonly List<(BindingObligation Obligation, BoundOrigin Longer, BoundOrigin Shorter)> fixedRows = new();
+
     // R4-M101 E2: an end of a declaration's row: a parameter, input, static or Unbound atom, or a meet of them.
     private static bool DeclarationAtom(BoundOrigin origin)
     {
@@ -86,15 +89,49 @@ public sealed partial class Binding
         this.JudgeDeclarationRows();
     }
 
-    // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26): the one judge of a declaration's rows, the Origin relations Binding formed with
-    // no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable end),
-    // which consumes each in every pass from the premises visible at its use. A row each call discharges (CallBorrows) is left to the
-    // calls; a row with an Unbound end that the judge does not prove is the located limit, derived when that end's binder failed; any
-    // other is fixed-fixed and judged by the position judge, each failing operand of a meet its own record. A row whose ends are not
-    // declaration atoms (R4-M101 E2) stays, a broken contract the view reports.
+    // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26, BU-62): the one judge of a declaration's rows, the Origin relations Binding
+    // formed with no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable
+    // end), which consumes each in every pass. A row each call discharges (CallBorrows) is left to the calls, and one the published
+    // premises at its use entail is its declaration's premise, not an obligation (CollectDeclarationRows). Every other row goes to R4-M118's
+    // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (each failing operand of a meet its own
+    // record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
+    // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use and a failed enclosing declaration's cleared
+    // clauses (RejectedRelations). A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract the view reports.
     private void JudgeDeclarationRows()
     {
         this.callRelationScratch.Clear();
+        this.CollectDeclarationRows();
+        this.judgingDeclarationRows = true;
+        try
+        {
+            foreach (var (row, longer, shorter) in this.fixedRows)
+            {
+                this.JudgeCallPosition(row.Use, longer, shorter, row.Equality, null, null, wellFormed: row.Clause is null, condition: row.Condition);
+            }
+
+            this.JudgeChains();
+            this.PublishCallRelations();
+        }
+        finally
+        {
+            this.judgingDeclarationRows = false;
+        }
+
+        foreach (var row in this.unboundRows)
+        {
+            this.AddPrerequisite(row.Obligation.Use, this.UnboundCause(row.Atom));
+            this.Fail(row.Obligation.Use, BindingFailure.Unsupported);
+        }
+
+        this.unboundRows.Clear();
+        this.fixedRows.Clear();
+    }
+
+    // Consumes the pass's declaration rows. One whose relation the published premises at its use entail (a signature's well-formed input,
+    // BU-26 E3) is Binding's direct proof and forms no edge, as a relation Binding proves forms no row for A5 (2a0-D D1); region inference
+    // and the rejected clauses never decide a row. A fixed-fixed row waits to be judged at once, one with an Unbound end for JudgeChains.
+    private void CollectDeclarationRows()
+    {
         var remaining = 0;
         for (var i = 0; i < this.obligations.Count; i++)
         {
@@ -107,29 +144,28 @@ public sealed partial class Binding
             }
 
             this.obligationSet.Remove(obligation);
-            if (obligation.Discharge == OriginDischarge.CallBorrows)
+            if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
             {
                 continue;
             }
 
-            if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: { } binder })
+            if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: not null } unbound)
             {
-                if (this.JudgeOriginObligation(obligation, out _) != OriginJudgment.Proven)
-                {
-                    this.AddPrerequisite(obligation.Use, binder);
-                    this.Fail(obligation.Use, BindingFailure.Unsupported);
-                }
-
-                continue;
+                this.unboundRows.Add((obligation, longer, shorter, unbound));
             }
-
-            this.JudgeCallPosition(
-                obligation.Use, longer, shorter, obligation.Equality, null, null, wellFormed: obligation.Clause is null, condition: obligation.Condition);
+            else
+            {
+                this.fixedRows.Add((obligation, longer, shorter));
+            }
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
-        this.PublishCallRelations();
     }
+
+    // Whether the published premises at the row's use entail its relation, both ways for an equality.
+    private bool PublishedPremise(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
+        => this.ProvesOriginOutlives(longer, shorter, row.Use, row.Condition) &&
+            (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, row.Condition));
 
     // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.
     private void ValidateOriginRelations(OriginDeclaration declaration)
