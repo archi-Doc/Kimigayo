@@ -27,6 +27,11 @@ public class CaptureDiagnosticTest
 
     private const string Main = "\npublic func main() => ()";
 
+    private const string StructOfT = "struct S<T>\n    var v: i32\n";
+
+    // A method whose own premise validates the projection it captures; the capture is Unsupported for its own reason.
+    private const string ValidatedCapture = "    public func good(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        T is Iter<i32>\n        let c = func [t@move] () -> () => ()\n        return";
+
     // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
@@ -183,7 +188,10 @@ public class CaptureDiagnosticTest
     // as the binding's Type (R5-M155). A capture that fails on it rests on that use whatever carries the Type: `[t@move]`, `[t]`, an
     // annotated local, `let u = t`, and a primitive, Tuple or Type parameter subject publish only the rejection (a located Unsupported_Kd
     // at the entry beside it before). A capture Unsupported for its own reason stays: an abstract projection that resolves, in a list
-    // after or before the dependent entry, in another closure, or in a local whose initializer failed. HOLE takes `bad`, then `good`.
+    // after or before the dependent entry, in another closure, or in a local whose initializer failed. Only a formation judged on the
+    // closure's own scope chain counts, innermost first: a sibling method's rejection of the same projection, before or after the
+    // capture's method, as a parameter or a result, and a Field's rejection outside the method's premise leave the capture of a projection
+    // the method validates its own Unsupported_Kd (they removed it in fix round 1). HOLE takes `bad`, then `good`.
     [Theory]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
@@ -198,6 +206,10 @@ public class CaptureDiagnosticTest
     [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "missing", "y", "UnresolvedBinding_Kd missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
     [InlineData("func h<T>(a: T.Tag) -> T.Tag\n    T is Iter<i32>\n    return a\nfunc f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "h<T>(y, y)", "h<T>(y@move)", "NoApplicableOverload_Kd h<T>(y, y) | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
     [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "y.missing", "y", "UnresolvedBinding_Kd y.missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return\n", "", "UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData(StructOfT + ValidatedCapture + "\nHOLE", "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return", "", "Unsupported_Kd t@move | UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag", "Unsupported_Kd t@move")]
+    [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad()\n", "", "UnprovenConstraint_Kd bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad() | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE" + ValidatedCapture, "    var v: T.(Iter<i32>).Tag\n", "    var v: i32\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
     public void ACaptureOfARejectedTypeRestsOnIt(string body, string bad, string good, string records, string twin)
     {
         const string Tag = "contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n";

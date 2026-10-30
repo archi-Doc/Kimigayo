@@ -117,8 +117,9 @@ public sealed partial class Binding
                     ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
         {
             // DECISIONS BU-61 (SPEC 23.1.2): a projection whose use's conformance check rejects it names no Type, so the failure rests
-            // on that use. Only the closure's first failure records it, so an earlier independent failure stays direct.
-            if (function.BindingFailure == BindingFailure.None && this.ProjectionUseOf(type) is { } use)
+            // on the use judged on the closure's own scope chain. Only the closure's first failure records it, so an earlier independent
+            // failure stays direct.
+            if (function.BindingFailure == BindingFailure.None && this.ProjectionUseOf(type, this.ConstraintScope(function)) is { } use)
             {
                 this.AddPendingPrerequisite(function, use);
             }

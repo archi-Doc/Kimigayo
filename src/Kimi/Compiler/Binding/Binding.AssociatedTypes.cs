@@ -242,7 +242,7 @@ public sealed partial class Binding
 
         // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
-        this.projectionForms.TryAdd(projection, syntax);
+        this.projectionForms.TryAdd((projection, this.ConstraintScope(syntax)), syntax);
         syntax.BoundSymbol = associated;
         syntax.Right.BoundSymbol = associated;
         Complete(syntax.Right, projection);
@@ -254,11 +254,23 @@ public sealed partial class Binding
         return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
 
-    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that first formed an associated projection Type in this pass, whose conformance
-    // check (ValidateConformances, after the bodies) owns the record that rejects it; null for any other Type. A check that fails only
-    // because its Type is such a projection rests on that use, which publication judges (AddPendingPrerequisite). One use per
-    // interned Type: a projection with a Type parameter formed in two scopes of one declaration reads its first formation.
-    private Koto? ProjectionUseOf(BoundType type) => this.projectionForms.GetValueOrDefault(type);
+    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that formed `type` and is judged in the innermost scope of `scope`'s chain, the
+    // scopes whose premises the solver reads (Supply); null when no use on that chain formed it. Each use is keyed by its Type and the
+    // scope its conformance check (ValidateConformances, after the bodies) judges it in, ConstraintScope; the innermost wins, since an
+    // inner scope's premises can validate what an outer one rejects. A check that fails only because its Type is such a projection rests
+    // on that use, which publication judges (AddPendingPrerequisite).
+    private Koto? ProjectionUseOf(BoundType type, BindingScope scope)
+    {
+        for (BindingScope? current = scope; current is not null; current = current.Parent)
+        {
+            if (this.projectionForms.TryGetValue((type, current), out var use))
+            {
+                return use;
+            }
+        }
+
+        return null;
+    }
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
