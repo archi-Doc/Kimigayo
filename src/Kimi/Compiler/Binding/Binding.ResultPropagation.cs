@@ -191,12 +191,13 @@ public sealed partial class Binding
 
             if (context.Sources[i] is null)
             {
-                if (!this.Deferred(source))
+                var deferred = this.AwaitsFor(source); // Once per source: Deferred takes it rather than walking the source again.
+                if (!this.Deferred(source, deferred))
                 {
                     return Awaiting.None;
                 }
 
-                awaiting |= this.AwaitsFor(source);
+                awaiting |= deferred;
             }
             else if (!ReferenceEquals(context.Sources[i], BoundType.Never))
             {
@@ -268,9 +269,12 @@ public sealed partial class Binding
 
     // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position or holding what its call
     // completed since (Completed), which it waits to take with the rest of its join (SPEC 14.9.2 steps 2-3; DECISIONS BU-43).
-    private bool Deferred(Koto source)
+    private bool Deferred(Koto source) => this.Deferred(source, null);
+
+    // The same with the source's Awaiting (AwaitsFor) when the caller already has it, so the source is not walked twice.
+    private bool Deferred(Koto source, Awaiting? awaits)
         => source.BindingState is BindingState.Unvisited or BindingState.Unresolved && !this.PartFailed(source) &&
-            (this.AwaitsPosition(source) || this.Completed(source));
+            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source));
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
@@ -449,10 +453,16 @@ public sealed partial class Binding
             waited |= context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source);
         }
 
-        this.JudgeNested(node, context);
+        // A join its position decides later is judged with its root's tree, once: the root's JudgeNested judges the held tree in
+        // post-order, an inner conflict still the innermost join's record (DecideWaiting's Conflict row); it judges only itself here.
+        var later = waited && DeliversResult(node) && this.DecidedLater(node);
+        if (!later)
+        {
+            this.JudgeNested(node, context);
+        }
+
         var common = this.JudgeOwn(node, context, out var shape, out var defaults);
-        if (context.Outcome == JoinOutcome.Undecided &&
-            ((waited && DeliversResult(node) && this.DecidedLater(node)) || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
+        if (context.Outcome == JoinOutcome.Undecided && (later || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
         {
             context.Outcome = JoinOutcome.Waiting;
             return true;
