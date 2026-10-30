@@ -3587,7 +3587,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
     決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
 - **R4-M118 Dependent ends: an Origin end a Binding failure left Unbound is a pass-through node, never a source or a judged target;
-  the view's findings are published** (2026-10-24; unit 2a-1c, the third of G:A5-F4, DEC Q6 form 2, under the full process: designs A
+  the view's findings are published** (superseded in part by BU-62: site (1))
+  (2026-10-24; unit 2a-1c, the third of G:A5-F4, DEC Q6 form 2, under the full process: designs A
   and B, the design review's merge M, adopted by the R4 planning session, `s2-2a-1c/final-design.md`; the vocabulary entry is the planning
   session's under the owner's decision of 2026-10-24, verbatim 「(a) 計画セッションが決める (推奨)」; the fix round after the A5-part
   final review's F1, the owner's choice of 2026-10-24, verbatim 「(a) 通過点として扱う (推奨)」, and BU's Binding-part review W1-W3)
@@ -6676,7 +6677,8 @@ resumed by R4-M86 (2026-10-20).
   `.Defaults`' copy rows, `MirAnalysisTest`'s effect row (now an R3 Drop) and `OriginRowsTest`'s static rows 6, 7 and 7' (7 and 7' keep
   an accessor storage witness; R4 restores row 6's Closure case), the effect rule's witnesses being `MirBorrowsTest.Rooted`'s.
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
-- **BU-26** (2026-10-22; the BU planning session after the full process: designs A and B, the design review's merge M, R4
+- **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed") (2026-10-22;
+  the BU planning session after the full process: designs A and B, the design review's merge M, R4
   agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
   body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
   signature's well-formedness (a requirement's, an override's, a specialization's, a nested Function Type part) and a clause's
@@ -8752,7 +8754,8 @@ resumed by R4-M86 (2026-10-20).
     `judgingDeclarationRows`), which only ever remove a dependent report; every other request still sees the contract unavailable.
   - The staged move (`[Transitional("R6-check")]`): the rule has two holders with one contract, A5's (`MirOrigins.Chains`) for a body's
     rows and this copy for a declaration's, each judging only what Binding does not prove (D1) and each chain under its rows' minimal
-    conditions. PLAN G318 (R4 with BU, Full, accepted by R4; due at R6-check) moves A5's core below both phases, which both read, and
+    conditions. PLAN G318 (R4 with BU, Full, accepted by R4's planning session on 2026-10-30; due at R6-check) moves A5's core
+    below both phases, which both read, and
     deletes the copy; the stage ledger's R6 row lists it. Its declaration adapter keeps the premise contract above.
   - R4-M118 site (1) is superseded (BU writes, R4 approves, joint review 3): dependence is a property of the chain (bu68 item 5). Until
     G318 the chain rule has two holders with one contract, A5's for body rows and the declaration judge's Transitional copy for

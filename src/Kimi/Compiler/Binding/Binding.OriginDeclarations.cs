@@ -398,8 +398,8 @@ public sealed partial class Binding
     // The part an Unbound atom rests on: its declaration's PendingFailure (paths a and c), else its binder, the slot whose own omission
     // failed (OmittedOrigin, path b). The declaration is the atom's binder's owner (PendingOrigin made it there).
     private Koto UnboundCause(BoundOrigin atom)
-        => OriginOwner(atom.Binder!) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) && declaration.PendingFailure is { } failure
-            ? failure : atom.Binder!;
+        => OriginOwner(atom.Binder!) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&
+            declaration.PendingFailure is { } failure ? failure : atom.Binder!;
 
     private void CompleteOriginDeclaration(OriginDeclaration? declaration)
     {
