@@ -141,15 +141,17 @@ public partial class OriginRelationDiagnosticTest
 
     // Joins (d3 §4): the sources of an `if` or `match` argument or initializer form one value, judged once. jt1_ok, mj4 and cv4 (whose `t`
     // gives the relation by its signature's well-formedness) are valid; jt1 errs at the argument and mj4_n at its annotation only. A `match`
-    // argument is outside the implemented subset, so mj1 and its twin keep dev's located Unsupported_Kd with the call's dependent record.
+    // argument whose sources are contextual Cases waits for its call as an `if` one does (SPEC 10.5.1, 14.9.2; planning decision,
+    // 2026-10-30, accepted in G216 (a) round 2): mj1 errs at the argument as jt1 does and mj1_ok is valid (both were dev's located
+    // Unsupported_Kd with the call's dependent record).
     [Theory]
     [InlineData("jt1_ok", JoinHead + WithPremise + InnerPair + "    return inner((if c => Option.None else => Option.None, 1), q)\n", "")]
     [InlineData("jt1", JoinHead + InnerPair + "    return inner((if c => Option.None else => Option.None, 1), q)\n", "UnprovenOriginRelation_Kd (if c => Option.None else => Option.None, 1)")]
     [InlineData("mj4", JoinHead + WithPremise + "    let t: Option<ref/(ref/i32 during q) during r> = " + MatchNone + NestedInner + "    return inner(t, q)\n", "")]
     [InlineData("mj4_n", JoinHead + "    let t: Option<ref/(ref/i32 during q) during r> = " + MatchNone + NestedInner + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("cv4", "func k(q: ref/i32, r: ref/i32, c: bool, t: (Option<ref/(ref/i32 during q) during r>, i32)) -> ref/i32 during r\n" + InnerPair + "    return inner(if c => t else => (Option.None, 1), q)\n", "")]
-    [InlineData("mj1", JoinHead + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "UnprovenConstraint_Kd inner((match c; Unsupported_Kd match c")]
-    [InlineData("mj1_ok", JoinHead + WithPremise + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "UnprovenConstraint_Kd inner((match c; Unsupported_Kd match c")]
+    [InlineData("mj1", JoinHead + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "UnprovenOriginRelation_Kd (match c")]
+    [InlineData("mj1_ok", JoinHead + WithPremise + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "")]
     public void AJoinedArgumentIsJudgedAsOneValue(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
