@@ -268,11 +268,10 @@ public class ContextualCaptureTest
     }
 
     // The Binding and analysis records a program publishes, which records no internal fault; every pipeline publishes the same (DECISIONS
-    // R5-M156), so one compilation of the process's pipeline judges them (PLAN G314), or of the pipeline a caller names.
-    internal static TestDiagnostic[] PublishedRecords(string source, CompilerPipeline? pipeline = null)
+    // R5-M156), so one compilation of the process's pipeline judges them (PLAN G314).
+    internal static TestDiagnostic[] PublishedRecords(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = pipeline ?? c.Pipeline;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
