@@ -224,7 +224,7 @@ internal static partial class LlvmModuleText
 
     private static string ReadRuntime()
     {
-        using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
+        using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.WindowsRuntime.ll.in")!;
         using var reader = new StreamReader(stream);
         return ExpandRuntime(reader.ReadToEnd(), RuntimeAbi.RuntimeDefinitions) + "\n";
     }

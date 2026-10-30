@@ -128,7 +128,7 @@ if ($O2Metrics) {
     # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes: the runtime template's, each
     # named on the line before its body's entry: label, by a define line or by the {{name}} marker ExpandRuntime replaces with
     # that definition. Every other define is a generated body.
-    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Emission/WindowsRuntime.ll.in'))
+    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Backend/WindowsRuntime.ll.in'))
     $runtime = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     for ($i = 1; $i -lt $template.Count; $i++) {
         if ($template[$i] -ceq 'entry:') { $null = $runtime.Add(($template[$i - 1] -creplace '^\{\{(.+)\}\}$|^[^@]*@([^(]+)\(.*$', '$1$2')) }
