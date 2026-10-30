@@ -48,7 +48,7 @@ public class InferredPropertyAccessBindingTest
         var replacement = Property(Check("public group Api\n    public let item = true", true)).InitializerKoto!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null) + string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.FailureOf()}:{x.Node}")));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c) + string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.FailureOf()}:{x.Node}")));
         Assert.True(property.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);
@@ -78,13 +78,13 @@ public class InferredPropertyAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         var property = Property(c);
         Assert.Equal(valid, property.SymbolOf()!.Property!.IsVerified);
         if (!valid)
         {
             Assert.Equal(BindingFailure.Access, property.FailureOf());
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
 
         return c;

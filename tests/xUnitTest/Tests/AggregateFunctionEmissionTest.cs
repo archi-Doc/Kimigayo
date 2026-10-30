@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -101,29 +99,6 @@ public class AggregateFunctionEmissionTest
         Assert.False(invalid.Analysis.IsVerified);
     }
 
-    [Fact]
-    public void PhysicalSignatureCacheReusesShapesWithoutRetainingSyntax()
-    {
-        var pool = new FunctionAbiPool();
-        // One pool and Layout across three compilations: their Types are Tuples of primitives, without stored Types that would
-        // follow one compilation's edits (Layout's input contract), so the shared records stay valid.
-        var layout = new Layout();
-        var tree = Populate(pool, layout, out var first);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        Assert.False(tree.IsAlive);
-        var c = MinimalEmissionTest.Analyze(Echo.Replace("echo", "renamed") + "()");
-        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
-        Assert.Same(first, pool.Get(0, renamed, layout));
-        var empty = MinimalEmissionTest.Analyze("func f(value: [0 of string]) -> [0 of string] => value@move\n()");
-        var f = KotoTree.Walk(empty.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        var omitted = pool.Get(0, f, layout);
-        Assert.NotSame(first, omitted);
-        Assert.Empty(omitted.Parameters);
-        GC.KeepAlive(layout);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBorrowedAndAggregateFunctionPreparationAllocatesNothing()
@@ -133,26 +108,17 @@ public class AggregateFunctionEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static WeakReference Populate(FunctionAbiPool pool, Layout layout, out FunctionAbi abi)
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "()");
-        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "echo");
-        abi = pool.Get(0, function, layout);
-        return new WeakReference(function);
     }
 }

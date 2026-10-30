@@ -66,7 +66,7 @@ public partial class TypeDagScalingTest
     public void AWrittenProjectionDagIsWalkedOncePerPart(string leaf, int size, string step)
     {
         var c = MirBuildTest.Compile(ProjectionChain(leaf, size));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "pv").Parameters[1].Type.TypeOf()!;
         var kept = c.Types.StoredParts(holder, out _)[1]!;
         var path = new int[size];

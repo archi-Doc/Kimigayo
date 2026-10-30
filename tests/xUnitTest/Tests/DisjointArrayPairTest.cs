@@ -17,7 +17,7 @@ public class DisjointArrayPairTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -26,7 +26,7 @@ public class DisjointArrayPairTest
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            if (!c.Analyze().IsVerified || !c.Validate(out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Pair pipeline failed.");
             }
@@ -147,9 +147,9 @@ public class DisjointArrayPairTest
                     b@follow += 1
                 .None => ()
             """);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -158,9 +158,9 @@ public class DisjointArrayPairTest
     public void OrdinaryIndexingStillRequiresStaticNonOverlap(string type)
     {
         var c = MinimalEmissionTest.Analyze($"var values: {type} = [1, 2]\nlet receiver = values@uniq\nlet first: isize = 0\nlet second: isize = 1\nlet a = receiver[first]@uniq\nlet b = receiver[second]@uniq\na@follow = 3\nb@follow = 4");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     internal static string RepeatedUpdates(string type) => $$"""

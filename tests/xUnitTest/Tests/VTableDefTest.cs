@@ -28,7 +28,7 @@ public sealed class VTableDefTest
     public void ATableIsItsBasesThenItsVirtualsInMemberOrder()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("first=Base, pick=Base, last=Base; base 0", Show(c, "Base"));
         Assert.Equal("first=Base, pick=Base, last=Mid, extra=Mid; base 3", Show(c, "Mid"));
         Assert.Equal("first=Leaf, pick=Base, last=Mid, extra=Mid; base 4", Show(c, "Leaf"));
@@ -44,7 +44,7 @@ public sealed class VTableDefTest
     public void SlotOfIsTheSlotAnOriginalOrAnOverrideRuns()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal([0, 1, 3, 1], new[] { "first", "pick", "extra", "again" }.Select(x => VTableDef.SlotOf(Function(c, x))));
         Assert.Equal([2, 0, 1], new[] { ("Mid", "last"), ("Leaf", "first"), ("Part", "again") }.Select(x => VTableDef.SlotOf(Member(c, x.Item1, x.Item2))));
         Assert.Equal(-1, VTableDef.SlotOf(KotoTree.Walk(Container(c, "Base")).OfType<FunctionKoto>().First(static x => x.IsConstructor).SymbolOf()!));
@@ -104,7 +104,7 @@ public sealed class VTableDefTest
         var condition = Condition(c);
         var changed = ParseTestHelper.Detach(Condition(donor), new CodeBlockKoto(condition.CodeContext));
         Assert.True(KotoHelper.Replace(condition.Parent!, condition, changed));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("first=Base, pick=Base, last=Leaf, extra=Mid; base 4", Show(c, "Leaf"));
         Assert.Same(pick, Function(c, "pick"));
         Assert.True(c.Types.Applies(pick, layer));

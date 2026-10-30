@@ -9,7 +9,7 @@ namespace Kimi.Compiler.Backend;
 // table's string column (FunctionCodegen.Arithmetic): a comparison whose operands' terminal is string, whatever form gave it (a direct
 // operator, a literal Pattern's test, a tuple's string leaf; DECISIONS R5-M75). Each operand's bytes (a string constant's pooled text, else
 // the record its value reaches through its ref and uniq layers), its row's routine on them (LegacyRuntimeHelpers' StringEqual for == and
-// !=, StringCompare for the orderings: the one text both generators write, which the module then holds once), the routine's i32 compared
+// !=, StringCompare for the orderings: the one text, which the module holds once), the routine's i32 compared
 // with 0 by the column's entry (SPEC 13.4.1), the bool widened into the Place. Nothing is checked, located or destroyed: a comparison
 // acquires nothing and never fails. A string Place is never an operand (MIR inspects strings through shared borrows), a string has no
 // other operator (SPEC 13.3.2), and no valid program reaches a pair layer in an operand (Binding rejects the built-in comparison through a

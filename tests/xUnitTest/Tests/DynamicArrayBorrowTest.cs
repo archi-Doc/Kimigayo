@@ -49,7 +49,7 @@ public class DynamicArrayBorrowTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -63,7 +63,7 @@ public class DynamicArrayBorrowTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 }

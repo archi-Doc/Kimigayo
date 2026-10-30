@@ -21,10 +21,10 @@ public class PropertyApiAccessBindingTest
     public void RestrictedAccessorsDoNotNarrowThePropertyTypeDomain(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var property = Assert.Single(c.Binding.Issues, x => x.Node is PropertyKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(((PropertyKoto)property.Node).SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -39,7 +39,7 @@ public class PropertyApiAccessBindingTest
     public void EffectivePropertyDomainsPreserveValidHeaders(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -98,7 +98,7 @@ public class PropertyApiAccessBindingTest
         var replacement = Assert.Single(valid.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<PropertyKoto>());
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(container, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(replacement.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(container, replacement, original));
         Assert.False(c.Bind().IsComplete);

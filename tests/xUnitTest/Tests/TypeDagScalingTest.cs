@@ -24,7 +24,7 @@ public partial class TypeDagScalingTest
     public void BindingWalksAreLinearInDistinctParts(string shape, int size)
     {
         var c = MirBuildTest.Compile(Source(shape, size));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.Empty(program.Records);
@@ -44,7 +44,7 @@ public partial class TypeDagScalingTest
         const string Source = "func make<T>(x: T) -> ()\n    T is Copy\n    let f = func [x] () => x\n    let g = func [x] () => x\n    let p = ((f, g), (f, g))\n" +
             "    let q = (p, p)\n    let r = q.0.0.0()\n    let s = q.1.1.1()\n    return\npublic func main() -> ()\n    make(1)\n    make(true)\n    return\n";
         var c = MirBuildTest.Compile(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var environments = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(static x => x.ClosureOf()!.EnvironmentType!).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "make").Select(x => c.Types.SubstOf(x.CallOf()!)!).ToArray();
@@ -83,7 +83,7 @@ public partial class TypeDagScalingTest
         var replacement = KotoTree.Walk(ParseTestHelper.ParseSuccess(After + Main).RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("(i32, i32)", Binding.DiagnosticTypeName(Result(c)));
 
         // The closure's result Type in the instance make<i32>.
@@ -104,7 +104,7 @@ public partial class TypeDagScalingTest
         const string Source = "func f<length N>(a: [N of i32]) -> i32\n    let t = (a, a)\n    let u = (t, t)\n    return u.0.0[0]\npublic func main() -> ()\n" +
             "    let a: [3 of i32] = [1, 2, 3]\n    require f(a) == 1 else => $abort(\"x\")\n    return\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Empty(set.Records);
         Assert.Equal(1, Instances(set, "f"));
@@ -142,7 +142,7 @@ public partial class TypeDagScalingTest
         Assert.Equal(bound.Length == 0, c.Analysis.IsVerified);
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
-            Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -237,7 +237,7 @@ public partial class TypeDagScalingTest
         var c = Checked(Source("structUses", 12));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // A warm rebind of a program whose Types share parts allocates nothing: the answer tables keep their capacity.
@@ -246,10 +246,10 @@ public partial class TypeDagScalingTest
     public void WarmBindOfSharedTypesAllocatesNothing()
     {
         var c = MirBuildTest.Compile(Source("chainValues", 16));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     // The source of a shape: structs storing the previous struct twice (PLAN G140), with constructions, a path read, a move and a drop;

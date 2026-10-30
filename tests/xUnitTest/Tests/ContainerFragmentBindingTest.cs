@@ -39,7 +39,7 @@ public class ContainerFragmentBindingTest
     public void MatchingHeadersMerge(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
     }
 
@@ -50,7 +50,7 @@ public class ContainerFragmentBindingTest
     {
         const string Prefix = "open struct B\n    public func value() -> i32 => 7\n";
         var c = MinimalEmissionTest.Analyze(Prefix + (baseFirst ? "struct S: B\nstruct S\n" : "struct S\nstruct S: B\n") + "func use() -> i32 => S.value()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var derived = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         Assert.Single(derived.Bases);
         Assert.True(c.Bind().IsComplete);
@@ -64,7 +64,7 @@ public class ContainerFragmentBindingTest
         const string Explicit = "public group G\n";
         const string Path = "public rootgroup G.Child\n    public struct Value\n";
         var c = MinimalEmissionTest.Analyze((explicitFirst ? Explicit + Path : Path + Explicit) + "public group Api\n    public func use(x: G.Child.Value) => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(ModifierKind.Public, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Modifier);
     }
 
@@ -80,9 +80,9 @@ public class ContainerFragmentBindingTest
         var withoutBase = new SourceDocument("other.kimi", "alias Right\nstruct S\nfunc use() -> i32 => S.value()");
         c.Kotonoha.AddSource(baseFirst ? withBase : withoutBase);
         c.Kotonoha.AddSource(baseFirst ? withoutBase : withBase);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
-        Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored, null));
+        Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored));
         Assert.True(restored.Bind().IsComplete);
     }
 

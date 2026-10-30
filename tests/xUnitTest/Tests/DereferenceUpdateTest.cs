@@ -157,10 +157,10 @@ public class DereferenceUpdateTest
     {
         var source = Slot + declaration + "\nvar a: Array<i32> = [1]\nlet view = f(a@uniq)@follow@ref\nf(a@uniq)@follow = 42\nConsole.writeLine(\"\\(view@follow)\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -171,12 +171,12 @@ public class DereferenceUpdateTest
     {
         var declaration = erased ? "let f: (uniq/Array<i32>) -> uniq/i32 = func (a) -> uniq/i32 => a[0]@uniq" : "let f = slot";
         var c = MinimalEmissionTest.Analyze(Slot + declaration + "\nvar a: Array<i32> = [1]\nf(a@uniq)@follow += 2");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

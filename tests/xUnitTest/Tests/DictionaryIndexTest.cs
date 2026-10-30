@@ -77,7 +77,7 @@ public class DictionaryIndexTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -127,7 +127,7 @@ public class DictionaryIndexTest
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.WriteFixture("DictionaryIndexMissing", output.ToString(), "rhs\n", 1, "Hello.kimi:5:1: abort KIMI_E_MISSING_KEY: Dictionary key was not found\n");
     }
 

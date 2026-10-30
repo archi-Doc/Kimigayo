@@ -6,7 +6,7 @@
 // Input: the runtime template text. Output: the expanded text; the reason index generated code passes to the Abort routine.
 // Invariants: indices are module-local ABI values, contiguous from 0 in table order; message texts are printable ASCII without
 // `"` or `\`, checked at expansion, so they need no escaping.
-// Must not take syntax, HIR, Binding internals, EmissionModule or MIR types, or use LINQ.
+// Must not take syntax, HIR, Binding internals or MIR types, or use LINQ.
 
 using System.Globalization;
 using System.Text;

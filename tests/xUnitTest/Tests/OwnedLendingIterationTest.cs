@@ -31,7 +31,7 @@ public class OwnedLendingIterationTest
     public void OwningIterationConsumesItsSource()
     {
         var c = MinimalEmissionTest.Analyze(Source + "var values = Values.init()\nfor _ in values@move => ()\nlet again = values@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
     }
 

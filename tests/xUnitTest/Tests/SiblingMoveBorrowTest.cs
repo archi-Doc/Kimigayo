@@ -22,7 +22,7 @@ public class SiblingMoveBorrowTest
     public void KeepsDisjointBorrowAliveAcrossMove(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("SiblingMoveBorrow" + name, Pair + source, string.Empty);
     }
@@ -38,9 +38,9 @@ public class SiblingMoveBorrowTest
     public void RejectsMovedOrOverlappingBorrowedStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() || x.Code is DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

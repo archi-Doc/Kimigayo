@@ -19,7 +19,7 @@ public class LengthCallBindingTest
     public void SubstitutesLengthsIndependentlyOfTypes(string expression, long length)
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nlet result = " + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal(BoundTypeKind.FixedArray, call.TypeOf()!.Kind);
         Assert.Equal(length, call.TypeOf()!.Length);
@@ -40,7 +40,7 @@ public class LengthCallBindingTest
     public void UsesConstantsCallerSlotsAndExpectedTypes(string source)
     {
         var c = MinimalEmissionTest.Analyze(Keep + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class LengthCallBindingTest
     public void ChecksFormationAfterAllInputEvidence(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -68,7 +68,7 @@ public class LengthCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -85,7 +85,7 @@ public class LengthCallBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -97,7 +97,7 @@ public class LengthCallBindingTest
     public void KeepsLengthEvidenceLocalToEachCandidate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
@@ -127,7 +127,7 @@ public class LengthCallBindingTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Null(call.CallOf());
         Assert.Equal(BindingFailure.Unsupported, call.FailureOf());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

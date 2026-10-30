@@ -159,7 +159,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
             using var writer = new StringWriter();
-            Assert.True(c.WriteIr(writer, out var error), error);
+            Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             return writer.ToString();
         }
     }

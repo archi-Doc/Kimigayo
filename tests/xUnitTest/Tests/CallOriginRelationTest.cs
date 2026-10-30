@@ -225,7 +225,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         else
         {
             Assert.Empty(errors);
-            Assert.True(MinimalEmissionTest.Analyze(source).Validate(out var issue), issue);
+            var c = MinimalEmissionTest.Analyze(source);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
 
         Assert.Contains(text, source, StringComparison.Ordinal);
@@ -388,7 +389,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

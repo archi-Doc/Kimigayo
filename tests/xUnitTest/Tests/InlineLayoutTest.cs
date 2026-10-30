@@ -71,7 +71,7 @@ public class InlineLayoutTest
                 .Where(static x => x.SymbolOf()?.Adt is { InlineCycle: true }).Select(static x => x.Name).Order(StringComparer.Ordinal);
             Assert.Equal((string.Join(',', order), cyclic), (string.Join(',', order), string.Join(',', diagnosed)));
             Assert.Equal(cyclic, string.Join(',', published));
-            Assert.True(cyclic.Length != 0 || c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(cyclic.Length != 0 || c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -152,7 +152,7 @@ public class InlineLayoutTest
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             Assert.Contains("InvalidCLayout_Kd", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("InternalInvariant_Kd", console.Text, StringComparison.Ordinal);
         }
         finally
         {

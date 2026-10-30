@@ -29,7 +29,7 @@ public partial class UserIterationTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init()\n    let value: i32 = item");
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(BoundType.I32, loop.Bindings[0].TypeOf());
     }
 
@@ -41,11 +41,11 @@ public partial class UserIterationTest
         var replacement = MinimalEmissionTest.Analyze(Drain + "for item in Batch<bool>.init(true) => ()");
         var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.True(KotoHelper.Replace(loop, loop.Iterable, ParseTestHelper.Detach(changed.Iterable, new CodeBlockKoto(loop.CodeContext))));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(BoundType.Boolean, loop.Bindings[0].TypeOf());
         Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.IterationOf().Entry!.Method).Left);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -58,10 +58,10 @@ public partial class UserIterationTest
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<ForKoto>());
         var body = ParseTestHelper.Detach(changed.Body, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(loop, loop.Body, body));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(loop.Body, loop.IterationOf().Plan!.Decomposition.Arms[0].Syntax.Body);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -78,12 +78,12 @@ public partial class UserIterationTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var ownershipBytes = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
-        var generationBytes = AllocationMeasurement.Measure(() => success &= c.WriteIr(TextWriter.Null, out _));
+        var generationBytes = AllocationMeasurement.Measure(() => success &= c.Generate(TextWriter.Null));
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, ownershipBytes);
@@ -125,7 +125,7 @@ public partial class UserIterationTest
     public void EntryConstraintStillConsumesItsSubject()
     {
         var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    B is IntoIterable\n    for _ in batch@move => ()\n    let again = batch@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
@@ -265,7 +265,7 @@ public partial class UserIterationTest
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.ComparisonLoanConflict_Kd);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -275,7 +275,7 @@ public partial class UserIterationTest
     public void GenericEntrySubstitutesTheCompleteItem(string type, string value, string binding, string body)
     {
         var c = MinimalEmissionTest.Analyze(Drain + "var n: i32 = 7\nfor " + binding + " in Batch<" + type + ">.init(" + value + ")\n    " + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 
@@ -283,7 +283,7 @@ public partial class UserIterationTest
     public void ItemKeepsItsExternalOrigin()
     {
         var c = MinimalEmissionTest.Analyze(Drain + "func inspect(n: ref/i32 during a)\n    for item in Batch<ref/i32 during a>.init(n)\n        let value: ref/i32 during a = item");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.6.2: a Subject without the entry conformance of its mode is a Contract error at the Subject, never a method-name

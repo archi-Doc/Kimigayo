@@ -45,10 +45,9 @@ public sealed partial class Binding
         => this.ProvesOriginOutlives(claim.Left.BoundType?.RawOrigin ?? BoundOrigin.Unstated, claimed, claim);
 
     // A Type with every raw layer's Origin dropped: AdtDef's view of an instance's stored Types (Instance; design-final §15; DECISIONS
-    // BU-41), and the D5 exception (the owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis and Emission compare Types by
-    // reference, so they read each Type through this view at their Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed
-    // with them at R6-check. A part's result depends on the part alone, so each distinct part is erased once per call (DECISIONS BU-19,
-    // BU-58).
+    // BU-41), and the D5 exception (the owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis compares Types by reference, so it
+    // reads each Type through this view at its Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed with it at
+    // R6-check. A part's result depends on the part alone, so each distinct part is erased once per call (DECISIONS BU-19, BU-58).
     internal BoundType? WithoutRawOrigins(BoundType? type)
         => type is null || !type.CarriesRawOrigin ? type : this.ErasedParts(type, this.erasedParts.Begin(this.storageVersion));
 

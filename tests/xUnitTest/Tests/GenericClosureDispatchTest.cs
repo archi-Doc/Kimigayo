@@ -27,7 +27,7 @@ public class GenericClosureDispatchTest
         var c = MinimalEmissionTest.Analyze(Source);
         var closure = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0).Key.Decl!;
         Assert.True(c.Types.Instantiates(closure));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -51,9 +51,9 @@ public class GenericClosureDispatchTest
     public void WarmRecursiveGenericClosurePlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Count + "require count(\"owned\", 4) == 5 else => $abort(\"warm\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

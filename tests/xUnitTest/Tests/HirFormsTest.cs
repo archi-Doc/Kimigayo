@@ -66,7 +66,7 @@ public sealed partial class HirFormsTest
     {
         var c = MinimalEmissionTest.Analyze("func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
             "require f(7) == 7 and f(true) else => $abort(\"call\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
@@ -87,7 +87,7 @@ public sealed partial class HirFormsTest
     public void AbortCallsArePublishedAtTheirMacros(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var macros = Reachable(c.Kotonoha).OfType<MacroKoto>().ToArray();
@@ -110,7 +110,7 @@ public sealed partial class HirFormsTest
     public void VirtualBodiesArePublished()
     {
         var c = MinimalEmissionTest.Analyze(VirtualSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var functions = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsVirtual || x.IsOverride).ToArray();
@@ -128,7 +128,7 @@ public sealed partial class HirFormsTest
             "func spin() -> i32\n    var i: i32 = 0\n    loop\n        i = i + 1\n" +
             "func count() -> i32\n    var i: i32 = 0\n    loop\n        require i < 3 else => exit\n        i = i + 1\n    return i\n" +
             "require choose(true) == 1 and pick(0) == 1 and count() == 3 else => $abort(\"completion\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var nodes = Reachable(c.Kotonoha);
@@ -157,7 +157,7 @@ public sealed partial class HirFormsTest
     public void ADefaultHasItsOwnCompletion(string expression, bool completes)
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (" + expression + ")) => ()\nf(3)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var function = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
@@ -170,7 +170,7 @@ public sealed partial class HirFormsTest
     public void AYieldInAMatchArmTargetsItsSelection()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: bool) -> i32 => match x\n    true => (if x\n        yield 1\n    else\n        yield 2\n    )\n    false => 0");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
@@ -192,7 +192,7 @@ public sealed partial class HirFormsTest
         var c = MinimalEmissionTest.Analyze(source);
         HirTables.Publish(c);
         var jump = Assert.Single(Reachable(c.Kotonoha).OfType<JumpKoto>());
-        Assert.True(HirTables.Op(jump) is HirOp.Jump or HirOp.Continue, MinimalEmissionTest.Describe(c, null));
+        Assert.True(HirTables.Op(jump) is HirOp.Jump or HirOp.Continue, MinimalEmissionTest.Describe(c));
         Assert.Null(HirTables.PlanOf(jump).Plan);
         Assert.True(HoldsItsTarget(jump));
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code && x.Span == jump.Span);
@@ -209,7 +209,7 @@ public sealed partial class HirFormsTest
             "var number: i32 = 1\nlet owned = \"owned\"\ntwice(number@uniq)\nlet copied = number\n" +
             "require read(number) == 2 and count(owned@move) == 1 and copied == 2 and pick(.Some(5)) == 5 else => $abort(\"adjust\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Acquire != HirAcquire.Unset)
@@ -238,7 +238,7 @@ public sealed partial class HirFormsTest
     {
         var c = MinimalEmissionTest.Analyze("func keep<T>(x: T) -> T\n    T is Owned\n    return x\nfunc pass<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n" +
             "    return value\nrequire keep(1) == 1 else => $abort(\"bare\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
@@ -259,7 +259,7 @@ public sealed partial class HirFormsTest
             "var pts = Pair<Point>.init(Point.init(1), Point.init(2))\npts[0].x = 5\nlet fixed: [3 of i32] = [1, 2, 3]\nlet i: isize = 2\nlet p = Point.init(3)\nlet r = p@ref\n" +
             "require through(r@ref) == 3 and pick(.Some(Point.init(4))) == 4 and pts[1].x == 5 and fixed[1] + (fixed)[i] == 5 else => $abort(\"place\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("func through", StringComparison.Ordinal);
@@ -285,7 +285,7 @@ public sealed partial class HirFormsTest
         const string Source = "struct Point\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
             "let t = (1, 3)\nlet fixed: [3 of i32] = [1, 2, 3]\nlet p = Point.init(3)\nrequire t.1 + fixed[2] + p.x + t.0 == 10 else => $abort(\"rows\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("require", StringComparison.Ordinal);
@@ -309,7 +309,7 @@ public sealed partial class HirFormsTest
             "Console.writeLine(\"n=\\(total)\")\nlet text = \"\\(pts[1])\"\n" +
             "require m.level == 4 and view[range][1] == 2 and values[tail] == 2 and text == \"6\" else => $abort(\"expansion\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("var m = ", StringComparison.Ordinal);
@@ -421,7 +421,7 @@ public sealed partial class HirFormsTest
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("func write", StringComparison.Ordinal);
@@ -493,7 +493,7 @@ public sealed partial class HirFormsTest
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name"];
@@ -530,7 +530,7 @@ public sealed partial class HirFormsTest
             "let capacity = values.capacity\nlet span = values[0..2]\nvar total: isize = 0\nfor i in values.indices\n    total += i\nConsole.writeLine(\"n=\\(capacity)\")\n" +
             "let some: Option<i32> = .Some(5)\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var nodes = Reachable(c.Kotonoha);
@@ -615,7 +615,7 @@ public sealed partial class HirFormsTest
             "    s is ref or uniq\n    t is ref or uniq\n    let pair = x@follow\n    let other = w@follow\n    let own = z@follow\n    let part = bx.v\n    let through = q@follow\n" +
             "public func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         var rows = Reachable(c.Kotonoha)
             .Where(static x => (x.Parent is VariableKoto { InitializerKoto: { } initializer } && ReferenceEquals(initializer, x) && x is not ArrayLiteralKoto) ||
@@ -642,7 +642,7 @@ public sealed partial class HirFormsTest
     public void EveryDiscardedPlaceHasItsAcquisition(string source)
     {
         var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);

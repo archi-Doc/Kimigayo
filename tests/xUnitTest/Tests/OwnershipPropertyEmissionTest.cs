@@ -96,10 +96,10 @@ public class OwnershipPropertyEmissionTest
     public void SetterPipelineReusesPreparedStorage()
     {
         var c = MinimalEmissionTest.Analyze(Resource + Holder + "var h = Holder.init(Resource.init(1))\nh.item = Resource.init(2)");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

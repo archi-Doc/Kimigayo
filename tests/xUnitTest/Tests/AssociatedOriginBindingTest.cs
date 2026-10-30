@@ -49,10 +49,10 @@ public class AssociatedOriginBindingTest
     public void ConstantFamilyNormalizesAtApplication(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(declarations + "\nfunc f(x: ref/i32 during source) -> S.(C).Item(source) => 42");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(BoundType.I32, function.ReturnType!.TypeOf());
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -67,7 +67,7 @@ public class AssociatedOriginBindingTest
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during source) -> " + result + " => 42");
         Assert.False(c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -94,7 +94,7 @@ public class AssociatedOriginBindingTest
     public void MethodOriginsAreSeparateFromAssociatedBinders(string result)
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\n    func f(self: ref/Self during a) -> " + result + "\nstruct S\n    Self is C\n    public func f(self: ref/Self during b) -> i32 => 42");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginApplicationKoto>().Select(x => x.ArgumentNodes.Single().OriginOf()).ToArray();
         Assert.NotNull(parameters[0]);
         Assert.NotSame(parameters[0], parameters[1]);
@@ -107,7 +107,7 @@ public class AssociatedOriginBindingTest
     public void GenericConstantFamilyAcceptsExistingOrigins(string argument)
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(step) is i32\nfunc f<T>(x: ref/T during a, y: ref/T during b) -> T.(C).Item(" + argument + ")\n    T is C\n    return 42");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -115,14 +115,14 @@ public class AssociatedOriginBindingTest
     public void SerializedFamilyRetainsBindingAndWarmIdentity()
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a) -> S.Item(a) => 42");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
-        Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored, null));
+        Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored));
         Assert.True(restored.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => restored.Bind()));
     }
@@ -133,7 +133,7 @@ public class AssociatedOriginBindingTest
     public void UnrelatedNamespacesDoNotHideOriginParameters(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class AssociatedOriginBindingTest
         const string source = "contract C\n    associate Item(step) is Copy\n    func get(self: ref/Self during step) -> Self.Item(step)\n" +
             "func twice<T>(x: ref/T during b) -> (T.(C).Item(b), T.(C).Item(b))\n    T is C\n    let v = x.get()\n    return (v, v)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -204,7 +204,7 @@ public class AssociatedOriginBindingTest
     public void AProjectionLocalPublishesItsInferredOrigin()
     {
         var c = MinimalEmissionTest.Analyze(Base + "func f(a: ref/i32) -> i32\n    let w: S.Item = a\n    return 0\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var local = KotoTree.Walk(f).OfType<VariableKoto>().Single();
         Assert.Same(f, local.NameKoto.TypeOf()!.Origin!.Binder);

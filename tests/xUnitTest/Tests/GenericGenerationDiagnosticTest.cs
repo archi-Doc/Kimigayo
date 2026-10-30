@@ -28,7 +28,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
 
         var path = Path.GetFullPath("generic-generation.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
 
         // Check, then generation, as a build runs them: check reports the instance's operation (K13a), on every pipeline (DECISIONS R5-M156).
         Assert.Equal("Unsupported_Kd " + (remainder ? "value % 2" : "value / 2"), MinimalEmissionTest.Problems(c));
@@ -63,7 +63,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     {
         var source = WideDivision.Replace("10@i128", "10@i64", StringComparison.Ordinal) + "\nrequire result == 5 else => $abort(\"result\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var failure), failure);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("GenericGenerationDiagnosticValid", source, string.Empty);
     }
 
@@ -86,7 +86,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("10@i128", "10@i64", StringComparison.Ordinal));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -103,7 +103,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             output.WriteLine(console.Text);
             Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("InternalInvariant_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
         }
         finally

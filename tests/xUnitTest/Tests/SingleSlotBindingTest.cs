@@ -29,14 +29,14 @@ public class SingleSlotBindingTest
     public void BindsTheOnlySlot(string source)
     {
         var c = MinimalEmissionTest.Analyze(View + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void TheBoundSlotIsTheWrittenOrigin()
     {
         var c = MinimalEmissionTest.Analyze(View + "func identity(x: V<i32> during a) -> V<i32> during a => x@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "identity");
         var input = function.Parameters[0].Type.TypeOf()!;
         var result = function.ReturnType!.TypeOf()!;

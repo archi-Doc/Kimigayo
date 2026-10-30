@@ -59,7 +59,7 @@ public class GenericOwnershipCaseTest
     {
         var row = Rows.Value[name];
         var c = MinimalEmissionTest.Analyze(row.Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(row.Old is null || (row.Old.Rule is { Length: > 0 } && row.Old.Expected.Keys.All(row.Expected.ContainsKey)), $"{name}: Old names its revision item and cases of the row.");
         var rejected = false;
         foreach (var (semantics, written) in row.Expected)
@@ -90,7 +90,7 @@ public class GenericOwnershipCaseTest
 
         if (!rejected)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
     }
 

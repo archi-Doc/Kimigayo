@@ -78,7 +78,7 @@ public class UserArithmeticUpdateTest
     {
         var source = Counter + "\nfunc add(values: uniq/" + type + ")\n    let saved = values[0]@ref\n    values[0] += values[0]\n    require saved.value == 21 else => $abort(\"live child\")\nvar values: " + type + " = [Counter.init(21)]\nadd(values@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
         Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
     }
@@ -87,7 +87,7 @@ public class UserArithmeticUpdateTest
     public void RetainedElementLoanStillPreventsReplacement()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "\nvar values: Array<Counter> = [Counter.init(21)]\nlet saved = values[0]@ref\nvalues[0] += values[0]\nrequire saved.value == 21 else => $abort(\"saved element\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
         Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
     }
@@ -106,7 +106,7 @@ public class UserArithmeticUpdateTest
         // not depend on the checkout.
         var path = overwrite ? Path.GetFullPath("arithmetic-element-loan.kimi") : "arithmetic-element-loan.kimi";
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (overwrite)
         {
             Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
@@ -160,7 +160,7 @@ public class UserArithmeticUpdateTest
         const string Program = "struct Box\n    public var raw: i32 = 41\n    public computed item: View\n        get() -> View during self => View.init(self.raw@ref)\n        set(value: i32) -> () => self.raw = value\nvar box = Box.init()\nbox.item += ()\nrequire box.raw == 42 else => $abort(\"getter dependency\")";
         var source = View + (destructor ? "    drop => _ = self.value\n" : string.Empty) + Program;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (destructor)
         {
             Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
@@ -184,7 +184,7 @@ public class UserArithmeticUpdateTest
     public void AnIndependentLoanStillPreventsReplacement()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "\nvar total = Counter.init(21)\nlet saved = total@ref\ntotal += total\nrequire saved.value == 21 else => $abort(\"saved\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
@@ -202,12 +202,12 @@ public class UserArithmeticUpdateTest
             : kind == "borrowed" ? "\nfunc add(values: uniq/Array<Counter>) => values[0] += values[0]\nvar values: Array<Counter> = [Counter.init(21)]\nadd(values@uniq)"
             : "\nvar total = Counter.init(21)\ntotal += total";
         var c = MinimalEmissionTest.Analyze(Counter + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }
