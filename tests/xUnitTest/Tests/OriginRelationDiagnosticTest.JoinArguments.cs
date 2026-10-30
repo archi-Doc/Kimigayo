@@ -162,13 +162,20 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("b6ap", RefOne + RefThree + ApFunc + RunHead + "    let a = ap(if c => one else => three)\n    return a\n", "TypeMismatch_Kd three")]
     [InlineData("b6fn", ApFunc + RunHead + "    let a = ap(if c => func [] (x: i32) -> i32 => x else => func [] (x: i64) -> i32 => 0)\n    return a\n", "")]
     public void AFailingJoinArgumentIsALanguageError(string form, string body, string required)
+        => AssertLanguageErrors(form, body, required);
+
+    // The SPEC 23.1.2 check of an invalid form: the program parses without a record, and its Error records include each of `required`
+    // (each `Code text`, "; " between them; empty: any record), allow further dependent records, and never Unsupported_Kd or a fault of
+    // the check.
+    private static void AssertLanguageErrors(string form, string body, string required)
     {
         var source = body + Main;
         CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         var shown = errors.Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").ToArray();
+        string[] each = required.Length == 0 ? [] : required.Split("; ");
         Assert.True(
-            shown.Length > 0 && (required.Length == 0 || shown.Contains(required)) && !errors.Any(static x => FaultCodes.Contains(x.Code)),
+            shown.Length > 0 && each.All(shown.Contains) && !errors.Any(static x => FaultCodes.Contains(x.Code)),
             $"{form}: expected a Language error{(required.Length == 0 ? string.Empty : $" with [{required}]")} and no {string.Join(", ", FaultCodes)}, found [{string.Join("; ", shown)}]");
     }
 
