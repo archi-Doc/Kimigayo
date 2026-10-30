@@ -4,8 +4,8 @@ namespace Kimi.Compiler.Backend;
 
 /// <summary>The checked set of a program version (SPEC 8.15.3, IMPL 21.3.1), which only <see cref="InstanceCollector"/> writes: its items in
 /// admission order, the roots first, each with its targets in its body's location order, and its instance-stage records, one per code and
-/// subject, which <c>Compilation.MirRecords</c> publishes, its Language records on every pipeline and the others under MIR code generation
-/// (DECISIONS BU-48, R5-M41 until G2); at emit, its Generated column (K package 4.10), which the generation entry marks. Its arrays and
+/// subject, which <c>Compilation.MirRecords</c> publishes at check on every pipeline and under either code generator (DECISIONS BU-48,
+/// R5-M156); at emit, its Generated column (K package 4.10), which the generation entry marks. Its arrays and
 /// lookup keep their storage, so collecting and marking a program again allocate nothing.</summary>
 internal sealed class CheckedSet
 {

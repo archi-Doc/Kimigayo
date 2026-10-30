@@ -25,7 +25,9 @@ public class StringFunctionEmissionTest
         { "Loop", Echo + "var i = 0\nwhile i < 3\n    echo(\"iteration\")\n    i += 1", string.Empty, "iteration=3" },
         { "Recursion", "func repeat(text: string, n: i32) -> string\n    if n == 0 => return text@move\n    return repeat(text@move, n - 1)\nConsole.writeLine(repeat(\"recursive\", 3))", "recursive\n", "recursive=1" },
         { "Snapshot", "func take() -> string\n    var text = \"before\"\n    defer => text = \"after\"\n    return text@move\nConsole.writeLine(take())", "before\n", "before=1;after=1" },
-        { "EarlyArgument", "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(\"pending\", (return))\nf()", string.Empty, Codegen.Expect("pending=0;bad=0", "pending=1;bad=0", CodegenDeviations.ConstantTemporaries) },
+
+        // The argument a later one abandons is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
+        { "EarlyArgument", Echo + "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(echo(\"pending\"), (return))\nf()", string.Empty, "pending=1;bad=0" },
         { "Shadow", "func writeLine(text: string) => ()\nwriteLine(\"shadow\")", string.Empty, "shadow=1" },
         { "Local", "public func main()\n    func local(text: string) -> string => text@move\n    Console.writeLine(local(\"local\"))", "local\n", "local=1" },
         { "Empty", Echo + "Console.writeLine(echo(\"\"))", "\n", "=1" },

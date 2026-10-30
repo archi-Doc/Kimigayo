@@ -34,6 +34,7 @@ public class ElementAssignmentEmissionTest
         { "NestedTransfer", "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of [1 of i32]] = [[0]]\n    a[(return 42)][index()] = 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 1)] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferBoundary", "func f() -> i32\n    var a: [1 of i32] = [0]\n    let result = label work: loop\n        a[(return 1)] = (exit to work 42)\n    return result\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferField", "struct S\n    public var n: i32 = 0\n    public init() => ()\nfunc f() -> i32\n    var b: [1 of S] = [S.init()]\n    defer => if b[0].n != 0 => Console.writeLine(\"bad\")\n    b[(return 42)].n = 1\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "DeferredAggregate", "var a = ((0, false), \"held\")\nvar i = 0\nloop\n    defer => a.0 = if true => (42, true) else => (0, false)\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
         { "UnitEffects", "func unit()\n    Console.writeLine(\"ok\")\nvar a: [1 of ()] = [()]\na[0] = unit()" },
     };

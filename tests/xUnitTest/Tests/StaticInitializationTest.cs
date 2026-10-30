@@ -116,7 +116,7 @@ public class StaticInitializationTest
     }
 
     // SPEC 22.4.3, 22.5.1, 22.5.2: reading first initializes it, whose initializer reads second, whose initializer reads first while it is
-    // Initializing: KIMI_E_STATIC_CYCLE at that access; the old generator reports KIMI_E_ABORT at first's declaration (static-cycle).
+    // Initializing: KIMI_E_STATIC_CYCLE at that access (DECISIONS R5-M106).
     [Fact]
     public void DetectsIndirectCycle()
     {
@@ -127,11 +127,6 @@ public class StaticInitializationTest
             let value = Values.first
             """;
         ScalarEmissionTest.EmitFixture(
-            "StaticInitializationCycle",
-            Source,
-            string.Empty,
-            1,
-            "Hello.kimi:3:30: abort KIMI_E_STATIC_CYCLE: Static initialization cycle\n",
-            legacy: new LegacyNative(CodegenDeviations.StaticCycle, string.Empty, 1, "Hello.kimi:2:12: abort KIMI_E_ABORT: Static initialization cycle\n"));
+            "StaticInitializationCycle", Source, string.Empty, 1, "Hello.kimi:3:30: abort KIMI_E_STATIC_CYCLE: Static initialization cycle\n");
     }
 }

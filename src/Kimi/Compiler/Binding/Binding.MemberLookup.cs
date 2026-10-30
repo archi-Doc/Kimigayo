@@ -63,7 +63,10 @@ public sealed partial class Binding
         {
             var syntax = structure.Bases[i];
             var type = this.BindType(syntax, scope);
-            if (syntax.BindingState == BindingState.Invalid || type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
+            if (syntax.BindingState == BindingState.Invalid ||
+                type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } ||
+                (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !this.TypeAccessCovers(type, symbol, symbol) ||
+                !this.ValidateBaseDeclaration(parent))
             {
                 this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 valid = false;

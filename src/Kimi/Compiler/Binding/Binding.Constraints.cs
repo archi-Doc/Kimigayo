@@ -222,6 +222,7 @@ public sealed partial class Binding
 
     private void BindConstraints()
     {
+        this.ResetSourceStates();
         this.bindingConstraintTypes = true;
         // Collect ordinary facts, then complete outer Type/Contract constraints, then P.
         // Dependent function constraints may use P only through their declaration scope.
@@ -285,6 +286,7 @@ public sealed partial class Binding
         }
 
         this.ExpandContractPremises();
+        this.PublishSourceStates();
         this.PrepareAssociatedBindings();
         this.bindingConstraintTypes = false;
         this.ValidateConstraintProjectionAccess();

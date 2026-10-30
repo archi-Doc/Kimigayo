@@ -75,6 +75,7 @@ internal sealed partial class MirValidator(TyCtxt types)
     private readonly MirCases cases = new(types);
     private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
     private readonly MirReach reach = new();
+    private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
 
     /// <summary>Validates a body.</summary>
@@ -95,7 +96,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         Array.Clear(this.writes, 0, body.Locals.Length);
         this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes);
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
@@ -135,7 +136,8 @@ internal sealed partial class MirValidator(TyCtxt types)
         bool[] unknown,
         bool[] ensured,
         List<(MirRvalue Adapt, SourceInfo Source)> adapts,
-        byte[] writes) : IMirUses
+        byte[] writes,
+        HashSet<BoundType> parts) : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;

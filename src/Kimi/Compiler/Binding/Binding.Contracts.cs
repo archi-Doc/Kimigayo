@@ -67,19 +67,6 @@ public sealed partial class Binding
     private static bool IsBoundContractReference(BindingSymbol contract)
         => contract.Type is { } reference && !ReferenceEquals(reference.Symbol, contract);
 
-    private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
-    {
-        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
-        {
-            return ConstraintAccessCovers(constraint.Left!, contract, intersection) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract, intersection));
-        }
-
-        return (constraint.Contract is null ||
-            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
-             (constraint.Contract.Type is not { } reference || TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
-            (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
-    }
-
     private static bool IsRefinementName(Koto syntax)
         => syntax switch
         {
@@ -104,6 +91,20 @@ public sealed partial class Binding
         }
 
         return name as GenericsKoto;
+    }
+
+    private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
+    {
+        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        {
+            return this.ConstraintAccessCovers(constraint.Left!, contract, intersection) &&
+                (constraint.Right is null || this.ConstraintAccessCovers(constraint.Right, contract, intersection));
+        }
+
+        return (constraint.Contract is null ||
+            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+             (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
+            (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
     }
 
     /// <summary>
@@ -569,6 +570,7 @@ public sealed partial class Binding
             }
         }
 
+        this.PublishSourceStates();
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var conformance = this.activeConformancePaths[i];
@@ -675,14 +677,14 @@ public sealed partial class Binding
                     }
 
                     var declaringContract = members[i].Contract;
-                    if (a.BoundSymbol!.Type is { } result && !TypeAccessCovers(result, declaringContract, declaringContract))
+                    if (a.BoundSymbol!.Type is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
                     {
                         this.Fail(a, BindingFailure.Access);
                     }
 
                     for (var p = 0; p < a.Parameters.Count; p++)
                     {
-                        if (a.Parameters[p].Type.BoundType is { } parameter && !TypeAccessCovers(parameter, declaringContract, declaringContract))
+                        if (a.Parameters[p].Type.BoundType is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
                         {
                             this.Fail(a, BindingFailure.Access);
                         }
@@ -690,7 +692,7 @@ public sealed partial class Binding
 
                     for (var p = 0; p < a.TypeConstraints.Count; p++)
                     {
-                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !ConstraintAccessCovers(constraint, declaringContract))
+                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !this.ConstraintAccessCovers(constraint, declaringContract))
                         {
                             this.Fail(a, BindingFailure.Access);
                         }
@@ -727,7 +729,8 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
             {
-                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, shape.Symbol) || (shape.ClauseStorage[i].Left.BoundType is { } subject && !TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
+                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!this.ConstraintAccessCovers(constraint, shape.Symbol) ||
+                    (shape.ClauseStorage[i].Left.BoundType is { } subject && !this.TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
                 {
                     this.Fail(shape.ClauseStorage[i], BindingFailure.Access);
                     this.Fail(contract, BindingFailure.Access);

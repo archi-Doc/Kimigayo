@@ -42,6 +42,7 @@ public class ElementBorrowEmissionTest
         { "Covered", "let a = (\"first\", 0)\nmatch true\n    _ => ()\n    true => (label work: do\n        let equal = same(a.0, a.0)\n    )\nConsole.writeLine(\"ok\")" },
         { "GuardCandidate", "let a = (\"first\", 0)\nmatch \"other\"@move\n    let s if same(a.0, s) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"ok\")" },
         { "NestedGuardCandidate", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"@move\n    let s if three(a.0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")" },
+        { "TransferIndex", "func see(v: ref/string) => Console.writeLine(\"bad\")\nfunc f() -> i32\n    let a: [1 of string] = [\"first\"]\n    defer => if a[0] != \"first\" => Console.writeLine(\"bad\")\n    see(a[(return 42)]@ref)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
     };
 
     [Theory]
@@ -129,6 +130,26 @@ public class ElementBorrowEmissionTest
     [InlineData("SelectorOnce", Item + Bump + "var calls = 0\nfunc pick(c: uniq/i32) -> isize\n    c@follow += 1\n    return 0\nvar xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[pick(calls@uniq)].n@uniq)\nConsole.writeLine(\"\\(xs[0].n) \\(calls)\")", "42 1\n")]
     public void SelectedElementPlacesAreBorrowedInPlace(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementBorrowPlace" + name, source, stdout);
+
+    // SPEC 4.7.1, 3.1.3 (DECISIONS R5-M159): an element whose key diverges, which has its element Type, or a part of it, is never borrowed
+    // or changed as a call's exclusive input: a `@uniq` argument, a `uniq/Self` receiver, an intrinsic's input; run under MIR code
+    // generation in every run (the old generator refuses each, GenerationFailed_Kd; STATUS).
+    [Theory]
+    [InlineData("Argument", "bump(a[(return 42)]@uniq)")]
+    [InlineData("Receiver", "b[(return 42)].inc()")]
+    [InlineData("Part", "bump(t[(return 42)].1@uniq)")]
+    [InlineData("Replace", "Kimi.Intrinsics.replace(a[(return 42)]@uniq, with: \"new\")")]
+    [InlineData("Exchange", "let old = Kimi.Intrinsics.exchange(a[(return 42)]@uniq, with: \"new\")")]
+    public void AnExclusiveInputBelowADivergingKeyLeavesItsElement(string name, string statement)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            Counter + "func bump(s: uniq/string) => Console.writeLine(\"bad\")\nfunc f() -> i32\n    var a: [1 of string] = [\"old\"]\n" +
+            "    var b: [1 of Counter] = [Counter.init(1)]\n    var t: [1 of (i32, string)] = [(1, \"x\")]\n" +
+            "    defer => if a[0] != \"old\" or b[0].value != 1 or t[0].1 != \"x\" => Console.writeLine(\"bad\")\n    " + statement +
+            "\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")",
+            codegen: CompilerCodegen.Mir);
+        ScalarEmissionTest.WriteFixture("ElementBorrowPlaceTransfer" + name, CompilationTestHelper.WriteIr(c), "ok\n");
+    }
 
     // SPEC 4.7: the element's bounds are checked before it or its part is borrowed.
     [Theory]

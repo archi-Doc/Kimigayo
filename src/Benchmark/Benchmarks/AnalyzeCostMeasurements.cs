@@ -10,8 +10,9 @@ namespace Benchmark;
 
 // The check-time cost of the Generic shape under each analysis configuration (R5 K4b): a fresh check (Bind, CheckStartup and Analyze, the
 // compiler pipeline's stages 2 to 4) and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP
-// server repeats it. MIR code generation ("sel") adds the instance collector to Analyze. Retained memory is the managed heap after full
-// collections with the compilation alive: after its first check, and the growth over its warm Analyzes.
+// server repeats it. Every configuration's Analyze builds, analyzes and collects the MIR and publishes its records (DECISIONS BU-48,
+// R5-M156), so they differ only in what check does not run. Retained memory is the managed heap after full collections with the
+// compilation alive: after its first check, and the growth over its warm Analyzes.
 internal static partial class AnalyzeCostMeasurements
 {
     private const int Warmups = 4;

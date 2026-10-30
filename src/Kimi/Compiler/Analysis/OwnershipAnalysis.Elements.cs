@@ -109,7 +109,7 @@ public sealed partial class OwnershipAnalysis
     private int UpdateElement(Koto source, BinaryKoto target)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
-        var type = ElementAccess.DestinationType(target, target.BoundType);
+        var type = target.BoundType;
         if (!this.SupportsUpdate(target, type, operation) || ElementAccess.WritableRoot(target) is null)
         {
             this.Unsupported(source);
@@ -234,60 +234,72 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
+    // SPEC 14.10.3 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the assumed path by
+    // the same Move rules, with no temporary and no static Move Path; no other use of it is checked here (R1's limit, STATUS).
     private int AcquireElement(BinaryKoto source, int projection, bool allowMove = false, AcquisitionKind? acquisition = null)
     {
-        var result = -1;
-        if (projection >= 0 && this.flow!.Nodes[source].CanCompleteNormally)
+        var completes = this.flow!.Nodes[source].CanCompleteNormally;
+        if (completes ? projection < 0 : !allowMove)
         {
-            result = this.Temporary(source, projection: projection);
-            if (allowMove && acquisition is null && this.body.Places[result].Acquisition != AcquisitionKind.Copy)
-            {
-                // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move. A bare element storing an exclusive
-                // reference, the exclusive case of a pair element included, would Reborrow (SPEC 15.1.5), which element paths do not
-                // support yet (STATUS), as the concrete element does not.
-                if (this.body.Places[result].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
-                {
-                    this.Unsupported(source);
-                }
-                else
-                {
-                    this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-                }
-            }
+            return -1;
+        }
 
-            if (allowMove && acquisition == AcquisitionKind.Move && this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
-                (this.body.Projections[projection].Path != projection || !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
+        var result = completes ? this.Temporary(source, projection: projection) : -1;
+        var type = completes ? this.body.Places[result].Type : this.compilation.Binding.WithoutRawOrigins(this.Resolve(source.BoundType, this.Active)) ?? BoundType.Unit;
+        var kind = completes ? this.body.Places[result].Acquisition : this.ExactAcquisition(this.CopyProof(type, source, this.Active), type, source);
+        var staticPath = completes && this.body.Projections[projection].Path == projection &&
+            ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root]);
+        if (allowMove && acquisition is null && kind != AcquisitionKind.Copy)
+        {
+            // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move. A bare element storing an exclusive
+            // reference, the exclusive case of a pair element included, would Reborrow (SPEC 15.1.5), which element paths do not
+            // support yet (STATUS), as the concrete element does not.
+            if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
             {
-                // SPEC 15.1.3: an explicit Move of an element without a static Move Path is rejected. The element is then not
-                // taken, so later uses of the array are explained by this failure rather than by a Move.
-                this.body.ReportIssue(new(source, OwnershipRequirement.StaticMovePathRequired));
+                this.Unsupported(source);
+            }
+            else
+            {
+                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
+            }
+        }
+
+        if (allowMove && acquisition == AcquisitionKind.Move && kind is AcquisitionKind.Move or AcquisitionKind.CopyOrMove && !staticPath)
+        {
+            // SPEC 15.1.3: an explicit Move of an element without a static Move Path is rejected. The element is then not
+            // taken, so later uses of the array are explained by this failure rather than by a Move.
+            this.body.ReportIssue(new(source, OwnershipRequirement.StaticMovePathRequired));
+            if (completes)
+            {
                 var produce = this.body.Operations.Count - 1;
                 this.body.OperationStorage[produce] = this.body.OperationStorage[produce] with { Acquisition = AcquisitionKind.None };
             }
-            else if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
-                (!allowMove || this.body.Places[result].Acquisition is not (AcquisitionKind.Move or AcquisitionKind.CopyOrMove) || this.body.Projections[projection].Path != projection ||
-                    !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
-            {
-                // Inspection and shared arguments must borrow the element Place;
-                // they may not silently Move it into a temporary to obtain a borrow.
-                this.Unsupported(source);
-            }
-
-            var output = this.Value(result);
-            for (var ancestor = projection; ancestor >= 0; ancestor = this.body.Projections[ancestor].Parent)
-            {
-                if (this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
-                    this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
-                    path.Left.BoundType is { } owner && AdtDef.HasDestructorOnPath(owner, path.BoundSymbol))
-                {
-                    this.Unsupported(source); // No partial Move through any drop-bearing ancestor.
-                }
-            }
-
-            this.SetValue(output, OwnershipValueKind.Element, []);
-            this.body.Projections[projection] = this.body.Projections[projection] with { Output = output };
+        }
+        else if (kind != AcquisitionKind.Copy && (!allowMove || kind is not (AcquisitionKind.Move or AcquisitionKind.CopyOrMove) || !staticPath))
+        {
+            // Inspection and shared arguments must borrow the element Place;
+            // they may not silently Move it into a temporary to obtain a borrow.
+            this.Unsupported(source);
         }
 
+        if (!completes)
+        {
+            return -1;
+        }
+
+        var output = this.Value(result);
+        for (var ancestor = projection; ancestor >= 0; ancestor = this.body.Projections[ancestor].Parent)
+        {
+            if (kind is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
+                this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
+                path.Left.BoundType is { } owner && AdtDef.HasDestructorOnPath(owner, path.BoundSymbol))
+            {
+                this.Unsupported(source); // No partial Move through any drop-bearing ancestor.
+            }
+        }
+
+        this.SetValue(output, OwnershipValueKind.Element, []);
+        this.body.Projections[projection] = this.body.Projections[projection] with { Output = output };
         return result;
     }
 

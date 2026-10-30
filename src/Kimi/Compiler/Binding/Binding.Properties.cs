@@ -263,7 +263,7 @@ public sealed partial class Binding
             }
 
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
-            if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
             {
                 this.Fail(declaration!, BindingFailure.Access);
             }
@@ -281,7 +281,7 @@ public sealed partial class Binding
             // The header/storage Type belongs to the Property domain even when
             // every accessor has narrower access. Requirements inherit the Contract domain.
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : property.Symbol;
-            if (property.Type is { } type && !TypeAccessCovers(type, domain, domain))
+            if (property.Type is { } type && !this.TypeAccessCovers(type, domain, domain))
             {
                 this.Fail(syntax, BindingFailure.Access);
             }
@@ -400,9 +400,9 @@ public sealed partial class Binding
         }
 
         var domain = property.Declaration.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : accessor.SignatureSymbol!;
-        if (!TypeAccessCovers(accessor.Result, domain, domain) ||
-            (accessor.Input is { } input && !TypeAccessCovers(input, domain, domain)) ||
-            (accessor.Receiver is { } receiverType && !TypeAccessCovers(receiverType, domain, domain)))
+        if (!this.TypeAccessCovers(accessor.Result, domain, domain) ||
+            (accessor.Input is { } input && !this.TypeAccessCovers(input, domain, domain)) ||
+            (accessor.Receiver is { } receiverType && !this.TypeAccessCovers(receiverType, domain, domain)))
         {
             this.Fail(syntax!, BindingFailure.Access);
             return ConstraintProof.Error;
