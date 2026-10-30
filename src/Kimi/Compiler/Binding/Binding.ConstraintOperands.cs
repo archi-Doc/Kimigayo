@@ -42,6 +42,21 @@ public sealed partial class Binding
         return null;
     }
 
+    // The failure of the first declaration a node's own selection calls (CallPlan.Called) that failed or lies in a failed context, or
+    // the declaration itself when it is left unresolved on a failure of its own (an accessor resting on a missing part).
+    private Koto? InvalidCalledDeclaration(Koto node)
+    {
+        for (var i = 0; CallPlan.Called(node, i) is { } called; i++)
+        {
+            if ((this.InvalidDeclarationContextCause(called) ?? (called.BindingState == BindingState.Unresolved && this.HasFailureCauses(called) ? called : null)) is { } cause)
+            {
+                return cause;
+            }
+        }
+
+        return null;
+    }
+
     private Koto? InvalidDeclarationCause(Koto declaration)
     {
         if (declaration.BindingState != BindingState.Invalid)
