@@ -2,12 +2,12 @@
 
 // Owns the physical representation records of the windows-x64-v1 profile (SPEC 21.1, 21.3.1; DECISIONS R5-M15): the storage
 // layout of a concrete Type (TypeLayout), its computation and argument representation (ValueLowering) and a physical signature
-// (FunctionAbi of AbiParameters) with its definition header. Both generators build, compare and write these records.
+// (FunctionAbi of AbiParameters) with its definition header. Code generation builds, compares and writes these records.
 // Input: LLVM type text, sizes, alignments, offsets, parameter names and kinds, signature flags.
 // Output: immutable records; a FunctionAbi's `define ... {` line, created once per linkage and cached.
 // Invariants: a FunctionAbi is identified by reference, and its definition and every call to it use the same parameters.
-// Must not take BoundType, a layout pool, EmissionModule, syntax or MIR types: deciding a Type's record belongs to Layout and a
-// signature's to Abi (DECISIONS R5-M19, R5-M58); the old gate stays in WindowsLowering, FunctionAbiPool and AggregateLayoutPool.
+// Must not take BoundType, syntax or MIR types: deciding a Type's record belongs to Layout and a signature's to Abi (DECISIONS R5-M19,
+// R5-M58).
 
 #pragma warning disable SA1402 // The physical representation records form one vocabulary.
 

@@ -71,11 +71,10 @@ public class AggregateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())");
         var type = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>()).TypeOf()!;
-        var pool = new AggregateLayoutPool(c.Layout);
-        var layout = Assert.IsType<AggregateLayout>(pool.Get(type));
-        Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.Value.Layout.FieldOffsets.ToArray());
-        Assert.Equal(64, layout.Value.Layout.Size);
-        Assert.Equal(8, layout.Value.Layout.Alignment);
+        var layout = c.Layout.Of(type).Value!.Layout;
+        Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.FieldOffsets.ToArray());
+        Assert.Equal(64, layout.Size);
+        Assert.Equal(8, layout.Alignment);
         const string Source = "let value = (\"first\", \"second\", \"third\")";
         var ir = ScalarEmissionTest.EmitFixture("AggregateOrder", Source, string.Empty);
         StringEmissionTest.WriteAuditedFixture("AggregateOrder", ir, string.Empty, "first=1;second=1;third=1", order: [2, 1, 0]);

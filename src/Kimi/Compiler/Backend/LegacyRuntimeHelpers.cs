@@ -1,36 +1,31 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
-// DECISIONS R5-M16): a module's requests for Array, Dictionary, formatting and string-comparison runtime text (the per-element
-// helper records, the runtime flags, the source functions the compiler requested, the DictionaryStorage functions and the
-// formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
-// through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
-// primitives, a Dictionary entry's layout and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
-// and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary, Raw.slice and
-// capacity kernels written inline in their caller's body with the library record Field addressing they share with the old
-// writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
-// the ones every call reads). Each generator's module holds one instance, and both
-// write the helpers through this component (promoted, never copied).
+// DECISIONS R5-M16): the per-element helper records of the Array, Dictionary and formatting runtime text, the element descriptor
+// of a stored collection value, the stored-value text kernels the helpers write through, the Array capacity routines and helpers
+// (LegacyRuntimeHelpers.Arrays.cs), a Dictionary entry's layout and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs),
+// the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs),
+// the storage-boundary and capacity kernels written inline in their caller's body with their library record Field addressing
+// (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
+// the ones every call reads). MIR code generation writes the helpers through this static component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
-// offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
-// by DictionaryCallee; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
+// offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions a Dictionary
+// helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); for
 // an inline storage kernel, StorageKernelInput (the spellings of the address it reads and of its result, its number, its
 // result record's Field offsets, the number naming its temporaries); a writer, LLVM SSA names and sizes.
-// Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
+// Output: LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
 // collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
 // writer and HelperNeeds (the Array runtime for the kinds that grow a buffer or copy or move elements, every kind but Clear,
 // Drop, BorrowStorage and OwnStorage; the element's drop glue for Clear and Drop), and no Array row declares a library callee,
 // since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI shape, writer, HelperNeeds (the Array
-// runtime for Place, which copies its key and value; the Dictionary runtime for CheckKey; the element's drop glue for Drop) and
-// its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
-// CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
-// DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
-// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge) has no row but declares the callee a
-// Dictionary's construction runs (Construction, initialize), and the old lowering also requests it for a Dictionary's construction.
+// runtime for Place, which copies its key and value; the element's drop glue for Drop) and its callees as DictionaryCallee values:
+// the generic function its helpers call over the entry Types (clearEntries for Drop) and the one the module resolves (append for
+// Place). DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
+// for it; Construction (initialize) is the callee a Dictionary's construction runs.
 // Each formatting compiler function's row
 // (FormattingRow; P1d) holds its routine's ABI, whose capacity Context names by its logical index the parameter receiving the fixed array
 // it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
@@ -40,23 +35,19 @@
 // which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormatStackLimit; R3-10).
 // Each inline storage kernel's row
 // (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
-// address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
-// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'. The one map from a compiler
+// address arithmetic in the caller's body, so it declares no callee. The capacity
+// kernel (P2b) is a plain writer without a row: their calls are intrinsics, whose rows are IntrinsicRows'. The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
 // writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, the Array operations and storage kinds in
 // their function's instance (Instance: the Array helper of its kind, or a capacity routine, through its call's LegacyRow item; DECISIONS
 // R5-M121), setArrayLength's length, placeEntry in its function's instance (Place: the Dictionary Place helper, which calls the item's
 // declared callee, append), the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124) and
 // the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
-// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a request's
-// runtime flags come from its row; each
-// requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
-// row declares;
-// the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
-// Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
-// by StoredValue.TravelsAsScalar.
-// Must not take AggregateLayout, EmissionModule, syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
-// destination for its kind or bound (FormatKind, FormatBound, WriterKind), branch on the generator, or use LINQ.
+// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
+// runtime needs come from its row; warm writes allocate nothing; whether a value travels as a scalar is decided once, by
+// StoredValue.TravelsAsScalar.
+// Must not hold module state, take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
+// destination for its kind or bound (FormatKind, FormatBound, WriterKind), or use LINQ.
 
 #pragma warning disable SA1402 // The helper records and the element descriptor are this component's request vocabulary.
 
@@ -78,10 +69,6 @@ internal enum HelperNeeds : byte
     /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it
     /// then calls only when an entry needs destruction (SPEC 4.9.7, 16.3.2).</summary>
     ElementGlue = 2,
-
-    /// <summary>The Dictionary runtime: the duplicate-key adapter a literal's key check reports through and the empty-Dictionary
-    /// initialization bridge (SPEC 4.3, 4.9.6).</summary>
-    DictionaryRuntime = 4,
 
     /// <summary>The formatting runtime: the UTF-8 buffer, writer, formatting and floating-point routines and the memory
     /// declarations (SPEC 22.7, 22.9, 22.10).</summary>
@@ -212,9 +199,9 @@ internal readonly record struct StoredValue(ValueLowering Value, string? Drop, b
     internal static bool TravelsAsScalar(ValueLowering value) => value.ArgumentType == value.ComputationType;
 }
 
-/// <summary>A module's legacy runtime helper requests, and the text kernels and routines its helpers share.</summary>
+/// <summary>The legacy runtime helpers' rows and writers, and the text kernels and routines its helpers share.</summary>
 [Transitional("R8", Reason = Removal)]
-internal sealed partial class LegacyRuntimeHelpers
+internal static partial class LegacyRuntimeHelpers
 {
     internal const string Removal = "R8 replaces the legacy runtime helpers with Kimigayo library code.";
 
@@ -227,8 +214,8 @@ internal sealed partial class LegacyRuntimeHelpers
     /// the second, lexicographically by UTF-8 byte.</summary>
     internal static readonly FunctionAbi StringCompare = new("__kimi_string_compare", "i32", StringEqual.Parameters);
 
-    /// <summary>The string-comparison routines' text, each definition spliced from its signature (LlvmModuleText.ExpandRuntime), which every
-    /// generator writes once per module that compares strings.</summary>
+    /// <summary>The string-comparison routines' text, each definition spliced from its signature (LlvmModuleText.ExpandRuntime), which code
+    /// generation writes once per module that compares strings.</summary>
     internal static readonly string StringComparisons = ExpandRuntime(
         """
         declare i32 @memcmp(ptr, ptr, i64)
@@ -268,18 +255,6 @@ internal sealed partial class LegacyRuntimeHelpers
 
         """,
         [StringEqual, StringCompare]);
-
-    // The per-element Array helpers requested by lowered bodies (SPEC 4.9.3), in first-request order.
-    private readonly List<ArrayHelper> arrayHelpers = new();
-
-    /// <summary>Gets the ABI of every source call the compiler requested for generated code, in request order: the destructors
-    /// (SPEC 16.3.2) and the Dictionary storage operations, which a Dictionary helper calls through its Related index.</summary>
-    internal List<FunctionAbi> FunctionReferences { get; } = new();
-
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.9.5).</summary>
-    internal bool NeedsArrayRuntime { get; set; }
-
-    internal bool NeedsStringComparison { get; set; }
 
     /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
     /// kind to how MIR code generation writes its call, by the row's writer, and the one test of whether a function is one: every site asks
@@ -391,29 +366,6 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write(", ptr %location, i64 %location_length)\n");
     }
 
-    internal void Clear()
-    {
-        this.arrayHelpers.Clear();
-        this.dictionaryHelpers.Clear();
-        this.FunctionReferences.Clear();
-        this.NeedsArrayRuntime = false;
-        this.NeedsDictionaryRuntime = false;
-        this.NeedsStorageBytes = false;
-        Array.Clear(this.dictionaryCallees);
-        this.NeedsFormattingRuntime = false;
-        this.formattingWrites.Clear();
-        this.formattingConversions.Clear();
-        this.NeedsStringComparison = false;
-    }
-
     // An Instance row over the Array helper of a kind (DECISIONS R5-M121).
     private static LegacyRow Instance(ArrayHelperKind kind) => new(LegacyWriter.Instance, Helper: kind);
-
-    // A requested helper's runtime needs are its kind row's (X4); they join the module's.
-    private void JoinNeeds(HelperNeeds needs)
-    {
-        this.NeedsArrayRuntime |= (needs & HelperNeeds.ArrayRuntime) != 0;
-        this.NeedsDictionaryRuntime |= (needs & HelperNeeds.DictionaryRuntime) != 0;
-        this.NeedsFormattingRuntime |= (needs & HelperNeeds.FormattingRuntime) != 0;
-    }
 }

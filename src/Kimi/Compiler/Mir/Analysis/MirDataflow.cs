@@ -1,14 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the bit-set dataflow of one MIR body, forward and backward (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M34, R4-M65).
+// Owns the bit-set dataflow of one MIR body, forward and backward (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M34, R4-M65, R4-M158).
 // Input: a validated body (Begin) and a transfer, a struct IMirFlow that interprets blocks on the scratch state and joins states. Output: the
 // blocks in reverse postorder, each block's phase, the converged state at each flow head, and Replay and ReplayBackward, which give each
 // chain its state once.
 // Blocks form chains: a block whose only edge is a runtime edge into a block that has no other predecessor and is not the entry continues
 // into it, so a chain shares one stored state, held only at its head. Begin decides each chain's phase: P1 where the runtime edges from the
-// entry reach it, else P2 (SPEC 14.10.3). Forward: P1 follows runtime edges from the entry; P2 follows runtime and CheckTarget edges and
-// writes only P2 heads, P1's states frozen. Backward: a P1 chain joins its runtime successors' states, a P2 chain every successor's (SPEC
-// 14.9), from the boundary state. The transfer joins (A1: union). A solve's worklist holds every head at first and takes the pending head
+// entry reach it, else P2 (SPEC 14.10.3). One edge rule serves both directions (Flows): a state flows along any edge into a P2 head and
+// along a P1 chain's runtime edges into a P1 head, never otherwise into a P1 head. Forward: P1 follows runtime edges from the entry; P2
+// the edges into P2 heads, P1's states frozen. Backward is its transpose: a chain joins the states of the successors its state flows into,
+// from the boundary state (R4-M158). The transfer joins (A1: union). A solve's worklist holds every head at first and takes the pending head
 // first in its direction's order, reverse postorder forward and postorder backward, so growth along a loop's back edge settles the loop
 // before the code after it is applied again (R4-M65). States are word-major (the lanes of 64 paths per word group), and only a problem's
 // first words are stored; the scratch holds the rest. One arena stores both problems' words; its byte size is the one Resource limit of the
@@ -312,7 +313,7 @@ internal sealed class MirDataflow(MirReach reach)
     }
 
     /// <summary>Solves a backward problem to its least fixed point: a chain's state before its head is its blocks applied, last first, to the
-    /// boundary state joined with its successors' states, a P1 chain's runtime successors only (SPEC 14.9, 14.10.3). The worklist takes
+    /// boundary state joined with the states of the successors its state flows into forward (SPEC 14.10.3, DECISIONS R4-M158). The worklist takes
     /// heads in postorder, its index i being head headCount − 1 − i, so acyclic code converges in one sweep, and a head whose state grows
     /// makes its predecessors' heads pending (R4-M65).</summary>
     /// <typeparam name="TFlow">The transfer's struct type.</typeparam>
@@ -397,9 +398,14 @@ internal sealed class MirDataflow(MirReach reach)
         }
     }
 
-    // The heads reached in a phase until their states stop growing: P1 from the entry over runtime edges; P2 over runtime and CheckTarget
-    // edges into P2 heads, a P1 head passing its frozen state once along its CheckTarget. The worklist takes heads in reverse postorder, so
-    // acyclic code converges in one sweep, and a head whose state grows is pending again (R4-M65).
+    // Whether a state flows from head h along its chain's edge i (-1 the CheckTarget) into head s, the one edge rule of both directions
+    // (R4-M158): into a P2 head along any edge, into a P1 head only along a P1 chain's runtime edge (SPEC 14.10.3: an assumed continuation
+    // continues from its Never form's state; an item with a real incoming path uses only real paths).
+    private bool Flows(int h, int i, int s) => this.phases[s] == 2 || (this.phases[h] == 1 && i >= 0);
+
+    // The heads reached in a phase until their states stop growing, along the edges Flows admits into the phase's heads: P1 from the entry
+    // over runtime edges; P2 into P2 heads, a P1 head passing its frozen state once along its CheckTarget. The worklist takes heads in
+    // reverse postorder, so acyclic code converges in one sweep, and a head whose state grows is pending again (R4-M65).
     private void Solve<TFlow>(ref TFlow flow, byte phase)
         where TFlow : struct, IMirFlow
     {
@@ -414,10 +420,10 @@ internal sealed class MirDataflow(MirReach reach)
             }
 
             this.Chain(ref flow, h);
-            for (var i = phase == 2 ? -1 : 0; i < (frozen ? 0 : MirUses.Successors(terminator)); i++)
+            for (var i = -1; i < (frozen ? 0 : MirUses.Successors(terminator)); i++)
             {
                 var target = MirUses.Successor(this.body, terminator, i) is >= 0 and var successor ? this.head[successor] : -1;
-                if (target >= 0 && this.phases[target] == phase && this.Join(ref flow, target))
+                if (target >= 0 && this.phases[target] == phase && this.Flows(h, i, target) && this.Join(ref flow, target))
                 {
                     this.Queue(target);
                 }
@@ -482,16 +488,16 @@ internal sealed class MirDataflow(MirReach reach)
         return flow.Join(state, this.scratch.AsSpan(0, this.forward));
     }
 
-    // Writes into the scratch a chain's backward state after its last block, the boundary state joined with its successors' stored states (a P1
-    // chain's runtime successors only), then applies its blocks, last first.
+    // Writes into the scratch a chain's backward state after its last block, the boundary state joined with the stored states of the
+    // successors its state flows into (Flows), then applies its blocks, last first.
     private void Unwind<TFlow>(ref TFlow flow, int h)
         where TFlow : struct, IMirFlow
     {
         flow.Entry();
         var terminator = this.body.Blocks[this.tails[h]].Terminator;
-        for (var i = this.phases[h] == 1 ? 0 : -1; i < MirUses.Successors(terminator); i++)
+        for (var i = -1; i < MirUses.Successors(terminator); i++)
         {
-            if (MirUses.Successor(this.body, terminator, i) is >= 0 and var successor)
+            if (MirUses.Successor(this.body, terminator, i) is >= 0 and var successor && this.Flows(h, i, this.head[successor]))
             {
                 _ = flow.Join(this.scratch.AsSpan(0, this.backward), this.arena.AsSpan(this.head[successor] * this.Row, this.backward));
             }

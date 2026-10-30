@@ -6,7 +6,7 @@ namespace Kimi.Compiler.Backend;
 
 // The inline storage kernels of FunctionCodegen (SPEC 22.2; R5 plans P2a, C8b and C8e; DECISIONS R5-M45, R5-M116, R5-M124): a compiler function
 // of the Body disposition whose legacy row names a kernel's writer, its text the P2a kernel row's (LegacyRuntimeHelpers.StorageRow), the one
-// copy both generators write (PD2), over its input spelled from the call. FixedStorage: borrowStorage and borrowStorageUniq over a fixed
+// copy (PD2), over its input spelled from the call. FixedStorage: borrowStorage and borrowStorageUniq over a fixed
 // array give the remainder {storage, position, count} = {the first element's address, 0, N} at the result record's Fields 0, 1 and 2 (the
 // declaration order of RefRemainder and UniqRemainder), N the array's closed length in the item's instance; the reference operand's value
 // is the array's address, so nothing is read or copied. DictionaryKernel: each Dictionary kernel over its call's entry layout, of the K

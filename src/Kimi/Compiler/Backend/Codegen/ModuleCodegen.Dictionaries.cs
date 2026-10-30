@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Backend;
 // The Dictionary legacy rows of ModuleCodegen (R5 plan C8e, package C 3.4 and 3.6; S2-S4 X4, X39; DECISIONS R5-M124), until R8 writes them in
 // Kimigayo: placeEntry's LegacyRow item's routine (Row's Place writer), which its calls, its function's Item's Value calls and its adapter's
 // entry call, and a Dictionary glue item's Drop helper (DictionaryDrop), which the glue calls with its own parameters. Each is P1c's row
-// text, the one copy both generators write (PD2; LegacyRuntimeHelpers.WriteDictionary), named after its item by its kind's prefix
+// text, the one copy (PD2; LegacyRuntimeHelpers.WriteDictionary), named after its item by its kind's prefix
 // (__kimi_dictionary_place_<item>, __kimi_dictionary_drop_<item>), over its Dictionary's entry: the key's and the value's Layout records
 // and their entry layout (DictionaryEntryLayout.Of); the callee its row declares is its item's target, by its signature: Place's Storage
 // callee, the append body its LegacyRow item targets; Drop's Entries callee, the clearEntries instance its glue targets when an entry may
@@ -54,7 +54,7 @@ internal sealed partial class ModuleCodegen
         var storedValue = new StoredValue(value, null, Text: false);
         var helper = this.dictionaries[item] is { } kept && (kept.Kind, kept.Key, kept.Value) == (kind, stored, storedValue) ? kept
             : DictionaryHelper.Create(
-                kind, stored, storedValue, DictionaryEntryLayout.Of(key.Layout, value.Layout), -1, "_" + item.ToString(CultureInfo.InvariantCulture));
+                kind, stored, storedValue, DictionaryEntryLayout.Of(key.Layout, value.Layout), "_" + item.ToString(CultureInfo.InvariantCulture));
         (this.dictionaries[item], this.placed[item]) = (helper, this.writes);
         var row = LegacyRuntimeHelpers.DictionaryRow(kind);
         var entries = row.Entries == DictionaryCallee.None ? null : callee;
