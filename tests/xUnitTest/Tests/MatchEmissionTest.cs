@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -135,22 +134,6 @@ public class MatchEmissionTest
         ScalarEmissionTest.EmitFixture("MatchWidth" + type, $"func f(n: {type}) -> string\n    return match n\n        {literal} => \"ok\"\n        _ => \"bad\"\nConsole.writeLine(f({literal}))", "ok\n");
     }
 
-    [Fact]
-    public void SubjectAliasesAcquiredStorageAndFinalArmHasNoTest()
-    {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch echo(\"a\")@move\n    \"\" => ()\n    let text => Console.writeLine(text)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count > 0);
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.SlotAddresses.Count == body.Places.Count);
-        var initial = body.Operations.Single(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-        Assert.Equal(function.SlotAddresses[initial.Input], function.SlotAddresses[initial.Place]);
-        Assert.DoesNotContain(function.Slots, x => x.Place == initial.Place);
-        var initialId = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-        Assert.DoesNotContain(function.Instructions, x => x.Operation == initialId && x.Opcode == EmissionOpcode.MoveString);
-        Assert.Single(function.Instructions, x => x.Opcode == EmissionOpcode.StringPattern);
-        Assert.Empty(function.LiveFlags);
-    }
-
     [Theory]
     [InlineData("func f()\n    match (return)\n        _ => 1.0 + 2.0\nf()")]
     public void NoncompletingSubjectsStillCheckFloatingArms(string source)
@@ -185,17 +168,5 @@ public class MatchEmissionTest
         const string Source = "let result = match \"subject\"@move\n    _\n        let local = \"local\"\n        defer => Console.writeLine(\"cleanup\")\n        yield \"result\"\nConsole.writeLine(result)";
         var ir = ScalarEmissionTest.EmitFixture("MatchCleanupOrder", Source, "cleanup\nresult\n");
         StringEmissionTest.WriteAuditedFixture("MatchCleanupOrder", ir, "cleanup\nresult\n", "subject=1;local=1;cleanup=1;result=1", order: [2, 1, 0, 3]);
-    }
-
-    [Fact]
-    public void CoveredArmKeepsDiagnosticsButContributesNoStorageOrFlags()
-    {
-        const string Source = "match 0@move\n    _ => ()\n    0\n        var text = \"a\"\n        if true => Console.writeLine(text)\n        text = \"b\"";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        Assert.Empty(function.LiveFlags);
-        Assert.Empty(function.Slots);
-        Assert.DoesNotContain(function.Instructions, x => x.Opcode is EmissionOpcode.StoreStaticString or EmissionOpcode.MoveString or EmissionOpcode.Phi);
     }
 }

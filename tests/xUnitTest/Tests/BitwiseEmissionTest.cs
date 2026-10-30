@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -87,41 +86,6 @@ public class BitwiseEmissionTest
             MinimalEmissionTest.Analyze("var x = 3\nvar y: u8 = 1\nlet a = x << 32\nlet b = y >> 8\nlet c = x << -1")));
         var abort = kept.Function("__kimi_abort");
         Assert.Equal(3, kept.Startup.Blocks.Count(x => x.Successors.Any(s => s.Instructions.Any(i => i.Callee == abort))));
-    }
-
-    [Fact]
-    public void ShiftChecksKeepPhysicalPhiPredecessorsAndNeedNoExtraSlots()
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 3\nvar n = 2\nvar m = 1\nlet y = if true => x << n else => x >> m\nx ^= y");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var f = module.GetFunction(0);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
-        var shifts = f.Instructions.Where(x => x.Check == ArithmeticCheckKind.Shift).ToArray();
-        Assert.Equal(2, shifts.Length);
-        foreach (var instruction in shifts)
-        {
-            Assert.True(instruction.Constant >= 0);
-            Assert.Contains($"%invalid{instruction.Operation} = icmp uge i32 ", ir);
-            Assert.Contains($"br i1 %invalid{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
-            Assert.Contains($"b{instruction.Place}:\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", ir);
-            Assert.False(instruction.IsComparison);
-        }
-
-        var phi = Assert.Single(f.Instructions, x => x.Opcode == EmissionOpcode.Phi);
-        var inputs = f.GetOperands(phi);
-        for (var i = 0; i < inputs.Length; i += 2)
-        {
-            var producer = inputs[i].Value;
-            Assert.Equal(Assert.Single(shifts, x => x.Operation == producer).Place, inputs[i + 1].Value);
-        }
-
-        Assert.All(f.Slots, x => Assert.Equal(OwnershipPlaceKind.Local, c.Ownership.Bodies[0].Places[x.Place].Kind));
-        Assert.DoesNotContain(" nsw ", ir);
-        Assert.DoesNotContain(" nuw ", ir);
-        Assert.DoesNotContain(" exact ", ir);
-        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]

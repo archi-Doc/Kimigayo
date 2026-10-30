@@ -87,15 +87,6 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void UnreferencedGenericSlotsNeedNoConcreteInstance()
-    {
-        var c = MinimalEmissionTest.Analyze(Hierarchy + "()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Empty(module.Objects);
-        Assert.DoesNotContain(Enumerable.Range(0, module.FunctionCount), i => module.GetFunction(i).Abi.Name.StartsWith("__kimi_generic_entry", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public void AReplacedGenericBodyAddsNoGenerationDependencies()
     {
         const string Source = "struct Next<T>\n    T is Owned\nopen struct Base<T>\n    T is Owned\n    public init() => ()\n    public virtual func read(self: objref/Self) -> i32\n        let child = Base<Next<T>>.init()@obj\n        return 1\nstruct Leaf<T> : Base<T>\n    T is Owned\n    public init() => ()\n    override func read(self: objref/Self) -> i32 => 7\nlet a = Leaf<string>.init()@obj\nrequire a.read() == 7 else => $abort(\"replaced\")";

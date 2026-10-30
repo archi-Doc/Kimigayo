@@ -22,10 +22,10 @@
 // (its version stamp; PLAN G157 (15), DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and none runs the old generator: MIR code generation is the one code generator since G4
-// (DECISIONS R5-M160). Outside the gate until G7 deletes LlvmEmitter, and with it Compilation.Emission: its direct readers in tests
-// (TryPrepare inspections and failure facts, which G5 deletes) and src/Benchmark (two stage measurements of the old generator; the
-// pipeline benchmark generates through this entry, R5-M94) run the old generator without the gate. One ModuleCodegen per compilation
-// keeps MIR code generation's storage.
+// (DECISIONS R5-M160). Outside the gate until G7 deletes LlvmEmitter, and with it Compilation.Emission: its direct readers in
+// src/Benchmark (two stage measurements of the old generator; the pipeline benchmark generates through this entry, R5-M94) run the old
+// generator without the gate; no test reads it since G5 (DECISIONS R5-M161). One ModuleCodegen per compilation keeps MIR code
+// generation's storage.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
 // generator.
 

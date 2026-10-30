@@ -206,9 +206,6 @@ public class ElementUpdateEmissionTest
     public void NonterminatingCleanupPreventsTheStore(string name, string expression)
     {
         var source = "var a: (string, [1 of i32]) = (\"held\", [0])\n" + expression;
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementUpdateDivergent" + name, source, string.Empty, observationMilliseconds: 300);
     }
 
@@ -307,7 +304,6 @@ public class ElementUpdateEmissionTest
         const string Source = "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc rhs() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar a: [1 of i32] = [40]\na[index()] += rhs()\nif a[0] == 42 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdateOrder", Source, "rhs\nindex\nok\n");
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
         var update = Assert.Single(body.ElementUpdates);
         var plan = body.Projections[update.Projection];
@@ -320,8 +316,5 @@ public class ElementUpdateEmissionTest
         Assert.True(body.HasComparisonLoan(update.Computation, plan.Exclusive));
         Assert.True(body.HasComparisonLoan(plan.Write, plan.Exclusive));
         Assert.False(body.HasComparisonLoan(update.Result, plan.Exclusive));
-        var instructions = module.GetFunction(0).Instructions;
-        Assert.Single(instructions, x => x.Opcode == EmissionOpcode.LoadElement && x.Operation == plan.Output);
-        Assert.Single(instructions, x => x.Opcode == EmissionOpcode.StoreElement && x.Operation == plan.Write);
     }
 }

@@ -86,51 +86,6 @@ public class ElementBorrowOwnerEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementBorrowOwnerLifetime" + name, ir, stdout, destructions, order: order);
     }
 
-    [Fact]
-    public void ConditionalConstructionActivatesItsDestructionFlag()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        var place = Assert.Single(function.LiveFlags, p => body.Places[p].Type.Kind == BoundTypeKind.Tuple);
-        Assert.Contains(function.Instructions, x => x.Opcode == EmissionOpcode.StoreLiveFlag && x.Place == place && x.Constant == 1 && body.Operations[x.Operation].Kind == OwnershipOperationKind.CompleteConstruction);
-    }
-
-    [Theory]
-    [InlineData("entry")]
-    [InlineData("completion")]
-    [InlineData("clear")]
-    [InlineData("value")]
-    [InlineData("duplicate")]
-    public void ConditionalFlagsRejectMissingOrIncorrectTransitions(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        var place = Assert.Single(function.LiveFlags, p => body.Places[p].Type.Kind == BoundTypeKind.Tuple);
-        var index = function.Instructions.FindIndex(x => x.Place == place && (defect == "entry" ? x.Opcode == EmissionOpcode.InitializeLiveFlag :
-            x.Opcode == EmissionOpcode.StoreLiveFlag && body.Operations[x.Operation].Kind == (defect == "clear" ? OwnershipOperationKind.Cleanup : OwnershipOperationKind.CompleteConstruction)));
-        Assert.True(index >= 0);
-        var instruction = function.Instructions[index];
-        if (defect == "duplicate")
-        {
-            function.Instructions.Insert(index, instruction);
-        }
-        else if (defect == "value")
-        {
-            function.Instructions[index] = instruction with { Constant = 0 };
-        }
-        else
-        {
-            function.Instructions.RemoveAt(index);
-        }
-
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, new int[body.Places.Count + body.Operations.Count]));
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Theory]
     [InlineData("Argument", "func inspect(a: ref/string, b: i32) => ()\nlet empty: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\ninspect((\"head\", \"tail\").0, empty[0])", 4, 29)]
     [InlineData("Construction", "let empty: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\nlet equal = ((\"head\", empty[0]), \"tail\").0.0 == \"head\"", 3, 23)]

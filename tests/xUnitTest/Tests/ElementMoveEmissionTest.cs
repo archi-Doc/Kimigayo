@@ -104,25 +104,6 @@ public class ElementMoveEmissionTest
     }
 
     [Fact]
-    public void OnlyConditionalRemaindersNeedFlags()
-    {
-        var c = MinimalEmissionTest.Analyze("let a = (\"first\", \"last\")\nlet taken = a.0@move");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        Assert.Empty(module.GetFunction(0).PathFlags);
-        c = MinimalEmissionTest.Analyze("func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\nf(true)");
-        Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.PathFlags.Count != 0);
-        Assert.Single(function.PathFlags);
-        Assert.Empty(function.LiveFlags);
-        var body = c.Ownership.Bodies.Single(x => x.MovePathCount != 0);
-        var scratch = new int[body.Operations.Count];
-        Assert.True(BodyLowering.ValidatePathFlags(body, function, scratch));
-        var instruction = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StorePathFlag && x.Constant == 1);
-        function.Instructions.RemoveAt(instruction);
-        Assert.False(BodyLowering.ValidatePathFlags(body, function, scratch));
-    }
-
-    [Fact]
     public void SparsePathsDoNotExpandTheDeclaredArrayLength()
     {
         var c = MinimalEmissionTest.Analyze("var a: [1000000 of string]\nlet taken = a[42]@move");
