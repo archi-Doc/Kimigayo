@@ -39,8 +39,8 @@ internal sealed partial class MirBuilder
             node);
     }
 
-    // SPEC 13.4: a tuple operator compares the leaves of its Self that TyCtxt.Comparison composes under source operators (floats by IEEE),
-    // left to right, in shared views of its operands, the call's inputs as Binding adapted them, the left pending and secured as a built-in
+    // SPEC 13.4: a tuple operator compares the leaves of its Self that TyCtxt.Comparison composes under source operators (floats by IEEE;
+    // Leaves), left to right, in shared views of its operands, the call's inputs as Binding adapted them, the left pending and secured as a built-in
     // operator's (Operands). A leaf but the last decides the result where its pair is unequal (an unordered pair is), by the operator on
     // the pair (for == and !=, the test's bool or its negation), else the next leaf does; the last leaf decides by the operator on its
     // pair, so each path writes the destination once. The Contract is SPEC 13.4.1's for the operator, from the declaration table. A Limit
@@ -91,19 +91,23 @@ internal sealed partial class MirBuilder
         this.current = join;
     }
 
-    // The leaves of a comparison's tree in order, each with its Places in the two operands: a Tuple's part i is its Field i, a reference
-    // layer's its referent, and the Never value its own part.
+    // The leaves of a composite node in order, each with its Places in the two operands: a Tuple's part i is its Field i, a reference
+    // layer's its referent, and the Never value its own part. A Tuple part that compares as its Contract's mapping (Mapped) is a leaf,
+    // compared whole by that requirement on its Type, so the expansion is linear in the distinct Types (V16); a reference layer and a part
+    // with a leaf only source operators compare (a float by IEEE) are expanded.
     private void Leaves(ComparisonNode node, MirPlace left, MirPlace right)
     {
-        if (node.Kind != ComparisonKind.Composite)
-        {
-            this.leaves.Add((node, left, right));
-            return;
-        }
-
         for (var i = 0; i < node.Parts.Length; i++)
         {
-            this.Leaves(node.Parts[i], this.Part(left, node.Type, i), this.Part(right, node.Type, i));
+            var (part, x, y) = (node.Parts[i], this.Part(left, node.Type, i), this.Part(right, node.Type, i));
+            if (part.Kind == ComparisonKind.Composite && (!part.Mapped || part.Type.Kind != BoundTypeKind.Tuple))
+            {
+                this.Leaves(part, x, y);
+            }
+            else
+            {
+                this.leaves.Add((part, x, y));
+            }
         }
     }
 
@@ -112,7 +116,8 @@ internal sealed partial class MirBuilder
 
     // A leaf's pair, the operands its built-in comparison takes: a built-in leaf's Places Copied, a string's (the one built-in leaf Type that
     // is not Copy) through shared borrows as a direct string comparison inspects them (SPEC 13.4); a Contract leaf's call of its witness (a
-    // Fn callee) or of its requirement on its Self (a Requirement callee) on shared borrows of its Places, an Equatable leaf's bool its
+    // Fn callee) or of its requirement on its Self (a Requirement callee: a Requirement leaf or a Tuple one, compared whole as its
+    // mapping, which runs its parts' witnesses in order, SPEC 13.4.1) on shared borrows of its Places, an Equatable leaf's bool its
     // equality (test), a Comparable leaf's i32 compared with zero. A None leaf, a broken contract (DECISIONS R5-M68), is InternalInvariant_Kd
     // with a derived Opaque result.
     private (MirOperand X, MirOperand Y, MirPlace? Test) Pair(

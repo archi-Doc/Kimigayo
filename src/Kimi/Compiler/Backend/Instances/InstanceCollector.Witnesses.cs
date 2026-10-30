@@ -154,10 +154,10 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
-    // K 4.3: a shim's targets, at its default site: a comparison shim's are its leaf witnesses (SPEC 13.4) by TyCtxt.Comparison of its
-    // Contract, the scope owner of its compiler function (F 4.6), on the representative Self under the Contract's mapping; a formatting or
-    // arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness
-    // drops the Field's old value (its glue), the Field Agrees found in the representative Self at admission.
+    // K 4.3: a shim's targets, at its default site: a comparison shim's are its parts' witnesses and shims (SPEC 13.4; Leaves) by
+    // TyCtxt.Comparison of its Contract, the scope owner of its compiler function (F 4.6), on the representative Self under the Contract's
+    // mapping; a formatting or arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a
+    // setter's property witness drops the Field's old value (its glue), the Field Agrees found in the representative Self at admission.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
         if (key.Kind == MonoKind.PropertyWitness)
@@ -179,7 +179,7 @@ internal sealed partial class InstanceCollector
         switch (key.Symbol!.CompilerFunction)
         {
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
-                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false), pastStorage: false);
+                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false));
                 return;
             case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
@@ -188,41 +188,37 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // F 4.6: a comparison tree's targets in order: a Witness leaf's Body under its substitution, a Composite's parts', none for a Builtin. A
-    // Requirement or None leaf, which a closed Self's comparison has not, is a broken contract, and no tree, a Self whose storage does not
-    // complete, the storage-nesting gap, at the shim's site. K 4.8 (DECISIONS R5-M149): the shim's Self is laid out at its admission, its
-    // storage; below a node whose Type is laid out without its component (Layout.Indirect: a reference layer), the next node with a layout
-    // need (LayoutNeeds: a compared Tuple's parts) is past that storage, a use at the shim's site, after which its Type is the storage again.
-    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node, bool pastStorage)
+    // F 4.6: a comparison shim's targets in order, one per part of its Self's node (a Tuple's parts, a reference layer's referent, followed)
+    // that is not Builtin: a Witness leaf's Body under its substitution, a Tuple part's own shim, the Contract's requirement on its Type
+    // (Runs: the Builtin item of that Type), so each distinct Tuple of the comparison DAG is one item and its parts are read once (V16;
+    // DECISIONS R5-M164). A Requirement or None part, which a closed Self's comparison has not, is a broken contract, and no tree, a Self
+    // whose storage does not complete, the storage-nesting gap, at the shim's site. K 4.8: each shim lays out its Self at its admission
+    // (AdmitType), so a compared Tuple past a reference layer is a use at the site that admits its shim.
+    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node)
     {
-        DiagnosticCode? refused = node?.Kind switch
+        if (node is null)
         {
-            null => Capability.Code(CapabilityGap.StorageNesting),
-            ComparisonKind.Composite or ComparisonKind.Builtin or ComparisonKind.Witness => null,
-            ComparisonKind.Requirement or ComparisonKind.None => DiagnosticCode.InternalInvariant_Kd,
-            _ => throw new InvalidOperationException($"The comparison kind {node!.Kind} has no target row."),
-        };
-
-        if (refused is { } code)
-        {
-            this.Report(code, site);
+            this.Report(Capability.Code(CapabilityGap.StorageNesting), site);
             return;
-        }
-
-        if (node!.Kind == ComparisonKind.Witness)
-        {
-            this.Target(item, this.Implementation(program, item, site, node.Target!, node.Subst));
-        }
-
-        var needed = pastStorage && LayoutNeeds.Of(node) != LayoutNeed.None;
-        if (needed)
-        {
-            _ = this.LaysOut(site, LayoutNeeds.TypeOf(node));
         }
 
         foreach (var part in node.Parts)
         {
-            this.Leaves(program, item, site, part, Layout.Indirect(node.Type) || (pastStorage && !needed));
+            switch (part.Kind)
+            {
+                case ComparisonKind.Witness:
+                    this.Target(item, this.Implementation(program, item, site, part.Target!, part.Subst));
+                    break;
+                case ComparisonKind.Composite when part.Type.Kind == BoundTypeKind.Tuple:
+                    this.Target(item, this.Runs(program, item, site, part.Target!, part.Type));
+                    break;
+                case ComparisonKind.Composite:
+                    this.Leaves(program, item, site, part); // A reference layer's referent.
+                    break;
+                case ComparisonKind.Requirement or ComparisonKind.None:
+                    this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+                    break;
+            }
         }
     }
 }

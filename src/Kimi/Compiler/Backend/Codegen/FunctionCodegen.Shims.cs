@@ -11,10 +11,11 @@ namespace Kimi.Compiler.Backend;
 // entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
 // reports nothing. By its function's compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
 // - BuiltinEquals and BuiltinCompare: TyCtxt.Comparison of its Contract (TyCtxt.Contract) on its Self under the Contract's mapping, the
-//   collector's tree, so its Witness leaves are the item's targets in order. A Tuple's parts left to right at their Field offsets, each
-//   but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
-//   layer's referent; a Builtin leaf through the operator table's column of its Type (Leaf); a Witness leaf its target's call (BodyRun,
-//   its virtual slot included) on the two leaf addresses.
+//   collector's node, so the parts that are not Builtin are the item's targets in order. A Tuple's parts left to right at their Field
+//   offsets, each but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then
+//   returned; a ref layer's referent; a Builtin part through the operator table's column of its Type (Leaf); a Witness leaf or a Tuple
+//   part its target's call (Witness: a body, its virtual slot included, or the part's own shim) on the two part addresses, so a DAG of
+//   Types is one shim per distinct Tuple (DECISIONS R5-M164).
 // - BuiltinArithmetic: its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) through the operator table's row, as a statement's, on
 //   the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // - BuiltinFormat: the built-in formatting witness, its parameters forwarded to P1d's BuiltinFormat routine with its Self's kind (Format).
@@ -26,7 +27,7 @@ namespace Kimi.Compiler.Backend;
 // result: the value (Copy), the address (Borrow) or none (Set) (Storage). It has no MIR body (PD3).
 internal sealed partial class FunctionCodegen
 {
-    private int leaf; // The shim's next Witness leaf target.
+    private int leaf; // The shim's next part target.
 
     /// <summary>Writes the function of a shim item, Builtin or PropertyWitness, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
@@ -99,8 +100,8 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 13.4: the comparison of the values at two addresses by its node under Equatable or Comparable: equals' i1 or compare's i32; null
-    // after a record.
+    // SPEC 13.4: the comparison of the values at two addresses by the shim's Self's node under Equatable or Comparable: equals' i1 or
+    // compare's i32; null after a record. A Tuple's parts (Parts) or a reference layer's referent (Part); a Builtin Self natively.
     private Value? Compare(ComparisonNode? node, KimiDeclarationId? contract, Value left, Value right)
     {
         switch (node?.Kind)
@@ -108,22 +109,20 @@ internal sealed partial class FunctionCodegen
             case ComparisonKind.Composite when node.Type.Kind == BoundTypeKind.Tuple:
                 return this.Parts(node, contract, left, right);
             case ComparisonKind.Composite:
-                return this.Compare(node.Parts[0], contract, this.LoadAt(left, PointerLayout), this.LoadAt(right, PointerLayout)); // A referent.
+                return this.Part(node.Parts[0], contract, this.LoadAt(left, PointerLayout), this.LoadAt(right, PointerLayout)); // A referent.
             case ComparisonKind.Builtin:
                 return this.Leaf(node.Type, contract, left, right);
-            case ComparisonKind.Witness:
-                return this.WitnessLeaf(left, right);
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector records every other node at the item's admission.
                 return null;
         }
     }
 
-    // SPEC 13.4: a Tuple's parts left to right at their Field offsets (the node's Parts need, Needed; DECISIONS R5-M149); each but the last
-    // returns its value from the shim when it is not equal (Decide), and the last one's value is the Tuple's.
+    // SPEC 13.4: a Tuple's parts left to right at their Field offsets in its record (the shim's Self, laid out at its admission); each but the
+    // last returns its value from the shim when it is not equal (Decide), and the last one's value is the Tuple's.
     private Value? Parts(ComparisonNode node, KimiDeclarationId? contract, Value left, Value right)
     {
-        if (this.Needed(node) is not { } tuple)
+        if (this.Laid(node.Type) is not { } tuple)
         {
             return null; // Recorded.
         }
@@ -137,7 +136,7 @@ internal sealed partial class FunctionCodegen
                 this.Decide(previous, contract);
             }
 
-            if ((value = this.Compare(node.Parts[i], contract, this.Offset(left, offsets[i]), this.Offset(right, offsets[i]))) is null)
+            if ((value = this.Part(node.Parts[i], contract, this.Offset(left, offsets[i]), this.Offset(right, offsets[i]))) is null)
             {
                 return null; // Recorded.
             }
@@ -145,6 +144,16 @@ internal sealed partial class FunctionCodegen
 
         return value;
     }
+
+    // A part of the shim's Self: a Builtin one natively (Leaf), a reference layer's referent loaded, any other the call of the shim's next
+    // target (Called): a Witness leaf's body, a Tuple part's own shim (DECISIONS R5-M164), so the shim's text is linear in its Self's parts.
+    private Value? Part(ComparisonNode node, KimiDeclarationId? contract, Value left, Value right) => node switch
+    {
+        { Kind: ComparisonKind.Builtin } => this.Leaf(node.Type, contract, left, right),
+        { Kind: ComparisonKind.Composite, Type.Kind: not BoundTypeKind.Tuple }
+            => this.Part(node.Parts[0], contract, this.LoadAt(left, PointerLayout), this.LoadAt(right, PointerLayout)),
+        _ => this.Called(left, right),
+    };
 
     // SPEC 13.4.1: a part that is not equal decides the comparison, its value returned from the shim (equals' false, compare's non-zero i32,
     // which is tested against 0); an equal one goes on to the next part.
@@ -200,15 +209,16 @@ internal sealed partial class FunctionCodegen
             ? this.Combine("or", "i1", same, this.Combine("and", "i1", leftNaN, rightNaN)) : null;
     }
 
-    // A Witness leaf: the shim's next target, its witness's body (BodyRun, through its virtual slot when it implements one; G157 (28)),
-    // called (CallWitness) with the two leaf addresses at its logical inputs 0 and 1, the shared borrows its requirement takes (SPEC 13.4.1),
-    // and with the location the shim received at a caller-location body's location parameters; its value. Null after a record.
-    private Value? WitnessLeaf(Value left, Value right)
+    // A part's call: the shim's next target, a witness's body (BodyRun, through its virtual slot when it implements one; G157 (28)) or a
+    // part's shim (Witness, the one target rule), called (CallWitness) with the two part addresses at its logical inputs 0 and 1, the shared
+    // borrows its requirement takes (SPEC 13.4.1), and with the location the shim received at a caller-location function's location
+    // parameters; its value. Null after a record.
+    private Value? Called(Value left, Value right)
     {
         var targets = this.collector.Set.Targets(this.item);
-        if (this.leaf >= targets.Length || this.BodyRun(targets[this.leaf++].Item) is not { Signature: var callee } run)
+        if (this.leaf >= targets.Length || this.Witness(targets[this.leaf++].Item, default) is not { Signature: var callee } run)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets each Witness leaf's body in order (or recorded).
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets each part in order (or recorded).
             return null;
         }
 

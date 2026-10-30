@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the layout needs of the MIR forms and the comparison tree (SPEC 8.15.3; DECISIONS R5-M144, R5-M149): what a form's generated code
-// reads a layout of besides its by-value storage, the one fact the instance collector (K 4.8: a use of that Type) and code generation (the
-// Type it lays out, FunctionCodegen.Needed) both read. Rows: a projection step by its kind, an operator by its operator and operand, a
-// comparison node by its kind and Type; the intrinsic rows' and the legacy rows' Need columns (IntrinsicRow.Need, LegacyRow.Need) carry the
-// calls'. TypeOf is the one place that names the Type a need reads, as a Type of the form's body or tree; each reader maps it into its
-// item's instance.
-// Input: a projection kind, a MIR operator and its first operand's Type, a comparison node; a body Place, rvalue or substitution for TypeOf.
+// Owns the layout needs of the MIR forms (SPEC 8.15.3; DECISIONS R5-M144, R5-M149, R5-M164): what a form's generated code reads a layout
+// of besides its by-value storage, the one fact the instance collector (K 4.8: a use of that Type) and code generation (the Type it lays
+// out, FunctionCodegen.Needed) both read. Rows: a projection step by its kind, an operator by its operator and operand; the intrinsic
+// rows' and the legacy rows' Need columns (IntrinsicRow.Need, LegacyRow.Need) carry the calls'. A comparison shim reads only its own
+// Self's record, laid out at its admission (a part past a layer is its own shim's). TypeOf is the one place that names the Type a need
+// reads, as a Type of the form's body; each reader maps it into its item's instance.
+// Input: a projection kind, a MIR operator and its first operand's Type; a body Place, rvalue or substitution for TypeOf.
 // Output: a LayoutNeed; the Type (or the Types) it names.
 // Invariants: closed: a new form adds a row here or a Need on its table; every row's Type is TypeOf's; a need past its root's storage is a
 // use (Layout.Indirect states the boundary), a call's Type arguments always (the size SPEC 8.15.3 names: raw allocation, a whole value's
@@ -24,7 +24,7 @@ internal enum LayoutNeed : byte
     /// <summary>Nothing.</summary>
     None,
 
-    /// <summary>The record of a Type whose parts the form reads at their offsets: a Field's or a Downcast's prefix, a compared Tuple.</summary>
+    /// <summary>The record of a Type whose parts the form reads at their offsets: a Field's or a Downcast's prefix.</summary>
     Parts,
 
     /// <summary>The stride of a Type the form steps over: an Index's or a ConstIndex's element, a raw pointer displacement's pointee.</summary>
@@ -34,7 +34,7 @@ internal enum LayoutNeed : byte
     TypeArguments,
 }
 
-/// <summary>The layout-need rows of the MIR forms and the comparison tree, and the Type each names (DECISIONS R5-M149).</summary>
+/// <summary>The layout-need rows of the MIR forms, and the Type each names (DECISIONS R5-M149).</summary>
 internal static class LayoutNeeds
 {
     /// <summary>Gets a projection step's need: a Field or Downcast reads its prefix's record, an Index or ConstIndex its element's stride.
@@ -58,13 +58,6 @@ internal static class LayoutNeeds
         => op is MirBinaryOp.Add or MirBinaryOp.Sub && operand is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw }
             ? LayoutNeed.Element : LayoutNeed.None;
 
-    /// <summary>Gets a comparison node's need (SPEC 13.4): a Composite over a Tuple compares its parts at their offsets; a layer, a Builtin
-    /// and a Witness read none.</summary>
-    /// <param name="node">The node.</param>
-    /// <returns>Its need.</returns>
-    internal static LayoutNeed Of(ComparisonNode node)
-        => node is { Kind: ComparisonKind.Composite, Type.Kind: BoundTypeKind.Tuple } ? LayoutNeed.Parts : LayoutNeed.None;
-
     /// <summary>Gets the Type a projection step's need names, in its body: a Parts step's prefix, an Element step's own Type.</summary>
     /// <param name="body">The body.</param>
     /// <param name="step">A Place whose last step has a need.</param>
@@ -85,11 +78,6 @@ internal static class LayoutNeeds
         var pointer = operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
         return pointer.Components[0];
     }
-
-    /// <summary>Gets the Type a comparison node's need names: its own.</summary>
-    /// <param name="node">A node whose need is Parts.</param>
-    /// <returns>The Type.</returns>
-    internal static BoundType TypeOf(ComparisonNode node) => node.Type;
 
     /// <summary>Gets the Types a call's TypeArguments need names: every Type of its substitution (a whole-value update's T, a Dictionary
     /// kernel's K and V, an intrinsic's one argument).</summary>

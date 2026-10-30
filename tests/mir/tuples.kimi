@@ -8,6 +8,8 @@ struct Key
 func less(a: (f64, f64), b: (f64, f64)) -> bool => a < b
 // ((1.0, nan), k) > ((1.0, 2.0), k) is false: the unordered (nan, 2.0) decides; the Key leaf compares by its witness.
 func nested(a: ((f64, f64), Key), b: ((f64, f64), Key)) -> bool => a > b
+// (i32, Key) compares as Comparable's compare on it (its shim), a part without a float leaf compared whole (DECISIONS R5-M164).
+func parts(a: ((i32, Key), i32), b: ((i32, Key), i32)) -> bool => a < b
 // A string element is inspected through shared borrows.
 func text(a: (string, i32), b: (string, i32)) -> bool => a != b
 // With T = f64, (nan, 1.0) == (nan, 1.0) is true: the T leaf runs Equatable's NaN-reflexive equals, the f64 leaf IEEE ==.

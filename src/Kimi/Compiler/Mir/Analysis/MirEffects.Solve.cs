@@ -288,6 +288,27 @@ internal sealed partial class MirEffects
             return;
         }
 
+        if (Comparison(requirement, type) is { } contract)
+        {
+            // A composite's comparison runs its leaves (Leaves, each distinct node once): a witness's body, a requirement on a leaf.
+            var first = this.Leaves(types.Comparison(contract, type, operators: false));
+            for (var i = first; i < this.compared.Count; i++)
+            {
+                var leaf = this.compared[i];
+                if (leaf.Kind == ComparisonKind.Witness)
+                {
+                    this.Enter(this.program.Callee(new(MirCalleeKind.Fn, leaf.Target)), leaf.Subst, leaf.Target!);
+                }
+                else
+                {
+                    this.Require(leaf.Type, leaf.Target!);
+                }
+            }
+
+            this.compared.RemoveRange(first, this.compared.Count - first);
+            return;
+        }
+
         var start = this.targets.Count;
         this.found |= types.Witnesses(requirement, type, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)

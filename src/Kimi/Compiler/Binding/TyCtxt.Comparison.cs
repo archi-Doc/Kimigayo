@@ -8,9 +8,12 @@
 // Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf: Witness's Body under its declaring instance,
 // Synthesized), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every instance, Synthesized on a
 // Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as InternalInvariant_Kd); null for a
-// Limit (Witness's). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
+// Limit (Witness's). One node per (contract, self, operators), discarded at an edit (ResetDispatch), its parts the nodes of their Types,
+// so the tree is a DAG over the distinct Types; each node publishes Mapped, whether it compares as the Contract's requirement on its Type
+// does (its mapping): under source operators no leaf at or below it is a float (IEEE) or a numeric Type only the operators compare
+// natively (DECISIONS R5-M164).
 // Invariants: a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited
-// witness (ComparisonCompositionTest's twin).
+// witness (ComparisonCompositionTest's twin). A reader walks the DAG by node, never by root-to-leaf path (V16).
 // Must not: create a bridge or a CallPlan, write a diagnostic, HIR or pass state, or prove on an erased value.
 
 namespace Kimi.Compiler;
@@ -25,10 +28,12 @@ internal enum ComparisonKind : byte
     Requirement,
 }
 
-/// <summary>A comparison of <see cref="Type"/>: elementwise over <see cref="Parts"/> (Composite), natively (Builtin), by the witness
+/// <summary>A comparison of <see cref="Type"/>: elementwise over <see cref="Parts"/> (Composite, whole by the Contract's requirement
+/// <see cref="Target"/> on the Self <see cref="Subst"/> binds), natively (Builtin), by the witness
 /// <see cref="Target"/> under its declaring instance <see cref="Subst"/> (Witness) or by the Contract's requirement <see cref="Target"/> on
-/// the Self <see cref="Subst"/> binds (Requirement); None has no answer.</summary>
-internal sealed record ComparisonNode(BoundType Type, ComparisonKind Kind, BindingSymbol? Target, Subst? Subst, ComparisonNode[] Parts);
+/// the Self <see cref="Subst"/> binds (Requirement); None has no answer. <see cref="Mapped"/>: it compares as the Contract's mapping on its
+/// Type does (always under the mapping; under source operators no float or operator-only numeric leaf at or below it).</summary>
+internal sealed record ComparisonNode(BoundType Type, ComparisonKind Kind, BindingSymbol? Target, Subst? Subst, ComparisonNode[] Parts, bool Mapped = true);
 
 internal sealed partial class TyCtxt
 {
@@ -48,13 +53,21 @@ internal sealed partial class TyCtxt
     }
 
     // Binding's composition rule over the leaves: a closed one runs what the Contract's requirement on it runs (Witness's Body), one with an
-    // abstract part that requirement on it in every instance.
+    // abstract part that requirement on it in every instance; a Composite names that requirement on its Type too, the call that compares it
+    // whole where it compares as the mapping (Mapped).
     private ComparisonNode? Compose(BindingSymbol contract, BoundType self, bool operators)
     {
         var kind = Binding.ComparisonKindOf(self, contract.LibraryDeclaration, operators);
+        if (kind == ComparisonKind.Builtin)
+        {
+            return new(self, kind, null, null, [], !operators || (!self.IsFloatingPoint && ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration)));
+        }
+
+        var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.
+        var subst = this.Synthesized(requirement, self, contract.Type!);
         if (kind == ComparisonKind.Composite)
         {
-            var parts = new ComparisonNode[self.Components.Count];
+            var (parts, mapped) = (new ComparisonNode[self.Components.Count], true);
             for (var i = 0; i < parts.Length; i++)
             {
                 if (this.Comparison(contract, self.Components[i], operators) is not { } part)
@@ -62,19 +75,12 @@ internal sealed partial class TyCtxt
                     return null;
                 }
 
-                parts[i] = part;
+                (parts[i], mapped) = (part, mapped && part.Mapped);
             }
 
-            return new(self, kind, null, null, parts);
+            return new(self, kind, requirement, subst, parts, mapped);
         }
 
-        if (kind == ComparisonKind.Builtin)
-        {
-            return new(self, kind, null, null, []);
-        }
-
-        var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.
-        var subst = this.Synthesized(requirement, self, contract.Type!);
         if (kind == ComparisonKind.Requirement)
         {
             return new(self, kind, requirement, subst, []);

@@ -1263,17 +1263,17 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.3, F package 4.6: a built-in comparison of a composite Self, a generic instance's comparison over its Type parameter, is its
-    // Builtin shim, keyed by its compiler function and the erased Self, whose targets are its leaves' witnesses under the Contract's mapping
-    // (TyCtxt.Comparison), depth first: each user leaf's equals or compare body, none for a built-in leaf; two instances comparing one
-    // erased Self share its shim. A tuple operator is no shim: its expansion calls its leaves' witnesses in the instance (F package 4.8,
-    // DECISIONS R5-M75).
+    // Builtin shim, keyed by its compiler function and the erased Self, whose targets are its parts' under the Contract's mapping
+    // (TyCtxt.Comparison), in order, a reference layer followed: a user leaf's equals or compare body, a Tuple part's own shim, none for a
+    // built-in leaf, so a nested Type is one shim per distinct Tuple (DECISIONS R5-M164); two instances comparing one erased Self share its
+    // shim. A tuple operator is no shim: its expansion calls its leaves' witnesses in the instance (F package 4.8, DECISIONS R5-M75).
     [Fact]
-    public void AComparisonShimsTargetsAreItsLeafWitnesses()
+    public void AComparisonShimsTargetsAreItsPartsWitnessesAndShims()
     {
         var (program, set) = Collect(CompareSource);
         Assert.Empty(set.Records);
         Assert.Equal(["Fn equals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
-        Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
+        Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
         Assert.Equal(["Fn compare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
         Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn equal [(ref/Box, i32)]"));
         Assert.Equal(
@@ -1281,8 +1281,8 @@ public sealed partial class InstanceCollectorTest
             set.Targets(Item(program, set, "Fn differ [(ref/Box, i32)]"))[0].Item);
         Assert.Equal(["Fn equals"], Targets(program, set, "Fn same [Box]"));
         Assert.Equal(
-            ["struct Box", "struct Box", "struct Box", "struct Rank"],
-            new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }
+            ["struct Box", "struct Rank"],
+            new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }
                 .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
                 .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
     }

@@ -45,6 +45,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
     private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
+    private readonly List<ComparisonNode> compared = []; // The leaves of the comparisons being read, a stack (Leaves).
+    private readonly HashSet<ComparisonNode> seen = new(ReferenceEqualityComparer.Instance); // The nodes one Leaves walk visited.
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
     private byte[] local = []; // The classes of each node's local facts.
@@ -135,6 +137,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return false;
     }
 
+    // The Contract of a comparison requirement (Equatable's equals, Comparable's compare or their built-in targets) on a composite Self, whose
+    // comparison TyCtxt.Comparison composes; null for any other requirement or Self.
+    private static BindingSymbol? Comparison(BindingSymbol requirement, BoundType self)
+        => ComparisonTypes.IsComposite(self) &&
+            TyCtxt.Contract(requirement) is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract ? contract : null;
+
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
     // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
@@ -154,11 +162,32 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Kind == MirCalleeKind.Fn)
         {
-            this.Function(program, terminator);
+            this.Function(program, callee);
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Symbol.CompilerFunction: not CompilerFunctionKind.None, Subst.Self: { } self })
         {
             this.Item(cases.Type(self), Requires, callee.Symbol); // Binding's built-in target for its Self.
+        }
+        else if (callee is { Kind: MirCalleeKind.Requirement, Subst.Self: { } whole } &&
+            Comparison(callee.Symbol!, cases.Type(whole)) is { } contract)
+        {
+            // SPEC 13.4.1, 8.11.3: a composite compared whole runs its leaves as their own calls would: a witness's body, a leaf with an
+            // abstract part under the caller's premises.
+            var start = this.Leaves(types.Comparison(contract, cases.Type(whole), operators: false));
+            for (var i = start; i < this.compared.Count; i++)
+            {
+                var leaf = this.compared[i];
+                if (leaf.Kind == ComparisonKind.Witness)
+                {
+                    this.Function(program, new(MirCalleeKind.Fn, leaf.Target, leaf.Subst));
+                }
+                else
+                {
+                    this.found |= types.DispatchBounds(body.Key.Decl, leaf.Target!, leaf.Type, callee.Contract) == true ? (byte)0 : Unknown;
+                }
+            }
+
+            this.compared.RemoveRange(start, this.compared.Count - start);
         }
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
@@ -183,11 +212,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
     }
 
-    private void Function(MirProgram program, in MirTerminator terminator)
+    private void Function(MirProgram program, in MirCallee call)
     {
-        var symbol = terminator.Callee.Symbol!;
-        var subst = terminator.Callee.Subst;
-        if (terminator.Callee.Arg == 0 && types.Published(symbol) is { } row)
+        var symbol = call.Symbol!;
+        var subst = call.Subst;
+        if (call.Arg == 0 && types.Published(symbol) is { } row)
         {
             if (row.Runs is { } requirement)
             {
@@ -202,9 +231,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return;
         }
 
-        if (program.Callee(terminator.Callee) is { } target)
+        if (program.Callee(call) is { } target)
         {
-            if (terminator.Callee.Arg > 0)
+            if (call.Arg > 0)
             {
                 this.AddEdge(target, subst); // SPEC 8.13: a default is always the original's, evaluated before a specialization is called.
                 return;
@@ -321,6 +350,41 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             {
                 this.Item(cases.Type(body.TypeOf(operand.Place)!), Drop);
             }
+        }
+    }
+
+    // The leaves of a comparison (V16: TyCtxt.Comparison's DAG walked by node, each distinct node once): its Witness and Requirement
+    // leaves in order appended to compared, a stack; where they start. A Builtin leaf runs nothing; no answer (a Limit) is a limit and a
+    // None leaf, a broken contract the collector records, a dependent.
+    private int Leaves(ComparisonNode? root)
+    {
+        var start = this.compared.Count;
+        this.seen.Clear();
+        this.found |= root is null ? Limit : (byte)0;
+        if (root is not null)
+        {
+            this.Walk(root);
+        }
+
+        return start;
+    }
+
+    private void Walk(ComparisonNode node)
+    {
+        if (!this.seen.Add(node))
+        {
+            return;
+        }
+
+        this.found |= node.Kind == ComparisonKind.None ? Derived : (byte)0;
+        if (node.Kind is ComparisonKind.Witness or ComparisonKind.Requirement)
+        {
+            this.compared.Add(node);
+        }
+
+        foreach (var part in node.Parts)
+        {
+            this.Walk(part);
         }
     }
 
