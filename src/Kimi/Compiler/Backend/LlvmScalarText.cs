@@ -20,7 +20,7 @@
 // block's zero test (its reason) and on a signed divisor's -1 test (its substitution by 1, the wrapping quotient's negation), the
 // forms PD8 admits; no nsw or nuw; the legacy writer's .ll stays byte-identical while it shares this text; writing allocates
 // nothing.
-// Must not take an opcode or check kind of either IR, syntax, HIR, Binding internals, EmissionModule or MIR types, or use LINQ.
+// Must not take an IR's opcode or check kind, syntax, HIR, Binding internals or MIR types, or use LINQ.
 // Files: the operations, their checks and the failure blocks (this file); the conversions and their bounds (LlvmScalarText.Conversions.cs).
 
 #pragma warning disable SA1402 // The operation, conversion and check records are this writer's inputs.

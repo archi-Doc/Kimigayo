@@ -3,7 +3,6 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
@@ -36,31 +35,6 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData(SemanticsKind.Raw)]
     public void OtherSemanticsHaveNoStrongHandleMode(SemanticsKind semantics)
         => Assert.Null(new BoundType("other", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]).HandleMode);
-
-    [Fact]
-    public void EqualSizedHandlesKeepModeSpecificDestructionLayouts()
-    {
-        var pool = new AggregateLayoutPool(new Layout());
-        var modes = new[] { SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc };
-        var layouts = new AggregateLayout[3];
-        for (var i = 0; i < modes.Length; i++)
-        {
-            var type = new BoundType("handle", BoundTypeKind.Semantics, semantics: modes[i], components: [BoundType.I32]);
-            var layout = Assert.IsType<AggregateLayout>(pool.Get(type));
-            layouts[i] = layout;
-            Assert.Equal(8, layout.Value.Layout.Size);
-            Assert.Equal(8, layout.Value.Layout.Alignment);
-            Assert.Equal(8, layout.Value.Layout.Stride);
-            Assert.True(layout.NeedsDestruction);
-            Assert.Equal(modes[i], layout.ObjectHandle!.Value.Semantics);
-            var otherPayload = new BoundType("handle", BoundTypeKind.Semantics, semantics: modes[i], components: [BoundType.String]);
-            Assert.Same(layout, pool.Get(otherPayload));
-            pool.Clear();
-            Assert.Same(layout, pool.Get(type));
-        }
-
-        Assert.Equal(3, layouts.Select(static x => x.Id).Distinct().Count());
-    }
 
     [Theory]
     [InlineData("obj")]

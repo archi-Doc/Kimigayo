@@ -10170,6 +10170,8 @@ structure is recorded here by the unit that first implements it.
   ModuleCodegen's per-item reuse by `Abi.Matches`); the old callers reuse by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
   (ARCH "Capability gates"); a separate C-convention component (the order, records and reuse are one rule with two conventions);
   keeping the per-ordinal `Signature` record, whose logical shapes also compare zero-sized parameters that have no slot.
+  - Amended by R5-M163 (G8): `FunctionAbiPool` is deleted; MIR code generation reuses a signature by `Abi.Matches` per item and
+    per import (R5-M65, R5-M89).
 - **R5-M61 `TyCtxt.Witness`, a requirement call's target under a closed substitution** (2026-10-19, planning session; plan F5b,
   package F §4.1, §4.5, §5 and §6, S2-S4 X1, X16, X28; under R5-M18 and R5-M22) A permanent view of the dispatch facts
   (`Binding/TyCtxt.Dispatch.cs`): `TyCtxt.Witness(requirement, contract, subst)`, given a requirement, the Contract reference its
@@ -13092,6 +13094,7 @@ structure is recorded here by the unit that first implements it.
     `.Places`, `.Statics`, `.Strings`), and only the old scalar gate's read (`WindowsLowering.GetValue`) goes, with the old Emission at
     R6-gen. ARCH drops the entry; R5-M37's clause is superseded here. Binding's eager C-layout instance check (K10b's double report, G2b)
     is removed by G158 (3) (BU-48), not marked. Layout's contract and `Row`'s summary say so (the end-to-end review's B3).
+  - Amended by R5-M163 (G8): the old scalar gate's read of `Row` is deleted with `WindowsLowering`.
   - Capability rows: `StorageNesting` (R7, PD30) and `BodylessWitness` (R8) carry `[Transitional]` as `EnclosingInstance` (R7) does;
     `StaticStorage` (P42, after R6-check, R5-M13 (b)) and `ExclusiveInheritedWitness` (OCC-X) state their conditions in their comments,
     naming no ledger stage; `WideDivision` and `WideFloatConversion` are IMPL 21.3.3's lasting rows. ARCH's Backend dependency row names
@@ -13297,6 +13300,7 @@ structure is recorded here by the unit that first implements it.
     reads `Compilation.Emission`; a pin reaching the old generator through `Compilation.WriteIr`/`Validate` goes with its test.
   - Amended by R5-M162 (G7): S7's G7 step is done; `StaticScalarEntry`, `LegacyRuntimeHelpers`' formatting requests and
     `AggregateLayoutPool`'s remaining hooks join G8, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` G9.
+  - Amended by R5-M163 (G8): S7's G8 step is done.
 - **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
   g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
   Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
@@ -13695,3 +13699,25 @@ structure is recorded here by the unit that first implements it.
     inlining `GenericStoragePlan.IsGeneric` into `AggregateLayout` (it would keep `InstantiatesInLegacy` past its stage).
   - Amends, each with its amendment line: R5-M5 and R5-M88 (done), R5-M94, R5-M152 S7, R5-M160 and R5-M161; R5-M34 and R5-M36 with
     the Binding commit.
+  - Amended by R5-M163 (G8): the unit mapping's G8 items are deleted: `StaticScalarEntry` and `AggregateLayoutPool`'s hooks with
+    their files.
+- **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
+  design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
+  G:R6-gen-del)
+  - Rule: a component goes with its last caller (S7). G8a deletes `EmissionModule` (with `EmissionOpcode`, `EmissionOperandKind`,
+    `ArithmeticCheckKind`, `SliceShape` and the instruction records), `LlvmModuleWriter*` (16 files), `AggregateLayout` and
+    `AggregateLayoutPool`, `FunctionAbiPool`, `WindowsLowering` and `StaticScalarEntry`: 21 files, 3,746 lines, which since G7
+    only each other and tests read. Neither half of the pool nor `FunctionAbiPool`'s `FunctionKoto` keying has a Backend reader:
+    MIR code generation lays out through `Layout.Of` and keys signatures by checked-set item and import (R5-M65, R5-M89), so
+    nothing moves to the Backend.
+  - Tests: the tests of the old module and pools are deleted (the transitive-storage walk, the pool's signature reuse and
+    retention, its handle interning, its edited-import reuse); the `Layout` assertions they paired stay, and
+    `KimiLibraryShapeTest`, `AggregateEmissionTest` and `DictionaryLibraryTest` read `Layout.Of`.
+  - `C/Emission` keeps the toolchain, publication and profile files (`EmissionArtifacts`, `NativeToolchain*`, `ToolchainResolver`,
+    `ArtifactPaths`, `ArtifactFiles`, `Kernel32Imports`, `WindowsProfile`) and the `.ll.in` resources, whose manifest names and
+    paths the Backend, the tests and `compare-fixtures.ps1` read.
+  - Records: ARCH drops `EmissionOpcode` (49) and the old pool's clauses of its Layout and Abi rows; CODEMAP drops the old layer's
+    row and stems; the Backend's contracts drop the deleted types.
+  - Rejected: moving the survivors at G8 (resource names, harness paths; G11's CODEMAP decides the folder); keeping the pool's
+    destruction half (no reader).
+  - Amends, each with its amendment line: R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's unit mapping.

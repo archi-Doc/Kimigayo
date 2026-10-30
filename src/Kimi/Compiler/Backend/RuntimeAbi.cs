@@ -7,7 +7,7 @@
 // Output: the records, read by both generators and by LlvmModuleText's runtime splice.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
 // RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once.
-// Must not take BoundType, a layout pool, EmissionModule, syntax or MIR types, or hold a per-generator record.
+// Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 namespace Kimi.Compiler.Backend;
 

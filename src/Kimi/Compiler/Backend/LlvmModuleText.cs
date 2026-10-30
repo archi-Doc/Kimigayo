@@ -16,7 +16,7 @@
 // Invariants: the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; each runtime ABI
 // definition marker of a template is spliced exactly once and none is left unexpanded, or the template fails; the text holds no
 // checkout path.
-// Must not take syntax, HIR, Binding internals, EmissionModule or MIR types in its signatures, branch on the generator, or use LINQ.
+// Must not take syntax, HIR, Binding internals or MIR types in its signatures, or use LINQ.
 // Files: the module frame and the runtime templates (this file); the spellings of symbols, numbers, names and floating constants
 // (LlvmModuleText.Spelling.cs).
 

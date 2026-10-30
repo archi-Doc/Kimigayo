@@ -55,7 +55,7 @@
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
 // Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
 // by StoredValue.TravelsAsScalar.
-// Must not take AggregateLayout, EmissionModule, syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
+// Must not take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
 // destination for its kind or bound (FormatKind, FormatBound, WriterKind), branch on the generator, or use LINQ.
 
 #pragma warning disable SA1402 // The helper records and the element descriptor are this component's request vocabulary.

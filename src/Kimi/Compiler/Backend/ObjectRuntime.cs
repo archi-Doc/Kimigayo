@@ -18,8 +18,8 @@
 // Invariants: a release publishes the reduced count before any destruction, destroys the payload before the free and accesses the
 // header after neither (SHARED_OBJECT_RUNTIME, Release); the legacy writer's .ll stays byte-identical while it shares this text;
 // warm writes allocate nothing.
-// Must not decide whether a module uses objects or build an object's row (its generator's), take syntax, HIR, EmissionModule,
-// AggregateLayout or MIR types, branch on the generator, or use LINQ.
+// Must not decide whether a module uses objects or build an object's row (code generation's), take syntax, HIR or MIR types, or use
+// LINQ.
 
 #pragma warning disable SA1402 // The object row is this writer's input.
 
