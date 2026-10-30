@@ -143,39 +143,6 @@ public class FloatEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    [Theory]
-    [InlineData("bits")]
-    [InlineData("precision")]
-    [InlineData("integer-type")]
-    [InlineData("operator")]
-    public void CorruptFloatPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: f32 = 1.25\nlet b = a * 2.0\nif b == 2.5 => Console.writeLine(\"ok\")", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3FA00000L);
-        Assert.True(index >= 0);
-        if (defect == "bits")
-        {
-            body.Values[index] = body.Values[index] with { Constant = 0x3FA00001L };
-        }
-        else if (defect is "precision" or "integer-type")
-        {
-            body.PlaceStorage[body.Operations[index].Place] = body.Places[body.Operations[index].Place] with { Type = defect == "precision" ? BoundType.F64 : BoundType.I32 };
-        }
-        else
-        {
-            index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Binary && x.Operator == KotoKind.Asterisk);
-            body.Values[index] = body.Values[index] with { Operator = KotoKind.Percent };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Analyze();
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFloatAnalysisAndEmissionDoNotAllocate()

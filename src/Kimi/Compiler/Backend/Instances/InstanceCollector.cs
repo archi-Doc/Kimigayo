@@ -1,18 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
-// R5-M67, R5-M70, R5-M74): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its
-// instance-stage records, and the one resolution of each site's target that code generation reads.
+// R5-M67, R5-M70, R5-M74, R5-M146, R5-M149, R5-M150): every body instance, type-driven item and shim a root requires through runtime or
+// check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure,
-// SubstOfItem, Synthesized, Applies); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
-// MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose
-// outcomes the collector alone maps (R5-M37).
+// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
+// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, and an item's view for a PairLayer's
+// case); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns
+// of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the
+// collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
-// Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
-// location of a record at a site of its body (Subject); a borrowing callee's owner Value call also targets its operand's glue, after the
-// body (DECISIONS R5-M102).
+// Compilation.MirRecords publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156); for code generation (R5 C0b1) also an
+// item's Types (TypeOf), the location of a record at a site of its body (Subject)
+// and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
+// call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
 // Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
@@ -34,27 +36,36 @@
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
 // P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
-// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates, the
-// Type argument of an intrinsic whose row names one, at its call or its function's Item, and the inputs and result of an erasure's target
-// Function Type, DECISIONS R5-M108), each type-driven item's Type and a DropGlue's collection element Types (X34) take
-// Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized
-// Field InvalidCLayout_Kd and a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected
-// storage derives from a Binding error (Derived); a type-driven item needs an Ok verdict.
+// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
+// construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
+// each type-driven item's Type and a DropGlue's collection element Types (X34), and each layout need a form's generated code has past its
+// root's storage (LayoutNeeds, DECISIONS R5-M149: a projection step past a Deref, PairLayer or sequence handle, a raw pointer's
+// displacement, a call's Type arguments where its intrinsic or legacy row's need says so, a compared Tuple past a reference layer of a
+// comparison shim's tree), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
+// 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
+// first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
+// a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
+// complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
-// (Made): Prepared makes it; Rejected rests on a part Binding rejected, a dependent dropped without a record, as Layout's Rejected; a
-// limit is the storage-nesting gap. A complete compilation has no part Binding rejected (TyCtxt.BindingComplete): there TyCtxt's or
-// Layout's Rejected is InternalInvariant_Kd at its site (Derived). Every row reads a Type of an instance at its site through In, Below or
-// Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature under a substitution; those read no verdict and
-// serve code generation and a Type whose verdict its site already read (Rest's operand and environment, Agrees' signature under a
-// witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type argument, a part of the Item Type its site
-// made).
+// (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
+// (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
+// an instance at its site through In, Below or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
+// under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
+// environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
+// argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
-// key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
-// Type whose storage is a limit (Made) and OCC-X's refused witness are the capability table's gaps (an access of a static of a generic
-// container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of
-// one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed
-// Self without a witness, are InternalInvariant_Kd.
+// key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
+// (CarriesInstance: a nested function's enclosing instance, DECISIONS R5-M43; a Field initializer's Closure or a function declared in it,
+// whose binder declares no slot and whose substitution binds no Self or declaring Type, R5-M157, until TyCtxt.EnclosingFunction gives
+// every nested definition the declaration whose instance it holds, BU's fact), a substitution or Type whose storage is a limit (Made),
+// OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
+// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors
+// of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its
+// body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
+// Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
+// complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
+// collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached; code generation's records take the same rule.
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
@@ -98,11 +109,6 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the work of the latest run: the sites replayed and the items admitted, which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    // SPEC 23.1.2, DIAGNOSTICS rule 8 (DECISIONS BU-38): the record of a verdict resting on a part Binding rejected, TyCtxt's or Layout's
-    // Rejected: none, a dependent of the Binding error, in an incomplete compilation; InternalInvariant_Kd in a complete one, which has no
-    // such part (R5's guard, as Binding.Readable's and R4-M118's).
-    private DiagnosticCode? Derived => this.types.BindingComplete ? DiagnosticCode.InternalInvariant_Kd : null;
-
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
     /// <param name="program">The built and validated program.</param>
     /// <param name="rootModules">The number of root modules: the bodies of modules below it are roots.</param>
@@ -135,6 +141,7 @@ internal sealed partial class InstanceCollector
         }
 
         set.EndRoots();
+        this.LayOutImports();
         for (var item = 0; item < set.Items.Length; item++)
         {
             this.Replay(program, item);
@@ -152,8 +159,8 @@ internal sealed partial class InstanceCollector
     internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
 
     /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
-    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected (Derived); Limit is the storage-nesting gap (PLAN
-    /// G128) at the site.</summary>
+    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected, a broken contract (Report); Limit is the
+    /// storage-nesting gap (PLAN G128) at the site.</summary>
     /// <param name="storage">The verdict.</param>
     /// <param name="subject">The requesting site.</param>
     /// <returns>Whether the verdict is Prepared.</returns>
@@ -162,14 +169,14 @@ internal sealed partial class InstanceCollector
         DiagnosticCode? record = storage switch
         {
             Binding.StorageOutcome.Prepared => null,
-            Binding.StorageOutcome.Rejected => this.Derived,
+            Binding.StorageOutcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
             Binding.StorageOutcome.Limit => Capability.Code(CapabilityGap.StorageNesting),
             _ => throw new InvalidOperationException($"The storage verdict {storage} has no row."),
         };
 
         if (record is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
         }
 
         return storage == Binding.StorageOutcome.Prepared;
@@ -194,9 +201,20 @@ internal sealed partial class InstanceCollector
         _ = TyCtxt.Layer(type, out var below, out _);
         if (storage == Binding.StorageOutcome.Prepared && below is null)
         {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
         }
 
         return this.Made(storage, subject) ? below : null;
+    }
+
+    // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path. A broken contract,
+    // InternalInvariant_Kd, presupposes a complete Binding; in an incomplete compilation it may rest on a part Binding rejected, which the
+    // collector cannot name, so it is that error's dependent, without a record. Every other record is kept.
+    private void Report(DiagnosticCode code, SourceRef subject)
+    {
+        if (code != DiagnosticCode.InternalInvariant_Kd || this.types.BindingComplete)
+        {
+            this.Set.Report(code, subject);
+        }
     }
 }

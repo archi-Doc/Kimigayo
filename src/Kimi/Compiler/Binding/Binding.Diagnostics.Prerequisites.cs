@@ -63,6 +63,26 @@ public sealed partial class Binding
     private static bool IsUnresolvedPrerequisite(Koto node)
         => node.BindingState != BindingState.Resolved || IsRecovery(node, out _);
 
+    // SPEC 23.1.2: the declaration part that gives a binding its Type: a parameter's written Type, an accessor parameter's annotation or
+    // Property Type, or a local's or Pattern's declaration; null for any other binding. A use or a written capture entry of a binding
+    // without a Type rests on it.
+    private static Koto? TypeSource(BindingSymbol symbol)
+    {
+        if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
+        {
+            return function.Parameters[slot].Type;
+        }
+
+        if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
+        {
+            var accessor = Accessor(accessorSyntax);
+            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
+            return annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration;
+        }
+
+        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
+    }
+
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.
     private void MarkUnresolved(Koto node)
     {
@@ -123,24 +143,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2: a use of a symbol without a Type consults the declaration part that gives it one: a parameter's written Type, an
-    // accessor parameter's annotation or Property Type, or a Pattern's or loop's binding, which rests on the failure that left it
-    // Type-less (RestOnFailure, BindIteration). A local's declaration is consulted where the use binds it (BindVariable).
+    // SPEC 23.1.2: a use of a symbol without a Type consults its TypeSource; a Pattern's or loop's binding rests on the failure that
+    // left it Type-less (RestOnFailure, BindIteration). A local's declaration is consulted where the use binds it (BindVariable).
     private void ConsultTypeSource(BindingSymbol symbol)
     {
-        if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
+        if (symbol.Declaration is not VariableKoto && TypeSource(symbol) is { } part)
         {
-            this.Consulted(function.Parameters[slot].Type);
-        }
-        else if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
-        {
-            var accessor = Accessor(accessorSyntax);
-            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
-            this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
-        }
-        else if (symbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate, Declaration: not VariableKoto })
-        {
-            this.Consulted(symbol.Declaration);
+            this.Consulted(part);
         }
     }
 
@@ -210,6 +219,12 @@ public sealed partial class Binding
             this.partPrerequisites[node] = part;
         }
     }
+
+    /// <summary>Records a part that a later check of the pass judges, such as a projection use, whose conformance is checked after the
+    /// bodies (DECISIONS BU-61): the first part is kept whatever its state now, and UnresolvedPart reads its state at publication.</summary>
+    /// <param name="node">The failed node.</param>
+    /// <param name="part">The part its failure rests on when that part fails.</param>
+    private void AddPendingPrerequisite(Koto node, Koto part) => this.partPrerequisites.TryAdd(node, part);
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.

@@ -17,13 +17,10 @@ public sealed partial class Binding
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base has no value; use base.name(arguments)");
         }
 
-        var lexical = scope.Function;
-        while (lexical is { IsAnonymous: true })
-        {
-            lexical = this.scopes[lexical].Parent?.Function;
-        }
-
-        if (lexical?.BoundSymbol is not { ReceiverIndex: >= 0, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
+        // SPEC 6.4.4: lexical self is the receiver of the function whose body holds the reference, an instance accessor's included (DECISIONS
+        // BU-53), and the lexical declaring struct is that function's.
+        if (this.types.EnclosingFunction(scope) is not
+            { ReceiverIndex: >= 0, Declaration: FunctionKoto lexical, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
         {
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base requires a derived instance function; named locals have no implicit self");
         }
@@ -38,7 +35,7 @@ public sealed partial class Binding
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base is available in an instance body, not a parameter default or declaration header");
         }
 
-        var receiver = this.BaseReceiver(scope.Function!, lexical);
+        var receiver = this.BaseReceiver(scope.Function, lexical);
         if (receiver is null)
         {
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base in an anonymous function requires an explicit self capture at each function boundary");
@@ -53,15 +50,18 @@ public sealed partial class Binding
         return this.BindReference(reference, receiver, scope);
     }
 
-    private BindingSymbol? BaseReceiver(FunctionKoto function, FunctionKoto lexical)
+    // Lexical self as `function`, the innermost activation (a scope's Function), reads it: through the explicit self capture of each
+    // anonymous function between them. `lexical` is TyCtxt.EnclosingFunction of that scope, for both callers (base calls, ObjectViews);
+    // the first activation that is not anonymous is lexical's own, or null in an accessor's body, whose scopes record no Function.
+    private BindingSymbol? BaseReceiver(FunctionKoto? function, FunctionKoto lexical)
     {
-        if (ReferenceEquals(function, lexical))
+        if (function is not { IsAnonymous: true })
         {
             return this.ParameterSymbol(lexical, lexical.BoundSymbol!.ReceiverIndex);
         }
 
-        if (!function.IsAnonymous || function.Captures is null || this.scopes[function].Parent?.Function is not { } outer ||
-            this.BaseReceiver(outer, lexical) is not { } source || function.ClosureStorage is not { } closure)
+        if (function.Captures is null || this.BaseReceiver(this.scopes[function].Parent?.Function, lexical) is not { } source ||
+            function.ClosureStorage is not { } closure)
         {
             return null;
         }

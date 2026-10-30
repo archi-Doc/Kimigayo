@@ -38,7 +38,8 @@ internal enum MirViolation : byte
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
-    Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to.
+    Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to; a
+    // testRecordValue's value other than a Scalar.
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).
@@ -74,6 +75,7 @@ internal sealed partial class MirValidator(TyCtxt types)
     private readonly MirCases cases = new(types);
     private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
     private readonly MirReach reach = new();
+    private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
 
     /// <summary>Validates a body.</summary>
@@ -94,7 +96,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         Array.Clear(this.writes, 0, body.Locals.Length);
         this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes);
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
@@ -134,7 +136,8 @@ internal sealed partial class MirValidator(TyCtxt types)
         bool[] unknown,
         bool[] ensured,
         List<(MirRvalue Adapt, SourceInfo Source)> adapts,
-        byte[] writes) : IMirUses
+        byte[] writes,
+        HashSet<BoundType> parts) : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;

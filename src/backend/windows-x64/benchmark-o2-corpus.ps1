@@ -1,8 +1,8 @@
 # Fixed O2 timing corpus and compiler pipeline series (src/Benchmark/O2Corpus.md); timing is opt-in, never a Verify assertion.
 # The baseline (A) and candidate (B) checkouts, each defaulting to this script's checkout, need Release builds of Kimi and
-# Benchmark. Every kernel is built at O2 by both compilers and checked; the executables then run A, B, A, ..., A, and every
-# run's output is checked. Benchmark --compiler-pipeline of each checkout then runs A, B, A, ..., A. With B equal to A, the
-# series records the variation of matched runs (P4). -CandidateEnvironment NAME=value pairs are set only for B's builds and
+# Benchmark. Every kernel is built at -Optimization (O2, or O0 for the O0 times) by both compilers and checked; the executables
+# then run A, B, A, ..., A, and every run's output is checked. Benchmark --compiler-pipeline of each checkout then runs A, B, A,
+# ..., A. With B equal to A, the series records the variation of matched runs (P4). -CandidateEnvironment NAME=value pairs are set only for B's builds and
 # B's --compiler-pipeline runs; A runs the default pipeline and code generator.
 [CmdletBinding()]
 param(
@@ -12,12 +12,13 @@ param(
     [ValidatePattern('^[A-Za-z_]\w*=(?!.*,[A-Za-z_]\w*=)')] [string[]] $CandidateEnvironment = @(),
     [ValidateRange(1, 99)] [int] $Samples = 15,
     [ValidateRange(1, 9)] [int] $PipelineRuns = 3,
+    [ValidateSet('O0', 'O2')] [string] $Optimization = 'O2',
     [string] $ToolchainRoot = '',
     [string] $Name = ''
 )
 $ErrorActionPreference = 'Stop'
 # A's processes get only the inherited environment, so an inherited selector would leave A off the default.
-$selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE', 'KIMI_CODEGEN' | ForEach-Object Name)
+$selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE' | ForEach-Object Name)
 if ($selectors) { throw "The baseline (A) would inherit $($selectors -join ', '); unset it and pass B's selectors with -CandidateEnvironment." }
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
@@ -100,11 +101,11 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
     Copy-Item -LiteralPath $Source.FullName -Destination $directory
     $sourceHash = (Get-FileHash -LiteralPath (Join-Path $directory $Source.Name) -Algorithm SHA256).Hash # The source this build compiles.
     $project = Join-Path $directory "$($Source.BaseName).kimiproj"
-    [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"O2`"`n", $utf8)
+    [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$Optimization`"`n", $utf8)
     $build = Invoke-Timed $dotnet @($Checkout.compiler, 'build', $project, '--ToolchainRoot', $ToolchainRoot) $Checkout.environment
     if ($build.exitCode -ne 0) { throw "Build failed: $Variant $($Source.Name)`n$($build.stdout)$($build.stderr)" }
     $bin = Join-Path $directory 'bin/x86_64-pc-windows-msvc'
-    $exe = Join-Path $bin "$($Source.BaseName).O2.exe"
+    $exe = Join-Path $bin "$($Source.BaseName).$Optimization.exe"
     $stream = [IO.File]::OpenRead($exe)
     $pe = [System.Reflection.PortableExecutable.PEReader]::new($stream)
     try { $text = $pe.PEHeaders.SectionHeaders | Where-Object Name -CEQ '.text' }
@@ -115,7 +116,8 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
     if ($LASTEXITCODE -ne 0 -or $null -eq $text -or $code.Length -eq 0) { throw "No code or .text for $exe" }
     return [ordered]@{
         exe = $exe; sourceSha256 = $sourceHash; buildSeconds = $build.seconds; irBytes = (Get-Item (Join-Path $bin "$($Source.BaseName).ll")).Length
-        optimizedIrBytes = (Get-Item (Join-Path $bin "$($Source.BaseName).O2.ll")).Length; textVirtualBytes = $text.VirtualSize
+        # An O0 build runs no opt, so it writes no optimized IR.
+        optimizedIrBytes = $(if ($Optimization -eq 'O2') { (Get-Item (Join-Path $bin "$($Source.BaseName).O2.ll")).Length }); textVirtualBytes = $text.VirtualSize
         codeSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($utf8.GetBytes($code)))
     }
 }
@@ -137,7 +139,7 @@ function Assert-Comparable($Report, $Reference) {
 $conditions = [ordered]@{
     started = (Get-Date).ToString('o'); machine = [Environment]::MachineName; processors = [Environment]::ProcessorCount
     os = [Runtime.InteropServices.RuntimeInformation]::OSDescription; powerScheme = (powercfg /getactivescheme | Out-String).Trim()
-    dotnet = (dotnet --version); toolchainRoot = $ToolchainRoot; samples = $Samples; pipelineRuns = $PipelineRuns
+    dotnet = (dotnet --version); toolchainRoot = $ToolchainRoot; optimization = $Optimization; samples = $Samples; pipelineRuns = $PipelineRuns
     environment = @(Get-ChildItem env: | Where-Object Name -Match '^(KIMI_|DOTNET_)' | ForEach-Object { "$($_.Name)=$($_.Value)" })
     order = 'A, B, A, ..., A per kernel and for the pipeline; each B against the mean of its neighboring A runs; process start included; no warm-up'
     script = [ordered]@{ root = $repo; commit = (git -C $repo rev-parse HEAD); status = @(git -C $repo status --porcelain=v1) }

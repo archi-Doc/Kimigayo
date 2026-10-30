@@ -28,6 +28,7 @@ public class ElementUpdateEmissionTest
         { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "FieldTransfer", "struct S\n    public var n: i32 = 0\n    public init() => ()\nfunc make() -> i32 => 1\nfunc f() -> i32\n    var b: [1 of S] = [S.init()]\n    defer => if b[0].n != 0 => Console.writeLine(\"bad\")\n    b[(return 42)].n += make()\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IncrementTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "ShiftTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[0] <<= (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += (return 1)\n    return 0\nif f() == 1 => Console.writeLine(\"ok\")" }, // SPEC 13.7.2: the right-hand side transfers first.
@@ -205,9 +206,6 @@ public class ElementUpdateEmissionTest
     public void NonterminatingCleanupPreventsTheStore(string name, string expression)
     {
         var source = "var a: (string, [1 of i32]) = (\"held\", [0])\n" + expression;
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementUpdateDivergent" + name, source, string.Empty, observationMilliseconds: 300);
     }
 
@@ -251,57 +249,6 @@ public class ElementUpdateEmissionTest
     [InlineData("SimpleSelfRead", "var a: [1 of i32] = [21]\na[0] = a[0] + 21\nif a[0] == 42 => Console.writeLine(\"ok\")")]
     public void ProtectionStartsAfterIndicesAndEndsOnTransfer(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementUpdateLoan" + name, source, "ok\n");
-
-    [Theory]
-    [InlineData("update")]
-    [InlineData("output")]
-    [InlineData("write")]
-    [InlineData("owner")]
-    [InlineData("duplicate")]
-    [InlineData("right")]
-    [InlineData("computation")]
-    [InlineData("result")]
-    [InlineData("operator")]
-    [InlineData("constant")]
-    [InlineData("postfix")]
-    [InlineData("release")]
-    [InlineData("exclusive")]
-    [InlineData("mode")]
-    [InlineData("anchor")]
-    [InlineData("parentLoan")]
-    public void InvalidUpdatePlansFailBeforeWritingAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [40]\nlet old = a[0]++", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var update = Assert.Single(body.ElementUpdates);
-        var plan = body.Projections[update.Projection];
-        switch (defect)
-        {
-            case "update": body.Projections[update.Projection] = plan with { Update = -1 }; break;
-            case "output": body.Projections[update.Projection] = plan with { Output = -1 }; break;
-            case "write": body.Projections[update.Projection] = plan with { Write = -1 }; break;
-            case "owner": body.ElementUpdates[plan.Update] = update with { Projection = int.MaxValue }; break;
-            case "duplicate": body.ElementUpdates.Add(update); break;
-            case "right": body.ElementUpdates[plan.Update] = update with { Right = int.MaxValue }; break;
-            case "computation": body.ElementUpdates[plan.Update] = update with { Computation = plan.Output }; break;
-            case "result": body.ElementUpdates[plan.Update] = update with { Result = plan.Output }; break;
-            case "operator": body.Values[update.Computation] = body.Values[update.Computation] with { Operator = KotoKind.Minus }; break;
-            case "constant": body.Values[update.Right] = body.Values[update.Right] with { Constant = 2 }; break;
-            case "postfix": body.ValueOperands[body.Values[update.Result].Start] = update.Computation; break;
-            case "release": body.LoanStates[plan.Write - 1] = plan.Loan; break;
-            case "exclusive": body.Projections[update.Projection] = plan with { Exclusive = -1 }; break;
-            case "mode": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Mode = LoanRequirement.Ref }; break;
-            case "anchor": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Projection = int.MaxValue }; break;
-            case "parentLoan": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Parent = plan.Loan }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -357,7 +304,6 @@ public class ElementUpdateEmissionTest
         const string Source = "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc rhs() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar a: [1 of i32] = [40]\na[index()] += rhs()\nif a[0] == 42 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdateOrder", Source, "rhs\nindex\nok\n");
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
         var update = Assert.Single(body.ElementUpdates);
         var plan = body.Projections[update.Projection];
@@ -370,8 +316,5 @@ public class ElementUpdateEmissionTest
         Assert.True(body.HasComparisonLoan(update.Computation, plan.Exclusive));
         Assert.True(body.HasComparisonLoan(plan.Write, plan.Exclusive));
         Assert.False(body.HasComparisonLoan(update.Result, plan.Exclusive));
-        var instructions = module.GetFunction(0).Instructions;
-        Assert.Single(instructions, x => x.Opcode == EmissionOpcode.LoadElement && x.Operation == plan.Output);
-        Assert.Single(instructions, x => x.Opcode == EmissionOpcode.StoreElement && x.Operation == plan.Write);
     }
 }

@@ -14,7 +14,7 @@ staticinit limit @7
       StorageDead(_1) @11
       return @10
 fn seed @16
-  _0: i32 return @16
+  _0: i32 return @17
   bb0:
     * _0 = const 4_i32 @18
       return @18
@@ -57,14 +57,14 @@ getter doubled.Get @41
     * _0 = Mul(copy (*_1).0, const 2_i32) @43
       return @43
 fn describe @48
-  _0: i32 return @48
-  _1: objref/Device arg self @48
+  _0: i32 return @51
+  _1: objref/Device arg self @49
   bb0:
     * _0 = copy (*_1).0 @52
       return @52
 fn init @55
-  _0: Device return @55
-  _1: i32 arg level @55
+  _0: Device return (Receiver) @55
+  _1: i32 arg level @56
   _2: () temp @57
   _3: () temp @58 s1
   _4: i32 temp @59 s1
@@ -83,7 +83,7 @@ fn init @55
       StorageDead(_2) @57
       return @57
 fn init @65
-  _0: Lamp return @65
+  _0: Lamp return (Receiver) @65
   _1: () temp @69
   _2: () temp @69
   bb0:
@@ -98,8 +98,8 @@ fn init @65
       StorageDead(_1) @69
       return @69
 fn describe @70
-  _0: i32 return @70
-  _1: objref/Lamp arg self @70
+  _0: i32 return @73
+  _1: objref/Lamp arg self @71
   _2: i32 temp @75
   _3: objref/Device temp @77
   bb0:
@@ -145,8 +145,8 @@ fn top-level#0 @93
       _0 = const () @94 s1
       return @94
 fn use @95
-  _0: i32 return @95
-  _1: uniq/Device arg device @95
+  _0: i32 return @98
+  _1: uniq/Device arg device @96
   _2: () temp @100 s1
   _3: uniq/Device temp @102 s1
   _4: () temp @105 s1

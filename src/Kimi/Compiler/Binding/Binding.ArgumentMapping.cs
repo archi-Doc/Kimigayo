@@ -49,4 +49,17 @@ public sealed partial class Binding
 
         return new(inputsValid, valid, defaults);
     }
+
+    // SPEC 10.1 step 2, 10.1.1: the defaults a candidate uses, its parameter slots that neither a written argument (`mapping`) nor the
+    // receiver (`receiverSlot`, -1 for none) supplies; none for a function reference's call, which passes every argument.
+    private static void DefaultSlots(FunctionKoto function, ReadOnlySpan<int> mapping, int receiverSlot, ref SlotSet defaults)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (i != receiverSlot && !mapping.Contains(i))
+            {
+                defaults.Add(i);
+            }
+        }
+    }
 }

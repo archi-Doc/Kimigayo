@@ -5,8 +5,8 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The Builtin shims of FunctionCodegen (R5 plans C8f and C9b, PD3, K package 4.3; SPEC 12.4.3, 13.3.3, 13.4, 13.4.1, 22.5.1, 22.10.1;
-// DECISIONS R5-M126, R5-M130): a Builtin item's function under its requirement's signature in its instance (ModuleCodegen.Shim: the
+// The shims of FunctionCodegen (R5 plans C8f, C9b and C3c, PD3, K package 4.3; SPEC 11.9.2, 12.4.3, 13.3.3, 13.4, 13.4.1, 22.5.1, 22.10.1;
+// DECISIONS R5-M126, R5-M130, R5-M141): a Builtin item's function under its requirement's signature in its instance (ModuleCodegen.Shim: the
 // admitting call's substitution, a caller-location function), which a Requirement call, a requirement Item's Value call and its adapter
 // entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
 // reports nothing. By its function's compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
@@ -20,18 +20,23 @@ namespace Kimi.Compiler.Backend;
 // - BuiltinFormat: the built-in formatting witness, its parameters forwarded to P1d's BuiltinFormat routine with its Self's kind (Format).
 // A node the collector refuses (Requirement, None, no tree) is its record at the item's admission, which stops generation; an arithmetic
 // operation the capability table refuses is the collector's record at each requesting site, whose edge admits no item.
+// A PropertyWitness item's function (C3c, SPEC 11.9.2; DECISIONS R5-M141) is a standard property witness under its key's signature
+// (InstanceCollector.StorageSignature, ModuleCodegen.Shim), caller-location as every shim: its Field's address in the layer that stores it,
+// a Set's replacement of the value there through the item's target, the Field Type's glue, at the location it received, then the row's
+// result: the value (Copy), the address (Borrow) or none (Set) (Storage). It has no MIR body (PD3).
 internal sealed partial class FunctionCodegen
 {
     private int leaf; // The shim's next Witness leaf target.
 
-    /// <summary>Writes the function of a Builtin item, or records why not.</summary>
+    /// <summary>Writes the function of a shim item, Builtin or PropertyWitness, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
-    /// <param name="item">The Builtin item.</param>
+    /// <param name="item">The Builtin or PropertyWitness item.</param>
     /// <param name="output">The module's buffer.</param>
     internal void WriteShim(InstanceCollector collector, int item, TextWriter output)
     {
         (this.collector, this.item, this.output, this.next, this.leaf) = (collector, item, output, 0, 0);
-        var (function, self) = (collector.Set.Items[item].Key.Symbol!, collector.Set.Items[item].RepresentativeType!);
+        var key = collector.Set.Items[item].Key;
+        var self = collector.Set.Items[item].RepresentativeType!;
         if (this.module.Shim(item) is not { } abi)
         {
             return; // Recorded at the item's site.
@@ -40,6 +45,13 @@ internal sealed partial class FunctionCodegen
         this.abi = abi;
         output.Write(abi.GetDefinition(exported: false));
         output.Write("entry:\n");
+        if (key.Kind == MonoKind.PropertyWitness)
+        {
+            this.Storage(key.Symbol, (PropertyWitnessKind)key.Variant, self);
+            return;
+        }
+
+        var function = key.Symbol!;
         var contract = TyCtxt.Contract(function);
         switch (function.CompilerFunction)
         {
@@ -107,11 +119,11 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 13.4: a Tuple's parts left to right at their Field offsets; each but the last returns its value from the shim when it is not
-    // equal (Decide), and the last one's value is the Tuple's.
+    // SPEC 13.4: a Tuple's parts left to right at their Field offsets (the node's Parts need, Needed; DECISIONS R5-M149); each but the last
+    // returns its value from the shim when it is not equal (Decide), and the last one's value is the Tuple's.
     private Value? Parts(ComparisonNode node, KimiDeclarationId? contract, Value left, Value right)
     {
-        if (this.Laid(node.Type) is not { } tuple)
+        if (this.Needed(node) is not { } tuple)
         {
             return null; // Recorded.
         }
@@ -173,17 +185,18 @@ internal sealed partial class FunctionCodegen
             return null; // Recorded.
         }
 
-        var (a, b) = (this.Loaded(type, lowering, left), this.Loaded(type, lowering, right));
+        var a = this.Loaded(type, lowering, left);
+        var b = this.Loaded(type, lowering, right);
         if (!equality)
         {
-            return this.Apply((int)MirBinaryOp.Gt, column, a, b, false, default) is { } greater &&
-                this.Apply((int)MirBinaryOp.Lt, column, a, b, false, default) is { } less
+            return this.Apply((int)MirBinaryOp.Gt, column, a, b, proven: false, default) is { } greater &&
+                this.Apply((int)MirBinaryOp.Lt, column, a, b, proven: false, default) is { } less
                 ? this.Combine("sub", "i32", this.Convert("zext ", "i1", greater, "i32"), this.Convert("zext ", "i1", less, "i32")) : null;
         }
 
-        return this.Apply((int)MirBinaryOp.Eq, column, a, b, false, default) is { } same &&
-            this.Apply((int)MirBinaryOp.Ne, column, a, a, false, default) is { } leftNaN &&
-            this.Apply((int)MirBinaryOp.Ne, column, b, b, false, default) is { } rightNaN
+        return this.Apply((int)MirBinaryOp.Eq, column, a, b, proven: false, default) is { } same &&
+            this.Apply((int)MirBinaryOp.Ne, column, a, a, proven: false, default) is { } leftNaN &&
+            this.Apply((int)MirBinaryOp.Ne, column, b, b, proven: false, default) is { } rightNaN
             ? this.Combine("or", "i1", same, this.Combine("and", "i1", leftNaN, rightNaN)) : null;
     }
 
@@ -222,7 +235,107 @@ internal sealed partial class FunctionCodegen
         var (kind, op) = BuiltinArithmetic.Operation(contract.LibraryDeclaration);
         var left = this.Loaded(self, lowering, new('p', 0));
         var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
-        return this.Apply(RowOf(kind, op), Column(self), left, right, false, default);
+        return this.Apply(RowOf(kind, op), Column(self), left, right, proven: false, default);
+    }
+
+    // SPEC 11.9.2 (DECISIONS R5-M141): a standard property witness, one rule over its operation's three rows. The Field's address A is the
+    // receiver (input 0) plus the Field's offset in the layer that stores it (AdtDef.FieldOwner, that layer's Layout; the complete base is
+    // a prefix, X1); a Set first replaces the value at A (Replace); the row gives only its result's form: the value at A (Copy), A itself
+    // (Borrow) or none (Set), returned by the signature. A Field the representative Self does not store is a broken contract.
+    private void Storage(BindingSymbol? field, PropertyWitnessKind access, BoundType self)
+    {
+        if (AdtDef.FieldOwner(self, field) is not { } owner || AdtDef.FieldType(owner.Layer, owner.Index) is not { } stored)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector admitted the item on the Field (Agrees).
+            return;
+        }
+
+        var type = this.collector.TypeOf(this.item, stored);
+        if (this.Laid(this.collector.TypeOf(this.item, owner.Layer)) is not { } record || this.Laid(type) is not { } lowering)
+        {
+            return; // Recorded: the collector laid out the representative Self (DECISIONS R5-M44).
+        }
+
+        var address = this.Offset(new('p', this.Input(0)), record.Layout.FieldOffsets.Span[owner.Index]);
+        if (access == PropertyWitnessKind.StorageSet && !this.Replace(type!, lowering, address))
+        {
+            return; // Recorded.
+        }
+
+        switch (access)
+        {
+            case PropertyWitnessKind.StorageCopy:
+                this.Give(type!, lowering, address);
+                return;
+            case PropertyWitnessKind.StorageBorrow:
+                this.Returned(address);
+                return;
+            default:
+                this.output.Write("  ret void\n}\n");
+                return;
+        }
+    }
+
+    // SPEC 13.7.1, 16.2: a Set's replacement of the value at A: the old value destroyed by the item's target, its Field Type's glue, when
+    // that Type may need a drop (MirTypes.MayNeedDrop, the rule the collector admits the target by), at the location the function received,
+    // the invoking assignment's, as a direct assignment's (SPEC 22.5.1); then the input (1) put at A in its representation, a pointer-passed
+    // one from its address; a zero-sized input has no parameter. False after a record.
+    private bool Replace(BoundType type, ValueLowering lowering, Value address)
+    {
+        if (MirTypes.MayNeedDrop(type, this.seen))
+        {
+            var targets = this.collector.Set.Targets(this.item);
+            if (targets.Length == 0)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets a Set's Field glue (package C 3.12).
+                return false;
+            }
+
+            _ = this.Location(default, out var site); // The function's own location parameters (a caller-location function).
+            this.Destroy(this.module.Glue(targets[0].Item), address, site);
+        }
+
+        if (this.Input(1) is >= 0 and var input)
+        {
+            Value value = new('p', input);
+            var passed = this.abi.Parameters[input].Kind == AbiParameterKind.OwnedSlot ? this.ValueAt(value, type, lowering) : this.Widen(lowering, value);
+            this.Put(address, type, lowering, passed);
+        }
+
+        return true;
+    }
+
+    // IMPL 21.3.1: the value of a Type at an address returned by the signature: put into its result slot, nothing for a zero-sized one, else
+    // loaded and returned in its computation representation.
+    private void Give(BoundType type, ValueLowering lowering, Value address)
+    {
+        if (this.abi.ResultSlot)
+        {
+            this.Put(new('p', this.Input(-1)), type, lowering, this.ValueAt(address, type, lowering));
+        }
+        else if (lowering.Layout.Size != 0)
+        {
+            this.Returned(this.Narrow(lowering, this.LoadAt(address, lowering.Layout)));
+            return;
+        }
+
+        this.output.Write("  ret void\n}\n");
+    }
+
+    // The function's parameter that passes an input (Abi.Of numbers its argument parameters by slot), or its result slot for -1; -1 for
+    // none, a zero-sized input.
+    private int Input(int slot)
+    {
+        var parameters = this.abi.Parameters;
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].LogicalIndex == slot && (slot >= 0 || parameters[i].Kind == AbiParameterKind.ResultSlot))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     // A value of a Type at an address in its computation representation (bool narrowed), nothing for a zero-sized one.

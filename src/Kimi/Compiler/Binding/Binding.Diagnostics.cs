@@ -368,8 +368,8 @@ public sealed partial class Binding
             return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
         }
 
-        // The closure plan, not BoundClosure: a closure that failed at a call argument or a default keeps its plan (SPEC 7.7.4).
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Signature: not null } closure } declaration })
+        // The definition, not the closure as created: a closure that failed at a call argument or a default keeps it (SPEC 7.7.4).
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { } closure } declaration })
         {
             return null;
         }
@@ -551,7 +551,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } } } &&
+        if (BoundClosure.Of(implementation) is { Receiver: SemanticsKind.Ref } &&
             this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
         {
             signature = closure;
@@ -642,10 +642,9 @@ public sealed partial class Binding
     {
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
         var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
-        var closure = callee?.Symbol?.Declaration as FunctionKoto;
         var objectCallee = call && ((target.BoundType is { Kind: BoundTypeKind.Semantics } layer && IsObjectSemantics(layer.Semantics)) ||
             KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow });
-        var plan = closure?.ClosureStorage;
+        var plan = BoundClosure.Of(callee);
         var consuming = call && target.BoundType is { } calleeType && this.TryCallable(calleeType, this.ConstraintScope(node), out _, out var calleeReceiver) && calleeReceiver == SemanticsKind.Owner;
         var callNote = !call ? null : consuming ? objectCallee
             ? "The call is Consuming (SPEC 7.7.3): it moves values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5)"
@@ -675,7 +674,7 @@ public sealed partial class Binding
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
     {
-        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.exclusiveIndexers.Contains(index) || !ElementAccess.IsUserIndex(index) ||
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(index) ||
             this.Library.UniqIndexable is not { } uniqIndexable)
         {
             return null;
@@ -689,9 +688,10 @@ public sealed partial class Binding
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
-            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1).
+            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
             var name = DiagnosticTypeName(core);
-            var registered = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey) ?? (byKey ? this.ConformanceForKey(owner, uniqIndexable, index.Right) : null);
+            var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
+            _ = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey);
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";

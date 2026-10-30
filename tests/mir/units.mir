@@ -5,9 +5,9 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn effects @4
-  _0: () return @4
-  _1: bool arg flag @4
-  _2: string arg text @4
+  _0: () return @7
+  _1: bool arg flag @5
+  _2: string arg text @6
   _3: bool temp @10 s1
   _4: () temp (Result) @4
   _5: string temp @20 s1
@@ -48,7 +48,7 @@ fn effects @4
       _0 = move _4 @11 s1
       goto bb3 @11 s1
   bb5:
-      drop _2 -> bb6 [flag f0] [clear f0] @4
+      drop _2 -> bb6 [flag f0] [clear f0] @6
   bb6:
       goto bb4 @4
   bb7:
@@ -116,7 +116,7 @@ fn effects @4
       _18 = &_17: ref/string @18 s4
       _16 = writeLine(move _18) -> bb22 @14 s4
   bb21:
-      drop _2 -> bb24 @4
+      drop _2 -> bb24 @6
   bb22:
       StorageDead(_18) @18 s4
       drop _17 -> bb23 @18 s4

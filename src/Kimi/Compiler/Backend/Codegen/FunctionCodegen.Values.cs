@@ -9,18 +9,18 @@ namespace Kimi.Compiler.Backend;
 // The values of FunctionCodegen (R5 package C 3.2 I4, I5 and I7): an operand's value and a constant's, a Type's representation in the
 // item's instance, bool's widening and narrowing and a site's location (SPEC 22.5.1); their spelling is FunctionCodegen.Spelling's. A
 // string constant has no value: it is written whole where it is put (FunctionCodegen.Stores' Text) and its bytes are read where it is
-// compared (FunctionCodegen.Strings; DECISIONS R5-M118). Rows not written yet: Location and TypeToken constants, intrinsic operands
-// (C10a's TestObserve; C6a's TypeTest, C9c's format estimates).
+// compared (FunctionCodegen.Strings; DECISIONS R5-M118). A TypeToken constant has no value either: its call's writer reads it (C6a's
+// TypeTest, C9c's format estimates).
 internal sealed partial class FunctionCodegen
 {
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
     // signed range is the negative number with the same bits.
     private static Int128 Signed(Int128 bits, int width) => width >= 128 ? bits : (bits << (128 - width)) >> (128 - width);
 
-    // An operand's value in its Type's representation (Read; a value in memory is its address); false for a form not covered yet. A
-    // zero-sized operand has no value. A PairAcquire Copies its Place or Reborrows it, as the item's view decides (SPEC 8.14), and both
-    // write the Place's bits in its case Type: a Reborrow of an exclusive reference is the pointer the Place holds (IMPL 21.1.3), so it
-    // needs no case decision here (DECISIONS R5-M87).
+    // An operand's value in its Type's representation (Read; a value in memory is its address); false after a broken contract's record (the
+    // place writer's or Constant's; DECISIONS R5-M146). A zero-sized operand has no value. A PairAcquire Copies its Place or Reborrows it,
+    // as the item's view decides (SPEC 8.14), and both write the Place's bits in its case Type: a Reborrow of an exclusive reference is the
+    // pointer the Place holds (IMPL 21.1.3), so it needs no case decision here (DECISIONS R5-M87).
     private bool Operand(in MirOperand operand, out Value value)
     {
         value = default;
@@ -36,13 +36,31 @@ internal sealed partial class FunctionCodegen
     }
 
     // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
-    // IEEE bits), Unit and a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102).
+    // IEEE bits), Unit, a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102) and a
+    // Location, a verification site's number in the test catalog (TestCatalog.SiteOf, SPEC 20.6.2; DECISIONS R5-M136), which discovery
+    // gives every verification of the accepted test build, so an unnumbered site is a broken contract. Any other constant read as a value,
+    // a String or TypeToken one (its writer reads it) or an Integer one of a Type without integer arithmetic, char or raw pointer (Binding
+    // fits literals), is a broken contract too, recorded at the body's subject; false after it (DECISIONS R5-M146).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
+        if (constant.Kind == MirConstKind.Location)
         {
-            return false; // String, which has no value (above), Location (C10a), TypeToken (its call's writer reads it: C6a, C9c).
+            if (this.module.Tests.SiteOf(constant.Site) is not (>= 0 and var site))
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default);
+                return true;
+            }
+
+            value = new('\0', site);
+            return true;
+        }
+
+        var scalar = constant.Kind is MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float;
+        if (!scalar && constant.Kind is not (MirConstKind.Unit or MirConstKind.FnItem))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // String, which has no value (above), and TypeToken (C6a, C9c).
+            return false;
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
@@ -65,7 +83,8 @@ internal sealed partial class FunctionCodegen
 
         if (constant.Kind == MirConstKind.Integer && !type.HasIntegerArithmetic && !ReferenceEquals(type, BoundType.Char))
         {
-            return false; // A later row's Type.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default);
+            return false;
         }
 
         value = lowering.Layout.Size == 0 ? default : new('\0', Signed(constant.Bits, 8 * lowering.Layout.Size));
@@ -75,8 +94,24 @@ internal sealed partial class FunctionCodegen
     // The representation of a Type of the body in the item's instance (I7): Laid of its instance Type.
     private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
 
+    // The layout a form needs past the item's by-value set (LayoutNeeds; DECISIONS R5-M149), the one path code generation reads such a Type
+    // by: the Type the form's row names (LayoutNeeds.TypeOf: a projection step's, a raw pointer displacement's, a compared Tuple's, a call's
+    // Type argument at an index, that Type given too) laid out in the item's instance; null after a record (Laid).
+    private ValueLowering? Needed(MirPlace step) => this.Representation(LayoutNeeds.TypeOf(this.body, step));
+
+    private ValueLowering? Needed(in MirRvalue operation) => this.Representation(LayoutNeeds.TypeOf(this.body, operation));
+
+    private ValueLowering? Needed(ComparisonNode node) => this.Laid(LayoutNeeds.TypeOf(node)); // A shim's tree is of its closed Self.
+
+    private ValueLowering? Needed(Subst subst, int index, out BoundType? type)
+    {
+        type = LayoutNeeds.TypeOf(subst)[index] is { } argument ? this.collector.TypeOf(this.item, argument) : null;
+        return this.Laid(type);
+    }
+
     // The representation of a Type in the item's instance (I7); null, with InternalInvariant_Kd at the body, where TypeOf made none or Layout
-    // has none (the collector laid out every Type of an admitted item).
+    // has none: the collector laid out every Type of an admitted item's by-value set and every layout need its forms have (K 4.8), so that is
+    // a broken contract.
     private ValueLowering? Laid(BoundType? closed)
     {
         if (closed is not null && this.module.Layout.Of(closed).Value is { } lowering)

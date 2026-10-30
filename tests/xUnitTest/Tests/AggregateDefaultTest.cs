@@ -27,10 +27,11 @@ public class AggregateDefaultTest
     public void OwnedExpressionsExecute(string name, string source, string output)
         => ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, output);
 
+    // The abandoned argument's component is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
     [Theory]
     [InlineData("TupleCleanup", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nf()", "first=1;second=1", new[] { 1, 0 })]
     [InlineData("LocalCleanup", "func f(x: string = label work: do\n    let unused = \"local\"\n    exit to work \"result\"\n) => ()\nf()", "local=1;result=1", new[] { 0, 1 })]
-    [InlineData("Abandoned", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nlabel done: do => f(x: (\"first\", (exit to done)))", "first=1", new[] { 0 })]
+    [InlineData("Abandoned", "func echo(text: string) -> string => text@move\nfunc f(x: (string, string) = (\"first\", \"second\")) => ()\nlabel done: do => f(x: (echo(\"first\"), (exit to done)))", "first=1", new[] { 0 })]
     public void AggregateAcquisitionHasExactCleanup(string name, string source, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, string.Empty);

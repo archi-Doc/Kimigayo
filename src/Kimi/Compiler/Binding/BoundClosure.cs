@@ -12,8 +12,15 @@
 //   MIR builder, the old analysis and Emission); the cause for the write record; for a view of one admitted case, that case's
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
+// - Access (DECISIONS R5-M63 (1), R4-M152; agreed with BU, the Binding owner): two accessors with two meanings, so each reader
+//   chooses. FunctionKoto.ClosureDefinition is the definition, the binding's plan once its signature is bound, whatever the creation's
+//   outcome: every reader that needs the closure's definition (its signature, parts or body) reads it, through a Closure Type, a
+//   signature or an Origin's binder (Of, the Type route, answers only for a Closure Type) or through the literal (R5-M63 (1)'s HIR
+//   publisher and MIR builder, and Binding's judgments of a literal's parts). FunctionKoto.ClosureAsCreated is the closure as created,
+//   that definition while the literal's creation is Resolved and null when the creation failed: only a reader that asks whether the
+//   creation at its position succeeded reads it (the old Analysis and Emission per creation, control flow's created closure).
 // - Invariants: Receiver is CaseFreeReceiver raised to Exclusive when a capture has BareReborrows, so Consuming never depends on a
-//   case; the receiver facts are the current binding's exactly when Classified; Of is the definition once the signature is bound.
+//   case; the receiver facts are the current binding's exactly when Classified; a failed creation keeps its definition.
 // - Prohibitions: only ClosureEffects classifies the receiver facts, which the binding resets; no reader re-derives a receiver from the body.
 
 using Kimi.Compiler.Parsing;
@@ -63,8 +70,9 @@ public sealed class BoundClosure
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
 
-    // The closure definition (ClosureDef, plan 5.3) of an anonymous function's latest binding, once it bound the inputs, the result and the
-    // environment, whatever its creation's outcome (DECISIONS R5-M63; Binding.BindClosure clears the signature first); its substitution is
-    // TyCtxt.SubstOfClosure of its Type.
-    internal static BoundClosure? Of(FunctionKoto function) => function.ClosureStorage is { Signature: not null } plan ? plan : null;
+    // The Type route to a closure's definition (ClosureDef, plan 5.3; DECISIONS R5-M63 (1), R4-M152): a Closure Type's literal's
+    // FunctionKoto.ClosureDefinition, whatever its creation's outcome (Binding.BindClosure clears the signature first; its substitution
+    // is TyCtxt.SubstOfClosure of the Type); null for any other Type.
+    internal static BoundClosure? Of(BoundType? closure)
+        => closure is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } ? function.ClosureDefinition : null;
 }

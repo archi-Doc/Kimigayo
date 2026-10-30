@@ -4,8 +4,9 @@ namespace Kimi.Compiler.Backend;
 
 /// <summary>The checked set of a program version (SPEC 8.15.3, IMPL 21.3.1), which only <see cref="InstanceCollector"/> writes: its items in
 /// admission order, the roots first, each with its targets in its body's location order, and its instance-stage records, one per code and
-/// subject, which <c>Compilation.MirRecords</c> publishes under MIR code generation; at emit, its Generated column (K package 4.10), which the
-/// generation entry marks. Its arrays and lookup keep their storage, so collecting and marking a program again allocate nothing.</summary>
+/// subject, which <c>Compilation.MirRecords</c> publishes at check on every pipeline (DECISIONS BU-48, R5-M156); at emit, its Generated
+/// column (K package 4.10), which the generation entry marks. Its arrays and lookup keep their storage, so collecting and marking a
+/// program again allocate nothing.</summary>
 internal sealed class CheckedSet
 {
     private readonly Dictionary<MonoKey, int> lookup = new();
@@ -25,7 +26,7 @@ internal sealed class CheckedSet
 
     /// <summary>Gets the records of the collection, one per code and subject: a capability gap's <c>Unsupported_Kd</c>, a limit's
     /// <c>GenerationResourceLimit_Kd</c>, a C-layout instance's <c>InvalidCLayout_Kd</c>, a layout over 2^63 - 1 bytes' <c>OversizedLayout_Kd</c>
-    /// at a by-value use, a broken contract's <c>InternalInvariant_Kd</c>.</summary>
+    /// at a use (K 4.8), a broken contract's <c>InternalInvariant_Kd</c>, which only a complete Binding gives (DECISIONS R5-M151).</summary>
     internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the items in admission order.</summary>

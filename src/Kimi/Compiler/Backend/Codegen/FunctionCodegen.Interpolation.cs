@@ -54,15 +54,9 @@ internal sealed partial class FunctionCodegen
     // FormatBuffer (R3-10): the private buffer into its destination, over its Region's bytes or on the heap (above).
     private void FormatBuffer(in MirTerminator call, in IntrinsicRow row)
     {
-        if (this.Estimate(call, 0) is not { } estimate)
+        if (this.Estimate(call, 0) is not { } estimate || !this.Address(call.Place, out var buffer))
         {
             return; // Recorded.
-        }
-
-        if (!this.Address(call.Place, out var buffer))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
         }
 
         this.module.Request(HelperNeeds.FormattingRuntime);
@@ -100,15 +94,10 @@ internal sealed partial class FunctionCodegen
     // values (operands 2 and 3), then the position's literal text (operand 1) when not empty (SegmentText).
     private void FormatSegment(in MirTerminator call, in IntrinsicRow row)
     {
-        if (this.Estimate(call, 2) is not { } estimate || this.StepConstant(call, 1, MirConstKind.String) is not { Value: string text })
+        if (this.Estimate(call, 2) is not { } estimate || this.StepConstant(call, 1, MirConstKind.String) is not { Value: string text } ||
+            !this.Operand(this.body.Operands[call.Start], out var adapter))
         {
             return; // Recorded.
-        }
-
-        if (!this.Operand(this.body.Operands[call.Start], out var adapter))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
         }
 
         this.module.Request(HelperNeeds.FormattingRuntime);
@@ -127,15 +116,10 @@ internal sealed partial class FunctionCodegen
     private bool SegmentText(in MirTerminator call, Value adapter)
     {
         var text = call.Start + 1;
-        if (!this.Location(call.Source, out var site))
+        if (!this.Location(call.Source, out var site) ||
+            !this.Argument(this.body.Operands[text], this.copyOf[text], AbiParameterKind.OwnedSlot, out var record))
         {
-            return false;
-        }
-
-        if (!this.Argument(this.body.Operands[text], this.copyOf[text], AbiParameterKind.OwnedSlot, out var record))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return false;
+            return false; // Recorded.
         }
 
         var routine = this.StepConstant(call, 3, MirConstKind.TypeToken)!.Value.Type.Components.Count > 0 ? LegacyRuntimeHelpers.FormatLiteral
@@ -157,13 +141,7 @@ internal sealed partial class FunctionCodegen
             return; // Recorded.
         }
 
-        if (!this.Address(call.Place, out var result) || !this.Operand(operand, out var adapter))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
-        }
-
-        if (!this.Location(call.Source, out var site))
+        if (!this.Address(call.Place, out var result) || !this.Operand(operand, out var adapter) || !this.Location(call.Source, out var site))
         {
             return; // Recorded.
         }

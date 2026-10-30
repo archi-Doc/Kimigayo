@@ -16,9 +16,11 @@ public sealed partial class Binding
     internal static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
         => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
-    // The Item layout (SPEC 7.3, 10.5; FunctionItemType forms it): an Item's first Components are its function's own Type arguments, one
-    // per generic slot that is no length slot, in slot order, and a generic member's declaring Type follows them (ItemDeclaringType). The
-    // Component holding the argument of the Type or pair slot `slot`; at the slot count, the number of own Type arguments.
+    // The Item layout (SPEC 7.3, 10.5; FunctionItemType and BindRequirementItem form it): an Item's first Components are its function's own
+    // Type arguments, one per generic slot that is no length slot, in slot order, and a generic member's declaring Type follows them
+    // (ItemDeclaringType); a requirement Item's are its Self and Contract reference only, since it is formed only for a requirement without
+    // generic slots (a generic one's is Unsupported_Kd), so it holds no slot's argument. The Component holding the argument of the Type or
+    // pair slot `slot`; at the slot count, the number of own Type arguments.
     internal static int ItemComponent(FunctionKoto function, int slot)
     {
         var component = 0;

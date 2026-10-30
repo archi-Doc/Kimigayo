@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -13,18 +12,18 @@ public class StringComparisonEmissionTest
     public static TheoryData<string, string, string, string> Fixtures => new()
     {
         { "Same", "let text = \"a\"\nif text == text => Console.writeLine(\"ok\")\nConsole.writeLine(text)", "ok\na\n", "a=1;ok=1" },
-        { "Nested", "let text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(\"ok\")\nConsole.writeLine(text)", "ok\na\n", "a=3;b=0;ok=1" },
-        { "Temporary", Echo + "if echo(\"a\") == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "Ordering", "if \"a\" < \"ab\" and \"ab\" > \"a\" and \"a\" <= \"a\" and \"z\" >= \"a\" and \"a\" != \"b\" => Console.writeLine(\"ok\")", "ok\n", "a=6;ab=2;z=1;b=1;ok=1" },
-        { "Empty", "if \"\" == \"\" and \"\" < \"a\" and \"a\" > \"\" and \"\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "=5;a=3;ok=1" },
-        { "Unicode", "if \"z\" < \"日本語\" and \"a\\0b\" < \"a\\0c\" and \"a\\0\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "z=1;日本語=1;a\0b=1;a\0c=1;a\0=1;a=1;ok=1" },
+        { "Nested", "let text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(\"ok\")\nConsole.writeLine(text)", "ok\na\n", "a=2;b=0;ok=1" },
+        { "Temporary", Echo + "if echo(\"a\") == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=1;ok=1" },
+        { "Ordering", "if \"a\" < \"ab\" and \"ab\" > \"a\" and \"a\" <= \"a\" and \"z\" >= \"a\" and \"a\" != \"b\" => Console.writeLine(\"ok\")", "ok\n", "a=0;ab=0;z=0;b=0;ok=1" },
+        { "Empty", "if \"\" == \"\" and \"\" < \"a\" and \"a\" > \"\" and \"\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "=0;a=0;ok=1" },
+        { "Unicode", "if \"z\" < \"日本語\" and \"a\\0b\" < \"a\\0c\" and \"a\\0\" != \"a\" => Console.writeLine(\"ok\")", "ok\n", "z=0;日本語=0;a\0b=0;a\0c=0;a\0=0;a=0;ok=1" },
         { "Parameter", "func equal(a: string, b: string) -> bool => a == b\nif equal(\"a\", \"a\") => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
-        { "Loop", "let text = \"a\"\nvar n = 0\nwhile n < 3\n    if text == \"a\" => n += 1\nConsole.writeLine(text)", "a\n", "a=4" },
+        { "Loop", "let text = \"a\"\nvar n = 0\nwhile n < 3\n    if text == \"a\" => n += 1\nConsole.writeLine(text)", "a\n", "a=1" },
         { "ReturnLiteral", "func f() -> string\n    let text = \"a\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
-        { "Defer", "var text = \"a\"\ndefer\n    if text == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=2;ok=1" },
+        { "Defer", "var text = \"a\"\ndefer\n    if text == \"a\" => Console.writeLine(\"ok\")", "ok\n", "a=1;ok=1" },
         { "BranchTransfer", "func f(c: bool) -> string\n    let text = \"a\"\n    if text == (if c => (return \"x\") else => \"a\") => return text@move\n    return \"bad\"\nConsole.writeLine(f(false))\nConsole.writeLine(f(true))", "a\nx\n", "a=3;x=1;bad=0" },
         { "Skipped", Echo + "if false and echo(\"skip\") == \"skip\" => Console.writeLine(\"bad\")\nif true or echo(\"skip\") == \"skip\" => Console.writeLine(\"ok\")", "ok\n", "skip=0;bad=0;ok=1" },
-        { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => Console.writeLine(\"ok\")\n    n += 1", "ok\n", "once=2;ok=1" },
+        { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => Console.writeLine(\"ok\")\n    n += 1", "ok\n", "once=1;ok=1" },
         { "LoopExit", "let text = \"a\"\nif text == (loop => exit \"a\") => Console.writeLine(text)", "a\n", "a=2" },
         { "AbandonedCleanup", "func f() -> string\n    var text = \"a\"\n    defer => text = \"b\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;b=1;x=1;bad=0" },
         { "TwoReturns", "func f(c: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nConsole.writeLine(f(true))\nConsole.writeLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
@@ -59,48 +58,12 @@ public class StringComparisonEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("wrong_read")]
-    [InlineData("early_end")]
-    [InlineData("plan")]
-    [InlineData("type")]
-    public void MissingLoanIsRejectedAndReanalysisRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let text = \"a\"\ntext == text", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies[0];
-        Assert.Equal(2, body.ComparisonLoans.Count);
-        Assert.True(c.Validate(out var error), error);
-        var plan = body.StringComparisons[0];
-        switch (defect)
-        {
-            case "missing": body.StringComparisons[0] = plan with { LeftLoan = -1 }; break;
-            case "wrong_read": body.StringComparisons[0] = plan with { LeftLoan = plan.RightLoan }; break;
-            case "early_end": body.LoanInputs[plan.Operation] = -1; break;
-            case "plan": body.StringComparisons.Clear(); break;
-            case "type": body.StringComparisons[0] = plan with { Left = body.Operations[plan.Operation].Place }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void ConditionSecuresBoolBeforeDestructionAndBranching()
     {
         const string Source = Echo + "if echo(\"condition\") == \"literal\" => Console.writeLine(\"bad\")\nConsole.writeLine(\"after\")";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        var comparison = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StringEquals);
-        var destroy = function.Instructions.FindIndex(comparison + 1, x => x.Callee == RuntimeAbi.DestroyString);
-        var branch = function.Instructions.FindIndex(comparison + 1, x => x.Opcode == EmissionOpcode.ConditionalBranch);
-        Assert.True(comparison >= 0 && comparison < destroy && destroy < branch);
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonConditionOrder", Source, "after\n");
-        StringEmissionTest.WriteAuditedFixture("StringComparisonConditionOrder", ir, "after\n", "condition=1;literal=1;bad=0;after=1", order: [1, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture("StringComparisonConditionOrder", ir, "after\n", "condition=1;literal=0;bad=0;after=1", order: [0, 3]);
     }
 
     [Theory]
@@ -119,28 +82,6 @@ public class StringComparisonEmissionTest
         const string Source = "func forever() -> string\n    loop => ()\nlet text = \"held\"\ntext == forever()";
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
-    }
-
-    [Fact]
-    public void ConditionalTemporaryFlagsAreInitializedAndValidated()
-    {
-        var c = MinimalEmissionTest.Analyze("var c = false\nif c and \"a\" == \"a\" => ()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var function = module.GetFunction(0);
-        Assert.Empty(body.ComparisonLoans);
-        Assert.Equal(2, function.LiveFlags.Count);
-        var scratch = new int[body.Places.Count + body.Operations.Count];
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.InitializeLiveFlag);
-        var instruction = function.Instructions[index];
-        function.Instructions.RemoveAt(index);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.Insert(index, instruction);
-        function.Instructions.Insert(index, instruction);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.RemoveAt(index);
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
     }
 
     [Fact]

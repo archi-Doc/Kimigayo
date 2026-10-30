@@ -96,17 +96,38 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
 
-    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them (the first
-    // by LlvmModuleText.TryAllocate for both generators).
+    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them
+    // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes, written as a pair by both generators; DECISIONS R5-M92, R5-M145).
     internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes", AbiParameterKind.Value, 0)]);
 
-    internal static readonly FunctionAbi TransferBytes =
-        new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);
+    internal static readonly FunctionAbi TransferBytes = new(
+        "__kimi_transfer_bytes",
+        Unit.ComputationType,
+        [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
 
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
+    // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue
+    // from its condition and the site's number in the test catalog and sends the values held for it; the issue's message, a borrowed string;
+    // a $require's Abort of the case; a compared value held until the observation, by its side, its frame kind and width and its bits.
     internal static readonly FunctionAbi TestTempDirectory =
         new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true };
+
+    internal static readonly FunctionAbi TestObserve =
+        new("__kimi_test_observe", "i64", [new("i1", "condition", AbiParameterKind.Value, 0), new("i32", "site", AbiParameterKind.Value, 1)]);
+
+    internal static readonly FunctionAbi TestMessage =
+        new("__kimi_test_message", "void", [new("i64", "issue", AbiParameterKind.Value, 0), new("ptr", "text", AbiParameterKind.Value, 1)]);
+
+    internal static readonly FunctionAbi TestRequireAbort = new(
+        "__kimi_test_require_abort",
+        "void",
+        [new("i64", "issue", AbiParameterKind.Value, 0), new("i32", "site", AbiParameterKind.Value, 1)]) { NoReturn = true };
+
+    internal static readonly FunctionAbi TestValue = new(
+        "__kimi_test_value",
+        "void",
+        [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
     internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];

@@ -9,7 +9,7 @@ namespace XunitTest;
 // The Dictionary family of MIR code generation (R5 C8e; SPEC 4.3, 4.7.3, 4.9.4-4.9.7, 16.3.2, 22.2; DECISIONS R5-M124): the storage kernels
 // written inline over their call's entry layout; placeEntry calling its LegacyRow item's Place helper, which calls append's instance; a
 // Dictionary from none calling initialize's; a Dictionary's glue calling its own Drop helper, which calls the clearEntries instance only when
-// an entry may need a drop; a Dictionary's length; natively under both generators. The keys are user Equatable structs: a built-in key's
+// an entry may need a drop; a Dictionary's length; natively. The keys are user Equatable structs: a built-in key's
 // equality is C8f's shim (BuiltinEquals).
 public sealed partial class FunctionCodegenTest
 {
@@ -43,8 +43,7 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 4.3, 4.9.4-4.9.7, 22.2 (DECISIONS R5-M124): every operation over user keys, string, drop-needing and zero-sized values, growth
     // through transferBytes, reverse-insertion destruction and an owning iteration's early exit; a drop-needing key (Named) in a struct
-    // Field's Dictionary, whose entries are destroyed value before key, as are a rejected duplicate's and a removed entry's pairs; natively
-    // under both generators.
+    // Field's Dictionary, whose entries are destroyed value before key, as are a rejected duplicate's and a removed entry's pairs; natively.
     public static TheoryData<string, string, string> DictionaryPrograms => new()
     {
         {
@@ -174,8 +173,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, with the Array runtime only where
-    // placeEntry's row declares it, so a module that only destroys a Dictionary has none; a module whose bodies shrink one defines the nullable
-    // Alloc once.
+    // placeEntry's row declares it, so a module that only destroys a Dictionary has none; a module whose bodies shrink one defines the storage
+    // byte primitives once (DECISIONS R5-M145).
     [Fact]
     public void DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare()
     {
@@ -188,6 +187,7 @@ public sealed partial class FunctionCodegenTest
         var grow = Regex.Match(text, @"define internal void @__kimi_array_grow\(");
         Assert.True(grow.Success && grow.Index < first);
         Assert.Single(Regex.Matches(text, @"define internal ptr @__kimi_try_allocate\("));
+        Assert.Single(Regex.Matches(text, @"define internal void @__kimi_transfer_bytes\("));
 
         var kept = Generate(Analyze(DictionaryKeys + "func dcKeep(d: Dictionary<Key, string>) => ()\n", OutputKind.Library));
         Assert.Matches(@"define internal void @__kimi_dictionary_drop_\d+\(", kept);

@@ -6,6 +6,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly List<BindingSymbol> importDeclarations = new();
+
+    /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
+    /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
+    /// ones. One whose Attribute fails before (InvalidLibraryImport) is no import.</summary>
+    internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
+
     // SPEC 22.6: whether a function carries the import Attribute; its validity is checked separately.
     internal static bool IsLibraryImport(FunctionKoto function)
     {
@@ -29,19 +36,6 @@ public sealed partial class Binding
         }
 
         return target;
-    }
-
-    private static bool HasCLayout(StructKoto structure)
-    {
-        for (var attribute = structure.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.LayoutMode == "C")
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // SPEC 22.6: string, dynamic collections (SPEC 4.9), object handles (obj, rc, arc; an object borrow is none), function and Closure
@@ -101,6 +95,7 @@ public sealed partial class Binding
         string? target = null;
         var symbols = this.importSymbols;
         symbols.Clear();
+        this.importDeclarations.Clear();
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -155,6 +150,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.importDeclarations.Add(function.BoundSymbol!); // An import: its signature is checked, its by-value Types layout uses (R5-M150).
             var signature = this.ImportAbi(attribute, function, ordinal++);
             if (signature is not null)
             {
@@ -385,57 +381,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage
-    // shapes; a Field whose size depends on a Type argument is checked when its layout is formed.
-    // A rejected declaration is published as AdtDef.CLayoutRejected, which Layout treats as rejected storage.
-    private void ValidateCLayoutFields()
-    {
-        foreach (var container in this.storageDeclarations)
-        {
-            var adt = container.BoundSymbol!.Adt!;
-            adt.CLayoutRejected = false;
-            for (var m = 0; adt.IsCLayout && m < container.Members.Count; m++)
-            {
-                if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
-                    field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
-                {
-                    adt.CLayoutRejected = true;
-                    this.Fail(field, BindingFailure.InvalidCLayout);
-                    this.Fail(container, BindingFailure.InvalidTypeFormation);
-                }
-            }
-        }
-
-        this.storagePrepared = true;
-        foreach (var (syntax, type) in this.cLayoutInstances)
-        {
-            this.CheckCLayoutInstance(syntax, type);
-        }
-    }
-
-    // SPEC 21.1: a written instantiation of a generic C-layout struct, such as Pair<()>,
-    // must not make a direct Field zero-sized. Inferred instantiations reject at generation.
-    private void CheckCLayoutInstance(GenericsKoto syntax, BoundType type)
-    {
-        if (!this.storagePrepared)
-        {
-            this.cLayoutInstances.Add((syntax, type));
-            return;
-        }
-
-        if (type.Symbol?.Declaration is StructKoto { BoundSymbol.Adt: { } shape })
-        {
-            foreach (var field in shape.Types)
-            {
-                if (this.StoredType(field, type) is { } stored && this.HasZeroStride(stored))
-                {
-                    this.Fail(syntax, BindingFailure.InvalidCLayout);
-                    return;
-                }
-            }
-        }
-    }
-
+    // SPEC 6.7.1: the Attribute's own errors (its mode, fragments and storage fragment) and the published declaration facts: IsCLayout for
+    // a valid C selection whose layout is available at the declaration, CLayoutUnavailable for one on an open, derived or empty struct,
+    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error).
     private void ValidateLayoutFragments()
     {
         for (var i = 0; i < this.nodes.Count; i++)
@@ -502,16 +450,12 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 21.1: C layout rejects open, derived and empty structs.
-            if (mode == "C" && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0))
-            {
-                this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
-                this.InvalidateAttributeTarget(latestSpecification!);
-                valid = false;
-            }
-
-            // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
-            (container.BoundSymbol!.Adt ??= new()).IsCLayout = mode == "C" && valid;
+            // The published facts, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
+            var selected = mode == "C" && valid;
+            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0);
+            var adt = container.BoundSymbol!.Adt ??= new();
+            adt.IsCLayout = selected && !unavailable;
+            adt.CLayoutUnavailable = unavailable;
         }
     }
 }

@@ -16,13 +16,15 @@
 // Invariants: the ensure function Aborts with KIMI_E_STATIC_CYCLE at the location it received when the slot has started (state != Not
 // started: Initializing in R5, where Finished is never stored, so a Finished slot would Abort rather than initialize again, fail-closed
 // until P42 gives Finished KIMI_E_STATIC_SHUTDOWN), else marks it Initializing, calls the StaticInit into the slot and marks it Initialized
-// (SPEC 22.4.3); a slot's value is read and written only through the place writer and these stores; a warm write allocates nothing.
+// (SPEC 22.4.3), in a test build the call in the initialization phase (FunctionCodegen.Phases; DECISIONS R5-M137); a slot's value is read
+// and written only through the place writer and these stores; a warm write allocates nothing.
 // Must not decide which statics are generated: the StaticStorage capability row (DECISIONS R5-M82) refuses at check a static that can be
 // set, whose Type is not a scalar or that belongs to a generic container's group, so only scalars reach here and no Type is tested. A
 // staticEnsure without a StaticInit target and two slots for one static (P42's keys) are broken contracts: InternalInvariant_Kd; the
 // validator checks that a static Place's body ensures it (MirBuilder.Places' contract, G191).
 
 using Kimi.Compiler.Mir;
+using Kimi.Testing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -47,7 +49,8 @@ internal sealed partial class FunctionCodegen
     // -1 for any other body.
     private static int ConstantOf(MirBody body)
     {
-        var (block, constant) = (body.Blocks[0], -1);
+        var block = body.Blocks[0];
+        var constant = -1;
         foreach (var statement in body.Statements.Slice(block.Start, block.Count))
         {
             if (statement.Kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead)
@@ -111,10 +114,12 @@ internal sealed partial class FunctionCodegen
     // into the slot (its result slot, or its value stored) between the Initializing and Initialized stores.
     private void WriteStorage(FunctionAbi initializer)
     {
-        var (output, item, lowering) = (this.output, this.item, this.slots[0].Value);
+        var output = this.output;
+        var item = this.item;
+        var lowering = this.slots[0].Value;
         this.WriteGlobal(new('v', item), lowering.Layout, "zeroinitializer");
         this.WriteGlobal(new('w', item), StateLayout, "0");
-        (this.abi, this.next) = (this.module.Ensure(item), 0);
+        (this.abi, this.next, this.window) = (this.module.Ensure(item), 0, -1);
         output.Write(this.abi.GetDefinition(exported: false));
         output.Write("entry:\n");
         var state = this.LoadAt(new('w', item), StateLayout);
@@ -127,11 +132,13 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
         LlvmScalarText.WriteFailure(output, "%started", AbortReasons.StaticCycle, this.Failure(id, Accessed, stackalloc char[3 * SpellingLength]));
         this.StoreAt(new('w', item), StateLayout, new('\0', (int)StaticState.Initializing));
+        this.Open(TestRuntime.Phase.Initialization);
         if (this.WriteCall(initializer, initializer.ResultSlot ? [new Value('v', item)] : []) is { } result)
         {
             this.Put(new('v', item), this.types[0], lowering, this.Widen(lowering, result));
         }
 
+        this.Close();
         this.StoreAt(new('w', item), StateLayout, new('\0', (int)StaticState.Initialized));
         output.Write("  ret void\n}\n");
     }
@@ -211,7 +218,7 @@ internal sealed partial class FunctionCodegen
             return; // Recorded.
         }
 
-        this.Points(new(this.at, this.body.Blocks[this.at].Count));
+        this.Completed();
         var output = this.output;
         var state = this.LoadAt(new('w', target), StateLayout);
         var ready = new Value('t', this.next++);

@@ -79,8 +79,17 @@ public sealed partial class Binding
     // but never their storage lifetime. Reuse the name node as the candidate's identity.
     internal static Koto CandidateOriginBinder(BindingSymbol candidate) => ((SyntaxFormKoto)candidate.Declaration).Operands[0];
 
-    internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
-        ? SymbolOriginSlot(symbol) : 0;
+    // A Closure literal's own temporary is its ClosureValueSlot (SPEC 15.8.2; DECISIONS R4-M152); any other temporary's slot is 0.
+    internal static int PlaceOriginSlot(Koto source)
+    {
+        if (source is FunctionKoto { IsAnonymous: true })
+        {
+            return ClosureValueSlot;
+        }
+
+        return source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
+            ? SymbolOriginSlot(symbol) : 0;
+    }
 
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.

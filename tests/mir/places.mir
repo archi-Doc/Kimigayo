@@ -1,6 +1,6 @@
 fn init @6
-  _0: Base return @6
-  _1: i32 arg count @6
+  _0: Base return (Receiver) @6
+  _1: i32 arg count @7
   _2: () temp @8
   _3: () temp @8
   _4: i32 temp @9
@@ -18,9 +18,9 @@ fn init @6
       StorageDead(_2) @8
       return @8
 fn init @18
-  _0: Derived return @18
-  _1: i32 arg count @18
-  _2: i32 arg extra @18
+  _0: Derived return (Receiver) @18
+  _1: i32 arg count @22
+  _2: i32 arg extra @23
   _3: () temp @24
   _4: () temp @25 s1
   _5: i32 temp @26 s1
@@ -52,9 +52,9 @@ fn top-level#0 @40
       _0 = const () @41 s1
       return @41
 fn fields @42
-  _0: i32 return @42
-  _1: ref/Derived arg d @42
-  _2: (i32, bool) arg t @42
+  _0: i32 return @48
+  _1: ref/Derived arg d @43
+  _2: (i32, bool) arg t @45
   _3: i32 temp @50
   bb0:
       StorageLive(_3) @50
@@ -63,10 +63,10 @@ fn fields @42
       StorageDead(_3) @50
       return @49
 fn elements @60
-  _0: i32 return @60
-  _1: [3 of i32] arg a @60
-  _2: isize arg i @60
-  _3: u8 arg n @60
+  _0: i32 return @66
+  _1: [3 of i32] arg a @61
+  _2: isize arg i @64
+  _3: u8 arg n @65
   _4: i32 temp @68
   _5: i32 temp @69
   _6: ref/[3 of i32] temp @72
@@ -97,9 +97,9 @@ fn elements @60
       StorageDead(_4) @68
       return @67
 fn follow @78
-  _0: i32 return @78
-  _1: ref/i32 arg p @78
-  _2: uniq/i32 arg q @78
+  _0: i32 return @83
+  _1: ref/i32 arg p @79
+  _2: uniq/i32 arg q @81
   _3: i32 var value @85 s1
   _4: () temp @89 s1
   _5: i32 temp @90 s1
@@ -138,7 +138,7 @@ fn follow @78
       StorageDead(_3) @85 s1
       unreachable @84
 fn count @98
-  _0: i32 return @98
+  _0: i32 return @99
   _1: () temp @101 s1
   _2: i32 temp @102 s1
   _3: () temp @106 s1
@@ -188,10 +188,10 @@ fn count @98
       unreachable @100
 fn discard @114
   _0: () return @114
-  _1: Slice<i32> arg s @114
-  _2: isize arg i @114
-  _3: uniq/i32 arg u @114
-  _4: ref/() arg unit @114
+  _1: Slice<i32> arg s @115
+  _2: isize arg i @119
+  _3: uniq/i32 arg u @120
+  _4: ref/() arg unit @122
   _5: i32 temp @125 s1
   _6: isize temp @125 s1
   _7: uniq/i32 temp @128 s1
@@ -213,19 +213,19 @@ fn discard @114
       _0 = const () @124 s1
       return @124
 fn take @132
-  _0: i32 return @132
-  _1: uniq/rc/Item arg v @132
+  _0: i32 return @136
+  _1: uniq/rc/Item arg v @133
   bb0:
     * _0 = copy (*(*_1)).0 @137
       return @137
 fn slotBorrow @140
-  _0: ref/ref/i32 return @140
-  _1: ref/(ref/i32, i32) arg p @140
+  _0: ref/ref/i32 return @147
+  _1: ref/(ref/i32, i32) arg p @141
   bb0:
     * _0 = &(*_1).0: ref/ref/i32 @153
       return @153
 fn nestedProjections @158
-  _0: i32 return @158
+  _0: i32 return @159
   _1: (((i32, bool), i32), string) var a @161 s1
   _2: ((i32, bool), i32) temp @164 s1
   _3: (i32, bool) temp @165 s1
@@ -277,10 +277,10 @@ fn nestedProjections @158
       StorageDead(_1) @161 s1
       unreachable @160
 fn wide @188
-  _0: i32 return @188
-  _1: [3 of i32] arg a @188
-  _2: i128 arg w @188
-  _3: u64 arg u @188
+  _0: i32 return @194
+  _1: [3 of i32] arg a @189
+  _2: i128 arg w @192
+  _3: u64 arg u @193
   _4: ref/[3 of i32] temp @196
   _5: isize temp @196
   _6: bool temp @198
@@ -336,7 +336,7 @@ fn wide @188
       StorageDead(_4) @196
       return @195
 fn init @204
-  _0: Item return @204
+  _0: Item return (Receiver) @204
   _1: () temp @205
   s1: lexical in s0 @205
   bb0:

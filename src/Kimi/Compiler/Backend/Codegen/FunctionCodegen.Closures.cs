@@ -11,10 +11,11 @@ namespace Kimi.Compiler.Backend;
 // context last): the environment is the referent of a borrowed operand, or an owned operand's storage (a Move's Place, a Copy's copy slot), the
 // context null. A function Item calls what its call runs (Runs, also an ItemAdapter's entry's callee), decided by its function: a compiler
 // function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, a legacy row's by its writer over the Value call's
-// operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine), else the row's
-// unit's; any other function's its body target, its function's body or a requirement Item's witness (through its slot when it
-// implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); without one a later unit's row (a
-// requirement witness without a body, PLAN G157 (10), K's; a property witness C3c). The slot only makes the callee
+// operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine); any other
+// function's its body target, its function's body or a requirement Item's witness (through its slot when it implements one, BodyRun); a
+// virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); a #LibraryImport function's its import (SPEC 22.6); any other
+// is a broken contract (an unsafe or internal compiler function has no Item, and a requirement Item whose witness has no MIR body is the
+// collector's BodylessWitness gap at check; DECISIONS R5-M146). The slot only makes the callee
 // value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
 // is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
 // with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's operands are its
@@ -41,7 +42,7 @@ internal sealed partial class FunctionCodegen
         var layer = TyCtxt.Layer(type, out var callable, out _);
         if (layer == HirPlaceKind.PairLayer)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // A pair layer's callee follows its case (MirCases), no row yet.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // Binding calls no value through a pair layer (NotCallable_Kd).
             return;
         }
 
@@ -81,8 +82,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Argument(call.Operand, this.CalleeCopy(), owned ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, out var environment))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         if (this.Pass(call, signature, new(call.Callee.Symbol, MirBodyKind.Fn), [environment, new('n', 0)]))
@@ -102,7 +102,7 @@ internal sealed partial class FunctionCodegen
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { } row)
         {
-            this.Legacy(call, row, target);
+            this.Legacy(call, row, target, this.typeContext.SubstOfItem(item));
             return;
         }
 
@@ -118,9 +118,9 @@ internal sealed partial class FunctionCodegen
     // `given`, a formatting row's capacity measured by the adapter's entry, Forward; DECISIONS R5-M128); any other function's is what
     // its target runs (the collector's: its function's body or a requirement Item's witness; FunctionCodegen.Calls' Witness, a virtual
     // witness through its slot); a virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own
-    // substitution (ModuleCodegen.Slot).
-    // Null after a record at the source (an adapter's: its site): a row not written yet, its unit's located Unsupported_Kd, or a broken
-    // contract.
+    // substitution (ModuleCodegen.Slot); a #LibraryImport function's Item, which has no target either, its import by its C signature, the
+    // rule of its direct call (ModuleCodegen.Import; SPEC 22.6, DECISIONS R5-M146).
+    // Null after a record at the source (an adapter's: its site): a broken contract (above).
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -135,12 +135,17 @@ internal sealed partial class FunctionCodegen
             return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
         }
 
+        if (kind == CompilerFunctionKind.None && item.Symbol is { } foreign && this.module.Import(foreign) is { } import)
+        {
+            return new Run(import, null); // SPEC 22.6: its C signature, as its direct call (Function).
+        }
+
         if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, source, out given) is { } routine)
         {
             return new Run(routine, null);
         }
 
-        this.Report(DiagnosticCode.Unsupported_Kd, source); // A row not written yet (above).
+        this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A broken contract (above).
         return null;
     }
 
@@ -157,8 +162,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Argument(call.Operand, -1, owned ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var handle = Layout.Row(declared).Layout.FieldOffsets.Span; // A Function Type's row: its environment word, then its table.

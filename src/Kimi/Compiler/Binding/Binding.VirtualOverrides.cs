@@ -122,7 +122,7 @@ public sealed partial class Binding
             {
                 var bound = this.SubstituteConstraint(fact, owner, (BoundType[])selection.DeclaringType.Components);
                 // Closed propositions are obligations, not assumptions (SPEC 8.3.3).
-                if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && DependentConstraint(bound))
+                if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && this.DependentConstraint(bound))
                 {
                     current.Add(bound);
                 }

@@ -22,6 +22,24 @@ public sealed partial class Binding
         return false;
     }
 
+    private static Koto? IncompleteSignature(FunctionKoto function)
+    {
+        if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
+        {
+            return result;
+        }
+
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type is { BindingState: not BindingState.Resolved } type)
+            {
+                return type;
+            }
+        }
+
+        return null;
+    }
+
     // A function definition: its signature (header, receiver, generic arguments, Constraints, effect bounds, parameter and result
     // Types), bound as its declaration's (SPEC 15.6.1; DECISIONS R4-M101 E3), then its parts (BindFunctionParts).
     private BoundType? BindFunction(FunctionKoto function, BindingScope scope)
@@ -179,5 +197,20 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // The first failed node inside a parameter Type whose outer layer resolved.
+    private Koto? FailedSignaturePart(FunctionKoto function)
+    {
+        var visitor = this.failedSignaturePartVisitor ??= new();
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (visitor.Find(function.Parameters[i].Type, invalidState: true) is { } part)
+            {
+                return part;
+            }
+        }
+
+        return null;
     }
 }

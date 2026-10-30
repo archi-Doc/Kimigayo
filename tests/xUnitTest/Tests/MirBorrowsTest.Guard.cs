@@ -15,8 +15,11 @@ public sealed partial class MirBorrowsTest
 {
     // A3's listed loss P13, decided per part (DECISIONS R4-M147, which removed R4-M73's body hold): a generic loop over a local Array<T>,
     // then an append (g1), a shared loop over a local Array<uniq/(ref/i32)> (sharedOverExclusive, as its twin without next), and a
-    // Loan<…> holder's stores reached through the closure (closureRoute), err(ended)'s γ (guardP13), a later write through a reference
-    // (writeQ) and E5's seed (seedRoute) are valid, as rustc says: an iterator's and a Loan's Type argument has no address. An abstract
+    // Loan<…> holder's stores reached through the closure (closureRoute), err(ended)'s γ (guardP13) and a later write through a reference
+    // (writeQ) are valid, as rustc says: an iterator's and a Loan's Type argument has no address. E5's seed (seedRoute) errs at its
+    // read of `w`: `Loan.init(w@uniq)`'s instantiated signature admits a callee storing a reborrow through its argument's layers into the
+    // argument's own referent, whose two local regions may coincide (DECISIONS R4-M154, Revision 4), a self-row returning a route's Loan
+    // to its holder, SPEC's letter (R4-M147's no-loss class); rustc's acceptance is PLAN G148 (2)'s open question (GXS). An abstract
     // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs; a live iterator keeps the append's
     // activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
     // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
@@ -169,7 +172,7 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", "count: func count<S>(items: S) -> i32", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
+                "dd3: t = 2", "count: S", "seedRoute: w@follow@follow@ref", "cleanRoute: xs.append(b) CallActivationConflict_Kd", // count's at its parameter's Type (BU-48 (a)).
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
@@ -431,6 +434,220 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
+    // SPEC 5.7 Calls, 8.6.1, 8.2.3 (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection by its
+    // subject's conformance, so `S.Item` as `HA<Src>`, Src binding `Item` to `raw/u8`, is a layer Src's declaration writes and gives the
+    // write fact, as the written twin HSrc's `Src.Item` does: `z = 5` errs (ha), also below a Type argument (ha2), a held holder (hha), an
+    // inherited binding (inh: a base clause's argument), a base clause naming the layer through a projection (derq: `BaseI<Src2<raw/u8>.
+    // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
+    // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
+    // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
+    // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
+    // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
+    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which reads AdtDef's view, gives each form its twin's record (none: it
+    // accepts the stated forms until R6-check, DECISIONS BU-46).
+    [Fact]
+    public void ACompletedProjectionGivesItsSubjectsLayer()
+    {
+        const string Declarations = """
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            contract HasItem
+                associate Item
+            struct Src
+                Self is HasItem
+                associate HasItem.Item is raw/u8
+            struct Src2<T>
+                Self is HasItem
+                associate HasItem.Item is T
+            open struct BaseI<P>
+                Self is HasItem
+                associate HasItem.Item is P
+            struct DerI : BaseI<raw/u8>
+                var m: i32
+                public init() => self.m = 0
+            struct DerQ : BaseI<Src2<raw/u8>.Item>
+                var m: i32
+                public init() => self.m = 0
+            open struct BaseF<P>
+                public var f: P
+            struct DerF : BaseF<Src2<raw/u8>.Item>
+                var m: i32
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct DerG : BaseF<raw/u8>
+                var m: i32
+                public func put<T>(self: uniq/Self, value: T) => ()
+            func derf(d: DerF)
+                var z = 3
+                var h = d@move
+                h.put(z@ref)
+                z = 5
+            func derg(d: DerG)
+                var z = 3
+                var h = d@move
+                h.put(z@ref)
+                z = 5
+            struct Src3<S>
+                S is HasItem
+                Self is HasItem
+                associate HasItem.Item is S.Item
+            struct SrcC<T>
+                Self is HasItem when T is Copy
+                    associate HasItem.Item is T
+            enum ESrc
+                Self is HasItem
+                associate HasItem.Item is raw/u8
+                A
+            enum EH<S>
+                S is HasItem
+                A(S.Item)
+                B
+                public func put<T>(self: uniq/Self, value: T) => ()
+            enum ER
+                A(raw/u8)
+                B
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HA<S>
+                S is HasItem
+                var x: S.Item
+                public init(x: S.Item) => self.x = x@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HA2<S>
+                S is HasItem
+                var w: Wrap<S.Item>
+                public init(w: Wrap<S.Item>) => self.w = w@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HHA
+                var h: HA<Src>
+                public init() => self.h = HA<Src>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HH2
+                var h: HA<Src2<raw/u8>>
+                public init() => self.h = HA<Src2<raw/u8>>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HHC
+                var h: HA<SrcC<raw/u8>>
+                public init() => self.h = HA<SrcC<raw/u8>>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HSrc
+                var x: Src.Item
+                public init() => self.x = null
+                public func put<T>(self: uniq/Self, value: T) => ()
+
+            """;
+        (string Name, string Holder, string Twin)[] forms =
+        [
+            ("ha", " = HA<Src>.init(null)", "hsrc"), ("ha2", " = HA2<Src>.init(Wrap<Src.Item>.init(null))", "hsrc"), ("hha", " = HHA.init()", "hsrc"),
+            ("inh", " = HA<DerI>.init(null)", "hsrc"), ("derq", " = HA<DerQ>.init(null)", "hsrc"), ("hh2", " = HH2.init()", "hsrc"),
+            ("hhc", " = HHC.init()", "hsrc"),
+            ("nest", " = HA<Src3<Src>>.init(null)", "hsrc"), ("esrc", " = HA<ESrc>.init(null)", "hsrc"), ("eh", ": EH<Src> = .A(null)", "er"), ("er", ": ER = .A(null)", "er"),
+            ("hsrc", " = HSrc.init()", "hsrc"), ("src2", " = HA<Src2<raw/u8>>.init(null)", "wrap"),
+            ("hpair2", " = HA2<Src2<raw/u8>>.init(Wrap<Src2<raw/u8>.Item>.init(null))", "wrap"), ("nest2", " = HA<Src3<Src2<raw/u8>>>.init(null)", "wrap"),
+            ("hc", " = HA<SrcC<raw/u8>>.init(null)", "wrap"), ("eh2", ": EH<Src2<raw/u8>> = .A(null)", "wrap"), ("wrap", " = Wrap<raw/u8>.init(null)", "wrap"),
+        ];
+        var source = Declarations + string.Concat(forms.Select(static x => $"func {x.Name}()\n    var z = 3\n    var h{x.Holder}\n" +
+            "    h.put(z@ref)\n    z = 5\n"));
+        var c = MirBuildTest.Compile(Prelude + source);
+        Assert.Equal(
+            [
+                "derf: z = 5", "derg: z = 5", "ha: z = 5", "ha2: z = 5", "hha: z = 5", "inh: z = 5", "derq: z = 5", "hh2: z = 5", "hhc: z = 5",
+                "nest: z = 5", "esrc: z = 5", "hsrc: z = 5",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        var old = MinimalEmissionTest.Analyze(source);
+        var records = old.Problems.Select(x => (Function: Function(old.SyntaxOf(x.Subject)), x.Code)).ToArray();
+        Assert.All(forms.Where(static x => x.Name != x.Twin), x => Assert.Equal(Of(x.Twin), Of(x.Name)));
+
+        DiagnosticCode[] Of(string function) => [.. records.Where(x => x.Function == function).Select(static x => x.Code)];
+    }
+
+    // SPEC 8.6.1, 8.3.3 (DECISIONS BU-50's decision 10, PLAN G271): a projection over a subject with an abstract part stays pending in the
+    // generic declaration's storage, and the instance a use forms under its own premise completes it, so a generic body holding one has
+    // no problem: `HAd<Wrapping<T>>` under `T is PrimitiveInteger` returned (wrapRet), in a local Tuple (wrapLocal), in a Field
+    // (wrapField) and as an enum's payload (wrapPayload), a conditional conformance proven only by the use's premise (premise),
+    // `HK<Range<T, T>>` (range) and `HK<[2 of T]>` (fixedArray), each with its closed use. Before (ca97a317e's final none), the generic
+    // declaration's storage was Rejected and A4's retention over it gave its limit verdict, Unsupported_Kd at the generic function's
+    // signature, its local, the init and the return: a problem of the whole MIR analysis, which Binding's issues, the program's findings,
+    // the collector's records and the Loan stratum alone never observe. The old path accepts each too.
+    [Fact]
+    public void APendingProjectionIsCompletedByTheInstanceAUseForms()
+    {
+        const string Source = """
+            contract HasItem
+                associate Item
+            struct SrcC<T>
+                Self is HasItem when T is Copy
+                    associate HasItem.Item is T
+            struct HAd<S>
+                S is Addable<S>
+                public var x: S.Output
+                public init(x: S.Output) => self.x = x@move
+            struct HP<S>
+                S is HasItem
+                public var x: S.Item
+                public init(x: S.Item) => self.x = x@move
+            struct HK<S>
+                S is IntoIterable
+                public var it: S.IteratorType
+                public init(s: S) => self.it = (s@move).intoIterator()
+            struct Outer<T>
+                T is PrimitiveInteger
+                public var h: HAd<Wrapping<T>>
+                public init(a: Wrapping<T>) => self.h = HAd<Wrapping<T>>.init(x: a)
+            enum EW<S>
+                S is Addable<S>
+                A(S.Output)
+                B
+            func wrapRet<T>(a: Wrapping<T>) -> HAd<Wrapping<T>>
+                T is PrimitiveInteger
+                let h = HAd<Wrapping<T>>.init(x: a + a)
+                return h@move
+            func wrapLocal<T>(a: Wrapping<T>) -> ()
+                T is PrimitiveInteger
+                let h = HAd<Wrapping<T>>.init(x: a + a)
+                let p = (h@move, 1)
+                return
+            func wrapPayload<T>(a: Wrapping<T>) -> ()
+                T is PrimitiveInteger
+                let e: EW<Wrapping<T>> = .B
+                return
+            func premise<T>(u: T) -> HP<SrcC<T>>
+                T is Copy
+                let h = HP<SrcC<T>>.init(x: u)
+                return h@move
+            func range<T>(r: Range<T, T>) -> HK<Range<T, T>>
+                T is PrimitiveInteger
+                let h = HK<Range<T, T>>.init(s: r)
+                return h@move
+            func fixedArray<T>(a: [2 of T]) -> HK<[2 of T]>
+                T is Copy
+                let h = HK<[2 of T]>.init(s: a)
+                return h@move
+            func uses() -> ()
+                let v = wrapRet(3@Wrapping<i32>)
+                let w = v.x
+                wrapLocal(3@Wrapping<i32>)
+                let o = Outer<i32>.init(a: 3@Wrapping<i32>)
+                let f = o.h.x
+                wrapPayload(3@Wrapping<i32>)
+                let p = premise(1)
+                let q = p.x
+                var r = range(0..3@i32)
+                let x = r.it.next()
+                let a: [2 of i32] = [1, 2]
+                var k = fixedArray(a)
+                let y = k.it.next()
+                return
+            public func main() -> () => ()
+
+            """;
+        Assert.Empty(Records(MinimalEmissionTest.Analyze(Source)));
+
+        // The analysis's records: the function and the code of each.
+        static string[] Records(Compilation c) => [.. c.Problems.Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {x.Code}")];
+    }
+
     // SPEC 23.1.1 (DECISIONS R4-M147): a call whose W reaches a holder the guard leaves undecided (MirWrites.Limit: a supplied layer whose
     // Origin steps Exclusive, whose members Binding does not publish, over a Loan-free pointee) is one located Unsupported_Kd at the call,
     // never a Language problem, and the view's independent problems stay: a Field (flat), a nested instance's Field (nested), a Case
@@ -438,7 +655,9 @@ public sealed partial class MirBorrowsTest
     // and a call through it (reachedByStep), and a layer whose Origin is a shared borrow (sharedSupplied, valid, the Limit's cost until
     // Binding publishes its members). A typed pointee decides the guard (nestedPointee errs; touched, valid as on dev), as does an exclusive
     // part beside the layer (mixed errs, no record). A raw layer outside an instance reads its pointee (R4-M120): tupleW is accepted, its
-    // typed twin errs (an open issue, PLAN G148).
+    // typed twin errs (an open issue, PLAN G148). Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its instantiated
+    // signature admits may store z's borrow into w or v through the instance's uniq or raw layers, whose local regions may coincide, so
+    // nestedPointee, mixed and tupleTyped also err at `z = 5`.
     [Fact]
     public void AStoreTheGuardLeavesUndecidedIsUnsupported()
     {
@@ -575,8 +794,8 @@ public sealed partial class MirBorrowsTest
             [
                 "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd", "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd",
                 "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
-                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: inspect(w)",
-                "mixed: inspect(v)", "tupleTyped: inspect(w)",
+                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: z = 5",
+                "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5", "tupleTyped: inspect(w)",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

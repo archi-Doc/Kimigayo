@@ -15,9 +15,8 @@ public class HeapClosureErasureTest
     public void OwnedEnvironmentsExecuteAndReleaseOnce(string name, string source, int count, int bytes, string stdout)
         => NativeAllocationAudit.WriteFixture("HeapClosure" + name, source, count, count, bytes, stdout);
 
-    // An erased environment of 8 bytes holding an obj handle, which needs destruction (PD19, IMPL 21.1.3): MIR code generation stores it in
-    // the Function value's word, the old generator allocates it (DECISIONS R5-M104's inline-env deviation, R5-M112); the object is one
-    // allocation of 20 bytes either way.
+    // An erased environment of 8 bytes holding an obj handle, which needs destruction, is stored in the Function value's word (PD19, IMPL
+    // 21.1.3; DECISIONS R5-M104, R5-M112), so the object is the one allocation, of 20 bytes.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AnErasedObjectEnvironmentExecutesAndReleasesOnce()
@@ -25,9 +24,7 @@ public class HeapClosureErasureTest
         const string Source = "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
             "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet concrete = func [owner@move] () => owner.id\n" +
             "let erased: () -> i32 = concrete@move\nrequire erased() == 7 and erased() == 7 else => $abort(\"call\")";
-        var count = Codegen.Expect(1, 2, CodegenDeviations.InlineEnvironment);
-        var bytes = Codegen.Expect(20L, 28L, CodegenDeviations.InlineEnvironment);
-        NativeAllocationAudit.WriteFixture("HeapClosureObject", Source, count, count, bytes, "drop\n");
+        NativeAllocationAudit.WriteFixture("HeapClosureObject", Source, 1, 1, 20, "drop\n");
     }
 
     [Theory]
@@ -59,10 +56,8 @@ public class HeapClosureErasureTest
             Console.writeLine("replaced")
             require first() == 7 else => $abort("replacement")
             """;
-        // Two objects; their erased 8-byte environments are inline under MIR code generation (R5-M104's inline-env deviation).
-        var count = Codegen.Expect(2, 4, CodegenDeviations.InlineEnvironment);
-        NativeAllocationAudit.WriteFixture(
-            "HeapClosureReplacement", Source, count, count, Codegen.Expect(40L, 56L, CodegenDeviations.InlineEnvironment), "drop\nreplaced\ndrop\n");
+        // Two objects; their erased 8-byte environments are inline (IMPL 21.1.3; DECISIONS R5-M104).
+        NativeAllocationAudit.WriteFixture("HeapClosureReplacement", Source, 2, 2, 40, "drop\nreplaced\ndrop\n");
     }
 
     [Fact]
@@ -102,10 +97,8 @@ public class HeapClosureErasureTest
                 use(concrete@move, (return))
             run()
             """;
-        // The object; its erased 8-byte environment is inline under MIR code generation (R5-M104's inline-env deviation).
-        var count = Codegen.Expect(1, 2, CodegenDeviations.InlineEnvironment);
-        var bytes = Codegen.Expect(20L, 28L, CodegenDeviations.InlineEnvironment);
-        NativeAllocationAudit.WriteFixture("HeapClosureAbandoned", Source, count, count, bytes, "drop\n");
+        // The object; its erased 8-byte environment is inline (IMPL 21.1.3; DECISIONS R5-M104).
+        NativeAllocationAudit.WriteFixture("HeapClosureAbandoned", Source, 1, 1, 20, "drop\n");
     }
 
     [Fact]

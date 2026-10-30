@@ -28,8 +28,8 @@ public class FixedArrayCaptureTest
         ScalarEmissionTest.WriteFixture("FixedArrayCapture" + name, ir, string.Empty);
         if (name is "Consume" or "PartialMove")
         {
-            // Each comparison literal is a separate temporary in addition to the captured string it checks.
-            StringEmissionTest.WriteAuditedFixture("FixedArrayCapture" + name, ir, string.Empty, name == "Consume" ? "first=2;last=2" : "first=2;last=1");
+            // A comparison literal is no temporary: only the captured string is destroyed (DECISIONS R5-M145).
+            StringEmissionTest.WriteAuditedFixture("FixedArrayCapture" + name, ir, string.Empty, "first=1;last=1");
         }
     }
 

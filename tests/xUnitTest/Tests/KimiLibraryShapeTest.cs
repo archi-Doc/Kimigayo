@@ -19,7 +19,7 @@ public partial class KimiLibraryShapeTest
         return c;
     });
 
-    // Lowering and the runtime call these bodiless functions by position (BodyLowering, WindowsLowering): parameter order,
+    // Code generation and the runtime call these bodiless functions by position (WindowsLowering): parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
@@ -357,11 +357,11 @@ public partial class KimiLibraryShapeTest
             foreach (var function in container.Members.OfType<FunctionKoto>())
             {
                 var symbol = function.SymbolOf()!;
-                var rows = c.Types.Retains(symbol, null, null).Rows.ToArray();
+                var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
                     var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
-                        rows.Any(x => x.Input == i && x.Output == symbol.ReceiverIndex);
+                        writes.Any(x => x.Output == symbol.ReceiverIndex && (x.Own.Kinds[i] | x.All.Kinds[i]) != RetentionKind.None);
                     Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
                     if (stored)
                     {
@@ -397,7 +397,8 @@ public partial class KimiLibraryShapeTest
             }
 
             var receiver = Assert.Single(retention.ReferentStores.ToArray());
-            Assert.DoesNotContain(retention.Rows.ToArray(), x => x.Output == receiver && x.Input != receiver);
+            Assert.DoesNotContain(retention.Writes.ToArray(), x => x.Output == receiver &&
+                x.Own.Kinds.ToArray().Zip(x.All.Kinds.ToArray()).Where((_, i) => i != receiver).Any(static y => (y.First | y.Second) != RetentionKind.None));
             covered.Add($"{Path(Container(function))}: {Line(function)}");
         }
 
@@ -453,8 +454,8 @@ public partial class KimiLibraryShapeTest
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
-    // Lowering and the runtime address these records' stored Fields by name, in this order, and run their drop
-    // (BodyLowering, LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
+    // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
+    // (LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]

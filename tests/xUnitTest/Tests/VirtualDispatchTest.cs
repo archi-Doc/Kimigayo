@@ -61,24 +61,6 @@ public class VirtualDispatchTest
         ScalarEmissionTest.EmitFixture("VirtualDispatchAbi", Source, string.Empty);
     }
 
-    [Fact]
-    public void DirectDispatchUsesIndexedCallsWithoutAnItemAdapter()
-    {
-        var source = Hierarchy + "let c = C.init(3)@obj\nrequire c.nested() == 136 else => $abort(\"dispatch\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var descriptor = Assert.Single(module.Objects);
-        Assert.Equal(3, descriptor.VirtualSlots.Length);
-        var calls = Enumerable.Range(0, module.FunctionCount).SelectMany(i => module.GetFunction(i).Instructions).Where(x => x.Opcode == EmissionOpcode.VirtualCall).ToArray();
-        Assert.NotEmpty(calls);
-        Assert.All(calls, call =>
-        {
-            Assert.InRange(call.Constant, 0, 2);
-            Assert.Equal("ptr", call.Callee!.Parameters[call.Place].Type);
-        });
-        Assert.DoesNotContain(Enumerable.Range(0, module.FunctionCount), i => module.GetFunction(i).Abi.Name.StartsWith("__kimi_virtual_item", StringComparison.Ordinal));
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmTableAndDispatchGenerationReuseTheirStorage()

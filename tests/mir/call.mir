@@ -10,15 +10,15 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn first @4
-  _0: i32 return @4
-  _1: i32 arg a @4
-  _2: i32 arg b @4
+  _0: i32 return @7
+  _1: i32 arg a @5
+  _2: i32 arg b @6
   bb0:
     * _0 = copy _1 @8
       return @8
 fn twice @9
-  _0: i32 return @9
-  _1: i32 arg x @9
+  _0: i32 return @11
+  _1: i32 arg x @10
   bb0:
     * _0 = first(copy _1, const 2_i32) -> bb1 @12
   bb1:

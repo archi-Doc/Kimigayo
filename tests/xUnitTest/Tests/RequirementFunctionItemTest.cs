@@ -170,6 +170,23 @@ public class RequirementFunctionItemTest
         }
     }
 
+    // SPEC 7.3, 10.5 (PLAN G244; DECISIONS BU-34): Binding.ItemComponent's layout. A requirement Item holds no own Type argument and its
+    // Components are its Self and Contract reference only; a generic requirement's Item, explicit or not, is a located Unsupported_Kd, so no
+    // requirement Item holds a pair slot's argument for TyCtxt's PairBindings.
+    [Fact]
+    public void ARequirementItemHoldsItsSelfAndContractReferenceOnly()
+    {
+        const string Program = "contract Getter\n    func read(self: ref/Self) -> i32\n    func get<s/U>(self: ref/Self, value: s/U) -> s/U\nfunc use<T>(value: ref/T) -> i32\n    T is Getter\n    let explicit = T.get<raw/i32>\n    let unfixed = T.get\n    let operation = T.read\n    return operation(value)\npublic func main() => ()";
+        var c = MinimalEmissionTest.Analyze(Program);
+        var item = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
+        var function = (FunctionKoto)item.Symbol!.Declaration;
+        Assert.Equal(("read", 0), (function.Name.ToString(), Binding.ItemComponent(function, function.GenericArguments.Count)));
+        Assert.Equal(["T", "Getter"], item.Components.Select(Binding.DiagnosticTypeName));
+        Assert.Equal(
+            [(DiagnosticCode.Unsupported_Kd, "T.get<raw/i32>"), (DiagnosticCode.Unsupported_Kd, "T.get")],
+            c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
     private static string ConfinedProgram(bool bounded, bool erased)
         => "contract ConfinedAdd<E>: Addable<E>\n    effect (Addable<E>).added confined\nfunc accept<F, T>(operation: ref/F)\n    F is Callable<(ref/T, ref/T) -> T>\n        effect confined\n    ()\nfunc use<T>()\n    T is " + (bounded ? "ConfinedAdd<T>" : "Addable<T>") + "\n" +
             "    T is Owned\n    T.(Addable<T>).Output is T\n    let operation" + (erased ? ": (ref/T, ref/T) -> T" : string.Empty) + " = T.added\n    accept(operation)\npublic func main() => ()";

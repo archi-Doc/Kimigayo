@@ -69,7 +69,7 @@ public sealed partial class Binding
             var actual = call.ArgumentNodes[i].BoundType;
             var owner = actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? actual.Components[0] : actual;
             var pattern = function.Parameters[mapping[i]].Type.BoundType;
-            if (owner is not { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { Receiver: not SemanticsKind.Ref } closure } } ||
+            if (BoundClosure.Of(owner) is not { Receiver: not SemanticsKind.Ref } closure ||
                 (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Kind != BoundTypeKind.Parameter ||
                 !this.TryCallable(pattern!, this.ConstraintScope(function), out _, out var required) || CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
             {
@@ -301,8 +301,8 @@ public sealed partial class Binding
 
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
                 {
-                    // An entry whose binding failed derives from that failure and adds nothing to the repeats.
-                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, source.Declaration) : this.FailCaptureEntry(function, repeats, capture, BindingFailure.None, null, null)
+                    // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
+                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, capture, BindingFailure.None, null, null)
                         : this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, null, null);
                 }
 
@@ -361,9 +361,12 @@ public sealed partial class Binding
             return Complete(function, null);
         }
 
-        if (function.ReturnType is null && (expected is null || openResult))
+        // SPEC 15.8.2 (DECISIONS R4-M126 P8, R4-M152): an inferred result is published once the receiver is classified.
+        var publishes = function.ReturnType is null && (expected is null || openResult);
+        var closureBody = new ExecutableBody(symbol);
+        if (publishes)
         {
-            symbol.Type = this.ResolveLocalResultOrigins(symbol.Type);
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
         }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
@@ -393,13 +396,9 @@ public sealed partial class Binding
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
-        if (function.ReturnType is null && (expected is null || openResult) && CallLocalOrigin(symbol.Type, function, plan.Receiver == SemanticsKind.Owner) is { } local)
+        if (publishes)
         {
-            // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
-            // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.
-            var at = function.ExpressionBody ?? function.Body ?? (Koto)function;
-            var fact = new OriginRelationFact(at, local, this.SuppliedAtUse(local, at), this.CallResultOrigin(function), false, null, true);
-            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, fact);
+            this.FitResultSources(function, closureBody, symbol.Type); // A returned value over the call's own storage is Refuted where it returns.
         }
 
         return Complete(function, plan.EnvironmentType);

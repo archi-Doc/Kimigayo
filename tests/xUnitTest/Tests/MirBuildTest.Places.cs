@@ -144,22 +144,31 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Intrinsic });
     }
 
-    // SPEC 4.6.1, 23.1.2 (DECISIONS R5-M84, R5-M63): a position of a Type parameter, whose range its instance decides, is one located
-    // Unsupported_Kd at the position. Its value is built already, so the Opaque in its place names that value's root, not the position's
-    // syntax, and a root the value moved is not used again there (fail-before: a MovedPlace_Kd at conv<I>(b@move)).
+    // SPEC 4.6.1, 4.6.3, 4.7.1 (DECISIONS R5-M154): a position of a Type parameter, whose range its instance decides, is tested in its own
+    // Type (0 <= p) and, widened by a Proven Cast to u128, which holds every nonnegative value of every PrimitiveInteger Type, against
+    // isize's maximum; a failing test gives -1, which the selection's one check rejects as it rejects any negative position (an element;
+    // a written ^x, 0 <= x; a range, 0 <= start <= end). The tests read the key's value, which only the conversion moves (fail-before: a
+    // located Unsupported_Kd at p).
     [Theory]
-    [InlineData("values[p]", "p")]
-    [InlineData("values[conv<I>(b@move)]", "conv<I>(b@move)")]
-    [InlineData("values[^conv<I>(b@move)]", "conv<I>(b@move)")]
-    public void APositionOfATypeParameterIsUnsupported(string selection, string position)
+    [InlineData("return values[p]", "")]
+    [InlineData("return values[conv<I>(b@move)]", "")]
+    [InlineData("return values[^conv<I>(b@move)]", " Le(const 0_isize, copy _)")]
+    [InlineData("var copy = values\n    copy[p] = 4\n    return copy[0]", "")]
+    [InlineData("let rest = values[p..]\n    return rest[0]", " Le(const 0_isize, copy _) Le(copy _, copy _) Le(copy _, copy _)")]
+    public void APositionOfATypeParameterIsTestedInItsOwnTypeAndU128(string statements, string selection)
     {
         var c = Compile("struct Box\n    public var n: i32 = 1\n    public init() => ()\nfunc conv<I>(b: Box) -> I\n    I is PrimitiveInteger\n" +
-            $"    return 1\nfunc f<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let b = Box.init()\n    return {selection}\n");
+            $"    return 1\nfunc f<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let b = Box.init()\n    {statements}\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, position), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var body = Regex.Replace(text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..], @"_\d+\b", "_");
+        var tests = string.Join(' ', Regex.Matches(body, @"Le\([^)]*\)").Select(static x => x.Value));
+        Assert.Equal("Le(const 0_I, copy _) Le(copy _, const 9223372036854775807_u128)" + selection, tests);
+        Assert.Contains(" = copy _ as u128 (Integer) proven", body, StringComparison.Ordinal);
     }
 
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one
@@ -363,7 +372,6 @@ public sealed partial class MirBuildTest
     public void ARejectedJumpsOperandIsNotAcquired(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source + "public func main() => ()\n"));
         c.Bind();

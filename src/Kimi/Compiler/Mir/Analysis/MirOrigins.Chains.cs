@@ -42,6 +42,8 @@ internal sealed partial class MirOrigins
     private ulong classViews; // The judged class's views and the borrow binders they all share, the oracle's condition (SPEC 15.6.5).
     private ulong condition;
     private (int Tail, int Head, int Row, int Pending) lastDirect; // The last failed direct edge and its problem's index.
+    private ClassEdge[] classEdges = []; // A class's edges by MeetNode's rule, in order (ClassEdges), reused.
+    private int classEdgeCount;
 
     /// <summary>Gets the words of a class's arena (2a0-D §6.4, D20): each component's sources, the wider pass's words, and the fixed sources
     /// failing the target being judged.</summary>
@@ -57,6 +59,26 @@ internal sealed partial class MirOrigins
     {
         ref readonly var known = ref this.classes[c];
         (this.classViews, this.condition, this.edgeCount, this.lastDirect) = (known.Views, known.Borrows, 0, (-1, -1, -1, -1));
+        foreach (var edge in this.ClassEdges(c))
+        {
+            if (edge.Tail < 0)
+            {
+                this.Limit(edge.Site); // 2a0-D §3 row 9: no edge; the located limit at the row or Ref.
+                continue;
+            }
+
+            this.Join(edge.Tail, edge.Head, edge.Site, edge.Row);
+        }
+
+        return this.Chains(report);
+    }
+
+    // A class's edges, in order (classEdges): each active row's, Longer -> Shorter and back for an equality, then each containment edge's
+    // (row -1), by MeetNode's rule (Relate); one with an Unclassed end forms none and is an entry with Tail -1 at its site.
+    private ReadOnlySpan<ClassEdge> ClassEdges(int c)
+    {
+        ref readonly var known = ref this.classes[c];
+        this.classEdgeCount = 0;
         var rows = this.slice.Rows;
         var bits = this.rowBits.AsSpan(c * this.rowWords, this.rowWords);
         for (var r = 0; r < rows.Count; r++)
@@ -69,7 +91,7 @@ internal sealed partial class MirOrigins
             var row = rows[r];
             if (this.Unclassed(row.Longer) || this.Unclassed(row.Shorter))
             {
-                this.Limit(row.Site); // 2a0-D §3 row 9: no edge; the located limit at the row.
+                this.Related(-1, -1, row.Site, r);
                 continue;
             }
 
@@ -85,14 +107,20 @@ internal sealed partial class MirOrigins
             var site = this.refs[edge.Ref].Site;
             if (this.Unclassed(edge.Tail) || this.Unclassed(edge.Head))
             {
-                this.Limit(site);
+                this.Related(-1, -1, site, -1);
                 continue;
             }
 
             this.Relate(edge.Tail, edge.Head, site, -1);
         }
 
-        return this.Chains(report);
+        return this.classEdges.AsSpan(0, this.classEdgeCount);
+    }
+
+    private void Related(int tail, int head, SourceRef site, int row)
+    {
+        MirDataflow.Grow(ref this.classEdges, this.classEdgeCount + 1);
+        this.classEdges[this.classEdgeCount++] = new(tail, head, site, row);
     }
 
     private bool Unclassed(int node) => this.slice.Atoms[node].Kind == OriginAtomKind.Unclassed;
@@ -101,8 +129,8 @@ internal sealed partial class MirOrigins
     // layer's (a Field initializer's Ref); Fixed atoms are shared.
     private bool InLayer(int tail, int head, int row) => row >= 0 ? row >= this.slice.LayerStart : this.slice.InLayer(tail) || this.slice.InLayer(head);
 
-    // An edge `longer -> shorter` by MeetNode's rule (2a0-D D15): a meet at the longer end gives an edge from each operand and, unless it is
-    // Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands.
+    // An edge `longer -> shorter` by MeetNode's rule (2a0-D D15), into classEdges: a meet at the longer end gives an edge from each operand
+    // and, unless it is Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands.
     private void Relate(int longer, int shorter, SourceRef site, int row)
     {
         var meet = this.slice.Atoms[longer];
@@ -111,17 +139,17 @@ internal sealed partial class MirOrigins
             var operands = meet.Atom.Operands;
             for (var i = 0; i < operands.Count; i++)
             {
-                this.Join(types.OriginAtom(this.key, operands[i], site), shorter, site, row);
+                this.Related(types.OriginAtom(this.key, operands[i], site), shorter, site, row);
             }
 
             if (meet.Kind != OriginAtomKind.Fixed)
             {
-                this.Join(longer, shorter, site, row);
+                this.Related(longer, shorter, site, row);
             }
         }
         else
         {
-            this.Join(longer, shorter, site, row);
+            this.Related(longer, shorter, site, row);
         }
 
         var target = this.slice.Atoms[shorter];
@@ -130,7 +158,7 @@ internal sealed partial class MirOrigins
             var operands = target.Atom.Operands;
             for (var i = 0; i < operands.Count; i++)
             {
-                this.Join(types.OriginAtom(this.key, operands[i], site), shorter, site, row);
+                this.Related(types.OriginAtom(this.key, operands[i], site), shorter, site, row);
             }
         }
     }

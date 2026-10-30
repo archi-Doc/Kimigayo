@@ -12,9 +12,11 @@
 // writeback write, else ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow),
 // with the Loan's anchor, its witness's next use or the store that carries it, an activation's reservation and, inside an inline default
 // copy, the default's operation (Evaluated, the problem at the outermost omitting call; R4-M97) as facts, a failure whose events all lie in
-// one evaluation of a copy left to its template; Unsupported_Kd at a destruction, a call or a Borrow or read it does not classify (a
-// destruction walk past its bound, a call whose W reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of
-// the rules below), a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
+// one evaluation of a copy left to its template; Unsupported_Kd at a call or a Borrow or read it does not classify (a call whose W
+// reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of the rules below); OwnershipDepthLimit_Kd where a
+// check's verdict rests on a part past a walk's bound or on a call's retention limit (R4-M153: a borrowed root's Drop, a destroying call,
+// a store W or its referent leaves undecided there, A4's Deep at a call or Drop, and a conflict only drop-liveness gives, at the drop-live
+// holder's declaration); each a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
 // view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
 // signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
 // operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with its
@@ -31,14 +33,16 @@
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
-// body does not own, static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans, addresses and
+// body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
+// (drop-liveness, MirBorrows.Holders; R4-M153); its state is a MirLoanSets node of Loans, addresses and
 // markers, of which only Loans conflict and only Loans, with their indirect markers, an ending removes (Φ_E, the per-local markers of the
 // role table, Marker, and rule W's indirect markers, MirBorrows.Causes). An
 // Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
 // Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
-// (E3), named by its whole Place; an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as
-// a direct Loan does, and a value that may refer to storage the body does not own carries Φ_E where it is formed, E's own state from the
-// entry; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it
+// (E3), named by its whole Place, a raw Place borrow's, past a raw Deref, its fresh anchor's, which no access reaches (SPEC 5.2.2,
+// R4-M156); an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as a direct Loan does,
+// and a value that may refer to storage the body does not own carries Φ_E where it is formed, E's own state from the entry; access is
+// syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it
 // overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in
 // evaluation order; a borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a
 // live holder, transit, and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values

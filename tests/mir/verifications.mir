@@ -5,8 +5,8 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn helper @4
-  _0: i32 return @4
-  _1: i32 arg x @4
+  _0: i32 return @6
+  _1: i32 arg x @5
   bb0:
     * _0 = Add(copy _1, const 1_i32) @7
       return @7

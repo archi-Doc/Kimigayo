@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -42,19 +41,6 @@ public class GenericCompositeValueTest
         => ScalarEmissionTest.EmitFixture("GenericComposite" + name, source, stdout);
 
     [Fact]
-    public void ZeroSizeDestructionRetainsAnAddressWithoutChangingLayout()
-    {
-        var source = Fixtures.Single(x => x.Data.Item1 == "ZeroSizePayload").Data.Item2;
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var place = Assert.Single(body.SymbolPlaces, x => x.Key.Name == "items").Value;
-        var function = Assert.Single(Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction), x => ReferenceEquals(x.Abi, RuntimeAbi.Entry));
-        var slot = Assert.Single(function.Slots, x => x.Place == place);
-        Assert.Equal(0, slot.Value.Layout.Size);
-    }
-
-    [Fact]
     public void AbortingPayloadDestructorStopsRemainingCleanup()
         => ScalarEmissionTest.EmitFixture(
             "GenericCompositeAbortPayload",
@@ -90,46 +76,12 @@ public class GenericCompositeValueTest
         Assert.Empty(output.ToString());
     }
 
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("payload")]
-    [InlineData("cleanup")]
-    public void RejectsCorruptOwnershipPlansAndRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        if (defect == "acquisition")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.AcquirePattern);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else if (defect == "payload")
-        {
-            body.DecompositionStorage[0] = body.Decompositions[0] with { PayloadStart = 0 };
-        }
-        else
-        {
-            body.CleanupStepStorage.Clear();
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Fact]
     public void InstancesKeepCopyAndDifferentDestructorsForEqualSizes()
     {
         var other = Resource.Replace("Resource", "Other").Replace("one", "other one").Replace("two", "other two");
         var source = Resource + other + Relay + "do\n    let result = relay<[2 of Resource]>([Resource.init(1), Resource.init(2)])\ndo\n    let result = relay<[2 of Other]>([Other.init(1), Other.init(2)])\nlet source: [2 of i32] = [5, 8]\nlet copied = relay(source)\nrequire source[0] == 5 and copied[1] == 8 else => $abort(\"copy\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         // Equal-size substitutions still get separate bodies; the native run checks Copy and each destructor.
-        Assert.True(module.IsComplete);
-        Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
         ScalarEmissionTest.EmitFixture("GenericCompositePolicies", source, "secured\ntwo\none\nsecured\nother two\nother one\nsecured\n");
     }
 

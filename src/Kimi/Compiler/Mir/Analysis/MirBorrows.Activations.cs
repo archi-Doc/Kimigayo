@@ -86,13 +86,13 @@ internal sealed partial class MirBorrows
 
     // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the
     // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending: the
-    // conflicts relation's ObservePast; past the destruction walk's bound it is unclassified.
+    // conflicts relation's ObservePast; past the destruction walk's bound it is unclassified, the depth limit at the call (R4-M153).
     private void Destroyed(int reservation, BoundType target, int taking, MirLocation at)
     {
         var kind = this.Destruction(target, out _);
         if (kind == AccessKind.Unclassified)
         {
-            this.Unsupported(at);
+            this.Limit(this.Subject(at), MirOutcome.Deep);
             return;
         }
 

@@ -7,13 +7,16 @@ namespace Kimi.Compiler.Backend;
 
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
-// zero-sized symbol, the overflow declarations, the memory declarations, the Array runtime, the formatting runtime and the Array helpers, the
-// nullable Alloc, the string-comparison routines, the buffered definitions, the entry, the object runtime and the footer. The external
-// declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the memory declarations, the Array runtime
-// (DECISIONS R5-M121), the formatting runtime (DECISIONS R5-M128), the nullable Alloc (DECISIONS R5-M92), the string-comparison routines
-// (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are
-// written only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays)
-// before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3).
+// zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the Array runtime, the formatting
+// runtime and the Array helpers, the storage byte primitives, the string-comparison routines, the buffered definitions, the entry, the
+// object runtime and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized
+// symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the Array runtime (DECISIONS R5-M121), the
+// formatting runtime (DECISIONS R5-M128), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145),
+// the string-comparison routines (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are written only when a definition
+// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays) before every definition
+// (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each
+// test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's
+// test variant followed by the test runtime's routines (TestRuntime.Text, with the memory declarations it calls).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized
@@ -22,6 +25,8 @@ internal sealed partial class ModuleCodegen
 
     private const string ZeroSizedDefinition = "@" + ZeroSized + " = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n";
 
+    private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
+    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
     private Needs needs; // The module parts the definitions of the latest Write requested.
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
@@ -37,8 +42,9 @@ internal sealed partial class ModuleCodegen
         /// <summary>The zero-sized symbol's definition, for a zero-sized local's home.</summary>
         ZeroSized = 2,
 
-        /// <summary>The nullable Alloc's definition (LlvmModuleText.TryAllocate), for a tryAllocateBytes call (DECISIONS R5-M92).</summary>
-        TryAllocate = 4,
+        /// <summary>The storage byte primitives' definitions, the nullable Alloc and the byte copy (LlvmModuleText.TryAllocate, then
+        /// LlvmModuleText.TransferBytes, as the old generator writes them), for a Requested row's call (DECISIONS R5-M92, R5-M145).</summary>
+        StorageBytes = 4,
 
         /// <summary>The object runtime (ObjectRuntime.WriteRuntime), for a descriptor, a clone or a runtime Type test (DECISIONS R5-M110).</summary>
         Objects = 8,
@@ -52,6 +58,10 @@ internal sealed partial class ModuleCodegen
 
         /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
         Formatting = 64,
+
+        /// <summary>The 128-bit overflow intrinsics' declarations (LlvmModuleText.WideOverflowDeclarations), for a checked 128-bit operation
+        /// (DECISIONS R5-M143).</summary>
+        WideOverflow = 128,
     }
 
     /// <summary>Requests a module part for the module being written.</summary>
@@ -79,15 +89,21 @@ internal sealed partial class ModuleCodegen
     // The complete module around the buffered definitions, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
+        var testRuntime = this.IsTestBuild ? Testing.TestRuntime.Text : null; // A test build's routines.
         LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime: null);
-        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime: null);
+        LlvmModuleText.WriteRuntime(output, testRuntime);
+        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
         }
 
         output.Write(LlvmModuleText.OverflowDeclarations);
+        if ((this.needs & Needs.WideOverflow) != 0)
+        {
+            output.Write(LlvmModuleText.WideOverflowDeclarations);
+        }
+
         if ((this.needs & Needs.Memory) != 0)
         {
             output.Write(LlvmModuleText.MemoryDeclarations);
@@ -105,9 +121,10 @@ internal sealed partial class ModuleCodegen
 
         output.Write(this.helperText.GetStringBuilder());
 
-        if ((this.needs & Needs.TryAllocate) != 0)
+        if ((this.needs & Needs.StorageBytes) != 0)
         {
             output.Write(LlvmModuleText.TryAllocate);
+            output.Write(LlvmModuleText.TransferBytes);
         }
 
         if ((this.needs & Needs.Strings) != 0)
@@ -119,6 +136,10 @@ internal sealed partial class ModuleCodegen
         if (start is not null)
         {
             this.WriteStart(output, start);
+        }
+        else if (this.IsTestBuild)
+        {
+            Testing.TestRuntime.WriteEntry(output, this.Tests, this.caseCall);
         }
 
         if ((this.needs & Needs.Objects) != 0)
@@ -141,18 +162,29 @@ internal sealed partial class ModuleCodegen
     }
 
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
-    // build's TestEntry is a row not written yet (C10a), at each test root. False for an Application whose startup root has no signature
-    // while nothing explains it: a broken contract without a subject.
+    // build's is the test runtime's entry, which calls each test root, in the catalog's case order as the generation entry gives the roots,
+    // under its signature: a Test body takes no parameter and returns Unit, so another signature is a broken contract at the root's subject.
+    // False for an Application whose startup root has no signature while nothing explains it: a broken contract without a subject.
     private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
     {
         entry = null;
-        if (startup.Kind == StartupKind.Test)
+        if (this.IsTestBuild)
         {
+            this.cases.Clear();
             foreach (var root in roots)
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
+                var signature = this.Signature(root); // Null after its record.
+                if (signature is { Result: "void", Parameters.Length: 0 })
+                {
+                    this.cases.Add(signature);
+                }
+                else if (signature is not null)
+                {
+                    this.Report(DiagnosticCode.InternalInvariant_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
+                }
             }
 
+            this.Request(Needs.Memory); // The test runtime copies the temporary directory's text (llvm.memcpy).
             return true;
         }
 

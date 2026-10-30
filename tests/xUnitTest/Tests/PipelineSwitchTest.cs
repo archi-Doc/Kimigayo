@@ -10,16 +10,21 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R5): <c>KIMI_PIPELINE</c> selects the default,
-/// only the mir pipeline publishes the MIR's records and marks the compiler identity, the legacy output does not depend on it, and every
-/// analysis notifies the difference ledger's observer. <c>KIMI_CODEGEN</c> (R5 PD4) selects MIR code generation under the mir pipeline
-/// only, which collects the checked set and writes a module only where its coverage rows cover it (R5 C0b1). Every product generation
-/// request passes the generation entry's gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its
-/// generation records as <c>kimi build</c> does.</summary>
+/// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R6): <c>KIMI_PIPELINE</c> selects the default,
+/// every pipeline publishes the MIR's construction records, validator findings and checked set's records at check (DECISIONS R5-M156),
+/// the non-default pipeline marks the compiler identity, and every analysis notifies the difference ledger's observer. MIR code generation,
+/// the one code generator (DECISIONS R5-M160), writes the module of an accepted program (R5 C0b1, X2). Every product generation request
+/// passes the generation entry's gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its records
+/// as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
-    // A position of a Type parameter is the MIR's one Unsupported record here, a form the old path accepts, until PLAN G167 builds it.
-    private const string Source = "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\nlet x = at([1, 2, 3], 1@u8)\n";
+    // The MIR's one Unsupported record here, at `a == b`, a form the old path's check accepts (its generation refuses it): the tuple operator
+    // without its comparison (MirBuildTest.Unbuilt; PD30's (e) row until R7).
+    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations +
+        $"func same(a: ref/{MirBuildTest.Unbuilt.Tuple}, b: ref/{MirBuildTest.Unbuilt.Tuple}) -> bool => a == b\nlet x = 1\n";
+
+    // Every selection a compilation can make (DECISIONS R5-M156, R5-M160).
+    private static readonly CompilerPipeline[] Pipelines = [CompilerPipeline.Legacy, CompilerPipeline.Mir];
 
     // The default is the pipeline KIMI_PIPELINE names, legacy when unset; any other value is a configuration error, not a fallback.
     [Fact]
@@ -36,33 +41,9 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // R5 PD4: KIMI_CODEGEN selects the old generator when unset or legacy, and MIR code generation only with KIMI_PIPELINE=mir; any other
-    // value or combination is a configuration error. A compilation's code generator follows its pipeline, MIR code generation needing mir.
-    [Fact]
-    public void TheEnvironmentSelectsTheCodegenUnderMirOnly()
-    {
-        Assert.Equal(CompilerCodegen.Legacy, Compilation.CodegenOf(CompilerPipeline.Legacy, null));
-        Assert.Equal(CompilerCodegen.Legacy, Compilation.CodegenOf(CompilerPipeline.Mir, "legacy"));
-        Assert.Equal(CompilerCodegen.Mir, Compilation.CodegenOf(CompilerPipeline.Mir, "mir"));
-        Assert.Equal(Compilation.CodegenOf(Compilation.DefaultPipeline, Environment.GetEnvironmentVariable("KIMI_CODEGEN")), Compilation.DefaultCodegen);
-        Assert.Equal(Compilation.DefaultCodegen, Compilation.CreateForTest().Codegen);
-        foreach (var (pipeline, value) in new[] { (CompilerPipeline.Legacy, "mir"), (CompilerPipeline.Mir, "MIR"), (CompilerPipeline.Mir, " mir"), (CompilerPipeline.Mir, "both") })
-        {
-            Assert.Contains("KIMI_CODEGEN", Assert.Throws<InvalidOperationException>(() => Compilation.CodegenOf(pipeline, value)).Message);
-        }
-
-        var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Legacy;
-        Assert.Throws<InvalidOperationException>(() => c.Codegen = CompilerCodegen.Mir);
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Mir;
-        c.Pipeline = CompilerPipeline.Legacy;
-        Assert.Equal(CompilerCodegen.Legacy, c.Codegen);
-    }
-
-    // PLAN G199: the defaults are read once, by Compilation's type initializer, which the runtime runs once, so threads making the first
-    // compilations at once all get the pair the environment names. A Nullable set on its first read could be read as its default
-    // (legacy) by a thread racing the first one; no test can widen that window, so this pins the defaults as initonly fields of the
+    // PLAN G199: the default is read once, by Compilation's type initializer, which the runtime runs once, so threads making the first
+    // compilations at once all get the pipeline the environment names. A Nullable set on its first read could be read as its default
+    // (legacy) by a thread racing the first one; no test can widen that window, so this pins the default as an initonly field of the
     // type initializer and races the first compilations of a fresh process, where Compilation's statics are new.
     [Fact]
     public Task ThreadsMakingTheFirstCompilationsAgreeOnTheDefaults()
@@ -73,13 +54,11 @@ public sealed class PipelineSwitchTest
     [Fact(Explicit = true)]
     public void RaceTheFirstCompilationsOfAFreshProcess()
     {
-        foreach (var name in new[] { nameof(Compilation.DefaultPipeline), nameof(Compilation.DefaultCodegen) })
-        {
-            Assert.True(typeof(Compilation).GetField(name, BindingFlags.Static | BindingFlags.NonPublic) is { IsInitOnly: true }, name);
-        }
+        var field = typeof(Compilation).GetField(nameof(Compilation.DefaultPipeline), BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.True(field is { IsInitOnly: true }, nameof(Compilation.DefaultPipeline));
 
         const int Count = 8;
-        var (pairs, errors) = (new (CompilerPipeline, CompilerCodegen)[Count], new Exception?[Count]);
+        var (pipelines, errors) = (new CompilerPipeline[Count], new Exception?[Count]);
         using var start = new Barrier(Count);
         var threads = Enumerable.Range(0, Count).Select(i => new Thread(() =>
         {
@@ -87,7 +66,7 @@ public sealed class PipelineSwitchTest
             {
                 start.SignalAndWait();
                 var c = Compilation.CreateForTest();
-                pairs[i] = (c.Pipeline, c.Codegen);
+                pipelines[i] = c.Pipeline;
             }
             catch (Exception e)
             {
@@ -97,54 +76,38 @@ public sealed class PipelineSwitchTest
         Array.ForEach(threads, static x => x.Start());
         Array.ForEach(threads, static x => x.Join());
         Assert.All(errors, Assert.Null);
-        Assert.All(pairs, static x => Assert.Equal((Compilation.DefaultPipeline, Compilation.DefaultCodegen), x));
+        Assert.All(pipelines, static x => Assert.Equal(Compilation.DefaultPipeline, x));
     }
 
-    // Only the mir pipeline marks the check identity and adds its entry to the test artifact manifest, and MIR code generation its own.
+    // The non-default pipeline marks the check identity and adds its entry to the test artifact manifest (DECISIONS R5-M156); the code
+    // generator marks neither since its selection ended at G4 (DECISIONS R5-M160).
     [Fact]
-    public void OnlyMirMarksTheIdentity()
+    public void TheNonDefaultPipelineMarksTheIdentity()
     {
-        var identity = (Compilation.DefaultPipeline, Compilation.DefaultCodegen) switch
-        {
-            (CompilerPipeline.Legacy, _) => Compilation.CompilerVersion,
-            (_, CompilerCodegen.Legacy) => Compilation.CompilerVersion + " [mir]",
-            _ => Compilation.CompilerVersion + " [mir, codegen mir]",
-        };
+        var identity = Compilation.DefaultPipeline == CompilerPipeline.Mir ? Compilation.CompilerVersion + " [mir]" : Compilation.CompilerVersion;
         Assert.Equal(identity, Compilation.CompilerIdentity);
-        var legacy = Manifest(CompilerPipeline.Legacy, CompilerCodegen.Legacy);
-        Assert.Equal(legacy.Take(7).Concat(["pipeline", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Legacy));
-        Assert.Equal(legacy.Take(7).Concat(["pipeline", "mir", "codegen", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Mir));
+        var plain = Manifest(CompilerPipeline.Legacy);
+        Assert.Equal(plain.Take(7).Concat(["pipeline", "mir"]).Concat(plain.Skip(7)), Manifest(CompilerPipeline.Mir));
+        Assert.DoesNotContain("codegen", plain);
     }
 
-    // R5 K1, C0b1 (DECISIONS R5-M65): only MIR code generation collects the checked set; it writes the module of an output form whose items
-    // its coverage rows cover, an Application's (with its entry) or a Library's, and otherwise writes nothing and records one Unsupported_Kd
-    // in the Emission partition at each subject of a row not written yet, here a test build's TestEntry at each test (C10a); never the old
-    // generator's module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does.
+    // R5 K1, C0b1 (DECISIONS R5-M65, R5-M146): the checked set exists on every pipeline; MIR code generation, on the process's pipeline
+    // (either, DECISIONS R5-M156), writes the module of each output form, an Application's (with its entry), a test build's (the test
+    // runtime's entry; C10a, DECISIONS R5-M136) or a Library's, never the old generator's module.
     // R5 K11 (DECISIONS R5-M77): it generates the closure of the output roots, an Application's startup body, a test build's discovered
     // tests (not its top-level statements and their instance) and a Library's every root.
     [Theory]
-    [InlineData(OutputKind.Application, false, new string[0], new[] { "first", "top" })]
-    [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" }, new[] { "first", "second" })]
-    [InlineData(OutputKind.Library, false, new string[0], new[] { "first", "second", "top" })]
-    public void MirCodegenWritesEachCoveredOutputForm(OutputKind output, bool test, string[] records, string[] generated)
+    [InlineData(OutputKind.Application, false, new[] { "first", "top" })]
+    [InlineData(OutputKind.Application, true, new[] { "first", "second" })]
+    [InlineData(OutputKind.Library, false, new[] { "first", "second", "top" })]
+    public void MirCodegenWritesEachOutputForm(OutputKind output, bool test, string[] generated)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Legacy;
         Assert.True(c.Prepare(WindowsProfile.Target));
         var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "public func first() => ()\npublic func second() => ()\n";
         var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
-        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
-        Assert.Null(c.Instances);
-        using (var legacy = new StringWriter())
-        {
-            Assert.True(c.Generate(legacy));
-            Assert.Equal(CompilationTestHelper.WriteIr(c), legacy.ToString());
-        }
-
-        c.Codegen = CompilerCodegen.Mir;
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         if (test)
         {
@@ -152,27 +115,24 @@ public sealed class PipelineSwitchTest
         }
 
         var set = Assert.IsType<CheckedSet>(c.Instances);
-        var written = records.Length == 0;
         using (var writer = new StringWriter())
         {
-            Assert.Equal(written, c.Generate(writer));
-            Assert.Equal(written, writer.ToString().Length != 0);
-            Assert.Equal(written && output == OutputKind.Application, writer.ToString().Contains("define void @__kimi_start()", StringComparison.Ordinal));
+            Assert.True(c.Generate(writer));
+            Assert.NotEqual(0, writer.ToString().Length);
+            Assert.Equal(output == OutputKind.Application, writer.ToString().Contains("define void @__kimi_start()", StringComparison.Ordinal));
         }
 
         var items = set.Items.ToArray();
         Assert.Equal(generated, Enumerable.Range(0, items.Length).Where(set.IsGenerated).Select(x => items[x].Key.Body.Def.Decl?.Name ?? "top").Order());
 
-        Assert.Equal(written, c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Equal(written, failure is null);
-        Assert.Equal(written, c.Validate(out _));
-        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-        Assert.All(errors, static x => Assert.Equal("Unsupported_Kd", x.Code));
-        Assert.Equal(records, errors.Select(static x => x.Text).Order(StringComparer.Ordinal));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
+        Assert.Null(failure);
+        Assert.True(c.Validate(out _));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
     }
 
-    // R5 C0a (PD12's gate, step 1; DECISIONS R5-M64): every generation request passes the entry's gate, artifact publication included,
-    // which ran the old generator on a program with MIR records before; the records are the analysis's own, so generation adds none.
+    // R5 C0a (PD12's gate, step 1; DECISIONS R5-M64): every generation request passes the entry's gate, artifact publication included;
+    // the records are the analysis's own, so generation adds none.
     [Fact]
     public void TheGateRefusesMirRecordsForEveryCaller()
     {
@@ -181,10 +141,8 @@ public sealed class PipelineSwitchTest
         try
         {
             var c = Compilation.CreateForTest();
-            c.Pipeline = CompilerPipeline.Mir;
-            c.Codegen = CompilerCodegen.Legacy;
             Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
             Assert.False(Analyze(c, OutputKind.Application));
             Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
             c.Project.Directory = directory;
@@ -205,11 +163,11 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // R5 C0a: kimi test publishes its generation records through the entry, as kimi build does: a test build the old generator refuses
-    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54,
-    // DECISIONS R5-M85), and the command generates only a build its check prepared.
+    // R5 C0a: kimi test publishes its records as kimi build does: a test build whose instance the backend does not generate reports the
+    // located Unsupported_Kd at check (R5-M54; DECISIONS R5-M156), not failure text, and the command generates only a build its check
+    // prepared.
     [Fact]
-    public void TheTestCommandPublishesTheGenerationRecords()
+    public void TheTestCommandPublishesTheInstancesRecordAtCheck()
     {
         var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -220,12 +178,8 @@ public sealed class PipelineSwitchTest
             project.ProjectFile.Targets = [WindowsProfile.Target];
             const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
-            var c = project.PrepareTests(TestContext.Current.CancellationToken);
-            Assert.Equal(Codegen.Expect(true, false, CodegenDeviations.CheckedSetAtCheck), c is null);
-            var stem = Path.Combine(directory, "tests");
-            var paths = new ArtifactPaths(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2");
-            Assert.False(c is not null && project.PublishArtifacts(c, paths, null, out _));
-            Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
+            Assert.Null(project.PrepareTests(TestContext.Current.CancellationToken));
+            Assert.Contains("Unsupported_Kd\n --> main.kimi:3:12", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
         }
@@ -235,36 +189,35 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // R5 K4b (DECISIONS R5-M41): under MIR code generation the checked set's records are analysis problems too, control-flow Errors at
-    // their located subjects that reject the program, while the mir pipeline alone does not collect.
+    // R5 K4b (DECISIONS R5-M156, superseding R5-M41's gate): the checked set's records are analysis problems on every pipeline,
+    // control-flow Errors at their located subjects that reject the program.
     [Fact]
-    public void MirCodegenPublishesTheCollectorRecords()
+    public void EveryPipelinePublishesTheCollectorRecords()
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Legacy;
         Assert.True(c.Prepare(WindowsProfile.Target));
         var type = string.Concat(Enumerable.Repeat("Option<", 32)) + "ref/i32" + new string('>', 32);
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", $"func pick<T>(value: T) -> T => value@move\nlet v: {type} = .None\nlet w = pick(v@move)\n"));
-        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
-
-        c.Codegen = CompilerCodegen.Mir;
-        Assert.False(Analyze(c, OutputKind.Application));
-        var problem = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "pick(v@move)"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
-        Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
-        c.ReportAnalysis();
-        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "pick(v@move)"), (record.Code, record.Text));
+        foreach (var pipeline in Pipelines)
+        {
+            c.Pipeline = pipeline;
+            Assert.False(Analyze(c, OutputKind.Application));
+            var problem = Assert.Single(c.Problems);
+            Assert.Equal((DiagnosticCode.Unsupported_Kd, "pick(v@move)"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+            Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
+            c.ReportAnalysis();
+            var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+            Assert.Equal(("Unsupported_Kd", "pick(v@move)"), (record.Code, record.Text));
+        }
     }
 
-    // R5 K10c (DECISIONS R5-M52): under MIR code generation a layout over 2^63 - 1 bytes is a Language error at check, at its by-value use;
-    // until G2 the default pipeline accepts it at check and the old generator refuses generation with its generation limit's code, without
-    // throwing.
+    // R5 K10c (DECISIONS R5-M52), SPEC 8.15.3 (DECISIONS R4-M134 Q8): a layout over 2^63 - 1 bytes is a Language error at check on every
+    // pipeline, at its by-value use (the parameter's Type occurrence), a Language record of the checked set; code generation is not reached.
     [Fact]
     public async Task MirCodegenRejectsAnOversizedLayoutAtCheck()
     {
-        const string Over = "func over(value: ([649657 of [92737 of [153092023 of u8]]], u8)) => ()";
+        const string Type = "([649657 of [92737 of [153092023 of u8]]], u8)";
+        const string Over = "func over(value: " + Type + ") => ()";
         var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
@@ -273,59 +226,75 @@ public sealed class PipelineSwitchTest
             var project = new Project(new Kimigayo(console)) { Name = "oversized", Directory = directory };
             project.AddSource("main.kimi", Over + "\nlet x = 1\n");
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-            Assert.Contains(Codegen.Expect("OversizedLayout_Kd", "GenerationResourceLimit_Kd", CodegenDeviations.OversizedLayoutAtCheck), console.Text, StringComparison.Ordinal);
+            Assert.Contains("OversizedLayout_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
         }
         finally
         {
             Directory.Delete(directory, true);
         }
 
-        var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Legacy;
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Over + "\nlet x = 1\n"));
-        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
-
-        c.Codegen = CompilerCodegen.Mir;
-        Assert.False(Analyze(c, OutputKind.Application));
-        var problem = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.OversizedLayout_Kd, Over), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
-        c.ReportAnalysis();
-        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("OversizedLayout_Kd", Over["func ".Length..], "layout larger than 2^63 - 1 bytes"), (record.Code, record.Text, record.Label));
+        foreach (var pipeline in Pipelines)
+        {
+            var c = Compilation.CreateForTest();
+            c.Pipeline = pipeline;
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Over + "\nlet x = 1\n"));
+            Assert.False(Analyze(c, OutputKind.Application));
+            var problem = Assert.Single(c.Problems);
+            Assert.Equal((DiagnosticCode.OversizedLayout_Kd, Type), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+            c.ReportAnalysis();
+            var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+            Assert.Equal(("OversizedLayout_Kd", Type, "layout larger than 2^63 - 1 bytes"), (record.Code, record.Text, record.Label));
+        }
     }
 
-    // Under mir the MIR's records are the analysis's problems and control-flow Errors that reject the program and block generation;
-    // switching back to legacy gives the old path's diagnostics and IR unchanged.
+    // DECISIONS R5-M156 (superseding R3-1): every pipeline publishes the MIR's construction records, here the unbuilt tuple operator's
+    // (PD30's (e) row), as the analysis's problems, control-flow Errors that reject the program and block generation; switching the
+    // pipeline revokes the analysis and changes no record.
     [Fact]
-    public void OnlyMirPublishesTheMirRecords()
+    public void EveryPipelinePublishesTheMirRecords()
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Legacy;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
+        foreach (var pipeline in Pipelines)
+        {
+            c.Pipeline = pipeline;
+            Assert.False(c.Analysis.IsVerified); // Nothing analyzed yet, or the switch revoked the analysis.
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.False(c.Analyze().IsVerified);
+            var problem = Assert.Single(c.Problems);
+            Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+            Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
+            c.ReportAnalysis();
+            var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
+            Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
+            Assert.False(c.WriteIr(TextWriter.Null, out var failure));
+            Assert.Contains("MIR", failure);
+            Assert.False(c.Validate(out _));
+        }
+    }
+
+    // An accepted program round-trips across a pipeline switch: the switch revokes the analysis, and the next one gives the same diagnostics
+    // and IR, since every pipeline publishes the same records (DECISIONS R5-M156).
+    [Fact]
+    public void AnAcceptedProgramIsTheSameOnEitherPipeline()
+    {
+        const string Source = "struct Box\n    public let v: i32\n    public init(v: i32) => self.v = v\nfunc twice(b: ref/Box) -> i32 => b.v * 2\n" +
+            "let b = Box.init(21)\nrequire twice(b@ref) == 42 else => $abort(\"twice\")\nConsole.writeLine(\"ok\")\n";
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Legacy; // Whatever the process's pipeline, so that each switch below changes it.
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
-        var (diagnostics, ir) = Check(c);
-        Assert.Empty(c.Problems);
-
+        var legacy = Check(c);
         c.Pipeline = CompilerPipeline.Mir;
-        Assert.False(c.Analysis.IsVerified); // The switch revokes the analysis.
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.False(c.Analyze().IsVerified);
-        var problem = Assert.Single(c.Problems);
-        Assert.Equal(DiagnosticCode.Unsupported_Kd, problem.Code);
-        Assert.Equal("p", c.SyntaxOf(problem.Subject).ToString());
-        Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
-        c.ReportAnalysis();
-        var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "p"), (record.Code, record.Text));
-        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("MIR", failure);
-        Assert.False(c.Validate(out _));
-
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(legacy, Check(c));
         c.Pipeline = CompilerPipeline.Legacy;
-        Assert.Equal((diagnostics, ir), Check(c));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(legacy, Check(c));
     }
 
     // R4-M71, PLAN G157 (8) (DIAGNOSTICS §4.1): a MIR record is a code without facts, published keyed by its location, so the records of a
@@ -336,7 +305,6 @@ public sealed class PipelineSwitchTest
     public void MirRecordsAtOneLocationAreOneProblem()
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(
             "Hello.kimi", "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\npublic func main() => ()\n"));
@@ -354,14 +322,14 @@ public sealed class PipelineSwitchTest
         Assert.Equal(("Unsupported_Kd", loop.Span), (record.Code, record.Span));
     }
 
-    // R4-M17: on both pipelines, every Analyze raises Compilation.Analyzed once, after the old path's records and, under mir, the MIR's
-    // are final: the observer reads the analysis Analyze returns, the MIR's Unsupported record included.
+    // R4-M17: on both pipelines, every Analyze raises Compilation.Analyzed once, after the old path's records and the MIR's are final: the
+    // observer reads the analysis Analyze returns, the MIR's Unsupported record included (on every pipeline, DECISIONS R5-M156).
     [Fact]
     public void AnalyzeNotifiesTheObserverOnce()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
         var observed = new List<AnalysisResult>();
         void Observe(Compilation x)
         {
@@ -374,13 +342,13 @@ public sealed class PipelineSwitchTest
         Compilation.Analyzed += Observe;
         try
         {
-            foreach (var (pipeline, errors) in new[] { (CompilerPipeline.Legacy, 0), (CompilerPipeline.Mir, 1) })
+            foreach (var pipeline in Pipelines)
             {
                 c.Pipeline = pipeline;
                 Assert.True(c.Bind().IsComplete);
                 Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
                 var result = c.Analyze();
-                Assert.Equal(errors, result.ErrorCount);
+                Assert.Equal(1, result.ErrorCount);
                 Assert.Equal([result], observed);
                 observed.Clear();
             }
@@ -438,6 +406,7 @@ public sealed class PipelineSwitchTest
         }
     }
 
+    // A checked program's published diagnostics and IR.
     private static (string Diagnostics, string Ir) Check(Compilation c)
     {
         Assert.True(c.Bind().IsComplete);
@@ -452,11 +421,10 @@ public sealed class PipelineSwitchTest
     private static bool Analyze(Compilation c, OutputKind output)
         => c.Bind().IsComplete && (c.IsTestBuild ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(output)).IsComplete && c.Analyze().IsVerified;
 
-    private static string[] Manifest(CompilerPipeline pipeline, CompilerCodegen codegen)
+    private static string[] Manifest(CompilerPipeline pipeline)
     {
         var c = Compilation.CreateForTest();
         c.Pipeline = pipeline;
-        c.Codegen = codegen;
         c.IsTestBuild = true;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", "#Test\nfunc sample() => ()"));

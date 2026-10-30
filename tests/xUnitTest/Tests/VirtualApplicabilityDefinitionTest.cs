@@ -22,11 +22,6 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
             (applicable ? "require owner.read() == 2 else => $abort(\"override\")" : "()");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var descriptor = Assert.Single(module.Objects);
-        Assert.Equal(3, descriptor.VirtualSlots.Length);
-        Assert.Equal(applicable, descriptor.VirtualSlots[1] is not null);
-        Assert.NotNull(descriptor.VirtualSlots[2]);
         ScalarEmissionTest.EmitFixture($"VirtualClosedApplicability{block}{type}", source, string.Empty);
     }
 

@@ -54,8 +54,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Operand(handle, out var address) || !this.Operand(length, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         this.StoreAt(this.Offset(address, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), isize.Layout, value);
@@ -67,8 +66,7 @@ internal sealed partial class FunctionCodegen
     {
         if (!this.Operand(this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)], out var handle))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var capacity = new Value('t', this.next++);

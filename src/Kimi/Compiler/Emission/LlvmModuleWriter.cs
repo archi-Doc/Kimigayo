@@ -294,15 +294,11 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 case EmissionOpcode.TestPhaseEnter:
-                    output.Write("  %testphase");
-                    WriteNumber(output, instruction.Operation);
-                    output.Write(" = load i32, ptr @__kimi_test_phase\n  store i32 2, ptr @__kimi_test_phase\n");
+                    Testing.TestRuntime.WritePhase(output, "%testphase", instruction.Operation, Testing.TestRuntime.Phase.Cleanup);
                     break;
 
                 case EmissionOpcode.TestPhaseLeave:
-                    output.Write("  store i32 %testphase");
-                    WriteNumber(output, instruction.Operation);
-                    output.Write(", ptr @__kimi_test_phase\n");
+                    Testing.TestRuntime.RestorePhase(output, "%testphase", instruction.Operation);
                     break;
 
                 case EmissionOpcode.CreateClosure:

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -59,12 +58,13 @@ internal sealed partial class MirBuilder
     private MirPlace Handle(MirPlace sequence, Koto node) => MirTypes.SelectsByValue(this.body.TypeOf(sequence))
         ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
 
-    // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84): a position as the isize a selection reads, its value compared mathematically: the value
-    // where isize holds it, else -1 (Unresolved), which the selection's one bounds check rejects at the selection; it has no check of its
-    // own. A Type whose range lies within isize's (Within: i8 to i32 and u8 to u32 on a 64-bit target) converts proven; another is first
-    // compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's, which
-    // no rule here decides (Unsupported). The local is located at its selection, whose subject A1 reports an access through its Index under
-    // (DECISIONS R4-M56).
+    // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84, R5-M154): a position as the isize a selection reads, its value compared mathematically:
+    // the value where isize holds it, else -1 (Unresolved), which the selection's one bounds check rejects at the selection; it has no check
+    // of its own. A Type whose range lies within isize's (Within: i8 to i64 and u8 to u32 on a 64-bit target) converts proven; another is
+    // first compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's:
+    // it is compared with 0 in its own Type, a negative value being -1, which every selection rejects as it rejects any negative position
+    // (SPEC 4.6.3), and then, by a Proven Cast to u128, which holds every nonnegative value of every PrimitiveInteger Type, with isize's
+    // maximum there. The local is located at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
     private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
         var type = this.TypeOf(position) ?? BoundType.ISize;
@@ -75,26 +75,21 @@ internal sealed partial class MirBuilder
             return local;
         }
 
-        if (this.Width(type, out var signed) == 0)
-        {
-            // The value is built already: located there, the Opaque in its place names its root, not the position's syntax (R5-M63).
-            var mark = this.located.Count;
-            if (position.Kind != MirOperandKind.Const)
-            {
-                this.located.Add((node, position.Place));
-            }
-
-            this.Unsupported(node, local);
-            CollectionsMarshal.SetCount(this.located, mark);
-            return local;
-        }
-
         var outside = this.Within(type, BoundType.ISize) ? -1 : this.body.AddBlock();
         if (outside >= 0)
         {
             var value = position.Kind == MirOperandKind.Move ? MirOperand.Copy(position.Place) : position;
             var test = this.Temp(BoundType.Boolean, node);
             var extreme = Int128.One << (compilation.PointerWidth - 1);
+            if (this.Width(type, out var signed) == 0)
+            {
+                this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type))), value, outside, node);
+                (type, signed) = (BoundType.Primitives["u128"], false);
+                var wide = this.Temp(type, node);
+                this.Set(wide, MirRvalue.Cast(MirCastKind.Integer, this.body.AddOperand(value), type) with { Proven = true }, node);
+                value = MirOperand.Copy(wide);
+            }
+
             if (signed)
             {
                 this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type, -extreme))), value, outside, node);

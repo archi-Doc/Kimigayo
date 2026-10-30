@@ -157,13 +157,13 @@ public sealed partial class Binding
 
             foreach (var associated in shape.AssociatedStorage)
             {
-                if (this.ResolveAssociated(path, associated) is not { } binding)
+                if (this.ResolveAssociated(path, associated, out _) is not { } binding)
                 {
                     return ConstraintProof.Unknown;
                 }
 
                 path.AssociatedStorage[associated] = binding;
-                if (!TypeAccessCovers(binding, path.Type, path.Contract))
+                if (!this.TypeAccessCovers(binding, path.Type, path.Contract))
                 {
                     return ConstraintProof.Refuted;
                 }

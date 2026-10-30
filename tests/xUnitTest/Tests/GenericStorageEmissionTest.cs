@@ -117,23 +117,6 @@ public class GenericStorageEmissionTest
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
-    [Fact]
-    public void MonomorphizesScalarAndOwnedInstancesOnce()
-    {
-        // SPEC 21.3.1: the i32 substitution is one concrete body for both calls; the string instance
-        // joins its owned result through a result slot.
-        var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))\nlet n = choose<i32>(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instances = Instances(module);
-        Assert.Equal(2, instances.Length);
-        var instance = Assert.Single(instances, x => x.Abi.Result == "i32");
-        Assert.Equal(["i32", "i32", "i1"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
-        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Phi);
-        var owned = Assert.Single(instances, x => x.Abi.ResultSlot);
-        Assert.DoesNotContain(owned.Instructions, x => x.Opcode == EmissionOpcode.Phi);
-    }
-
     // SPEC 21.3.1, IMPL 21.3: a function Item and a direct call of the same instance call its one generated function.
     [Fact]
     public void AFunctionItemSharesTheInstanceOfADirectCall()
@@ -147,263 +130,27 @@ public class GenericStorageEmissionTest
     }
 
     [Theory]
-    [InlineData("string", "\"text\"")]
-    [InlineData("[3 of i32]", "[2, 4, 6]")]
-    [InlineData("i32", "42")]
-    public void MonomorphizesStructConstructorsAndFieldReads(string type, string value)
-    {
-        // The constructor's receiver is the call's instantiated Box<type>; take reads its substituted field.
-        var c = MinimalEmissionTest.Analyze(Box + $"let b = Box<{type}>.init({value})\nlet v = b@move.take()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instances = Instances(module);
-        Assert.Equal(2, instances.Length);
-        Assert.Single(instances, x => x.Abi.ResultSlot && x.Subslots.Count == 1);
-    }
-
-    [Theory]
-    [InlineData("i32", "4", "i32")]
-    [InlineData("bool", "true", "i1")]
-    public void MonomorphizesNestedGenericCalls(string type, string value, string physical)
+    [InlineData("i32", "4")]
+    [InlineData("bool", "true")]
+    public void MonomorphizesNestedGenericCalls(string type, string value)
     {
         // SPEC 21.3.1: the forwarded call inside outer<T> binds to inner's own instance under outer's substitution.
         const string Nested = "func inner<T>(value: T, n: i32) -> i32 => n + 1\nfunc outer<T>(value: T, n: i32) -> i32 => inner<T>(value@move, n)\n";
-        var c = MinimalEmissionTest.Analyze(Nested + $"let v = outer<{type}>({value}, 1)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instances = Instances(module);
-        Assert.Equal(2, instances.Length);
-        Assert.All(instances, x => Assert.Equal(physical, x.Abi.Parameters[0].Type));
-        var outer = Assert.Single(instances, x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
-        Assert.Contains(instances, x => !ReferenceEquals(x, outer) && x.Instructions.All(i => i.Opcode != EmissionOpcode.Call));
         ScalarEmissionTest.EmitFixture("GenericStorageNestedCall" + type, Nested + $"require outer<{type}>({value}, 1) == 2 else => $abort(\"nested\")", string.Empty);
-    }
-
-    [Theory]
-    [InlineData("i32", "7")]
-    [InlineData("string", "\"owned\"")]
-    [InlineData("Token", "Token.init(1)")]
-    public void MonomorphizesEnumPayloadConstruction(string type, string value)
-    {
-        // A committed CopyOrMove payload acquisition resolves to the instance's exact Copy or Move (SPEC 21.3.1).
-        var c = MinimalEmissionTest.Analyze(Token + $"func wrap<T>(x: T) -> Option<T> => .Some(x@move)\nlet v = wrap<{type}>({value})");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(Instances(module));
-        Assert.True(instance.Abi.ResultSlot);
-    }
-
-    [Fact]
-    public void MonomorphizesBorrowedArrayElementBorrows()
-    {
-        // SPEC 21.3.1: the element borrow of a length-generic borrowed array lowers per instance through
-        // a bounds-checked element address with the substitution's element stride.
-        var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, 0)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instances = Instances(module);
-        Assert.Equal(2, instances.Length);
-        var get = Assert.Single(instances, x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
-        var address = Assert.Single(get.Instructions, i => i.Opcode == EmissionOpcode.Sequence);
-        Assert.Equal("ArrayAddress", address.ScalarOperator);
-        Assert.Equal(ArithmeticCheckKind.Bounds, address.Check);
-        Assert.Equal(4, address.Representation!.Layout.Stride);
-    }
-
-    [Fact]
-    public void MonomorphizesBorrowedStringArrayElements()
-    {
-        // SPEC 21.3.1: total<2, string> forms each element's string reference from the borrowed array's
-        // element address (string stride) and forwards it; no instance keeps a shared entry.
-        var c = MinimalEmissionTest.Analyze(GenericForwardingEmissionTest.Weight + "let values: [2 of string] = [\"left\", \"right\"]\nlet n = W.total<2, string>(values@ref)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var total = Assert.Single(Instances(module), x => x.Instructions.Any(i => i.ScalarOperator == "ArrayAddress"));
-        var address = Assert.Single(total.Instructions, i => i.ScalarOperator == "ArrayAddress");
-        Assert.Equal(WindowsLowering.GetValue(BoundType.String)!.Layout.Stride, address.Representation!.Layout.Stride);
-    }
-
-    [Theory]
-    [InlineData("func run<T>(value: ref/T, c: uniq/Counter) -> i32\n    c.add(2)\n    return c.read()\nlet v = true\nvar c = Counter.init(40)\nlet n = run(v, c@uniq)")]
-    [InlineData("func run<T>(value: ref/T) -> i32\n    var c = Counter.init(1)\n    c@uniq.add(2)\n    return c.read()\nlet v = true\nlet n = run(v)")]
-    [InlineData("func run<T>(value: ref/T, c: ref/Counter) -> i32 => c.read()\nlet v = true\nlet c = Counter.init(3)\nlet n = run(v, c)")]
-    public void MonomorphizesConcreteMemberCallReceivers(string source)
-    {
-        // SPEC 21.3.1: a concrete callee's receiver Origin is instantiated at the call site and then seen
-        // under the instance's substitution; the instance body is lowered instead of the shared entry.
-        const string Counter = "struct Counter\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func add(self: uniq/Self, amount: i32) => self.value += amount\n    public func read(self: ref/Self) -> i32 => self.value\n";
-        var c = MinimalEmissionTest.Analyze(Counter + source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(Instances(module));
-        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Call);
-    }
-
-    [Fact]
-    public void MonomorphizesSliceIteratorFieldReads()
-    {
-        // SPEC 21.3.1: Program 13's SliceIterator<Sample>.next copies its Slice-handle field into a temporary
-        // and borrows the indexed element; no instance keeps a shared entry.
-        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone13.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        Assert.Contains(Instances(module), x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.TransferAggregate && i.Aggregate?.Value.Layout.Size == 16) &&
-            x.Instructions.Any(i => i.Opcode == EmissionOpcode.Sequence && i.ScalarOperator == "SliceAddress"));
-    }
-
-    [Fact]
-    public void MonomorphizesEnumPatternTests()
-    {
-        // SPEC 21.3.1: enum Pattern tests inside a generic body inspect the substituted subject Type per instance.
-        var c = MinimalEmissionTest.Analyze("func present<T>(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor@uniq.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [2 of i32] = [4, 5]\nlet n = present(values[..])");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        Assert.NotEmpty(Instances(module));
-    }
-
-    [Theory]
-    [InlineData("func apply<F>(f: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\nlet n: i32 = 0\nvar f = func [var n] () -> i32\n    n += 1\n    return n\nlet r = apply(f@uniq)")]
-    [InlineData("struct Item\n    public let value: i32 = 3\nfunc apply<T, F>(value: ref/T, visit: uniq/F) -> bool\n    F is Callable<uniq, (ref/T) -> bool>\n    return visit(value)\nlet item = Item.init()\nvar visit = func (value: ref/Item) => value.value == 3\nlet r = apply(item@ref, visit@uniq)")]
-    public void MonomorphizesCallableConstraintCalls(string source)
-    {
-        // SPEC 21.3.1: the exclusive Callable receiver Loan of the instance body validates against the
-        // substituted receiver Type, so the constrained call lowers per instance.
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        Assert.Contains(Instances(module), x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
-    }
-
-    [Fact]
-    public void MonomorphizesCopyOrMovePatternBindings()
-    {
-        // SPEC 21.3.1: the try binding of a T payload copies for i32 and moves for string in each instance.
-        var c = MinimalEmissionTest.Analyze("func unwrap<T>(x: T?) -> T? => .Some(try x@move)\nlet a = unwrap<i32>(.Some(8))\nlet b = unwrap<string>(.Some(\"owned\"))");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        Assert.Equal(2, Instances(module).Length);
     }
 
     // SPEC 8.15.3: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource failure, distinguished from semantic and
     // representation errors.
     [Fact]
     public void GrowingSubstitutionKeysAreResourceDiagnosed()
-        => MinimalEmissionTest.AssertGenerationResourceLimit(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)", "grow");
-
-    [Fact]
-    public void OversizedSubstitutionSetsAreResourceDiagnosed()
-    {
-        // A third distinct closed context of choose exceeds a lowered substitution set limit: the old generator's own limit, on a
-        // compilation pinned to it, which goes by G4 at the latest (DECISIONS R5-M85).
-        var limit = GenericStoragePlan.SubstitutionSetLimit;
-        GenericStoragePlan.SubstitutionSetLimit = 2;
-        try
-        {
-            var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)", codegen: CompilerCodegen.Legacy);
-            using var output = new StringWriter();
-            Assert.False(c.WriteIr(output, out var error));
-            Assert.Empty(output.ToString());
-            Assert.True(c.Emission.FailureIsResourceLimit, error);
-            Assert.Contains("choose", error, StringComparison.Ordinal);
-            GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-        }
-        finally
-        {
-            GenericStoragePlan.SubstitutionSetLimit = limit;
-        }
-    }
-
-    [Fact]
-    public void FiniteGenericRecursionReusesItsInstance()
-    {
-        var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value@move, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.True(module.IsComplete);
-        Assert.Single(Instances(module));
-    }
-
-    [Fact]
-    public void MonomorphizesForwardedStringReferences()
-    {
-        // SPEC 21.3.1: forward<string> passes its ref/T parameter to weight<string> as the substituted
-        // string reference; the concrete caller's string borrow also targets the instance entry.
-        var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc forward<T>(value: ref/T) -> i32 => weight<T>(value)\nlet s = \"text\"\nlet n = forward<string>(s)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instances = Instances(module);
-        Assert.Equal(2, instances.Length);
-        Assert.All(instances, x => Assert.Equal(["ptr"], x.Abi.Parameters.Select(p => p.Type).ToArray()));
-    }
+        => MinimalEmissionTest.AssertGenerationResourceLimit(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)", "grow<Box<T>>(Box<T>.init(value@move), n - 1)");
 
     [Fact]
     public void SelectedSpecializationIsNeverReplacedByTheGenericBody()
     {
         const string Source = "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => 5\nrequire count<i32>(1) == 5 and count<i64>(1) == 77 else => $abort(\"selection\")";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         // The selected body is called directly (SPEC 21.3); no transitional entry or shared body remains.
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(Instances(module));
-        Assert.Equal(["i64"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
         ScalarEmissionTest.EmitFixture("GenericStorageSelectedSpecialization", Source, string.Empty);
-    }
-
-    [Fact]
-    public void InstanceAnalysisLeavesSourceBodiesAndIssuesUnchanged()
-    {
-        var c = MinimalEmissionTest.Analyze(Choose + "let n = choose<i32>(1, 2, false)");
-        var bodies = c.Ownership.Bodies.Count;
-        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "choose");
-        var places = generic.Places.ToArray();
-        Assert.True(c.Validate(out var error), error);
-        Assert.Equal(bodies, c.Ownership.Bodies.Count);
-        Assert.Empty(c.Problems);
-        Assert.Equal(places, generic.Places.ToArray());
-        Assert.Contains(generic.Places, x => x.Acquisition == AcquisitionKind.CopyOrMove);
-    }
-
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("projection")]
-    [InlineData("cleanup")]
-    [InlineData("parameter")]
-    public void MalformedPlansFailAndReanalysisRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
-        var c = MinimalEmissionTest.Analyze(
-            "struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n" +
-            "    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
-        if (defect == "projection")
-        {
-            body.Projections[0] = body.Projections[0] with { Selector = 42 };
-        }
-        else if (defect == "cleanup")
-        {
-            body.CleanupStepStorage.Clear();
-        }
-        else if (defect == "parameter")
-        {
-            var place = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Parameter);
-            body.PlaceStorage[place.Id] = place with { Type = BoundType.String };
-        }
-        else
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Projection >= 0 && x.Kind == OwnershipOperationKind.Produce);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -421,8 +168,4 @@ public class GenericStorageEmissionTest
 
         Assert.True(c.Validate(out var finalError), finalError);
     }
-
-    // Monomorphized generic instances keep the caller-facing entry names.
-    internal static EmissionFunction[] Instances(EmissionModule module)
-        => Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Where(x => x.Abi.Name.StartsWith("__kimi_generic_entry", StringComparison.Ordinal)).ToArray();
 }

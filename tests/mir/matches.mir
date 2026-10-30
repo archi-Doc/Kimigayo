@@ -5,8 +5,8 @@ fn top-level#0 @26
       _0 = const () @27 s1
       return @27
 fn area @28
-  _0: i32 return @28
-  _1: Shape arg shape @28
+  _0: i32 return @30
+  _1: Shape arg shape @29
   _2: i32 temp @33 s1
   _3: ref/Shape temp (Subject) @34 s1
   _4: isize temp @35 s1
@@ -112,8 +112,8 @@ fn area @28
       StorageDead(_2) @33 s1
       unreachable @31
 fn classify @71
-  _0: i32 return @71
-  _1: (i32, bool) arg pair @71
+  _0: i32 return @75
+  _1: (i32, bool) arg pair @72
   _2: i32 temp @78 s1
   _3: (i32, bool) temp (Subject) @79 s1
   _4: bool temp @83 s1
@@ -187,8 +187,8 @@ fn classify @71
       StorageDead(_2) @78 s1
       unreachable @76
 fn code @98
-  _0: i32 return @98
-  _1: string arg text @98
+  _0: i32 return @100
+  _1: string arg text @99
   _2: i32 temp @103 s1
   _3: ref/string temp (Subject) @104 s1
   _4: bool temp @105 s1
@@ -227,7 +227,7 @@ fn code @98
       _0 = move _6 @102 s1
       goto bb6 @102 s1
   bb8:
-      drop _1 -> bb9 [keep] @98
+      drop _1 -> bb9 [keep] @99
   bb9:
       goto bb7 @98
   bb10:
@@ -238,18 +238,18 @@ fn code @98
       goto bb10 @102 s1
   bb12:
       StorageDead(_2) @103 s1
-      drop _1 -> bb13 @98
+      drop _1 -> bb13 @99
   bb13:
       unreachable @101
 fn accepts @109
-  _0: bool return @109
-  _1: ref/string arg data @109
+  _0: bool return @112
+  _1: ref/string arg data @110
   bb0:
     * _0 = const true @113
       return @113
 fn guarded @114
-  _0: i32 return @114
-  _1: Packet arg packet @114
+  _0: i32 return @116
+  _1: Packet arg packet @115
   _2: Never temp @118 s1
   _3: Packet temp (Subject) @119 s1
   _4: isize temp @122 s1
@@ -308,7 +308,7 @@ fn guarded @114
       _0 = move _8 @131 s3
       goto bb7 @131 s3
   bb9:
-      drop _1 -> bb10 [elide] @114
+      drop _1 -> bb10 [elide] @115
   bb10:
       goto bb8 @114
   bb11:
@@ -402,12 +402,12 @@ fn guarded @114
   bb40:
       StorageDead(_3) @119 s1
       StorageDead(_2) @118 s1
-      drop _1 -> bb41 @114
+      drop _1 -> bb41 @115
   bb41:
       unreachable @117
 fn half @151
-  _0: Option<i32> return @151
-  _1: i32 arg value @151
+  _0: Option<i32> return @153
+  _1: i32 arg value @152
   _2: () temp @158 s1
   _3: bool temp @159 s1
   _4: i32 temp @160 s1
@@ -470,8 +470,8 @@ fn half @151
       StorageDead(_8) @173 s1
       unreachable @157
 fn quarter @175
-  _0: Option<i32> return @175
-  _1: i32 arg value @175
+  _0: Option<i32> return @177
+  _1: i32 arg value @176
   _2: i32 var h @182 s1
   _3: Option<i32> temp (Subject) @185 s1
   _4: isize temp @188 s1
@@ -548,8 +548,8 @@ fn quarter @175
       StorageDead(_2) @182 s1
       unreachable @181
 fn isLeaf @214
-  _0: bool return @214
-  _1: objref/Base arg view @214
+  _0: bool return @217
+  _1: objref/Base arg view @215
   _2: objref/Base temp @218
   bb0:
       StorageLive(_2) @218
@@ -559,11 +559,11 @@ fn isLeaf @214
       StorageDead(_2) @218
       return @218
 fn echo @221
-  _0: string return @221
-  _1: string arg text @221
+  _0: string return @223
+  _1: string arg text @222
   bb0:
     * _0 = move _1 @225
-      drop _1 -> bb1 [elide] @221
+      drop _1 -> bb1 [elide] @222
   bb1:
       return @224
 fn guardCleanup @227
@@ -644,7 +644,7 @@ fn guardCleanup @227
       _1 = const () @243 s4
       goto bb1 @243 s1
 fn halt @248
-  _0: Never return @248
+  _0: Never return @249
   _1: Never temp @251 s1
   _2: () temp @252 s1
   _3: () temp @253 s2
@@ -827,7 +827,7 @@ fn loopingGuard @272
       _0 = const () @273 s1
       return @273
 fn init @293
-  _0: Base return @293
+  _0: Base return (Receiver) @293
   _1: () temp @295
   s1: lexical in s0 @295
   bb0:
@@ -837,7 +837,7 @@ fn init @293
       StorageDead(_1) @295
       return @295
 fn init @294
-  _0: Leaf return @294
+  _0: Leaf return (Receiver) @294
   _1: () temp @298
   s1: lexical in s0 @298
   bb0:

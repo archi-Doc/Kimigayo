@@ -34,7 +34,8 @@ internal sealed partial class FunctionCodegen
     /// <returns>The order.</returns>
     internal static ArgumentOrder OrderOf(MirBodyKind kind) => kind switch
     {
-        MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions,
+        MirBodyKind.Fn or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions, // Keyed by its own declaration.
+        MirBodyKind.Getter or MirBodyKind.Setter => ArgumentOrder.Positions, // An accessor's, keyed by the function its calls target.
         MirBodyKind.DefaultTemplate => ArgumentOrder.Slots,
         MirBodyKind.Closure => ArgumentOrder.Environment,
         _ => throw new InvalidOperationException($"The MIR body kind {kind} has no code generation row."),
@@ -236,7 +237,8 @@ internal sealed partial class FunctionCodegen
 
     // An argument by its parameter's kind (IMPL 21.3.1): a Value or a string borrow its operand in its computation representation; an
     // OwnedSlot the address of storage the callee owns from the call on, a Move's Place itself (a string's too, whose Read is its record),
-    // or a Copy's copy or a string constant's record in its copy slot (Copies; -1: none). False for a form not covered yet.
+    // or a Copy's copy or a string constant's record in its copy slot (Copies; -1: none). False after a broken contract's record (the
+    // operand's, or a constant or pair acquisition without the copy slot Copies gives it; DECISIONS R5-M146).
     private bool Argument(in MirOperand operand, int copy, AbiParameterKind kind, out Value value)
     {
         value = default;
@@ -257,8 +259,11 @@ internal sealed partial class FunctionCodegen
             case AbiParameterKind.OwnedSlot when copy >= 0:
                 value = new('s', copy);
                 return this.LoweringOf(operand) is { } copied && this.Put(value, this.InstanceType(operand)!, copied, operand);
+            case AbiParameterKind.OwnedSlot when operand.Kind is MirOperandKind.Copy or MirOperandKind.Move:
+                return this.Address(operand.Place, out value);
             case AbiParameterKind.OwnedSlot:
-                return operand.Kind is MirOperandKind.Copy or MirOperandKind.Move && this.Address(operand.Place, out value);
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A constant or a pair acquisition takes its copy slot (Copies).
+                return false;
             default:
                 throw new InvalidOperationException($"The parameter kind {kind} has no argument row.");
         }

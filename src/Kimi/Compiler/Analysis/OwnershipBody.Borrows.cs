@@ -69,18 +69,6 @@ public sealed partial class OwnershipBody
 
     internal static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
-    internal PlaceState GetBorrowInputState(int operation)
-    {
-        if (!this.IsReachable(operation))
-        {
-            return PlaceState.None;
-        }
-
-        this.LoadInput(operation);
-        var borrow = this.Operations[operation];
-        return this.TryOwnedBorrowState(borrow, out var state) ? state : this.CompleteState(borrow.Place);
-    }
-
     // Borrow validity follows CFG uses, including the implicit use by drop.
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
@@ -596,7 +584,7 @@ public sealed partial class OwnershipBody
                 // Types carry it. Those bindings are Fields of the closure's receiver, so the Loans fall on their Places.
                 void RecordCarriers()
                 {
-                    if (rooted || this.Function is not { IsAnonymous: true, ClosureStorage: { } plan })
+                    if (rooted || this.Function is not { IsAnonymous: true, ClosureAsCreated: { } plan })
                     {
                         return;
                     }
@@ -1675,7 +1663,7 @@ public sealed partial class OwnershipBody
         if (lending >= 0 && this.LendingBorrow(lending, root) is >= 0 and var borrow)
         {
             borrowed = this.Operations[borrow].Source;
-            if (borrowed is FunctionKoto { BoundClosure: { } closure, Captures: { } entries })
+            if (borrowed is FunctionKoto { ClosureAsCreated: { } closure, Captures: { } entries })
             {
                 for (var i = 0; i < closure.Captures.Count && capture < 0; i++)
                 {

@@ -55,14 +55,12 @@ public class InputDependentValueCallTest
 
     private const string IsNone = "\nmatch r\n    .Some(let item) => $abort(\"some\")\n    .None => ()";
 
-    // SPEC 15.4.3, 15.6.4: a result whose Origins are all static substitutes nothing, whatever the per-call inputs. The Callable row's
-    // acceptance is the old path's verdict until R6-check: `apply(none)` borrows the Function Item temporary `none` for `f: ref/F`, SPEC
-    // 15.4.3 (1) binds the result to `f`, and SPEC 3.6 ends that temporary at its statement, so `match r` is invalid. A5 rejects it
-    // (a ComparisonLoanConflict_Kd row of R4's MIR difference ledger, which R4 reclassifies to class (a)); the default pipeline keeps D5's
-    // Function Item boundary (OwnershipBody.IsTemporaryOriginRoot). The Callable row's MIR side is A5's conflict at `none` (DECISIONS
-    // R4-M136, with R5's agreement).
+    // SPEC 15.4.3, 15.6.4: a result whose Origins are all static substitutes nothing, whatever the per-call inputs. In the Callable row
+    // `apply(none)` borrows the Function Item temporary `none` for `f: ref/F` and SPEC 15.4.3 (1) binds the result to `f`, but the result
+    // can hold neither `f`'s value nor a borrow formed through it (`none`'s item has no parts), so it keeps only `f`'s Content (the
+    // owner's 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154) and `match r` keeps no Loan on the temporary SPEC 3.6 ends: valid on
+    // both pipelines (dev's A5 rejected it, a class (a) row of R4-M136; the default pipeline keeps D5's Function Item boundary).
     [Theory]
-    [Trait("OldRule", "ledger:55b340ea0f4f:6")]
     [InlineData("Item", None + "let e = none\nlet r = e()" + IsNone)]
     [InlineData("Erased", None + "let e: () -> Option<ref/i32> = none\nlet r = e()" + IsNone)]
     [InlineData("ErasedInput", None + "let e: (i32) -> Option<ref/i32> = noneOf\nlet r = e(1)" + IsNone)]
@@ -72,7 +70,6 @@ public class InputDependentValueCallTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("InputDependentCallStatic" + name, source, string.Empty);
-        MirTargetSide.Check(c, name == "Callable" ? [(DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("apply(none)", "none"))] : []);
     }
 
     [Theory]

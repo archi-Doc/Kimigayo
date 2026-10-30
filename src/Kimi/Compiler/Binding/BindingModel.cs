@@ -189,7 +189,6 @@ internal enum BindingFailure : byte
     UnsafeFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
-    InvalidCLayout,
     InvalidInlineLayout,
 
     // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
@@ -348,6 +347,12 @@ public sealed class BindingSymbol
     internal bool Resolving { get; set; }
 
     internal bool HeaderBound { get; set; }
+
+    /// <summary>Gets or sets a declaration container's published closed-clause check (Binding.SourceStates): Unknown while pending or under check.</summary>
+    internal ConstraintProof SourceState { get; set; }
+
+    /// <summary>Gets or sets what <see cref="SourceState"/> rests on (an Unknown's limit, an Error's cause).</summary>
+    internal ICheckCause? SourceCause { get; set; }
 
     internal int Slot { get; set; }
 

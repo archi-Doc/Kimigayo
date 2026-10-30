@@ -107,7 +107,7 @@ public sealed partial class Binding
                     return this.FailWrite(unary, unary.Operand);
                 }
 
-                if (ElementAccess.DestinationType(unary.Operand, operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+                if (operand is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
                     ReferenceBindingAssignment(unary.Operand) is { } referenceBinding)
                 {
                     return this.Fail(unary, referenceBinding);
@@ -123,15 +123,15 @@ public sealed partial class Binding
                     return null;
                 }
 
-                // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
-                var destination = ElementAccess.DestinationType(unary.Operand, operand);
-                if (destination is null)
+                // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
+                if (this.PropertyUpdateDestination(unary.Operand) is { } written && !this.FitsTypeAt(operand, written, unary))
                 {
-                    return Complete(unary, null);
+                    return this.FailMismatch(unary, unary.Operand, operand, written);
                 }
 
-                var update = this.OperatorApplicabilityOf(unary, destination, null, scope);
-                return update.Failure == BindingFailure.None ? Complete(unary, destination) : this.FailOperator(unary, unary, update);
+                // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
+                var update = this.OperatorApplicabilityOf(unary, operand, null, scope);
+                return update.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, update);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
@@ -170,8 +170,8 @@ public sealed partial class Binding
             context = BoundType.Boolean;
         }
 
-        var left = this.BindNode(binary.Left, scope, context);
-        left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
+        var bound = this.BindNode(binary.Left, scope, context);
+        var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
         // Keep a reference binding's authority failure ahead of literal fitting and compound applicability.
         if (assignment && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
@@ -268,10 +268,9 @@ public sealed partial class Binding
             return false;
         }
 
-        if (binary.Akind != KotoKind.Equals && this.PropertySetterInput(KotoHelper.UnwrapParentheses(binary.Left)) is { } setterInput &&
-            !this.FitsTypeAt(left, setterInput, binary))
+        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination && !this.FitsTypeAt(left, destination, binary))
         {
-            this.FailMismatch(binary, binary.Left, left, setterInput);
+            this.FailMismatch(binary, binary.Left, left, destination);
             return false;
         }
 

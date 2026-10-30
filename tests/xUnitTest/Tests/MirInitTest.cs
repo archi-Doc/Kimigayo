@@ -463,14 +463,17 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
-    // body is built wherever its creation stands (failed, inside a let Binding rejected, or a failed Index's kept operand), and a failed
+    // body is built wherever its creation stands (discarded, bound by a let, inside a let Binding rejects for its own reason, its Type
+    // annotation, or a failed Index's kept operand; a result over the call's
+    // own storage fails only its returned value, whose relation is a row the Origin stratum also records, DECISIONS R4-M152), and a failed
     // Index, Field, follow or `*p` evaluates its operands before its Opaque value, which does not use a moved operand again.
     [Fact]
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
-        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    _ = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));

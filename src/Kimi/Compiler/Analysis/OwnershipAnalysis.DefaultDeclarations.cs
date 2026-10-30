@@ -201,7 +201,7 @@ public sealed partial class OwnershipAnalysis
 
         private void CheckCaptures(FunctionKoto closure)
         {
-            if (closure.ClosureStorage is not { } plan || closure.Captures is not { } entries)
+            if (closure.ClosureAsCreated is not { } plan || closure.Captures is not { } entries)
             {
                 return;
             }

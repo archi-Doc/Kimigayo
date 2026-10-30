@@ -37,7 +37,7 @@ internal sealed partial class Layout
     internal Layout() => this.recordsByKey = this.records.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>Forgets the entries and records of the previous program version (Compilation.InvalidateSourceAnalysis); a pass
-    /// without an edit keeps every Type's stored Types, IsCLayout, InlineCycle and CLayoutRejected (R4-M51's premise), so warm
+    /// without an edit keeps every Type's stored Types, IsCLayout, CLayoutUnavailable and InlineCycle (R4-M51's premise), so warm
     /// passes keep them.</summary>
     internal void Clear()
     {
@@ -52,13 +52,23 @@ internal sealed partial class Layout
     // A storage declaration, fixed array or enum Binding rejected is a leaf one level high, of no known size.
     private static Entry Rejected(BoundType type) => Entry.Of(Outcome.Rejected, null, type, 1, 0, 0);
 
-    // A Type placed with `budget` levels left. A row is 0 high; a complete entry serves every budget not below its height; at budget
-    // 0 a placed Type lies outside the window; an exhausted entry is `budget` + 1 high.
+    // A C-layout struct whose layout is unavailable at its declaration (SPEC 6.7.1: open, derived or empty; AdtDef.CLayoutUnavailable) is
+    // CLayout at once, a leaf one level high naming itself, of no known size: no part is placed.
+    private static Entry Unavailable(BoundType type) => Entry.Of(Outcome.CLayout, null, type, 1, 0, 0);
+
+    // A Type placed with `budget` levels left. A row is 0 high, and so is an abstract Type, Rejected naming itself, of no known size
+    // (Layout.cs' Inputs; DECISIONS R5-M155); a complete entry serves every budget not below its height; at budget 0 a placed Type lies
+    // outside the window; an exhausted entry is `budget` + 1 high.
     private Entry Walk(BoundType type, int budget)
     {
         if (type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.FixedArray) &&
             !AdtDef.IsStruct(type) && !AdtDef.IsEnum(type))
         {
+            if (type.IsAbstract)
+            {
+                return Entry.Of(Outcome.Rejected, null, type, 0, 0, 0);
+            }
+
             var row = Row(type);
             return Entry.Of(Outcome.Ok, row, null, 0, (ulong)row.Layout.Size, row.Layout.Alignment);
         }
@@ -81,7 +91,8 @@ internal sealed partial class Layout
 
         entry = type.Kind switch
         {
-            _ when type.Symbol?.Adt is { InlineCycle: true } or { CLayoutRejected: true } => Rejected(type),
+            _ when type.Symbol?.Adt is { InlineCycle: true } => Rejected(type),
+            _ when type.Symbol?.Adt is { CLayoutUnavailable: true } => Unavailable(type),
             BoundTypeKind.FixedArray => this.PlaceArray(type, budget - 1),
             _ when AdtDef.IsEnum(type) => this.PlaceEnum(type, budget - 1),
             _ => this.Place(type, budget - 1),
@@ -106,7 +117,7 @@ internal sealed partial class Layout
         var structure = AdtDef.IsStruct(type);
         var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
         var fold = new Fold(type);
-        Entry? inherited = structure && AdtDef.Base(type) is { } parent ? fold.Add(this.Walk(parent, budget), false) : null;
+        Entry? inherited = structure && AdtDef.Base(type) is { } parent ? fold.Add(this.Walk(parent, budget), cField: false) : null;
         var count = type.Kind switch
         {
             BoundTypeKind.Tuple or BoundTypeKind.Closure => type.Components.Count,
@@ -212,7 +223,7 @@ internal sealed partial class Layout
         }
 
         var fold = new Fold(type);
-        var element = fold.Add(this.Walk(type.Components[0], budget), false);
+        var element = fold.Add(this.Walk(type.Components[0], budget), cField: false);
         var alignment = Math.Max(element.Alignment, 1);
         var size = (UInt128)(ulong)type.Length * element.Size;
         if (fold.Decide(budget, size, alignment, type.Length > MaximumSize ? Outcome.CountLimit : Outcome.Ok) is { } decided)
@@ -242,7 +253,7 @@ internal sealed partial class Layout
                 continue;
             }
 
-            var part = fold.Add(this.Walk(item, budget), false);
+            var part = fold.Add(this.Walk(item, budget), cField: false);
             alignment = Math.Max(alignment, Math.Max(part.Alignment, 1));
             payload = UInt128.Max(payload, part.Size);
         }

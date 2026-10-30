@@ -44,16 +44,20 @@ internal sealed partial class InstanceCollector
             return this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable));
         }
 
-        return this.types.Witness(callable) is { } target ? this.Requirement(program, item, subject, symbol, target) : -1;
+        return this.types.Witness(callable) is { } target ? this.Called(program, item, subject, symbol, target) : -1;
     }
 
     // SPEC 8.13.3: the body of the implementation a function's substitution selects, admitted for a site of an item's body; without one,
     // what its call runs (Bodyless).
     private int Implementation(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
-    {
-        var implementation = this.types.Implementation(function, subst, 0)!;
-        return program.Callee(new(MirCalleeKind.Fn, implementation)) is { } body
+        => this.Selected(program, function, subst, out var implementation) is { } body
             ? this.Admit(item, subject, body, subst) : this.Bodyless(program, item, subject, implementation, subst);
+
+    // SPEC 8.13.3: the implementation a function's substitution selects, and its MIR body; null for a function without one.
+    private MirBody? Selected(MirProgram program, BindingSymbol function, Subst? subst, out BindingSymbol implementation)
+    {
+        implementation = this.types.Implementation(function, subst, 0)!;
+        return program.Callee(new(MirCalleeKind.Fn, implementation));
     }
 
     // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the
@@ -62,11 +66,18 @@ internal sealed partial class InstanceCollector
     // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); one whose
     // legacy row writes its call in its instance (LegacyRow.InInstance: the Array operations and storage kinds, placeEntry), its LegacyRow
     // item (K 4.5 row 2; DECISIONS R5-M121, R5-M124, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an
-    // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), which is a
-    // by-value use where the row says so, as at the intrinsic's call (K 4.8, IntrinsicRows.LaysOutType; DECISIONS R5-M108); -1 for another
-    // (a foreign function).
+    // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), read only for a
+    // row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a
+    // foreign function, an intrinsic whose row reads no Type argument). A legacy or intrinsic row whose need is TypeArguments (a whole-value
+    // update, a Dictionary kernel, IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS
+    // R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
+        if (subst is not null && LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Need: LayoutNeed.TypeArguments })
+        {
+            this.LaysOutArguments(item, subject, subst);
+        }
+
         if (this.types.Published(function) is { Runs: { } requirement, On: var on })
         {
             return this.Below(subject, function, subst, on) is { } below ? this.Runs(program, item, subject, requirement, below) : -1;
@@ -82,12 +93,18 @@ internal sealed partial class InstanceCollector
             return this.AdmitRow(item, subject, function, subst);
         }
 
-        if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id })
+        if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
+            IntrinsicRows.Of(id) is not { ReadsTypeArgument: true } row)
         {
-            return -1;
+            return -1; // A foreign function, or an intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).
         }
 
-        return this.Intrinsic(program, item, subject, IntrinsicRows.Of(id), subst!.Types[0]);
+        if (row.Need == LayoutNeed.TypeArguments)
+        {
+            this.LaysOutArguments(item, subject, subst!);
+        }
+
+        return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
     }
 
     // X4, F2c (DECISIONS R5-M28, R5-M124): the body of the DictionaryStorage function a legacy row or the Dictionary runtime declares as its
@@ -101,7 +118,7 @@ internal sealed partial class InstanceCollector
             return this.Admit(item, site, body, subst);
         }
 
-        this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        this.Report(DiagnosticCode.InternalInvariant_Kd, site);
         return -1;
     }
 }

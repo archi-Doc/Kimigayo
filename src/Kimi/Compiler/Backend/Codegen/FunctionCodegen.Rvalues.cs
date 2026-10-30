@@ -26,39 +26,27 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (!this.Operand(operand, out var value))
+        if (this.Operand(operand, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-            return;
+            this.Store(statement, value);
         }
-
-        this.Store(statement, value);
     }
 
     // Ref (IMPL 21.1.3: a shared, exclusive, two-phase or raw borrow is one nonnull pointer to its Place's storage): the address the place
     // writer gives, stored into the statement's Place.
     private void Ref(in MirStatement statement)
     {
-        if (!this.Address(statement.Rvalue.Place, out var address))
+        if (this.Address(statement.Rvalue.Place, out var address))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-            return;
+            this.Store(statement, address);
         }
-
-        this.Store(statement, address);
     }
 
     // A Discriminant (SPEC 6.5.1, 14.8): the Case ordinal its enum Place's tag holds (Layout.Tag, at the record's offset 0), widened to the
     // Place's isize.
     private void Discriminant(in MirStatement statement)
     {
-        if (!this.Address(statement.Rvalue.Place, out var address))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-            return;
-        }
-
-        if (this.LoweringOf(statement.Place) is { } isize)
+        if (this.Address(statement.Rvalue.Place, out var address) && this.LoweringOf(statement.Place) is { } isize)
         {
             var tag = Layout.Tag;
             this.Store(statement, this.Convert("zext ", tag.ComputationType, this.LoadAt(address, tag.Layout), isize.ComputationType));
@@ -66,19 +54,19 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Len (SPEC 4.7.3): the length of a fixed array, Array, Slice or Dictionary Place (Length; a Dictionary's live count, DECISIONS
-    // R5-M124), its Place located first, so an Index on its path checks its bounds; a string has no Len (no MIR producer).
+    // R5-M124), its Place located first, so an Index on its path checks its bounds; a string has no Len (no MIR producer), a broken contract.
     private void Len(in MirStatement statement)
     {
         var place = statement.Rvalue.Place;
         var type = this.InstanceType(place)!;
-        if (type.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.Dictionary) ||
-            !this.Address(place, out var address))
+        if (type.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.Dictionary))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source);
             return;
         }
 
-        if (this.LoweringOf(place) is { } record)
+        var record = type.Kind == BoundTypeKind.FixedArray ? null : this.LoweringOf(place); // A fixed array's length is its Type's.
+        if (this.Address(place, out var address) && (record is not null || type.Kind == BoundTypeKind.FixedArray))
         {
             this.Store(statement, this.Length(type, record, address));
         }

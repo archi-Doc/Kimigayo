@@ -144,6 +144,19 @@ public class ClosureReceiverClassificationTest
         Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
     }
 
+    // SPEC 3.5.1, 10.2.2, 7.7.3 (PLAN G232): a captured exclusive reference, `uniq/T` or `objuniq/T`, at a fixed expected Type that it fits is
+    // Reborrowed exclusively, as at a bare acquisition position, so the call is Exclusive and a `let` Closure's call invalid; the
+    // Reborrow is contained in the call's receiver, which `during r` does not prove. Each row: the records.
+    [Theory]
+    [InlineData("    var n: i32 = 1\n    let r = n@uniq\n", "uniq/i32")]
+    [InlineData("    var o = Kimi.Intrinsics.makeObj(P.init())\n    let r = o@objuniq\n", "objuniq/P")]
+    public void AFittingFixedExpectedTypeReborrowsACapturedExclusiveReference(string head, string type)
+    {
+        var source = "struct P\n    public var x: i32 = 0\n    public init() => ()\npublic func main() -> ()\n" + head +
+            "    let f = func [r] () -> i32\n        let s: " + type + " during r = r\n        return 0\n    let v = f()\n";
+        Assert.Equal("UnprovenOriginRelation_Kd r; InvalidAssignment_Kd f", Records(source));
+    }
+
     // SPEC 7.3.3 (check 1), 7.7.3, 13.5.5: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
     // a let obj handle is not writable, a reference supplies no owning receiver and a payload offers no Take; a temporary callee, a
     // callee reached through a reference or an element and an Exclusive call of an unproven Sealed payload are located limits before
@@ -427,7 +440,7 @@ public class ClosureReceiverClassificationTest
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         for (var pass = 0; pass < 2; pass++)
         {
-            var closure = BoundClosure.Of(function)!;
+            var closure = function.ClosureDefinition!;
             Assert.Equal((true, SemanticsKind.Uniq, SemanticsKind.Uniq, "n"), (closure.Classified, closure.CaseFreeReceiver, closure.Receiver, closure.ExclusiveUse?.ToString()));
             Assert.Equal(complete, c.Bind().IsComplete);
         }

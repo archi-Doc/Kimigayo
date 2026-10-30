@@ -167,10 +167,12 @@ public sealed class MirValidatorTest
     // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op has a
     // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of
     // a compiler function it serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
-    // arguments than its declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
-    // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
-    // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32. A returning Value call of a
-    // `(i32) -> Never` callable into a Temp of Type Never agrees in Type but is no writer R5-M38 admits.
+    // arguments than its declared signature has inputs; a testRecordValue whose value is no Scalar (a ref/i32: no layer is followed; SPEC
+    // 3.1, F8b), which code generation never sees (fail-before: no row), and one short of its row's arity 2, an Arity finding (fail-before:
+    // arity -1 admitted any count). A local an Opaque value defines has an unknown Type (the replaced syntax may have none), which any use
+    // admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand position (a Use, an
+    // operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32. A returning Value call of a `(i32) -> Never`
+    // callable into a Temp of Type Never agrees in Type but is no writer R5-M38 admits.
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
@@ -199,6 +201,8 @@ public sealed class MirValidatorTest
     [InlineData("payload", "Operation")]
     [InlineData("shorthand", "UnknownKind")]
     [InlineData("returning", "NeverWrite")]
+    [InlineData("record", "Type")]
+    [InlineData("short", "Arity")]
     public void TypeTierRejectsEachForm(string form, string rule)
     {
         var findings = Validate(Typed(form));
@@ -892,6 +896,36 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
     }
 
+    // DECISIONS BU-48: MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver: the builder's is valid; the role
+    // dropped from a constructor's _0, set on another local of the constructor, or set on _0 of a body that is not a constructor, is a Local
+    // finding.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("dropped")]
+    [InlineData("other")]
+    [InlineData("function")]
+    public void AReceiverIsExactlyAConstructorsResultLocal(string? broken)
+    {
+        var bodies = MirBuildTest.Compile("struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(n: i32) -> i32 => n\n")
+            .BuildMir().Bodies.ToArray();
+        var body = bodies.Single(x => x.Source.Module == 0 && (broken == "function" ? x.Key.Decl?.Name == "f" : AdtDef.IsConstructor(x.Key.Decl)));
+        var locals = body.Locals.ToArray();
+        Assert.Equal(broken == "function" ? MirLocalRole.None : MirLocalRole.Receiver, locals[0].Role);
+        var (at, role) = broken switch
+        {
+            "dropped" => (0, MirLocalRole.None),
+            "other" => (1, MirLocalRole.Receiver),
+            "function" => (0, MirLocalRole.Receiver),
+            _ => (-1, MirLocalRole.None),
+        };
+        if (at >= 0)
+        {
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Role = role };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
+    }
+
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
     // as a raw layer or inside a Tuple, is a Local finding; the builder's locals over unstated pointers are valid.
     [Theory]
@@ -962,7 +996,7 @@ public sealed class MirValidatorTest
         var result = broken == "returning" ? BoundType.Never : BoundType.Boolean;
         var callable = Local(c.Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [c.Types.Tuple([BoundType.I32]), result]));
         var (adapted, borrowed) = (broken == "adapt" ? real : a, Local(c.Types.Reference(SemanticsKind.ObjRef, types.Point)));
-        var blocks = new[] { body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock() };
+        var blocks = new[] { body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock() };
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
         SourceInfo Where(string form) => broken == form ? Broken : default;
         void Assign(MirPlace place, MirRvalue rvalue, string form = "") => body.Push(blocks[0], MirStatement.Assign(place, rvalue, Where(form)));
@@ -1020,7 +1054,13 @@ public sealed class MirValidatorTest
         body.Terminate(blocks[3], MirTerminator.Call(new(MirCalleeKind.Fn, Function("d"), Arg: 2), Operands(broken == "template" ? MirOperand.Copy(a) : MirOperand.Copy(view)), 1, flag, blocks[4], Where("template")));
         var (receiver, by) = (MirOperand.Copy(gauge), MirOperand.Copy(a));
         body.Terminate(blocks[4], MirTerminator.Call(new(MirCalleeKind.Fn, Function("scaled")), broken == "receiver" ? Operands(by, receiver) : Operands(receiver, by), 2, a, blocks[5], Where("receiver")));
-        body.Terminate(blocks[5], MirTerminator.Return(Where("return")));
+        var held = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
+        var recorded = MirOperand.Copy(broken == "record" ? view : a);
+        var records = broken == "short" // Its side, then the value; a short call its side alone (its row's arity is 2).
+            ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TestRecordValue), Operands(one), 1, held, blocks[6], Broken)
+            : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TestRecordValue), Operands(one, recorded), 2, held, blocks[6], Where("record"));
+        body.Terminate(blocks[5], records);
+        body.Terminate(blocks[6], MirTerminator.Return(Where("return")));
         return body;
     }
 

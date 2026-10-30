@@ -53,6 +53,17 @@ public class PositionModelTest
         "var values: Array<i32> = [1, 2, 3]\nvalues.insert(^1, 9)\n" +
         "require at(3) == 3 and at(^1) == 3 and at(5@isize) == -1 and at(^(2@usize)) == 2 and values[2] == 9 else => $abort(\"special\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 4.6.1, 4.7.1: the selections at a position of a Type parameter, which each instance runs: an element read (line 3) and write
+    // (line 14), a written ^x (line 6) and a range (line 9); row prints them at 1 and 2 of one integer Type.
+    private const string Generic =
+        "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\n" +
+        "func last<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[^p]\n" +
+        "func span<I>(values: ref/Array<i32>, a: I, b: I) -> isize\n    I is PrimitiveInteger\n    let s = values[a..b]\n    return s.length\n" +
+        "func put<I>(p: I, v: i32) -> i32\n    I is PrimitiveInteger\n    var values: [3 of i32] = [1, 2, 3]\n    values[p] = v\n" +
+        "    return values[0] + values[1] + values[2]\nfunc row<I>(a: [3 of i32], d: ref/Array<i32>, one: I, two: I)\n    I is PrimitiveInteger\n" +
+        "    Console.writeLine(\"\\(at(a, one)) \\(at(a, two)) \\(last(a, one)) \\(span(d, one, two)) \\(put(two, 9))\")\n" +
+        "let a: [3 of i32] = [10, 20, 30]\nlet d: Array<i32> = [1, 2, 3, 4]\n";
+
     private static readonly (string Name, BigInteger Min, BigInteger Max)[] Integers =
     [
         ("i8", sbyte.MinValue, sbyte.MaxValue), ("u8", 0, byte.MaxValue), ("i16", short.MinValue, short.MaxValue), ("u16", 0, ushort.MaxValue),
@@ -165,6 +176,24 @@ public class PositionModelTest
         var ir = ScalarEmissionTest.EmitFixture("PositionModelSpecializations", Specializations, "ok\n");
         Assert.DoesNotContain(" to i128", ir, StringComparison.Ordinal);
     }
+
+    // SPEC 4.6.1, 4.6.3, 4.7.1 (DECISIONS R5-M154): a position of a Type parameter selects as its instance's integer at every width, and
+    // one outside isize or negative fails in its selection's one check, at the selection: a u128 that truncation would read as 1, and
+    // a negative element, write, ^x and range start.
+    [Theory]
+    [InlineData("Widths", null, null)]
+    [InlineData("Wide", "at(a, 18446744073709551617@u128)", "3:12")]
+    [InlineData("Negative", "at(a, -1@i8)", "3:12")]
+    [InlineData("NegativeWrite", "put(-1@isize, 9)", "14:5")]
+    [InlineData("NegativeFromEnd", "last(a, -1@i64)", "6:12")]
+    [InlineData("NegativeStart", "span(d, -1@i16, 1@i16)", "9:13")]
+    public void GenericPositionsResolveAtEveryWidth(string name, string? outside, string? location)
+        => ScalarEmissionTest.EmitFixture(
+            "PositionModelGeneric" + name,
+            Generic + (outside is null ? string.Concat(Integers.Select(static x => $"row(a, d, 1@{x.Name}, 2@{x.Name})\n")) : $"let x = {outside}\n"),
+            outside is null ? string.Concat(Integers.Select(static _ => "20 30 30 1 12\n")) : string.Empty,
+            outside is null ? 0 : 1,
+            location is null ? null : $"Hello.kimi:{location}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     private static string Bool(bool value) => value ? "true" : "false";
 }

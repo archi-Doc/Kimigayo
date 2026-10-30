@@ -142,18 +142,20 @@ public sealed partial class RetentionTest
 
     // SPEC 15.6.4, 15.6.1, 15.3.3: a result during an input retains it, a meet retains each operand, a declared `outlives` clause or the
     // well-formedness of a borrowed input makes another input reachable, and an Origin of no output's atoms' closure is not retained. A
-    // result naming an abstract part of a borrowed input's referent retains it as Content (step 4).
+    // result naming an abstract part of a borrowed input's referent retains it as Content (step 4). A reachable input is retained by
+    // Value only where the result can hold its value or a borrow formed through it: `ref/(ref/i32 during c) during o -> ref/i32 during
+    // o` keeps `b`'s Content (`**b` lies past a second shared layer; the owner's 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154).
     [Theory]
-    [InlineData("func f<T>(x: ref/T, y: ref/T) -> ref/T during x => x", "0 Value result, 1 Content result")]
-    [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 => y", "0 Value result, 1 Value result")]
-    [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during x => x", "0 Value result")]
-    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    origin a outlives b\n    return x", "0 Value result, 1 Value result")]
-    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b => y", "1 Value result")]
-    [InlineData("func f(b: ref/(ref/i32 during c) during o) -> ref/i32 during o => b@follow", "0 Value result")]
-    [InlineData("func f(b: ref/(ref/i32 during c) during o, x: ref/i32 during c) -> ref/i32 during o => x", "0 Value result, 1 Value result")]
+    [InlineData("func f<T>(x: ref/T, y: ref/T) -> ref/T during x => x", "result {0 Value, 1 Content}")]
+    [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 => y", "result {0 Value, 1 Value}")]
+    [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during x => x", "result {0 Value}")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    origin a outlives b\n    return x", "result {0 Value, 1 Value}")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b => y", "result {1 Value}")]
+    [InlineData("func f(b: ref/(ref/i32 during c) during o) -> ref/i32 during o => b@follow", "result {0 Content}")]
+    [InlineData("func f(b: ref/(ref/i32 during c) during o, x: ref/i32 during c) -> ref/i32 during o => x", "result {0 Content, 1 Value}")]
     [InlineData("func f(x: ref/i32, n: i32) -> i32 => n", "")]
-    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "0 Value result, 0 Value store 0")]
-    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or ref\n    T is Copy\n    _ = count\n    return value", "0 Value result")]
+    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "result {0 Value}, store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or ref\n    T is Copy\n    _ = count\n    return value", "result {0 Value}")]
     public void DeclaredRelationsDecideTheResult(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -165,21 +167,21 @@ public sealed partial class RetentionTest
     public void EnclosingPremisesAreTheBodysPremises()
     {
         var nested = Bind(Enclosing + "    func pass(value: ref/i32 during c) -> ref/i32 during o => value\n" + Write + "    let r = pass(x)\n    q@follow = 5\n    return r@follow\n");
-        Assert.Equal("0 Value result", Declared(nested, "pass"));
-        Assert.Equal(["0 Value result"], Calls(nested, "pass"));
+        Assert.Equal("result {0 Value}", Declared(nested, "pass"));
+        Assert.Equal(["result {0 Value}"], Calls(nested, "pass"));
         var closure = Bind(Enclosing + "    let k = func (value: ref/i32 during c) -> ref/i32 during o => value\n" + Write + "    let r = k(x)\n    q@follow = 5\n    return r@follow\n");
-        Assert.Equal(["1 Value result"], ValueCalls(closure));
+        Assert.Equal(["result {1 Value}"], ValueCalls(closure));
         var result = Bind("func outer(q: uniq/i32 during c) -> Option<ref/(ref/i32 during c) during o>\n    func pass(value: ref/i32 during c) -> ref/i32 during o => value\n" +
             Write + "    let r = pass(x)\n    q@follow = 5\n    _ = r@follow\n    return .None\n");
-        Assert.Equal("0 Value result", Declared(result, "pass"));
+        Assert.Equal("result {0 Value}", Declared(result, "pass"));
     }
 
     // SPEC 15.6.4, 15.6.3: a receiver retained through its referent's Origins only is Content (a read through `self`), through its own
     // outer Origin Value; a constructor's result retains the borrow it stores.
     [Theory]
-    [InlineData("init", "0 Value result")]
-    [InlineData("read", "0 Content result")]
-    [InlineData("whole", "0 Value result")]
+    [InlineData("init", "result {0 Value}")]
+    [InlineData("read", "result {0 Content}")]
+    [InlineData("whole", "result {0 Value}")]
     public void ReceiversRetainByTheirLayer(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(View), method));
 
@@ -189,20 +191,21 @@ public sealed partial class RetentionTest
     // (SPEC 15.6.2: a shared input, an rc payload held by value), a raw pointer read past it included (SPEC 5.7, 8.11.4 rule 1; the
     // expectation the SPEC revision R4-M95 changed: `ref/(raw/…)` stores nothing); a value stored into a writable slot brings its whole
     // Type, so an Origin below an rc or arc layer there, or below a pair layer admitting only them, is stored (DECISIONS BU-1). A raw
-    // input's own pointee retains it as a read through it, never its own value (SPEC 15.6.4 as DECISIONS R4-M116 revised it).
+    // input's own pointee retains it as a read through it, never its own value (SPEC 15.6.4 as DECISIONS R4-M116 revised it), as a
+    // by-value input's own exclusive referent does (`Cell`'s `item` cannot hold the Cell; DECISIONS R4-M154).
     [Theory]
-    [InlineData("func f(dst: uniq/(ref/i32 during q), v: ref/i32 during q) => dst@follow = v", "0 Content store 0, 1 Value store 0")]
+    [InlineData("func f(dst: uniq/(ref/i32 during q), v: ref/i32 during q) => dst@follow = v", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("func f(dst: uniq/i32, v: ref/i32) => dst@follow = v@follow", "")]
     [InlineData("func f(dst: ref/(ref/i32 during q), v: ref/i32 during q) -> i32 => v@follow", "")]
-    [InlineData("func f<T>(dst: uniq/T, value: T) => dst@follow = value@move", "0 Content store 0, 1 Value store 0")]
-    [InlineData("func f<T>(storage: raw/T, value: T) => ()", "0 Content store 0, 1 Value store 0")]
+    [InlineData("func f<T>(dst: uniq/T, value: T) => dst@follow = value@move", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("func f<T>(storage: raw/T, value: T) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("func f(storage: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => ()", "")]
-    [InlineData(Cell + "func f(dst: Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
+    [InlineData(Cell + "func f(dst: Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData(Cell + "func f(dst: ref/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
-    [InlineData(Box + "func f(dst: uniq/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => dst@follow = v@move", "0 Content store 0, 1 Value store 0")]
-    [InlineData(Box + "func f(dst: uniq/(arc/B<ref/i32 during q>), v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
-    [InlineData(Cell + Box + "func f(dst: Cell<rc/B<ref/i32 during q>>, v: rc/B<ref/i32 during q>) => ()", "0 Value store 0, 1 Value store 0")]
-    [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Box + "func f(dst: uniq/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => dst@follow = v@move", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(Box + "func f(dst: uniq/(arc/B<ref/i32 during q>), v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(Cell + Box + "func f(dst: Cell<rc/B<ref/i32 during q>>, v: rc/B<ref/i32 during q>) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
     [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
@@ -217,14 +220,14 @@ public sealed partial class RetentionTest
             "var e: Array<S> = []\ne.append(S.init(r: x@ref))\nvar o: Array<obj/S> = []\no.append(Kimi.Intrinsics.makeObj(S.init(r: x@ref)))\n" +
             "var p: Array<rc/S> = []\np.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))\n" +
             "var q: Array<arc/S> = []\nq.append(Kimi.Intrinsics.makeArc(S.init(r: x@ref)))\n");
-        Assert.Equal(Enumerable.Repeat("0 Content store 0, 1 Value store 0, referent store 0", 4), Calls(c, "append"));
+        Assert.Equal(Enumerable.Repeat("store 0: own {0 Content, 1 Value}, reached {}, referent store 0", 4), Calls(c, "append"));
     }
 
     // SPEC 15.6.4: a method writing through `uniq/Self` stores an input into the receiver's referent; one reading through it is
     // Content into its result.
     [Theory]
-    [InlineData("put", "0 Content store 0, 1 Value store 0")]
-    [InlineData("item", "0 Content result, 0 Content store 0")]
+    [InlineData("put", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("item", "result {0 Content}, store 0: own {0 Content}, reached {}")]
     public void ExclusiveReceiversAreStores(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(Slot), method));
 
@@ -238,11 +241,11 @@ public sealed partial class RetentionTest
             "struct List<T>\n    public var value: T\n    public var next: Option<rc/List<T>> = .None\n    public init(value: T) => self.value = value\n" +
             "func inspect<T>(value: ref/T) => ()\nvar n = 1\nlet nest = Nest<ref/i32>.init(value: n@ref)\ninspect(nest@ref)\n" +
             "let list = List<ref/i32>.init(value: n@ref)\ninspect(list@ref)\n");
-        Assert.Equal(["limit", "0 Value result"], Calls(c, "init"));
+        Assert.Equal(["limit", "result {0 Value}"], Calls(c, "init"));
         Assert.Equal(["limit", string.Empty], Calls(c, "inspect"));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).First(static x => x.Target.Name == "inspect");
         Assert.Same(c.Types.Retains(call.Target, c.Types.SubstOf(call), null), c.Types.Retains(call.Target, c.Types.SubstOf(call), null));
-        Assert.Throws<InvalidOperationException>(() => c.Types.Retains(call.Target, c.Types.SubstOf(call), null).Rows.Length);
+        Assert.Throws<InvalidOperationException>(() => c.Types.Retains(call.Target, c.Types.SubstOf(call), null).Result);
     }
 
     // SPEC 4.8.1, 4.8.2, 15.6.4 step 4: a Slice or UniqSlice input is a borrow of its elements, its outer Origin Value and the elements'
@@ -254,32 +257,87 @@ public sealed partial class RetentionTest
         var c = Bind("var n = 1\nvar refs: [_ of ref/i32] = [n@ref]\nlet copied = refs.slice().toArray()\nvar all: Array<ref/i32> = []\nall.appendCopies(refs.slice())\n" +
             "func keep(view: Slice<ref/i32 during q>, v: ref/i32 during q) -> Option<ref/i32 during q> => .None\n" +
             "func put(view: UniqSlice<ref/i32 during q>, v: ref/i32 during q) => ()\nfunc first(view: UniqSlice<ref/i32 during q>) -> Option<ref/i32 during q> => .None\n");
-        Assert.Equal(["0 Content result"], Calls(c, "toArray"));
-        Assert.Equal(["0 Content store 0, 1 Content store 0, referent store 0"], Calls(c, "appendCopies"));
-        Assert.Equal("0 Content result, 1 Value result", Declared(c, "keep"));
-        Assert.Equal("0 Content store 0, 1 Value store 0", Declared(c, "put"));
-        Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
+        Assert.Equal(["result {0 Content}"], Calls(c, "toArray"));
+        Assert.Equal(["store 0: own {0 Content, 1 Content}, reached {}, referent store 0"], Calls(c, "appendCopies"));
+        Assert.Equal("result {0 Content, 1 Value}", Declared(c, "keep"));
+        Assert.Equal("store 0: own {0 Content, 1 Value}, reached {}", Declared(c, "put"));
+        Assert.Equal("result {0 Content}, store 0: own {0 Content}, reached {}", Declared(c, "first"));
     }
 
     // SPEC 15.6.4 step 4, 8.1.2 (DECISIONS BU-3): a pair layer whose binder admits only borrows is a borrowed input in every admitted
     // case, its slot Value and its target Content, which an admitted exclusive borrow lets the call write, as for a concrete `uniq/T`;
     // the original `s/T` and an application alike; the pair's slot still reaches storage that holds the pair by value. A pair admitting
-    // `owner`, raw or an object owner is no borrow in that case, so its target stays Value.
+    // `owner`, raw or an object owner is no borrow in that case, so its target stays Value: a Value source for the result and for the
+    // stores into other inputs. In its exclusive cases the call writes through it the referent of the argument's own borrow, which holds
+    // other inputs' values (`x`) and other occurrences of its own input (a Tuple's second element) and carries what a read through the
+    // argument carries, never the pair value itself (SPEC 15.6.4: the argument's own value is retained only by storage that can hold a
+    // value of its Type; DECISIONS BU-49, PLAN G147 (8i), A5 step 2 plan 2c-4): `store 0: own {0 Content}, reached {}`, as the
+    // borrow-only twins read, never Value; the owner-only twin writes no caller storage.
     [Theory]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objref or objuniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objref or objuniq\n    return", "store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref\n    return", "")]
-    [InlineData("func f<s/T>(a: s/Option<T>, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is ref or uniq\n    return a", "0 Value result, 0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/Option<T>, b: ref/i32)\n    s is ref or uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is ref or uniq\n    return a", "result {0 Value}, store 0: own {0 Content}, reached {}")]
     [InlineData(
         "func f<s/T>(a: s/T, b: uniq/Array<s/T>)\n    s is ref or uniq\n    return",
-        "0 Content store 0, 1 Content store 0, 0 Value store 1, 1 Content store 1")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Value store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "0 Value store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "0 Value store 0")]
+        "store 0: own {0 Content, 1 Content}, reached {}, store 1: own {0 Value, 1 Content}, reached {0 Content, 1 Content}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner\n    return", "")]
+    [InlineData("func f<s/T>(a: s/T, x: T)\n    s is owner or uniq\n    T is Copy\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("func f<s/T>(a: (s/T, T), b: ref/i32)\n    s is owner or uniq\n    T is Copy\n    return", "store 0: own {0 Value}, reached {}")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    return a", "result {0 Value}, store 0: own {0 Content}, reached {}")]
     public void BorrowPairLayersAreBorrowedInputs(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same rule for every exclusive borrow layer a by-value input holds (DECISIONS BU-49; RetentionWalk): a concrete `uniq` layer and
+    // a pair layer admitting one, nested in a Tuple or an Option, borrow-only or owner-admitting, address storage that carries what a read
+    // through the input carries, a Tuple's other element's referent included (`*a.1` written into `*a.0`), never the input's own value:
+    // `store 0: own {0 Content}, reached {}`, each pair form beside its concrete twin. Through no exclusive layer (`(T, i32)`) the call
+    // writes nothing. The referent `ref/i32` can hold neither the layer's borrow nor a borrow formed through it, whatever its Origins, so
+    // the input's own value is not retained there, `1 Content`, in an Option and a Tuple as at the top level (the owner's WK decision,
+    // DECISIONS R4-M154, superseding BU-49's own-Origin row, which kept `1 Value store 1` with `during q` on both layers).
+    [Theory]
+    [InlineData("func f(a: ref/i32 during q, b: Option<uniq/(ref/i32 during q) during q>) => ()", "store 1: own {0 Value, 1 Content}, reached {}")]
+    [InlineData("func f(a: ref/i32 during q, b: (uniq/(ref/i32 during q) during q, i32)) => ()", "store 1: own {0 Value, 1 Content}, reached {}")]
+    [InlineData("func f(a: ref/i32 during q, b: uniq/(ref/i32 during q) during q) => ()", "store 1: own {0 Value, 1 Content}, reached {}")]
+    [InlineData("func f(a: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) => ()", "store 1: own {1 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: (s/T, i32), b: ref/i32)\n    s is uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(a: (uniq/T during p, i32), b: ref/i32) => ()", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: Option<s/T>, b: ref/i32)\n    s is uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(a: Option<uniq/T during p>, b: ref/i32) => ()", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: (s/T, s/T), b: ref/i32)\n    s is uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(a: (s/T, s/T), b: ref/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(a: (uniq/T during p, uniq/T during p), b: ref/i32) => ()", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(a: (T, i32), b: ref/i32) => ()", "")]
+    public void ExclusiveLayersHeldByValueStoreTheirContent(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same at calls over exclusive layers held by value (PLAN G147 (8i)'s programs; A5 step 2 plan 2c-4; DECISIONS BU-49): a generic
+    // caller passing its `s/T` by value, directly, as a bare capture of a by-value Closure (owner-or-uniq or uniq-only) or as a result's
+    // input, and a Closure capturing `y@uniq`, store other inputs into the referent and what a read through the argument carries, keep
+    // the value in the result, and never store the argument's own value in its referent; a pair the callee reads through its exclusive
+    // receiver keeps rule G's `0 Content store 0` (DECISIONS R4-M148).
+    [Fact]
+    public void CallsOverExclusiveLayersHeldByValueStoreTheirContent()
+    {
+        var c = Bind("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc keep<F>(f: F) -> F => f@move\n" +
+            "func second<A, B>(a: A, b: B) -> B => b@move\n" +
+            "func use<s/T, t/U>(value: s/T, other: s/T, third: t/U, x: T) -> ()\n    s is owner or uniq\n    t is owner or uniq\n" +
+            "    T is Copy\n    U is Copy\n    var v = value@move\n    var slot = other@move\n    let h = func [v] () -> ()\n        _ = v@follow\n" +
+            "    let kept = keep(h@move)\n    kept()\n    let child = v\n    put(slot@uniq, child@move)\n    _ = slot@follow\n" +
+            "    let r = second(x, third@move)\n    _ = r@follow\n" +
+            "func useUniq<s/T>(value: s/T) -> ()\n    s is uniq\n    T is Copy\n    var v = value@move\n    let h = func [v] () -> ()\n" +
+            "        _ = v@follow\n    let kept = keep(h@move)\n    kept()\n" +
+            "func useCaptured<T>(other: T) -> ()\n    T is Copy\n    var y = other\n    let g = func [y@uniq] () -> ()\n        _ = y@follow\n" +
+            "    let kept = keep(g@move)\n");
+        Assert.Equal(["store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Content}, store 1: own {0 Content, 1 Content}, reached {}"], Calls(c, "put"));
+        Assert.Equal(["result {0 Value}, store 0: own {0 Content}, reached {}", "result {0 Value}, store 0: own {0 Content}, reached {}", "result {0 Value}, store 0: own {0 Content}, reached {}"], Calls(c, "keep"));
+        Assert.Equal(["result {1 Value}, store 1: own {1 Content}, reached {}"], Calls(c, "second"));
+    }
 
     // The same for a generic caller passing its own `s/T` (A5's case 139c, a non-Copy T): the call's Subst keeps the caller's pair, whose
     // binder admits only borrows, so the call stores only the argument's referent into it; and for an erased callable over such a pair.
@@ -289,8 +347,8 @@ public sealed partial class RetentionTest
         var c = Bind("func inner<s/T>(a: s/T, b: i32) -> ()\n    s is ref or uniq\n    return\nfunc peek<T>(x: ref/T) -> i32 => 1\n" +
             "func use<s/T>(p: s/T, item: T) -> ()\n    s is ref or uniq\n    var x = item\n    inner(x@(s/T), peek(x@ref))\n" +
             "func apply<s/T>(g: (s/Option<T>) -> (), x: s/Option<T>) -> ()\n    s is ref or uniq\n    g(x)\n");
-        Assert.Equal(["0 Content store 0"], Calls(c, "inner"));
-        Assert.Equal(["0 Content store 0"], ValueCalls(c));
+        Assert.Equal(["store 0: own {0 Content}, reached {}"], Calls(c, "inner"));
+        Assert.Equal(["store 0: own {0 Content}, reached {0 Content}"], ValueCalls(c));
     }
 
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a
@@ -301,9 +359,9 @@ public sealed partial class RetentionTest
     {
         var c = Bind("func pick<T>(a: T, b: ref/i32) -> T => a@move\nfunc hidden<T>(x: ref/T during p, y: T) -> Option<ref/i32 during p> => .None\n" +
             "var a = 1\nvar b = 2\nlet r = pick(a@ref, b@ref)\nlet n = pick(3, b@ref)\n");
-        Assert.Equal("0 Value result", Declared(c, "pick"));
-        Assert.Equal("0 Value result, 1 Value result", Declared(c, "hidden"));
-        Assert.Equal(["0 Value result", string.Empty], Calls(c, "pick"));
+        Assert.Equal("result {0 Value}", Declared(c, "pick"));
+        Assert.Equal("result {0 Value, 1 Value}", Declared(c, "hidden"));
+        Assert.Equal(["result {0 Value}", string.Empty], Calls(c, "pick"));
     }
 
     // SPEC 15.6, design A3 3 (Φ_E): a result Origin tied to no input and not static, or a carrier no input names, is untied; a static
@@ -325,8 +383,8 @@ public sealed partial class RetentionTest
         var c = Bind("func pass(value: ref/i32) -> ref/i32 => value\nfunc apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 => f(x)\n" +
             "func meet(f: (ref/i32, ref/i32) -> ref/i32, x: ref/i32, y: ref/i32) -> ref/i32 => f(x, y)\n" +
             "var a = 1\nlet item = pass\nlet r = item(a@ref)\nlet closure = func (z: ref/i32) -> ref/i32 => z\nlet s = closure(a@ref)\n");
-        Assert.Equal("1 Value result", Declared(c, "apply"));
-        Assert.Equal(["0 Value result", "0 Value result, 1 Value result", "0 Value result", "1 Value result"], ValueCalls(c));
+        Assert.Equal("result {1 Value}", Declared(c, "apply"));
+        Assert.Equal(["result {0 Value}", "result {0 Value, 1 Value}", "result {0 Value}", "result {1 Value}"], ValueCalls(c));
     }
 
     // SPEC 15.8.2, 7.7.2 (DECISIONS R4-M126, R4-M148): a Closure's contract has its call receiver at input 0, `R/Env during ρ` over the
@@ -357,10 +415,10 @@ public sealed partial class RetentionTest
             "    var nestedRemember = func [var remember@move] (b: ref/i32 during x) -> ref/i32 during x => remember(b)\n" +
             "    _ = nestedRemember(x)\n    return 0\n");
         Assert.Equal(
-            ["0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0", string.Empty, "0 Content store 0, 1 Value store 0",
-                "0 Content store 0, 1 Value store 0", string.Empty, "0 Content result", "0 Content result", "0 Content result",
-                "0 Content result", "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0",
-                "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0"],
+            ["result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}", string.Empty, "store 0: own {0 Content, 1 Value}, reached {}",
+                "store 0: own {}, reached {0 Content, 1 Value}", string.Empty, "result {0 Content}", "result {0 Content}", "result {0 Content}",
+                "result {0 Content}", "result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}",
+                "result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}"],
             ValueCalls(c));
     }
 
@@ -402,7 +460,7 @@ public sealed partial class RetentionTest
                 views.Add(m.Types.ClosureReceiverIn(cases.Type(body.Locals[local].Type!)).ToString());
             }
 
-            var definition = BoundClosure.Of((FunctionKoto)body.Locals[local].Type!.Symbol!.Declaration!)!;
+            var definition = BoundClosure.Of(body.Locals[local].Type)!;
             views.Add(m.Types.ClosureReceiverIn(definition.EnvironmentType!).ToString());
             yield return string.Join(' ', views);
         }
@@ -414,9 +472,9 @@ public sealed partial class RetentionTest
     // through a field's signature (its own per-call input aside), with no clause in the calling definition, and through `apply`'s
     // callable input, whose body maps `a` to `b`.
     [Theory]
-    [InlineData("func use(h: ref/H{s}, q: uniq/i32 during s.a, w: ref/i32) -> i32\n    origin s.a outlives s.b\n    let x = q@follow@ref\n    let r = h.g(w, x)\n    q@follow = 5\n    return r@follow\n", "0 Value result | 1 Value result")]
-    [InlineData("func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = h.k(x)\n    q@follow = 5\n    return r@follow\n", "0 Value result | 0 Value result")]
-    [InlineData("func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = apply(h.k@ref, x)\n    q@follow = 5\n    return r@follow\n", "0 Value result | apply 0 Content result, 1 Value result")]
+    [InlineData("func use(h: ref/H{s}, q: uniq/i32 during s.a, w: ref/i32) -> i32\n    origin s.a outlives s.b\n    let x = q@follow@ref\n    let r = h.g(w, x)\n    q@follow = 5\n    return r@follow\n", "result {0 Value} | result {1 Value}")]
+    [InlineData("func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = h.k(x)\n    q@follow = 5\n    return r@follow\n", "result {0 Value} | result {0 Value}")]
+    [InlineData("func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = apply(h.k@ref, x)\n    q@follow = 5\n    return r@follow\n", "result {0 Value} | apply result {0 Content, 1 Value}")]
     public void ErasedCallablesRelateTheirFixedOrigins(string use, string expected)
     {
         var c = Bind(Erased + use);
@@ -433,13 +491,30 @@ public sealed partial class RetentionTest
         var sets = Bind("struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
             "func f<F>(g: ref/F, x: View<i32>{xs}) -> View<i32>{rs}\n    F is Callable<(View<i32>{a}) -> View<i32>{b}>\n    origin a.source == xs.source\n" +
             "    origin b.source == rs.source\n    return g(x@move)\n");
-        Assert.Equal("0 Value result, 1 Value result", Declared(sets, "f"));
-        Assert.Equal(["0 Value result"], ValueCalls(sets));
+        Assert.Equal("result {0 Value, 1 Value}", Declared(sets, "f"));
+        Assert.Equal(["result {0 Value}"], ValueCalls(sets));
         var map = Bind("func map<F, T, U>(g: ref/F, x: T) -> U\n    F is Callable<(T) -> U>\n    return g(x@move)\n" +
             "var n = 1\nlet k = func (z: ref/i32) -> ref/i32 => z\nlet r = map(k@ref, n@ref)\n");
-        Assert.Equal("1 Value result", Declared(map, "map"));
-        Assert.Equal(["0 Value result"], ValueCalls(map));
-        Assert.Equal(["1 Value result"], Calls(map, "map"));
+        Assert.Equal("result {1 Value}", Declared(map, "map"));
+        Assert.Equal(["result {0 Value}"], ValueCalls(map));
+        Assert.Equal(["result {1 Value}"], Calls(map, "map"));
+    }
+
+    // SPEC 15.6.4 (β′; DECISIONS R4-M154): the callables a callee's premises and inputs hand its body are erased callables it may call: each
+    // requirement of a Contract premise on its subject with the Contract reference's bindings (a builder of Self from a Contract Type
+    // argument, a writer through `uniq/Self`, one returning an associated Type) and a Function value in a nominal Field retain `y` in
+    // `slot`'s referent beside its own Content (and `m`'s carriers); a requirement whose borrowed input's Origin is its own relates nothing
+    // (SPEC 15.3.7). A requirement call on an abstract Self is erased itself: `T.mk(y)`'s result retains `y`, or nothing, untied.
+    [Theory]
+    [InlineData("contract MkE<E>\n    func mk(r: E) -> Self\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is MkE<E>\n    slot@follow = T.mk(y@move)", "store 0: own {0 Content, 1 Value}, reached {}", "result {0 Value}")]
+    [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is Absorb<E>\n    slot.absorb(y@move)", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}", "")]
+    [InlineData("contract Holds<E>\n    associate Box\n    func wrap(r: E) -> Self.Box\nfunc f<T, E>(slot: uniq/T.Box, y: E) -> ()\n    T is Holds<E>\n    slot@follow = T.wrap(y@move)", "store 0: own {0 Content, 1 Value}, reached {}", "")]
+    [InlineData("struct Maker<E, T>\n    public var make: (E) -> T\nfunc f<T, E>(slot: uniq/T, y: E, m: Maker<E, T>) -> ()\n    slot@follow = m.make(y@move)", "store 0: own {0 Content, 1 Value, 2 Value}, reached {}", "")]
+    [InlineData("contract Mk\n    func mk(r: ref/i32) -> Self\nfunc f<T>(slot: uniq/T, y: ref/i32 during o) -> ()\n    T is Mk\n    slot@follow = T.mk(y)", "store 0: own {0 Content}, reached {}", "untied")]
+    public void PremisesAndInputsHandTheirCallables(string function, string expected, string call)
+    {
+        var c = Bind(function + "\n");
+        Assert.Equal((expected, call), (Declared(c, "f"), string.Join(" | ", Calls(c, "mk"))));
     }
 
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
@@ -450,13 +525,13 @@ public sealed partial class RetentionTest
     {
         var c = Bind(View + "func use<M, A>(mk: ref/M, q: uniq/i32 during c) -> A\n    M is Callable<(View<i32>{v}) -> A>\n    origin v.source == c\n" +
             "    let a = mk(View<i32>.init(data: q@follow@ref))\n    q@follow = 5\n    return a@move\n");
-        Assert.Equal(["0 Value result"], ValueCalls(c));
-        Assert.Equal("1 Value result", Declared(c, "use"));
+        Assert.Equal(["result {0 Value}"], ValueCalls(c));
+        Assert.Equal("result {1 Value}", Declared(c, "use"));
         var generic = Bind(View + "func map<F, T, U>(g: ref/F, x: T) -> U\n    F is Callable<(T) -> U>\n    return g(x@move)\n" +
             "func use<M, G, A, B>(mk: ref/M, g: ref/G, q: uniq/i32 during c) -> B\n    M is Callable<(View<i32>{v}) -> A>\n    G is Callable<(A) -> B>\n" +
             "    origin v.source == c\n    let a = mk(View<i32>.init(data: q@follow@ref))\n    let r = map(g, a@move)\n    q@follow = 5\n    return r@move\n");
-        Assert.Equal(["1 Value result"], Calls(generic, "map"));
-        Assert.Equal(["0 Value result", "0 Value result"], ValueCalls(generic));
+        Assert.Equal(["result {1 Value}"], Calls(generic, "map"));
+        Assert.Equal(["result {0 Value}", "result {0 Value}"], ValueCalls(generic));
     }
 
     // SPEC 15.6.4, 15.6.3, 8.11.3: a generic callee and a requirement are read under the call's Subst: an Iterator's `next` retains its
@@ -469,9 +544,33 @@ public sealed partial class RetentionTest
             "func use<S>(s: ref/S) -> ref/i32 during s\n    S is Source\n    return s.read()\n" +
             "func nextOf<I>(it: uniq/I) -> Option<I.(Iterator).Item>\n    I is Iterator\n    return it.next()\n" +
             "var xs = [1, 2, 3]\nvar it = xs.iterate()\nlet first = it.next()\nlet second = nextOf(it@uniq)\n");
-        Assert.Equal(["0 Value result"], Calls(c, "read"));
-        Assert.Equal(["0 Content result, 0 Content store 0"], Calls(c, "nextOf"));
-        Assert.Equal(["0 Content result, 0 Content store 0", "0 Content result, 0 Content store 0"], Calls(c, "next"));
+        Assert.Equal(["result {0 Value}"], Calls(c, "read"));
+        Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {}"], Calls(c, "nextOf"));
+        Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {0 Content}", "result {0 Content}, store 0: own {0 Content}, reached {}"], Calls(c, "next"));
+    }
+
+    // DECISIONS R4-M154 (rule 1's All): All joins every entry with its pairs, the Abstract one's too. A `during self` layer whose holder has
+    // an Origin argument the Subst brings (`H during o`) lets the call write any value at that Origin, a position in the root's storage and
+    // in the Abstract one, so a source whose fit relates two Subst Origins (`p > o`) lists its pair in both, and in All.
+    [Fact]
+    public void AllJoinsTheAbstractEntrysPairs()
+    {
+        var c = Bind("struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n" +
+            "func f<T, E>(h: uniq/T, y: E) => ()\nfunc g(h: uniq/(H during o), y: uniq/i32 during p) => f(h, y)\n");
+        Assert.Equal(["store 0: own {0 Content} if {1 Value: p > o}, reached {0 Content} if {1 Value: p > o}"], Calls(c, "f"));
+    }
+
+    // DECISIONS R4-M154, Revision 10: a source's fit is the conjunction over the layers of its path, but those the premise catalog's
+    // well-formedness relates to the layer above, so a borrow formed through `x`'s raw layer lists one pair per layer the position's
+    // closure misses: into `*w`, `p`, `r` (the raw layer's, which no well-formedness relates to `p`) and `a` (none relates it to `r`);
+    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`.
+    [Fact]
+    public void ASourcesPairsAreOneConjunctionOverItsPath()
+    {
+        var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
+            "func f<T, E>(x: T, w: uniq/E) => ()\n" +
+            "func g(zr: ref/i32 during r, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
+        Assert.Equal(["store 0: own {0 Content} if {0 Value: p > r}, reached {0 Content} if {0 Value: p > a & 0 Value: r > a}, store 1: own {1 Content} if {0 Value: p > s & 0 Value: r > s & 0 Value: a > s}, reached {}"], Calls(c, "f"));
     }
 
     // SPEC 22.2.3, 15.6.3, 8.4: a requirement on the caller's abstract Self is read as the caller's premises make its contract: under
@@ -482,9 +581,9 @@ public sealed partial class RetentionTest
     {
         var c = Bind("func nextPair<I>(iterator: uniq/I) -> (Option<I.Item>, Option<I.Item>)\n    I is Iterator\n" +
             "    let first = iterator.next()\n    let second = iterator.next()\n    return (first@move, second@move)\n");
-        Assert.Equal(["0 Content result, 0 Content store 0", "0 Content result, 0 Content store 0"], Calls(c, "next"));
+        Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {0 Content}", "result {0 Content}, store 0: own {0 Content}, reached {0 Content}"], Calls(c, "next"));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).First(static x => x.Target.Name == "next");
-        Assert.Equal("0 Value result, 0 Content store 0", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null)));
+        Assert.Equal("result {0 Value}, store 0: own {0 Content}, reached {0 Content}", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null)));
     }
 
     // SPEC 5.7 Calls, 15.6.4 (D6, D15; design-final §6): a raw result layer with an Origin retains as that borrow would; one without
@@ -496,28 +595,30 @@ public sealed partial class RetentionTest
     // `uniq` one, SPEC 15.3.5, DECISIONS BU-44; never a borrow the body forms): then a pointer read from the layer has read
     // authority only and the call writes nothing through it; a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow
     // and a projection a `uniq` input states are no such Origin. A raw input's pointee and its Origin's members are Content, and its own
-    // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3).
+    // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3). An Option or a Holder holding a `uniq` borrow by
+    // value stores what a read through it carries into that borrow's referent (`1 Content store 1`, DECISIONS BU-49), and only that
+    // into the storage the raw layer addresses, whose `ref/i32` members cannot hold its value (`1 Content` at store 2; DECISIONS R4-M154).
     [Theory]
-    [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
-    [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
-    [InlineData("func f(b: ref/i32, c: ref/i32, p: raw/i32 during b) -> raw/i32 during b => p", "0 Value result, 2 Value result")]
-    [InlineData("func f(p: raw/(ref/i32 during q) during static, v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
-    [InlineData("func f(b: uniq/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "0 Content store 0, 1 Content store 0, 2 Value store 0, 0 Content store 1, 1 Content store 1, 2 Value store 1")]
+    [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "result {0 Value Chain, 1 Value Chain}, untied")]
+    [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "result {0 Value Chain, 1 Value Chain}, untied")]
+    [InlineData("func f(b: ref/i32, c: ref/i32, p: raw/i32 during b) -> raw/i32 during b => p", "result {0 Value, 2 Value}")]
+    [InlineData("func f(p: raw/(ref/i32 during q) during static, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("func f(b: uniq/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Content, 2 Value}, reached {}, store 1: own {0 Content, 1 Content, 2 Value}, reached {}")]
     [InlineData("func f(b: ref/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, b: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()", "")]
-    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: uniq/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Content store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
-    [InlineData(KeptView + "func f<K, V>(v: ref/View<K, V>, p: raw/u8 during v.source, key: K)\n    K is Equatable\n    return", "0 Content store 1, 1 Content store 1, 2 Value store 1")]
+    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: uniq/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()", "store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}")]
+    [InlineData(KeptView + "func f<K, V>(v: ref/View<K, V>, p: raw/u8 during v.source, key: K)\n    K is Equatable\n    return", "store 1: own {0 Content, 1 Content, 2 Value}, reached {}")]
     [InlineData(
         "struct W {source, q}\n    origin q outlives source\n    internal let r: ref/(ref/i32 during q) during source\n" +
         "    public init(r: ref/(ref/i32 during q) during source) => self.r = r\nfunc f(v: ref/W, p: raw/u8 during v.source, w: ref/i32 during v.q) => ()",
         "")]
-    [InlineData(RawPointerSyntaxTest.KeptView + "func f(v: ref/View, x: uniq/(ref/i32 during q) during v.source, p: raw/u8 during v.source, w: ref/i32 during q) => ()", "1 Content store 1, 2 Content store 1, 3 Value store 1, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
-    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+    [InlineData(RawPointerSyntaxTest.KeptView + "func f(v: ref/View, x: uniq/(ref/i32 during q) during v.source, p: raw/u8 during v.source, w: ref/i32 during q) => ()", "store 1: own {1 Content, 2 Content, 3 Value}, reached {}, store 2: own {1 Content, 2 Content, 3 Value}, reached {}")]
+    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    unsafe\n        let w: uniq/(ref/i32 during q) during o = (*p)@uniq", "")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: uniq/(ref/i32 during q), h: Holder<uniq/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
-        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+        "store 0: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
@@ -541,7 +642,7 @@ public sealed partial class RetentionTest
         }
 
         source += $"func f<K, V>(v: ref/A{levels}<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n";
-        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind(source), "f"));
+        Assert.Equal("store 1: own {0 Content, 1 Content, 2 Value}, reached {}", Declared(Bind(source), "f"));
     }
 
     // SPEC 5.7 Calls (DECISIONS BU-24, U2): each slot keeper is walked once per slot, owner Type, input and mode, so a keeper cycle through
@@ -554,11 +655,11 @@ public sealed partial class RetentionTest
         const string Init = "    public init(d: uniq/Dictionary<K, V> during s)\n        self.loan = Loan.init(d)\n        self.next = null\n";
         const string Use = "func f<K, V>(v: ref/N<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n";
         var rows = Declared(Bind("struct N<K, V> {s}\n" + Loan + "    let next: raw/(N<K, V> during s)\n" + Init + Use), "f");
-        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", rows);
+        Assert.Equal("store 1: own {0 Content, 1 Content, 2 Value}, reached {}", rows);
         var unrolled = "struct L<K, V> {s}\n" + Loan + "    public init(d: uniq/Dictionary<K, V> during s) => self.loan = Loan.init(d)\n" +
             "struct N<K, V> {s}\n" + Loan + "    let next: raw/(L<K, V> during s)\n" + Init + Use;
         Assert.Equal(rows, Declared(Bind(unrolled), "f"));
-        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind("struct R {s}\n    let at: uniq/(raw/i32 during s) during s\nfunc f(v: ref/R, p: raw/u8 during v.s, key: raw/i32) => ()\n"), "f"));
+        Assert.Equal("store 1: own {0 Content, 1 Content, 2 Value}, reached {0 Content, 1 Content, 2 Value}", Declared(Bind("struct R {s}\n    let at: uniq/(raw/i32 during s) during s\nfunc f(v: ref/R, p: raw/u8 during v.s, key: raw/i32) => ()\n"), "f"));
     }
 
     // SPEC 5.7 Calls (DECISIONS BU-24, U2; the design review's item 3): a keeper cycle that changes its Type arguments, raw or not, through
@@ -581,8 +682,8 @@ public sealed partial class RetentionTest
     [Fact]
     public void TwoRawLayersOfOneOriginKeepTheirRows()
         => Assert.Equal(
-            "0 Content store 0, 1 Value store 0, 1 Content store 0, 2 Value store 0, 2 Content store 0, 0 Content store 1, 1 Content store 1, 2 Value store 1, " +
-            "2 Content store 1, 0 Content store 2, 1 Value store 2, 1 Content store 2, 2 Content store 2",
+            "store 0: own {0 Content, 1 Value Content, 2 Value Content}, reached {0 Content, 1 Value Content, 2 Value Content}, " +
+            "store 1: own {0 Content, 1 Content, 2 Value Content}, reached {2 Value}, store 2: own {0 Content, 1 Value Content, 2 Content}, reached {1 Value}",
             Declared(Bind("struct K<T> {s}\n    internal let at: uniq/T during s\nfunc f<T>(n: uniq/(K<T> during a), p: raw/u8 during a, q: raw/u8 during a) => ()\n"), "f"));
 
     // SPEC 5.7 Calls, 15.6.4 (R4-M52): an erased callable's signature is its own scope for its raw layers, also when it has fewer inputs
@@ -594,13 +695,14 @@ public sealed partial class RetentionTest
     // SPEC 5.2.1 condition 3, 5.7 Calls (the final review's B2; R4's constraint 2): the signature cap is a function's own. A Function
     // Type's raw layer reads its Origin's kind, so a call of a Function Type value whose `ref` input alone states that Origin (the
     // reviewer's x_ft_erased with a Loan-carrying referent) may write through the layer what the borrow admits, where the same layer in
-    // a function's own signature stores nothing (RawLayersRetainByTheirOrigins).
+    // a function's own signature stores nothing (RawLayersRetainByTheirOrigins); `b` keeps its Content there, the `ref/i32` pointee
+    // unable to hold its value (DECISIONS R4-M154).
     [Fact]
     public void AnErasedSignatureReadsNoSignatureCap()
     {
         const string Inputs = "ref/(ref/i32 during q) during o, raw/(ref/i32 during q) during o, ref/i32 during q";
         var c = Bind($"func apply(g: ({Inputs}) -> (), b: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    g(b, p, v)\n");
-        Assert.Equal(["0 Value store 1, 1 Content store 1, 2 Value store 1"], ValueCalls(c));
+        Assert.Equal(["store 1: own {0 Content, 1 Content, 2 Value}, reached {}"], ValueCalls(c));
         Assert.Equal(string.Empty, Declared(c, "apply"));
     }
 
@@ -619,17 +721,17 @@ public sealed partial class RetentionTest
     // DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee retains `p` and its own chain. A raw input's pointee is its own
     // writable storage, which retains it as a read through it.
     [Theory]
-    [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "0 Value result")]
-    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "0 Value result")]
-    [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "0 Value result")]
-    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "0 Content result")]
-    [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Content store 0, 1 Value store 0")]
-    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "0 Value result, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "0 Value result, 0 Content result, 0 Content store 0")]
-    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "0 Value result, 0 Chain result, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "0 Content store 0")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "result {0 Value}")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "result {0 Value}")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "result {0 Value}")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "result {0 Content}")]
+    [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value}, untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value}, untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "store 0: own {0 Content}, reached {}")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
@@ -640,8 +742,8 @@ public sealed partial class RetentionTest
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
-    [InlineData(KimiDeclarationId.StoragePlaceDictionaryEntry, "0 Content store 0, 1 Value store 0, 2 Value store 0")]
-    [InlineData(KimiDeclarationId.StorageKeyAt, "0 Value result, 0 Chain result, untied")]
+    [InlineData(KimiDeclarationId.StoragePlaceDictionaryEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
+    [InlineData(KimiDeclarationId.StorageKeyAt, "result {0 Value Chain}, untied")]
     [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
     public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
     {
@@ -657,13 +759,13 @@ public sealed partial class RetentionTest
     // position (`slot`'s pointee, which it unties) or in a struct's stored content (Node's `next`, both ways), retains every argument
     // with its chain and every other argument's own value (rule A, DECISIONS R4-M131, BU-40).
     [Theory]
-    [InlineData("func f(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p", "0 Content result, 0 Content store 0")]
-    [InlineData("func f(b: ref/i32, p: raw/i32 during b) -> ref/i32 during b => b", "0 Value result")]
-    [InlineData("func f(slot: raw/(raw/i32), b: ref/i32, p: raw/i32 during b) => ()", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, 2 Value store 0, 2 Chain store 0, untied store 0")]
+    [InlineData("func f(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p", "result {0 Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("func f(b: ref/i32, p: raw/i32 during b) -> ref/i32 during b => b", "result {0 Value}")]
+    [InlineData("func f(slot: raw/(raw/i32), b: ref/i32, p: raw/i32 during b) => ()", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied")]
     [InlineData(
         "struct Node\n    public var next: raw/Node\n    public init(next: raw/Node) => self.next = next\nfunc f(head: raw/Node, n: raw/Node) => ()",
-        "0 Chain store 0, 1 Value store 0, 1 Chain store 0, 0 Value store 1, 0 Chain store 1, 1 Chain store 1, untied store 0, untied store 1")]
-    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "0 Content store 0, 1 Value store 0")]
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied")]
+    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
     public void RawArgumentsRetainAsBorrowedOnes(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -685,15 +787,15 @@ public sealed partial class RetentionTest
             "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
             "    internal init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
             "func lens(x: ref/i32) -> Lens<i32> during x => Lens<i32>.init(target: x)\n");
-        Assert.Equal("0 Value result, 0 Chain result, untied", Declared(c, "make"));
-        Assert.Contains("0 Value result, 0 Chain result, 1 Value result, 1 Chain result, 0 Value store 1, 1 Content store 1, untied", Calls(c, "init"));
-        Assert.Equal("0 Chain store 0, untied store 0", Declared(c, "fill"));
-        Assert.Equal(["0 Chain store 0, untied store 0"], Calls(c, "fill"));
-        Assert.Equal(["0 Content store 0, 1 Value store 0"], Calls(c, "initialize"));
+        Assert.Equal("result {0 Value Chain}, untied", Declared(c, "make"));
+        Assert.Contains("result {0 Value Chain, 1 Value Chain}, untied, store 1: own {0 Value, 1 Content}, reached {}", Calls(c, "init"));
+        Assert.Equal("store 0: own {0 Chain}, reached {0 Chain} untied", Declared(c, "fill"));
+        Assert.Equal(["store 0: own {0 Chain}, reached {0 Chain} untied"], Calls(c, "fill"));
+        Assert.Equal(["store 0: own {0 Content, 1 Value}, reached {}"], Calls(c, "initialize"));
         Assert.Equal(string.Empty, Declared(c, "look"));
         Assert.Equal("untied", Declared(c, "one"));
         Assert.Equal("untied", Declared(c, "wrapped"));
-        Assert.Equal("0 Value result", Declared(c, "lens"));
+        Assert.Equal("result {0 Value}", Declared(c, "lens"));
     }
 
     // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30; the G160-2c reviews' B1, R2, R4's F1 and B2): a value a call stores
@@ -708,37 +810,37 @@ public sealed partial class RetentionTest
     // is walked as the instance's substitution keeps it (DECISIONS BU-41): a raw layer its Type argument supplies there steps by its Origin
     // as at a Field, Exclusive under a local's (no rule A) and Static under `static`, and an unstated one by rule A.
     [Theory]
-    [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
+    [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData(
         "struct R\n    public var q: raw/(raw/i32)\n    public init(q: raw/(raw/i32)) => self.q = q\nfunc f(p: raw/i32) -> R\n    let cell: raw/(raw/i32) = Raw.allocate(1)\n    return R.init(q: cell)",
-        "0 Value result, 0 Chain result, untied")]
-    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
+        "result {0 Value Chain}, untied")]
+    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
     [InlineData(
         "struct Cell {a}\n    public var keep: Loan<uniq/(raw/i32) during a>\n    public var at: raw/(raw/i32) during a\nfunc f(c: uniq/Cell, p: raw/i32)\n    unsafe => Raw.initialize(c.at, p)",
-        "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@rc", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S)\n    let q: raw/i32 = Raw.allocate(1)\n    s.x = Bx.init(v: q)@rc", "0 Chain store 0, untied store 0")]
-    [InlineData(Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f(p: raw/i32) -> S\n    return S.init(x: Bx.init(v: p)@rc)", "0 Value result, 0 Chain result, untied")]
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@rc", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S)\n    let q: raw/i32 = Raw.allocate(1)\n    s.x = Bx.init(v: q)@rc", "store 0: own {0 Chain}, reached {} untied")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f(p: raw/i32) -> S\n    return S.init(x: Bx.init(v: p)@rc)", "result {0 Value Chain}, untied")]
     [InlineData(
         Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f() -> S\n    let q: raw/i32 = Raw.allocate(1)\n    return S.init(x: Bx.init(v: q)@rc)",
         "untied")]
-    [InlineData(Shared + "struct S\n    public var x: arc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@arc", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData(Shared + "struct S\n    public var x: Option<rc/Bx>\nfunc f(s: uniq/S, p: raw/i32) => ()", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<T>\nfunc f(g: uniq/G<raw/i32>, p: raw/i32) => ()", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "0 Chain store 0, untied store 0")]
-    [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
-    [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "0 Chain store 0, untied store 0")]
-    [InlineData(RawPointerSyntaxTest.PairHolder + "func f(x: uniq/i32, h: uniq/Holder<raw/i32 during x>, p: raw/i32) => ()", "0 Value store 1, 0 Chain store 1, 1 Chain store 1, 2 Value store 1, 2 Chain store 1, untied store 1")]
+    [InlineData(Shared + "struct S\n    public var x: arc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@arc", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData(Shared + "struct S\n    public var x: Option<rc/Bx>\nfunc f(s: uniq/S, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<T>\nfunc f(g: uniq/G<raw/i32>, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "store 0: own {0 Content}, reached {} untied")]
+    [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData(RawPointerSyntaxTest.PairHolder + "func f(x: uniq/i32, h: uniq/Holder<raw/i32 during x>, p: raw/i32) => ()", "store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
     [InlineData(
         "struct H<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n    internal var a: T\n" +
         "func f(y: ref/i32, h: uniq/(H<raw/i32 during static> during static), p: raw/i32) => ()",
-        "1 Content store 1, 2 Value store 1, untied store 1")]
-    [InlineData(Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32 during x>, p: raw/i32) => ()", "0 Value store 1, 1 Content store 1, 2 Value store 1")]
-    [InlineData(Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32 during static>, p: raw/i32) => ()", "1 Content store 1, 2 Value store 1, untied store 1")]
+        "store 1: own {1 Content, 2 Value}, reached {} untied")]
+    [InlineData(Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32 during x>, p: raw/i32) => ()", "store 1: own {0 Value, 1 Content, 2 Value}, reached {2 Value}")]
+    [InlineData(Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32 during static>, p: raw/i32) => ()", "store 1: own {1 Content, 2 Value}, reached {2 Value} untied")]
     [InlineData(
         Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32>, p: raw/i32) => ()",
-        "0 Value store 1, 0 Chain store 1, 1 Chain store 1, 2 Value store 1, 2 Chain store 1, untied store 1")]
+        "store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
     public void OneWalkReachesWhatACallMayWrite(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -753,41 +855,72 @@ public sealed partial class RetentionTest
             "func make(x: uniq/i32, p: raw/i32 during x) -> Holder<raw/i32 during x> => Holder<raw/i32 during x>.init(v: p)\n" +
             "func pass(x: ref/i32, p: raw/i32 during x) -> raw/i32 => id(p)\nfunc keep(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => idt(p)\n" +
             "func store(x: uniq/i32, q: raw/i32)\n    var h = Holder<raw/i32 during x>.init(v: x@follow@raw)\n    fill(h@uniq, q)\n");
-        Assert.Equal("0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied", Declared(c, "make"));
-        Assert.Equal(["0 Value result, 0 Chain result, untied"], Calls(c, "id"));
-        Assert.Equal(["0 Value result"], Calls(c, "idt"));
-        Assert.Equal(["0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0"], Calls(c, "fill"));
+        Assert.Equal("result {0 Value Chain, 1 Value Chain}, untied", Declared(c, "make"));
+        Assert.Equal(["result {0 Value Chain}, untied"], Calls(c, "id"));
+        Assert.Equal(["result {0 Value}"], Calls(c, "idt"));
+        Assert.Equal(["store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(c, "fill"));
     }
 
     // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M131, BU-40): a raw layer without an Origin that the call may write, in its result (a nominal
     // Type's Fields included) or in storage it writes through argument j, retains every argument with what any chain of reads through it
     // carries (Chain), and every argument but j by its own value: a Tuple's, an Option's or a struct's raw layer is read through once by
-    // the result (fail-before: a Value row only, which keeps no read, or none), as a raw-of-raw and a ref-of-raw argument are; j keeps
-    // its chain without its own value. A `static` layer unties without these rows.
+    // the result (fail-before: a Value row only, which keeps no read, or none), as a raw-of-raw and a ref-of-raw argument are, and the
+    // pointee of each, a raw layer without an Origin, is storage the call writes through the by-value argument (store 0; the struct's
+    // fail-before: none, DECISIONS BU-52); j keeps its chain without its own value. A `static` layer unties without these rows.
     [Theory]
-    [InlineData("func f(t: (raw/(raw/u8), i32)) -> raw/u8\n    unsafe => return *t.0", "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("func f(o: Option<raw/(raw/u8)>) -> raw/u8 => null", "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData(Pp + "func f(s: Pp) -> raw/u8\n    unsafe => return *s.p", "0 Value result, 0 Chain result, untied")]
-    [InlineData(Pp + "func f(x: ref/i32, n: i32) -> Pp => Pp.init(p: null)", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
-    [InlineData("func f(pp: raw/(raw/u8)) -> raw/u8\n    unsafe => return *pp", "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("func f(r: ref/(raw/(raw/u8))) -> raw/u8\n    unsafe => return *r@follow", "0 Value result, 0 Chain result, untied")]
-    [InlineData("func f(slot: raw/(raw/u8), p: raw/u8) => ()", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
+    [InlineData("func f(t: (raw/(raw/u8), i32)) -> raw/u8\n    unsafe => return *t.0", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(o: Option<raw/(raw/u8)>) -> raw/u8 => null", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData(Pp + "func f(s: Pp) -> raw/u8\n    unsafe => return *s.p", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData(Pp + "func f(x: ref/i32, n: i32) -> Pp => Pp.init(p: null)", "result {0 Value Chain, 1 Value Chain}, untied")]
+    [InlineData("func f(pp: raw/(raw/u8)) -> raw/u8\n    unsafe => return *pp", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(r: ref/(raw/(raw/u8))) -> raw/u8\n    unsafe => return *r@follow", "result {0 Value Chain}, untied")]
+    [InlineData("func f(slot: raw/(raw/u8), p: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData(
         "func f(r: ref/i32, k: i32, slot: uniq/(raw/i32)) => ()",
-        "0 Value store 2, 0 Chain store 2, 1 Value store 2, 1 Chain store 2, 2 Chain store 2, untied store 2")]
-    [InlineData("func f(r: ref/i32, slot: uniq/(raw/u8 during static)) => ()", "1 Content store 1, untied store 1")]
+        "store 2: own {0 Value Chain, 1 Value Chain, 2 Chain}, reached {0 Value Chain, 1 Value Chain, 2 Chain} untied")]
+    [InlineData("func f(r: ref/i32, slot: uniq/(raw/u8 during static)) => ()", "store 1: own {1 Content}, reached {} untied")]
     public void AnUnstatedLayerACallWritesRetainsEveryArgument(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 15.6.4 (DECISIONS BU-52): the storage a call writes through a by-value argument is what the exclusive layers and the raw layers
+    // without an Origin it holds refer to, wherever the argument holds them: in a struct's Field, an enum's payload, an Array's element,
+    // a Type argument's Field at the instance, or behind a `uniq` Field; a raw layer without an Origin there retains as rule A states
+    // (the argument written through by its chain, every other by its own value and chain, untied; fail-before: no row). Past a shared
+    // layer the call writes nothing (SPEC 5.2.1), so a `ref/(raw/u8)` Field gives no row.
+    [Theory]
+    [InlineData(Pp + "func f(s: Pp, q: raw/u8)\n    unsafe => *s.p = q", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Pp + "func f(o: Option<Pp>, q: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Pp + "func f(a: Array<Pp>, q: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Box + Pp + "func f(b: B<Pp>, q: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(
+        "struct WU {a}\n    public var r: uniq/(raw/u8) during a\nfunc f(x: WU during a, q: raw/u8) => x.r@follow = q",
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct RU {a}\n    public var r: ref/(raw/u8) during a\nfunc f(x: RU during a, q: raw/u8) => ()", "")]
+    public void AByValueArgumentsLayersAreStorageTheCallWrites(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4 ("including callee cleanup"), 16.3.1 (DECISIONS BU-52, BU-47): a callee that destroys a by-value argument runs its drop
+    // over that argument, which writes only into the storage the call writes through it, so the call's rows include the drop's: a consuming
+    // call of a Writer, concrete and generic, retains as Writer's drop over its receiver at input 0 (fail-before: no row).
+    [Fact]
+    public void AConsumingCallRetainsItsArgumentsCleanup()
+    {
+        var c = Bind(Writer + "func consumeW(x: Writer) => ()\nfunc consume<T>(x: T) => ()\nfunc at(w: Writer, v: Writer)\n    consumeW(w@move)\n    consume(v@move)\n");
+        var drop = Show(c.Types.Retains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!, null, null));
+        Assert.Equal("store 0: own {0 Chain}, reached {0 Chain} untied", drop);
+        Assert.Equal([drop, drop], [.. Calls(c, "consumeW"), .. Calls(c, "consume")]);
+    }
+
     // SPEC 15.6.4 (R′; DECISIONS R4-M131, BU-40): a raw layer without an Origin behind a borrow in the result, a Slice's elements included,
     // is lent, not written: it retains only the raw arguments, each by its own value and its chain, and unties nothing (fail-before: every
-    // argument, untied). `lend`'s store 0 is written: rule A.
+    // argument, untied). `lend`'s store 0 is written: rule A. `x`, whose value the result `ref/(raw/u8)` cannot hold, keeps its Content
+    // there (DECISIONS R4-M154).
     [Theory]
     [InlineData(
         "func f(p: raw/(raw/u8), x: ref/i32) -> ref/(raw/u8) during x\n    unsafe => return (*p)@ref",
-        "0 Value result, 0 Chain result, 1 Value result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("func f(t: ref/(raw/u8, i32)) -> ref/(raw/u8) during t => t.0@ref", "0 Value result")]
-    [InlineData("func f(p: raw/u8, t: ref/(raw/u8, i32)) -> Option<ref/(raw/u8) during t> => .None", "0 Value result, 0 Chain result, 1 Value result")]
+        "result {0 Value Chain, 1 Content}, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(t: ref/(raw/u8, i32)) -> ref/(raw/u8) during t => t.0@ref", "result {0 Value}")]
+    [InlineData("func f(p: raw/u8, t: ref/(raw/u8, i32)) -> Option<ref/(raw/u8) during t> => .None", "result {0 Value Chain, 1 Value}")]
     public void ALentLayerRetainsTheRawArguments(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -806,8 +939,8 @@ public sealed partial class RetentionTest
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "lit");
         var call = body.Blocks.ToArray().Select(static x => x.Terminator)
             .Single(static x => x is { Kind: MirTerminatorKind.Call } && x.Callee.Symbol?.LibraryDeclaration == KimiDeclarationId.StorageDictionaryLayout);
-        Assert.Equal("0 Value result, 0 Chain store 0, untied store 0", Show(c.Types.Retains(call.Callee.Symbol!, call.Callee.Subst, body.Key.Decl)));
-        Assert.Equal("0 Value result, 0 Chain store 0, untied store 0", Declared(c, "f"));
+        Assert.Equal("result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied", Show(c.Types.Retains(call.Callee.Symbol!, call.Callee.Subst, body.Key.Decl)));
+        Assert.Equal("result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied", Declared(c, "f"));
     }
 
     // SPEC 15.6.4, 22.2.3, 15.7, 4.9.6 (DECISIONS R4-M131, BU-40): a published operation that transfers values retains a borrowed argument
@@ -817,40 +950,47 @@ public sealed partial class RetentionTest
     // `appendAll`'s Array, `appendCopies`' Slice by its chain), no index, key or predicate; construction has no receiver storage, so its
     // result keeps every argument, `repeating` and `count`, by its own value and its chain (fail-before: only `untied`). The keys are
     // declaring identities: a LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and
-    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form none at an output they do not write (SPEC 4.9.6's
-    // complete published effect; PLAN G255's C4): an added `raw/(raw/u8)`'s pointee, `exchange`'s `with` (fail-before: `0 Chain store 1`).
+    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form no row and untie nothing at an output they do not write
+    // (SPEC 4.9.6's complete published effect; PLAN G255's C4; DECISIONS BU-52): an added `raw/(raw/u8)`'s pointee, a struct's Field and
+    // an enum's payload added by value (`append`, `insertOrReplace`), `exchange`'s `with` (fail-before: `store 1: own {}, reached {}
+    // untied`, an untied pointer for what the added value addresses; before C4, `0 Chain store 1`).
     // A 4.9 operation writes its receiver's store only in the storage the receiver refers to (`referent store 0`, DECISIONS BU-42);
     // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store.
     [Theory]
-    [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "0 Chain store 0, 1 Chain store 0, 0 Chain store 1, 1 Chain store 1, untied store 0, untied store 1")]
+    [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "store 0: own {0 Chain, 1 Chain}, reached {0 Chain, 1 Chain} untied, store 1: own {0 Chain, 1 Chain}, reached {0 Chain, 1 Chain} untied")]
     [InlineData(
         "func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: raw/u8 = null\nvar y: raw/u8 = null\ntrade(x@uniq, y@uniq)\n",
         "trade",
-        "0 Chain store 0, 1 Value store 0, 1 Chain store 0, 0 Value store 1, 0 Chain store 1, 1 Chain store 1, untied store 0, untied store 1")]
-    [InlineData("var x: raw/u8 = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n", "exchange", "0 Chain result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied, untied store 0")]
-    [InlineData("var a = 1\nvar b = 2\nvar x = a@ref\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: b@ref)\n", "exchange", "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0")]
-    [InlineData("var a: Array<raw/u8> = [null]\nlet x = a.pop()\n", "pop", "0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied")]
+    [InlineData("var x: raw/u8 = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n", "exchange", "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("var a = 1\nvar b = 2\nvar x = a@ref\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: b@ref)\n", "exchange", "result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("var a: Array<raw/u8> = [null]\nlet x = a.pop()\n", "pop", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         RawStack + "var s = RawStack.init(items: [null])\nlet x = s.pop()\n",
         "pop",
-        "0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0 | 0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("var d: Dictionary<i32, raw/u8> = [:]\nlet k = 1\nlet x = d.remove(k@ref)\n", "remove", "0 Chain result, 1 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
-    [InlineData("var a: Array<raw/u8> = []\na.insert(0, null)\n", "insert", "0 Chain store 0, 2 Value store 0, 2 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("var a: Array<raw/(raw/u8)> = []\nvar h: raw/u8 = null\na.append(h@raw)\n", "append", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0, untied store 1, referent store 0")]
+        "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0 | result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("var d: Dictionary<i32, raw/u8> = [:]\nlet k = 1\nlet x = d.remove(k@ref)\n", "remove", "result {0 Chain, 1 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = []\na.insert(0, null)\n", "insert", "store 0: own {0 Chain, 2 Value Chain}, reached {0 Chain, 2 Value Chain} untied, referent store 0")]
+    [InlineData("var a: Array<raw/(raw/u8)> = []\nvar h: raw/u8 = null\na.append(h@raw)\n", "append", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, referent store 0")]
+    [InlineData(Pp + "var a: Array<Pp> = []\na.append(Pp.init(p: null))\n", "append", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, referent store 0")]
+    [InlineData(
+        "enum E\n    A(raw/(raw/u8))\n    B\nvar d: Dictionary<i32, E> = [:]\nlet old = d.insertOrReplace(1, .A(null))\n",
+        "insertOrReplace",
+        "result {0 Chain, 1 Value Chain, 2 Value Chain}, untied, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, referent store 0")]
     [InlineData(
         "var x: raw/(raw/u8) = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n",
         "exchange",
-        "0 Chain result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied, untied store 0, untied store 1")]
-    [InlineData("var a: Array<raw/u8> = []\nvar b: Array<raw/u8> = [null]\na.appendAll(b@move)\n", "appendAll", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("var a: Array<raw/u8> = []\nlet b: Array<raw/u8> = [null]\na.appendCopies(b.slice())\n", "appendCopies", "0 Chain store 0, 1 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("var a: Array<raw/u8> = [null]\nvar bias = 1\nlet b = bias@ref\na.sort(by: func (x, y) => b@follow)\n", "sort", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("let a = Array<raw/u8>.init(repeating: null, count: 2)\n", "initRepeating", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
-    [InlineData("let a = Array<(raw/u8, i32)>.init(repeating: (null, 1), count: 2)\n", "initRepeating", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
-    [InlineData("let a = Array<raw/u8>.init(capacity: 2)\n", "initCapacity", "0 Value result, 0 Chain result, untied")]
-    [InlineData(RawIt + "var it = RawIt.init(items: [null])\nlet x = it.next()\n", "next", "0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData(RawLend + "var it = RawLend.init(items: [null])\nlet x = it.next()\n", "next", "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("let a: Array<raw/u8> = [null]\nvar it = Iteration.owning(a@move.intoIterator())\nlet x = it.next()\n", "next", "0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.iterate()\nlet x = it.next()\n", "next", "0 Content result, 0 Chain store 0, untied store 0")]
+        "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("var a: Array<raw/u8> = []\nvar b: Array<raw/u8> = [null]\na.appendAll(b@move)\n", "appendAll", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = []\nlet b: Array<raw/u8> = [null]\na.appendCopies(b.slice())\n", "appendCopies", "store 0: own {0 Chain, 1 Chain}, reached {0 Chain, 1 Chain} untied, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = [null]\nvar bias = 1\nlet b = bias@ref\na.sort(by: func (x, y) => b@follow)\n", "sort", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData("let a = Array<raw/u8>.init(repeating: null, count: 2)\n", "initRepeating", "result {0 Value Chain, 1 Value Chain}, untied")]
+    [InlineData("let a = Array<(raw/u8, i32)>.init(repeating: (null, 1), count: 2)\n", "initRepeating", "result {0 Value Chain, 1 Value Chain}, untied")]
+    [InlineData("let a = Array<raw/u8>.init(capacity: 2)\n", "initCapacity", "result {0 Value Chain}, untied")]
+    [InlineData(RawIt + "var it = RawIt.init(items: [null])\nlet x = it.next()\n", "next", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData(RawLend + "var it = RawLend.init(items: [null])\nlet x = it.next()\n", "next", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("let a: Array<raw/u8> = [null]\nvar it = Iteration.owning(a@move.intoIterator())\nlet x = it.next()\n", "next", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.iterate()\nlet x = it.next()\n", "next", "result {0 Content}, store 0: own {0 Chain}, reached {} untied")]
     public void TransferOperationsRetainBorrowedArgumentsByTheirChains(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
@@ -864,42 +1004,42 @@ public sealed partial class RetentionTest
     // shared one; `intoIterator`, by value, though its elements' pointees are a store) or the callee no such operation (SliceIterator's
     // `next`). Fail-before: no row prints it.
     [Theory]
-    [InlineData("var a: Array<ref/i32> = []\nvar x = 1\na.append(x@ref)\n", "append", "0 Content store 0, 1 Value store 0, referent store 0")]
+    [InlineData("var a: Array<ref/i32> = []\nvar x = 1\na.append(x@ref)\n", "append", "store 0: own {0 Content, 1 Value}, reached {}, referent store 0")]
     [InlineData(
         "var a: Array<uniq/(ref/i32)> = []\nvar x = 1\nvar r = x@ref\na.append(r@uniq)\n",
         "append",
-        "0 Content store 0, 1 Value store 0, 0 Content store 1, 1 Content store 1, referent store 0")]
-    [InlineData(Writer + "var a: Array<Writer> = []\na.clear()\n", "clear", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData(Writer + "var a: Array<raw/Writer> = []\na.clear()\n", "clear", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("var a: Array<raw/u8> = [null]\na.swap(0, 0)\n", "swap", "0 Chain store 0, untied store 0, referent store 0")]
+        "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Content}, store 1: own {0 Content, 1 Content}, reached {}, referent store 0")]
+    [InlineData(Writer + "var a: Array<Writer> = []\na.clear()\n", "clear", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData(Writer + "var a: Array<raw/Writer> = []\na.clear()\n", "clear", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = [null]\na.swap(0, 0)\n", "swap", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         "let a: Array<raw/u8> = [null]\nvar s = a.slice()\nlet it = s.iterateUniq()\n",
         "iterateUniq",
-        "0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
+        "result {0 Chain}, untied, store 0: own {0 Chain}, reached {} untied, referent store 0")]
     [InlineData(
         "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.sliceUniq()\n",
         "sliceUniq",
-        "0 Value result, 0 Chain store 0, untied store 0, referent store 0 | 0 Value result, 0 Chain store 0, untied store 0, referent store 0")]
+        "result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0 | result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.indexUniq(0)\n",
         "indexUniq",
-        "0 Value result, 0 Chain store 0, 1 Chain store 0, untied store 0, referent store 0")]
+        "result {0 Value}, store 0: own {0 Chain, 1 Chain}, reached {0 Chain, 1 Chain} untied, referent store 0")]
     [InlineData("var r = (0..2).resolve(5)\nlet it = r.iterateUniq()\n", "iterateUniq", "referent store 0")]
-    [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "0 Value result, 0 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         "var f: [2 of raw/u8] = [null, null]\nlet it = f.iterateUniq()\n",
         "iterateUniq",
-        "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
+        "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         "var f: [2 of raw/u8] = [null, null]\nlet p = f.tryGetPairUniq(first: 0, second: 1)\n",
         "tryGetPairUniq",
-        "0 Value result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, 2 Value store 0, 2 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("let a: Array<raw/u8> = [null]\nlet s = a.slice()\n", "slice", "0 Value result")]
+        "result {0 Value}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, referent store 0")]
+    [InlineData("let a: Array<raw/u8> = [null]\nlet s = a.slice()\n", "slice", "result {0 Value}")]
     [InlineData(
         "let a: Array<raw/(raw/u8)> = [null]\nlet it = a@move.intoIterator()\n",
         "intoIterator",
-        "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.slice().iterate()\nlet x = it.next()\n", "next", "0 Content result, 0 Chain store 0, untied store 0")]
+        "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.slice().iterate()\nlet x = it.next()\n", "next", "result {0 Content}, store 0: own {0 Chain}, reached {} untied")]
     public void AnOperationWritesItsBorrowedReceiversStoreOnlyInItsReferent(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
@@ -909,9 +1049,9 @@ public sealed partial class RetentionTest
     // there): Writer's write through its unstated raw Fields (rule A: its chain, untied store 0), HRD's through a borrow Field (Content), and
     // the generic `Holder<T>` declared and at `i32`. The receiver has no Value row: no caller names its Origin. Fail-before: no row.
     [Theory]
-    [InlineData(Writer + Flush + "func at(h: uniq/Writer) => h.flush()\n", "0 Chain store 0, untied store 0", "0 Chain store 0, untied store 0")]
-    [InlineData(Hrd + "func at(h: uniq/HRD) => h.flush()\n", "0 Content store 0", "0 Content store 0")]
-    [InlineData(Holder + "func at(h: uniq/Holder<i32>) => h.flush()\n", "0 Chain store 0, untied store 0", "0 Chain store 0, untied store 0")]
+    [InlineData(Writer + Flush + "func at(h: uniq/Writer) => h.flush()\n", "store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData(Hrd + "func at(h: uniq/HRD) => h.flush()\n", "store 0: own {0 Content}, reached {0 Content}", "store 0: own {0 Content}, reached {0 Content}")]
+    [InlineData(Holder + "func at(h: uniq/Holder<i32>) => h.flush()\n", "store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Chain}, reached {0 Chain} untied")]
     public void ADropRetainsAsACallOverItsDestructionReceiver(string source, string declared, string instance)
     {
         var c = Bind(source);
@@ -932,7 +1072,7 @@ public sealed partial class RetentionTest
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
             .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
         Assert.Equal(
-            ["HeapBuffer: ", "OwnedRemainder: 0 Content store 0", "DictionaryOwnedRemainder: 0 Content store 0", "FixedOwnedRemainder: 0 Content store 0"],
+            ["HeapBuffer: ", "OwnedRemainder: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
             drops);
     }
 
@@ -944,7 +1084,7 @@ public sealed partial class RetentionTest
     public void AnErasedDestructionRetainsAsTheErasedCall()
     {
         var c = Bind(ErasedParts);
-        string[] expected = ["0 Chain store 0, untied store 0", "0 Chain store 0, untied store 0", "0 Content store 0", string.Empty];
+        string[] expected = ["store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Content}, reached {0 Content}", string.Empty];
         Assert.Equal(expected, ValueCalls(c));
         var parts = new[] { "callWB", "callOWB", "callT", "callFn" }.Select(x => Function(c, x).SymbolOf()!)
             .Select(static x => (Part: TyCtxt.Signature(x, null, 0, out _)!.Components[0], Definition: x)).ToArray();
@@ -972,17 +1112,17 @@ public sealed partial class RetentionTest
     [InlineData(Handle, "Missing", "i32", "f", "")]
     [InlineData(Bad + "func f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "Missing", "i32", "f", "")]
     [InlineData("enum E\n    A(MISSING)\n    C\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "")]
-    [InlineData("enum E\n    A(MISSING)\n    B(raw/i32)\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("enum E\n    A(MISSING)\n    B(raw/i32)\nstruct H\n    public var e: E\nfunc f(h: uniq/H, p: raw/i32) => ()\nfunc g(h: uniq/H) => f(h, null)\n", "Missing", "i32", "f", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
+    [InlineData("enum E\n    A(MISSING)\n    B(raw/i32)\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("enum E\n    A(MISSING)\n    B(raw/i32)\nstruct H\n    public var e: E\nfunc f(h: uniq/H, p: raw/i32) => ()\nfunc g(h: uniq/H) => f(h, null)\n", "Missing", "i32", "f", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc f<T>(b: uniq/Bad<T>, p: raw/i32) => ()\nfunc g(b: uniq/Bad<i32>) => f(b, null)\n", "Missing", "i32", "f", "")]
-    [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc id<T>(x: ref/T) -> ref/T during x => x\nfunc g(b: Bad<i32>)\n    let r = id(b@ref)\n", "Missing", "i32", "id", "0 Value result")]
-    [InlineData("struct Sx\n    public var m: MISSING\n    public var p: raw/i32\nfunc f(s: uniq/Sx, q: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n", "Missing", "i32", "f", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData(Keep2, "Missing", "i32", "keep2", "0 Value result")]
-    [InlineData(Stash, "Missing", "i32", "stash", "0 Content store 0, 1 Value store 0")]
-    [InlineData(Selection, "missing", "source", "choose", "0 Content result")]
+    [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc id<T>(x: ref/T) -> ref/T during x => x\nfunc g(b: Bad<i32>)\n    let r = id(b@ref)\n", "Missing", "i32", "id", "result {0 Value}")]
+    [InlineData("struct Sx\n    public var m: MISSING\n    public var p: raw/i32\nfunc f(s: uniq/Sx, q: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n", "Missing", "i32", "f", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Keep2, "Missing", "i32", "keep2", "result {0 Value}")]
+    [InlineData(Stash, "Missing", "i32", "stash", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(Selection, "missing", "source", "choose", "result {0 Content}")]
     [InlineData(Pick, "missing", "s", "choose", "")]
-    [InlineData(Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "init", "0 Value result | 0 Value result")]
-    [InlineData(Fielded, "Missing", "C{x}\n        origin x.s == s", "init", "0 Value result | 0 Value result")]
+    [InlineData(Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "init", "result {0 Value} | result {0 Value}")]
+    [InlineData(Fielded, "Missing", "C{x}\n        origin x.s == s", "init", "result {0 Value} | result {0 Value}")]
     public void RejectedStorageKeepsTheRowsThatHoldWhateverItIs(string source, string failed, string repaired, string callee, string expected)
     {
         var rejected = MinimalEmissionTest.Analyze(source.Replace("MISSING", failed, StringComparison.Ordinal));
@@ -1034,8 +1174,8 @@ public sealed partial class RetentionTest
     [InlineData("struct", 11, "")]
     [InlineData("array", 11, "")]
     [InlineData("enum", 11, "")]
-    [InlineData("raw", 10, "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("lent", 10, "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
+    [InlineData("raw", 10, "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData("lent", 10, "result {0 Value Chain, 1 Value Chain}, untied")]
     public async Task AHoldWalkVisitsEachPositionOnce(string form, int n, string expected)
     {
         var c = Bind(Chain(form, n));
@@ -1066,7 +1206,10 @@ public sealed partial class RetentionTest
                 var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(node))
                     : c.Types.Retains(callee, c.Types.SubstOf(call), Definition(node));
                 var count = value ? call.DeclaredSignature.Components[0].Components.Count : Slots(callee);
-                Assert.All(retention.Rows.ToArray(), x => Assert.True(x.Input >= 0 && x.Input < count && x.Output >= Retention.Result && x.Output < count, $"{name}: {callee.Name}"));
+                Assert.True(
+                    retention.IsLimit || (retention.Result.Kinds.Length == count &&
+                        retention.Writes.ToArray().All(x => x.Output >= 0 && x.Output < count && x.Own.Kinds.Length == count && x.All.Kinds.Length == count)),
+                    $"{name}: {callee.Name}");
             }
         }
 
@@ -1094,8 +1237,8 @@ public sealed partial class RetentionTest
     // An edit revokes the retentions with the whole source analysis (Binding.Invalidate), also after a pass that did not finish (review
     // 1a2 B1: a Bind that throws leaves no result): replacing a callee's clause between passes changes its call's row.
     [Theory]
-    [InlineData("origin a outlives b", "origin b outlives a", "0 Value result, 1 Value result", "1 Value result", false)]
-    [InlineData("origin b outlives a", "origin a outlives b", "1 Value result", "0 Value result, 1 Value result", true)]
+    [InlineData("origin a outlives b", "origin b outlives a", "result {0 Value, 1 Value}", "result {1 Value}", false)]
+    [InlineData("origin b outlives a", "origin a outlives b", "result {1 Value}", "result {0 Value, 1 Value}", true)]
     public void AnEditRecomputesRetentions(string clause, string edited, string before, string after, bool unfinished)
     {
         var source = $"func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    {clause}\n    return y\nvar m = 1\nvar n = 2\nlet r = f(m@ref, n@ref)\n";
@@ -1156,13 +1299,15 @@ public sealed partial class RetentionTest
         }));
     }
 
-    // A retention is immutable: its rows are read-only and nothing assigns its fields after construction.
+    // A retention is immutable: its records are read-only and nothing assigns their fields after construction.
     [Fact]
     public void RetentionsAreImmutable()
     {
-        Assert.All(typeof(CallRetention).GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public), static x => Assert.True(x.IsInitOnly, x.Name));
-        Assert.True(typeof(Retention).IsValueType && typeof(Retention).GetFields(BindingFlags.Instance | BindingFlags.NonPublic).All(static x => x.IsInitOnly));
-        Assert.DoesNotContain(typeof(CallRetention).GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public), static x => x.CanWrite);
+        foreach (var record in new[] { typeof(CallRetention), typeof(OutputRetention), typeof(StorageRetention) })
+        {
+            Assert.All(record.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public), static x => Assert.True(x.IsInitOnly, x.Name));
+            Assert.DoesNotContain(record.GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public), static x => x.CanWrite);
+        }
     }
 
     // Each output atom closes the premises once, and a closure's work is what it reaches, each node with its incoming premises: n written
@@ -1178,7 +1323,7 @@ public sealed partial class RetentionTest
             var c = Bind($"func f({inputs}) -> i32\n{clauses}    return 0\n");
             var metrics = new OriginProofMetrics();
             c.Binding.OriginProofMetrics = metrics;
-            var rows = c.Types.Retains(Function(c, "f").SymbolOf()!, null, null).Rows.Length;
+            var rows = c.Types.Retains(Function(c, "f").SymbolOf()!, null, null).Writes.ToArray().Sum(static x => x.Own.Kinds.ToArray().Zip(x.All.Kinds.ToArray()).Count(static y => (y.First | y.Second) != RetentionKind.None));
             Assert.Equal(size * (size + 1) / 2, rows);
             Assert.Equal((size, 0L), (metrics.Closures, metrics.BoundViolations));
             Assert.True(metrics.Insertions + metrics.Activations <= (2 * rows) + (4 * size), $"{metrics.Insertions + metrics.Activations} for {rows} rows at {size}");
@@ -1250,8 +1395,34 @@ public sealed partial class RetentionTest
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
             .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(x.Node)))).ToArray();
 
+    // A retention as the records spell it (DECISIONS R4-M154): the result's kinds and whether it is untied, then per output it writes its
+    // root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs (`if {i Value: longer > shorter}`),
+    // whether it is untied, and the referent stores; each input with its kinds.
     private static string Show(CallRetention retention)
-        => retention.IsLimit ? "limit" : string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
-            .Append(retention.Untied ? "untied" : null).OfType<string>().Concat(retention.UntiedStores.ToArray().Select(static x => $"untied store {x}"))
-            .Concat(retention.ReferentStores.ToArray().Select(static x => $"referent store {x}")));
+    {
+        return retention.IsLimit ? "limit" : string.Join(", ", new[] { Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, retention.Result.Untied ? "untied" : null }
+            .Concat(retention.Writes.ToArray().Select(static x => $"store {x.Output}: own {{{Kinds(x.Own.Kinds)}}}{Pairs(x.Own)}, reached {{{Kinds(x.All.Kinds)}}}{Pairs(x.All)}" +
+                (x.Own.Untied ? " untied" : string.Empty)))
+            .Concat(retention.ReferentStores.ToArray().Select(static x => $"referent store {x}")).OfType<string>());
+
+        static string Kinds(ReadOnlySpan<RetentionKind> kinds)
+        {
+            var parts = new List<string>();
+            for (var i = 0; i < kinds.Length; i++)
+            {
+                if (kinds[i] != RetentionKind.None)
+                {
+                    parts.Add($"{i} {Flags(kinds[i])}");
+                }
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        static string Flags(RetentionKind kind) => string.Join(' ', new[] { RetentionKind.Value, RetentionKind.Content, RetentionKind.Chain }.Where(x => (kind & x) != 0));
+
+        // A record's pairs: ` if {i Value: longer > shorter, ...}`, the pairs of one conjunction joined by ` & `.
+        static string Pairs(StorageRetention record)
+            => record.Pairs.IsEmpty ? string.Empty : $" if {{{string.Concat(record.Pairs.ToArray().Select(static (x, i) => $"{(i == 0 ? string.Empty : x.Joined ? " & " : ", ")}{x.Input} Value: {x.Longer.Name} > {x.Shorter.Name}"))}}}";
+    }
 }

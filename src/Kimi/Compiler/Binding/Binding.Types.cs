@@ -328,11 +328,13 @@ public sealed partial class Binding
             if (IsRecovery(syntax, out _))
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
+                RestPendingOn(originDeclaration, syntax);
                 return Complete(syntax, null);
             }
 
             if (type is null)
             {
+                RestPendingOn(originDeclaration, syntax);
                 return null;
             }
 
@@ -612,13 +614,7 @@ public sealed partial class Binding
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
-        var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
-        if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
-        {
-            this.CheckCLayoutInstance(generic, bound);
-        }
-
-        return bound;
+        return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
     }
 
     private BoundType? BindTypeList(

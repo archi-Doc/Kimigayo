@@ -11,11 +11,10 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a; package C 3.2, 3.3 and 3.9; DECISIONS R5-M65, R5-M77, R5-M83):
+/// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a, X2; package C 3.2 and 3.3; DECISIONS R5-M65, R5-M77, R5-M83, R5-M146):
 /// <c>ModuleCodegen</c> writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue,
-/// slots, runtime-reached blocks, the Places of its place writer and the forms the frame covers, and a form not covered yet is one located
-/// <c>Unsupported_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
-/// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
+/// slots, runtime-reached blocks, the Places of its place writer and every form of an accepted program, and a broken input is one
+/// <c>InternalInvariant_Kd</c> with no module.</summary>
 public sealed partial class FunctionCodegenTest
 {
     private const string Branches =
@@ -40,6 +39,15 @@ public sealed partial class FunctionCodegenTest
         "func f(a: f64, b: i32) -> i64 => (a * b@f64)@i64\nfunc g(a: u64, c: f32) -> bool => a@f32 < -c and a@wrap<u8>@f64@f32 != 0.5\n";
 
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
+
+    // SPEC 13.4, 5.1 (DECISIONS R5-M143): raw pointers compared through a ref layer in both orders and an i32 compared through one, each
+    // answer checked by the division, run under MIR code generation in every run (the old generator refuses the raw forms, GenerationFailed_Kd).
+    private const string LayeredComparisons =
+        "func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\nfunc differ(p: raw/i32, q: ref/raw/i32) -> bool => p != q\n" +
+        "func near(a: ref/i32, b: i32) -> bool => a == b\nfunc far(a: i32, b: ref/i32) -> bool => a != b\n" +
+        "var x: i32 = 1\nlet n = x@raw\nlet m: raw/i32 = null\nvar bad: i32 = 0\n" +
+        "if not same(n@ref, n) or same(m@ref, n) or differ(n, n@ref) or not differ(m, n@ref) => bad = 1\n" +
+        "if not near(x@ref, 1) or near(x@ref, 2) or far(1, x@ref) or not far(2, x@ref) => bad = 1\nlet check = 1 / (1 - bad)\n";
 
     // A pair binder's function in its owner and its uniq case (SPEC 8.15, 13.5.5), instanced by the two calls.
     private const string PairLayers =
@@ -105,13 +113,8 @@ public sealed partial class FunctionCodegenTest
     private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
         "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
 
-    // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
-    private const string Signatures =
-        "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
-        "func stop() -> Never\n    loop\n        let x = 1\n";
-
-    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup (an Application
-    // generates only what its startup body reaches, K11; Signatures are a Library's).
+    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup, which calls
+    // functions with scalar, string-borrow, zero-sized and Never signatures (an Application generates only what its startup body reaches, K11).
     public static TheoryData<string, string> Frames => new()
     {
         {
@@ -125,7 +128,12 @@ public sealed partial class FunctionCodegenTest
             "var running = true\nlabel outer: loop\n    if running\n        running = false\n        continue to outer\n    exit to outer\n" +
             "let found: i32 = loop => exit 5\nvar again = true\nwhile again\n    again = false\n"
         },
-        { "FrameMain", "public func main()\n    var running = true\n    while running\n        running = false\n" },
+        {
+            "FrameMain",
+            "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
+            "func stop() -> Never\n    loop\n        let x = 1\npublic func main()\n    var running = true\n    while running\n        running = false\n" +
+            "    let text = \"frame\"\n    if running => stop()\n    let check = 1 / (identity(true, 1, text@ref, ()) - identity(false, 1, text@ref, ()))\n"
+        },
     };
 
     // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
@@ -464,6 +472,57 @@ public sealed partial class FunctionCodegenTest
     public void FrameProgramsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty);
 
+    // DECISIONS BU-48 and R5-M149 (the owner's Q1 (a); SPEC 6.3.2-6.3.4, 8.15.3, IMPL 21.3.2): a constructor's construction receiver is no
+    // use, so an uncalled constructor whose receiver has no layout is accepted at check; no program that builds calls it (each construction
+    // expression is a use of that layout), so a Library checks it only and does not generate it (InstanceCollector.Generates), and an
+    // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear, and
+    // so are the bodies only it makes (DECISIONS R5-M153): a Closure in its body, and a Closure in a Field's initializer with the function
+    // declared in it (fail-before: a Library generated each, at the base and under the lexical-nesting rule alike); its default templates
+    // take its verdict, a constant's and a Closure's (fail-before: a Library generated each template, the Closure in it too).
+    [Theory]
+    [InlineData(OutputKind.Library, "clayout")]
+    [InlineData(OutputKind.Library, "limit")]
+    [InlineData(OutputKind.Library, "default")]
+    [InlineData(OutputKind.Library, "closure default")]
+    [InlineData(OutputKind.Application, "clayout")]
+    [InlineData(OutputKind.Application, "limit")]
+    public void AnUncalledConstructorWithoutAReceiverLayoutIsCheckedOnly(OutputKind output, string form)
+    {
+        var source = form switch
+        {
+            "clayout" => "#Layout(\"C\")\npublic struct S\n    public init()\n        let add = func [] (x: i32) -> i32 => x + x\n",
+            "default" => "#Layout(\"C\")\npublic struct S\n    public init(n: i32 = 2) => ()\n",
+            "closure default" => "#Layout(\"C\")\npublic struct S\n    public init(f: (i32) -> i32 = func [] (x: i32) -> i32 => x + 1) => ()\n",
+            _ => "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
+                "    public var d: i32 = (func [] (x: i32) -> i32\n        func twice(y: i32) -> i32 => y * 2\n        return twice(x)\n    )(2)\n" +
+                "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
+                "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n",
+        };
+        var c = Analyze(source + (output == OutputKind.Application ? "let zz = 1\n" : string.Empty), output);
+        Assert.True(c.Accepts, string.Join(", ", Records(c)));
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
+        Assert.Empty(Records(c));
+        var set = c.Instances!;
+        var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Fn &&
+            set.Items[x].Key.Body.Def.Decl?.Declaration?.ToString().Contains("init(", StringComparison.Ordinal) == true);
+        Assert.False(set.IsGenerated(init));
+        Assert.DoesNotContain(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Decl is not null && set.IsGenerated(x));
+    }
+
+    // SPEC 4.7.4, 8.15.3 (DECISIONS R5-M149): an element of a fixed array behind a reference needs only the element's stride and the array's
+    // closed length, so an array over the size limit is indexed without its layout (fail-before: the place writer read the array's record,
+    // InternalInvariant_Kd); its element's verdict is the collector's.
+    [Fact]
+    public void AFixedArrayBehindAReferenceIsIndexedWithoutItsLayout()
+    {
+        var c = Analyze("public func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
+        Assert.True(c.Accepts, string.Join(", ", Records(c)));
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
+        Assert.Contains("icmp uge i64", writer.ToString(), StringComparison.Ordinal);
+    }
+
     [Theory]
     [MemberData(nameof(Operators))]
     public void OperatorProgramsRun(string name, string source, string stderr)
@@ -523,9 +582,16 @@ public sealed partial class FunctionCodegenTest
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
     // flag branches to an Abort with KIMI_E_INT_OVERFLOW (6) at the operator's location text (SPEC 22.5.1-22.5.2), and negation subtracts
-    // from 0; the result is the intrinsic's value. Nothing claims nsw or nuw (I9).
+    // from 0; the result is the intrinsic's value. Nothing claims nsw or nuw (I9). A 128-bit one is the same entry; its intrinsics'
+    // declarations are the module's exactly when such a check is written (DECISIONS R5-M143).
     [Theory]
     [InlineData("func f(a: i32, b: i32) -> i32 => a + b", "a + b", "llvm.sadd.with.overflow.i32", "i32 %, i32 %")]
+    [InlineData("func f(a: i128, b: i128) -> i128 => a + b", "a + b", "llvm.sadd.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a + b", "a + b", "llvm.uadd.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a - b", "a - b", "llvm.usub.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: i128, b: i128) -> i128 => a * b", "a * b", "llvm.smul.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a * b", "a * b", "llvm.umul.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: i128) -> i128 => -a", "-a", "llvm.ssub.with.overflow.i128", "i128 0, i128 %")]
     [InlineData("func f(a: u64, b: u64) -> u64 => a - b", "a - b", "llvm.usub.with.overflow.i64", "i64 %, i64 %")]
     [InlineData("func f(a: i16, b: i16) -> i16 => a * b", "a * b", "llvm.smul.with.overflow.i16", "i16 %, i16 %")]
     [InlineData("func f(a: u8, b: u8) -> u8 => a * b", "a * b", "llvm.umul.with.overflow.i8", "i8 %, i8 %")]
@@ -546,6 +612,7 @@ public sealed partial class FunctionCodegenTest
         var value = Assert.Single(f.Instructions, x => x.Shape == $"extractvalue {{ {type}, i1 }} %, 0");
         Assert.Contains(block.Successors[1].Instructions, x => x.Opcode == "store" && x.Operands[0] == value);
         Assert.DoesNotMatch(@"\b(nsw|nuw)\b", text);
+        Assert.Equal(type == "i128", text.Contains(LlvmModuleText.WideOverflowDeclarations, StringComparison.Ordinal));
     }
 
     // SPEC 13.3.1: a quotient or remainder by zero Aborts with KIMI_E_INT_DIV_ZERO (7), a signed quotient also the minimum by -1 with
@@ -1088,6 +1155,25 @@ public sealed partial class FunctionCodegenTest
     public void ARawPointerOperatorIsItsColumn(string source, string pattern)
         => Assert.Matches(pattern, Parse(source).Text);
 
+    // SPEC 13.4, 3.4.3, 5.1 (DECISIONS R5-M143): a comparison operand of safe value-reference layers denotes its terminal Place, so each
+    // operand is read through its layers, on either side: the raw pointers are compared, never a reference's own address. Each count is the
+    // loads between the compared value and its operand's slot.
+    [Theory]
+    [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q", "eq", 1, 0)]
+    [InlineData("func differ(p: raw/i32, q: ref/raw/i32) -> bool => p != q", "ne", 0, 1)]
+    [InlineData("func same(p: ref/raw/i32, q: ref/raw/i32) -> bool => p == q", "eq", 1, 1)]
+    [InlineData("func same(p: uniq/raw/i32, q: raw/i32) -> bool => p == q", "eq", 2, 0)]
+    public void AComparisonReadsEachOperandAtItsTerminal(string source, string predicate, int left, int right)
+    {
+        var compare = Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
+        Assert.Equal([left, right], compare.Operands.Select(Loads));
+    }
+
+    // SPEC 13.4, 5.1 (DECISIONS R5-M143): LayeredComparisons runs natively in every run.
+    [Fact]
+    public void LayeredComparisonsRun()
+        => ScalarEmissionTest.WriteFixture("RawComparisonLayers", Generate(LayeredComparisons), string.Empty);
+
     // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
     [Fact]
     public void AZeroStrideDisplacementKeepsThePointer()
@@ -1098,31 +1184,35 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.2 (DECISIONS R5-M18, R5-M92): DictionaryStorage's byte copy is llvm.memcpy, its ranges never overlapping, and its nullable Alloc
-    // calls the runtime routine both generators define where a body calls it.
+    // SPEC 22.2 (DECISIONS R5-M92, R5-M145): DictionaryStorage's byte copy and nullable Alloc call the runtime routines both generators define
+    // where a body calls them, the copy with its destination, source and count.
     [Fact]
     public void TheStorageBytePrimitivesAreTheirRows()
     {
         const string Source = "func more(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\nfunc fit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n";
         var c = Analyze(Source, OutputKind.Library);
-        const string Copy = @"\n  call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %t\d+, ptr %t\d+, i64 %t\d+, i1 false\)\n";
+        const string Copy = @"\n  call void @__kimi_transfer_bytes\(ptr %t\d+, ptr %t\d+, i64 %t\d+\)\n";
         Assert.Contains(ItemTexts(c, "grow"), static x => Regex.IsMatch(x, Copy));
         Assert.Contains(ItemTexts(c, "shrinkToFit"), static x => Regex.IsMatch(x, @"= call ptr @__kimi_try_allocate\(i64 %t\d+\)\n"));
     }
 
-    // SPEC 21.4.3, 22.2 (DECISIONS R5-M92): the nullable Alloc's definition is one runtime text spliced from its FunctionAbi, which a module
-    // whose bodies call it defines exactly once; the old generator writes that text (its pin goes by G4; MIR code generation's first such
-    // modules write it since C8e, through the same text: DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare).
+    // SPEC 21.4.3, 22.2 (DECISIONS R5-M92, R5-M145): each storage byte primitive's definition, the nullable Alloc's and the byte copy's, is one
+    // runtime text spliced from its FunctionAbi, which a module whose bodies call them defines exactly once (the old generator's row went
+    // with its selection at G4, DECISIONS R5-M160).
     [Fact]
-    public void TheNullableAllocIsDefinedOnceFromItsOneText()
+    public void TheStorageBytePrimitivesAreDefinedOnceFromTheirTexts()
     {
-        var definition = RuntimeAbi.TryAllocateBytes.GetDefinition(exported: false);
-        Assert.StartsWith(definition, LlvmModuleText.TryAllocate, StringComparison.Ordinal);
-        Assert.Single(Regex.Matches(LlvmModuleText.TryAllocate, Regex.Escape(definition)));
-        var c = MinimalEmissionTest.Analyze("var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n", codegen: CompilerCodegen.Legacy);
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
-        Assert.Contains(LlvmModuleText.TryAllocate, ir, StringComparison.Ordinal);
+        const string Source = "var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n";
+        var ir = Generate(Source);
+        var primitives = new[] { (RuntimeAbi.TryAllocateBytes, LlvmModuleText.TryAllocate), (RuntimeAbi.TransferBytes, LlvmModuleText.TransferBytes) };
+        foreach (var (abi, text) in primitives)
+        {
+            var definition = abi.GetDefinition(exported: false);
+            Assert.StartsWith(definition, text, StringComparison.Ordinal);
+            Assert.Single(Regex.Matches(text, Regex.Escape(definition)));
+            Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
+            Assert.Contains(text, ir, StringComparison.Ordinal);
+        }
     }
 
     // SPEC 22.5.2 (DECISIONS R5-M92): each of the 7 fixed codes MIR's Fail carries, the five the served compiler functions name and the
@@ -1149,7 +1239,6 @@ public sealed partial class FunctionCodegenTest
     public void AnImportIsCalledByItsCSignature()
     {
         var imported = Compilation.CreateForTest();
-        (imported.Pipeline, imported.Codegen) = (CompilerPipeline.Mir, CompilerCodegen.Mir);
         imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(imported.Prepare(WindowsProfile.Target));
         const string Source =
@@ -1167,6 +1256,19 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain("@idle", text, StringComparison.Ordinal);
         Assert.True(Analyze("func put(d: uniq/Dictionary<i32, i32>)\n    _ = d.tryInsert(1, 2)\n", OutputKind.Library).Generate(TextWriter.Null));
         Assert.True(Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library).Generate(TextWriter.Null));
+    }
+
+    // SPEC 7.7.4, 22.6 (DECISIONS R5-M146): a safe #LibraryImport function's Item, which has no body target, is called by the import's C
+    // signature, as its direct call is (fail-before: one located Unsupported_Kd at the Value call).
+    [Fact]
+    public void AnImportsItemCallsTheImport()
+    {
+        var c = Analyze(
+            "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public func lastError() -> u32\nfunc last() -> u32\n" +
+            "    let f = Native.lastError\n    return f()\n",
+            OutputKind.Library);
+        _ = Generate(c);
+        Assert.Single(Regex.Matches(Assert.Single(ItemTexts(c, "last")), @"= call i32 @GetLastError\(\)\n"));
     }
 
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
@@ -1197,7 +1299,7 @@ public sealed partial class FunctionCodegenTest
 
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
     // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
-    // entry and the profile attributes for both generators).
+    // entry and the profile attributes).
     [Fact]
     public void EachLocalOfNonzeroSizeHasOneSlot()
     {
@@ -1263,80 +1365,63 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
-    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
-    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
-    // (R5-M93), a Builtin shim's since C8f (R5-M126), and a requirement whose witness a property witness (C3c) or one without a body (PLAN
-    // G157 (10), K's) is one record at the call; a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice
-    // overload of writeLine included, and Text.toString of an i32 since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of
-    // a for loop's
-    // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
-    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
-    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
-    // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
-    // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83)
-    // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
-    // and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from none and its iteration's storage.
-    // K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
+    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness has no MIR body is
+    // the collector's BodylessWitness gap at check, InstanceCollectorTest). A string's Move into another local is written since C2b
+    // (DECISIONS R5-M87), a function's call since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop
+    // included (R5-M78, R5-M89), a requirement's since C3b (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since
+    // C3c (R5-M141); a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included,
+    // and Text.toString of an i32 since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of a for loop's statement and
+    // of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS
+    // R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since C7b
+    // (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) write checked 128-bit arithmetic and a
+    // comparison through an operand's ref layers since wide (R5-M143); they have a raw pointer column since C8a (R5-M92), which writes null
+    // too; an erasure is written since C5b (DECISIONS R5-M104), into any target since C5c (R5-M108); an Array's capacity and an Array from
+    // none since C8d (R5-M121); the place writer (DECISIONS R5-M83) reads an object borrow's payload since C6a (R5-M110); the rvalue rows
+    // (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a
+    // Dictionary from none and its iteration's storage.
     [Theory]
-    [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
-    [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
-    [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
-    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new string[0])]
-    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]
-    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
-    [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new string[0])]
-    [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
-    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
-    [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new string[0])]
-    [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new string[0])]
-    [InlineData("func make() -> Dictionary<i32, i32> => [:]\n", OutputKind.Library, new string[0])]
-    [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new string[0])]
-    [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
-    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new string[0])]
-    [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new string[0])]
-    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new string[0])]
-    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new string[0])]
+    [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library)]
+    [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library)]
+    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library)]
+    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library)]
+    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library)]
+    [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library)]
+    [InlineData("let t = (1, 2)\n", OutputKind.Application)]
+    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application)]
+    [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library)]
+    [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library)]
+    [InlineData("func make() -> Dictionary<i32, i32> => [:]\n", OutputKind.Library)]
+    [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library)]
+    [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library)]
+    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application)]
+    [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application)]
+    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application)]
+    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library)]
     [InlineData(
         "func same<T>(a: T, b: T) -> bool\n    T is Equatable\n    return a == b\nfunc use() -> bool => same(1, 2)\n",
-        OutputKind.Library,
-        new string[0])]
-    [InlineData(
-        "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
-        "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",
-        OutputKind.Library,
-        new[] { "x.count" })]
-    [InlineData(
-        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    match w.reserve(4)\n        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
-        "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n",
-        OutputKind.Library,
-        new[] { "w.reserve(4)" })]
-    [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new string[0])]
-    [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new string[0])]
-    [InlineData("func show(x: i32) -> string => \"x=\\(x)\"\n", OutputKind.Library, new string[0])]
-    [InlineData("func show(s: ref/string) -> string => \"\\(s)\"\n", OutputKind.Library, new string[0])]
-    [InlineData("func show(s: ref/string) -> string => \"x=\\(s)\"\n", OutputKind.Library, new string[0])]
+        OutputKind.Library)]
+    [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library)]
+    [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library)]
+    [InlineData("func show(x: i32) -> string => \"x=\\(x)\"\n", OutputKind.Library)]
+    [InlineData("func show(s: ref/string) -> string => \"\\(s)\"\n", OutputKind.Library)]
+    [InlineData("func show(s: ref/string) -> string => \"x=\\(s)\"\n", OutputKind.Library)]
     [InlineData(
         "func show<T>(value: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"x=\\(value)\")\nfunc use() -> ()\n    show(1)\n    show(\"s\")\n",
-        OutputKind.Library,
-        new string[0])]
-    [InlineData(ForLoop, OutputKind.Library, new string[0])]
-    [InlineData(DictionaryLoop, OutputKind.Library, new string[0])]
-    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]
-    [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
-    [InlineData(Signatures, OutputKind.Library, new string[0])]
-    public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, OutputKind output, string[] sites)
+        OutputKind.Library)]
+    [InlineData(ForLoop, OutputKind.Library)]
+    [InlineData(DictionaryLoop, OutputKind.Library)]
+    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library)]
+    [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library)]
+    public void EveryAcceptedFormIsWritten(string source, OutputKind output)
     {
         var c = Analyze(source, output);
         using var writer = new StringWriter();
-        var written = sites.Length == 0;
-        Assert.Equal(written, c.Generate(writer));
-        Assert.Equal(written, writer.ToString().Length != 0);
-        Assert.Equal(sites.Select(static x => ("Unsupported_Kd", (string?)x)), Records(c));
-        Assert.All(TestDiagnostics.Of(c), static x => Assert.Equal("Hello.kimi", x.Path));
-        Assert.Equal(!written, c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
-        Assert.Equal(written, c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Equal(written, failure is null);
+        Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
+        Assert.NotEqual(0, writer.ToString().Length);
+        Assert.Empty(Records(c));
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
+        Assert.Null(failure);
     }
 
     // I1: the same program gives the same text, in one compilation and in two.
@@ -1375,6 +1460,9 @@ public sealed partial class FunctionCodegenTest
     [InlineData(UserFormats, OutputKind.Library)]
     [InlineData(Writers, OutputKind.Library)]
     [InlineData(Interpolations, OutputKind.Library)]
+    [InlineData(Verifications, OutputKind.Application)]
+    [InlineData(Phases, OutputKind.Application)]
+    [InlineData(Witnesses, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1401,7 +1489,7 @@ public sealed partial class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var (start, unused) = (Of(set, null), Of(set, "unused"));
         set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
         Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
         new FunctionCodegen(module, c.Types).Write(program, collector, unused, TextWriter.Null);
         Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
@@ -1411,6 +1499,8 @@ public sealed partial class FunctionCodegenTest
 
     // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
     // refutes at its owning layer, which is checked only (the old generator skips it too); where the slot applies, the override is generated.
+    // A Closure and a function nested in its body are no output roots: the override's runtime targets reach them, so they follow its mark
+    // (DECISIONS R5-M153; fail-before: both generated where the slot is refuted).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1419,17 +1509,46 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(
             "contract Marker\nstruct Thing\n" + (applies ? "    Self is Marker\n" : string.Empty) + "    public init() => ()\nopen struct Base<T>\n" +
             "    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
-            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32 => 7\n",
+            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n" +
+            "        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n",
             OutputKind.Library);
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
         _ = c.Generate(TextWriter.Null);
-        Assert.Equal(applies, Assert.Single(Generated(c.Instances!), static x => x.Name == "mark").Generated);
+        var set = c.Instances!;
+        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
+        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "twice").Generated);
+        var closure = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure);
+        Assert.Equal(applies, set.IsGenerated(closure));
     }
 
-    // Every milestone generates under MIR code generation, or records only coverage rows: never a broken contract.
+    // DECISIONS R5-M153, against over-exclusion: no Closure's body is a Library output root (Generates), yet each one a generated body makes
+    // at its Aggregate(Closure) site is Generated through that target: in an accessor's get and set, a destructor, a default template and a
+    // static's initializer.
+    [Fact]
+    public void ALibraryReachesEachClosureItsBodiesMake()
+    {
+        var c = Analyze(
+            "struct Gauge\n    var stored: i32 = 2\n    public computed count: i32\n        get() -> i32\n" +
+            "            let f = func [] (x: i32) -> i32 => x + 1\n            return f(self.stored)\n        set(value: i32) -> ()\n" +
+            "            let g = func [] (x: i32) -> i32 => x * 2\n            self.stored = g(value)\n    public init() => ()\n    drop\n" +
+            "        let h = func [] (y: i32) -> i32 => y + 1\n        _ = h(2)\n" +
+            "func apply(x: i32, f: (i32) -> i32 = func [] (y: i32) -> i32 => y + 1) -> i32 => f(x)\n" +
+            "group Registry\n    public let limit: i32 = (func [] (y: i32) -> i32 => y + 1)(3)\n",
+            OutputKind.Library);
+        _ = Generate(c);
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        var closures = Enumerable.Range(0, set.RootCount).Where(x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure).ToArray();
+        Assert.Equal(5, closures.Length);
+        Assert.All(closures, x => Assert.False(collector.Generates(program, x)));
+        Assert.All(closures, x => Assert.True(c.Instances!.IsGenerated(c.Instances.Find(set.Items[x].Key))));
+    }
+
+    // DECISIONS R5-M146: every milestone check accepts is generated with no record; one check rejects is not generated and adds no record.
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
-    public void TheMilestonesRecordOnlyCoverageRows(string name)
+    public void TheMilestonesGenerate(string name)
     {
         if (!name.StartsWith("milestone/", StringComparison.Ordinal))
         {
@@ -1437,13 +1556,12 @@ public sealed partial class FunctionCodegenTest
         }
 
         var c = Analyze(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", name["milestone/".Length..] + ".kimi")));
-        if (c.Generate(TextWriter.Null))
+        Assert.Equal(c.Accepts, c.Generate(TextWriter.Null));
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        if (c.Accepts)
         {
             Assert.Empty(Records(c));
-            return;
         }
-
-        Assert.All(Records(c), static x => Assert.Equal("Unsupported_Kd", x.Code));
     }
 
     // I11: generating a program again allocates nothing.
@@ -1483,6 +1601,9 @@ public sealed partial class FunctionCodegenTest
     [InlineData(UserFormats, OutputKind.Library)]
     [InlineData(Writers, OutputKind.Library)]
     [InlineData(Interpolations, OutputKind.Library)]
+    [InlineData(Verifications, OutputKind.Application)]
+    [InlineData(Phases, OutputKind.Application)]
+    [InlineData(Witnesses, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -1492,17 +1613,13 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(0, allocated);
     }
 
-    // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed under
-    // MIR code generation, whatever the process's generators, and the definitions of the body items its generation marks Generated. The
-    // mark precedes writing, so a coverage row not written yet (Unsupported_Kd) leaves it whole; any other record fails.
+    // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
+    // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
     {
         var c = Analyze(source);
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
-        if (!c.Generate(TextWriter.Null))
-        {
-            Assert.All(Records(c), static x => Assert.Equal("Unsupported_Kd", x.Code));
-        }
+        Assert.True(c.Generate(TextWriter.Null), string.Join(", ", Records(c)));
 
         var set = c.Instances!;
         var generated = Enumerable.Range(0, set.Items.Length).Where(set.IsGenerated).ToArray();
@@ -1510,25 +1627,36 @@ public sealed partial class FunctionCodegenTest
         return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
     }
 
-    // A program analyzed under MIR code generation (sel) for an output form.
+    // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
+    // after acceptance as Project discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Mir;
+        c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source, isTestOnly: c.IsTestBuild));
         c.Bind();
-        c.Binding.CheckStartup(output);
-        c.Analyze();
+        if (!c.IsTestBuild)
+        {
+            c.Binding.CheckStartup(output);
+            c.Analyze();
+            return c;
+        }
+
+        c.Binding.CheckTestStartup();
+        if (c.Analyze().IsVerified)
+        {
+            c.Tests.Discover(c);
+        }
+
         return c;
     }
 
     private static string Generate(string source) => Generate(Analyze(source));
 
     // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
-    // other items make: an instance a call names (the call is C3a's row) or a body beside a form not written yet. Every body item is an
-    // output root.
+    // other items make: an instance a call names (the call is C3a's row) or a body beside a broken one. Every body item is an output
+    // root.
     private static string[] ItemTexts(Compilation c, string? name)
     {
         var (program, collector, module, bodies) = WrittenModule(c);
@@ -1549,7 +1677,7 @@ public sealed partial class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
         set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
         _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
         return (program, collector, module, bodies);
     }
@@ -1593,6 +1721,9 @@ public sealed partial class FunctionCodegenTest
     private static (string? Name, bool Generated)[] Generated(CheckedSet set)
         => [.. Enumerable.Range(0, set.Items.Length).Select(x => (set.Items[x].Key.Body.Def.Decl?.Name, set.IsGenerated(x)))
             .OrderBy(static x => x.Name, StringComparer.Ordinal)];
+
+    // The pointer loads between a value and the slot it was first loaded from: 0 for a slot's own value.
+    private static int Loads(IrValue value) => value.Opcode == "load" && value.Operands[0].Opcode == "load" ? 1 + Loads(value.Operands[0]) : 0;
 
     private static (string Code, string? Text)[] Records(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text))];

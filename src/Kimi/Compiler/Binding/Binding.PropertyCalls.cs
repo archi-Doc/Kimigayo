@@ -80,26 +80,36 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool BindPropertyUpdate(MemberAccessKoto node, BindingScope scope)
+    // SPEC 13.7.1, 13.7.2 (DECISIONS BU-50): an update with a custom accessor completes its two sides once, as a read and a write
+    // complete theirs: the read Type (the node's) and the destination Type (its computed input's, PropertyUpdateDestination), to which
+    // the update's operation fits its result. A standard `get` reads and a standard `set` writes the Field's Place as the body reads it
+    // (MemberRead), which also types the storage node; a custom accessor's Type is its call's. A side without a Type leaves the update
+    // unresolved, as the read is. The storage is reached through the receiver the target names: a bare static Property names none, so
+    // its update is the located Unsupported_Kd until P42 binds a static Property's update (the qualified form is the later phases' limit).
+    private BoundType? BindPropertyUpdate(Koto target, BindingScope scope)
     {
-        var property = node.BoundSymbol!.Property!;
-        var getterResult = this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType ?? property.Getter.Result;
-        var setterInput = this.PropertySetterInput(node) ?? property.Setter.Input;
-        var arithmetic = this.propertyUpdateInputs.TryGetValue(node, out var computed) && computed.Source is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
-        if (getterResult is not { } result || setterInput is not { } input ||
-            (!arithmetic && !this.FitsTypeAt(result, input, node)))
+        var property = target.BoundSymbol!.Property!;
+        var stored = this.MemberRead(target, property.Symbol, scope);
+        var result = property.Getter.IsStandard ? stored : this.AccessorUseType(target, property.Getter);
+        var destination = property.Setter.IsStandard ? stored : this.AccessorUseType(target, property.Setter);
+        if (result is null || destination is null)
         {
-            this.Fail(node, BindingFailure.TypeMismatch);
-            return false;
+            return Complete(target, null);
         }
 
+        if (target is not MemberAccessKoto node)
+        {
+            return this.Fail(target, BindingFailure.Unsupported);
+        }
+
+        Complete(this.propertyUpdateInputs[node], destination);
         var owner = node.Left.BoundType!;
         var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
         var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, type, owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
             this.FailWrite(node, node);
-            return false;
+            return null;
         }
 
         this.receiverOperations[node] = new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0);
@@ -114,13 +124,21 @@ public sealed partial class Binding
 
         Complete(storage.Left, adapted);
         storage.BoundSymbol = property.Symbol;
-        Complete(storage, property.Type);
-        return true;
+        Complete(storage, stored);
+        return Complete(node, result);
     }
 
-    private BoundType? PropertySetterInput(Koto node)
-        => this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Set))?.BoundCall is { ArgumentOperations.Length: > 0 } call
-            ? call.ArgumentOperations[0].ParameterType : null;
+    // SPEC 13.7.1: the destination Type of an update with a custom accessor (BindPropertyUpdate), to which its operation fits the result.
+    private BoundType? PropertyUpdateDestination(Koto target)
+        => this.propertyUpdateInputs.GetValueOrDefault(KotoHelper.UnwrapParentheses(target)) is { BindingState: BindingState.Resolved } input
+            ? input.BoundType : null;
+
+    // SPEC 13.7.1: the Type a custom accessor's bound call gives its use at `node`: a `set`'s value input (the destination Type), a
+    // `get`'s result (the read Type).
+    private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
+        => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+                ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
     {
@@ -168,13 +186,17 @@ public sealed partial class Binding
 
         bool BindCall()
         {
-            var inputType = accessor.Input is { } declaredInput ? Signature(declaredInput) : null;
+            // SPEC 11.3, 11.4, 23.1.2: a use of an accessor whose `get` result or stored `set` input is not its Property's Type (the
+            // declaration's TypeMismatch_Kd) takes the Type those rules fix, so what reads the use is judged against it; once validation
+            // has failed the declaration, the use rests on it (Check, CallPlan.Called).
+            var mistyped = this.AccessorTypeMismatch(accessor);
+            var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
             // is the declaration error of SPEC 11.3, not a limit of this path.
             var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
-                Signature(declaredResult) is not { } result ||
+                Signature(mistyped && accessor.Kind == PropertyAccessorKind.Get ? accessor.Property.Type! : declaredResult) is not { } result ||
                 (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||
                 receiverUnsupported)
             {
@@ -285,7 +307,7 @@ public sealed partial class Binding
 
                 call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
-                this.JudgeSelectedCall(call, function, operations, count, origins, inputs, declaringType);
+                this.JudgeSelectedCall(call, function, operations.AsSpan(0, count + 1), origins, inputs, declaringType, []);
                 Complete(call, result);
                 return true;
             }

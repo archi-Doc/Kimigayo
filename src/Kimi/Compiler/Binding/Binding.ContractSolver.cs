@@ -2,7 +2,8 @@
 
 // ContractSolver (PlanB §4.1; DECISIONS BU-29): premise derivation and evidence availability (SPEC 8.3): what the premises supply for a
 // proposition and its negation (Supply) under the request's view (ViewOf, the one derivation point); until C3 the eager derivation too
-// (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises) and the availability of a fact (AvailableConstraintFact).
+// (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply, which
+// retention's handed signatures read too) and the availability of a fact (AvailableConstraintFact).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts.
 // - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain holds an Invalid environment).
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers Invalid to Supply; availability
@@ -17,11 +18,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<BindingSymbol> contractPremiseQueries = new(ReferenceEqualityComparer.Instance);
     private BoundConstraint[] contractFactScratch = [];
 
-    // The premises a request reads: the scope its consumer holds. C3 adds the source states, the definition whose collection is
-    // active, the inadmissible bindings and the check under way here, in ViewOf (BU-29).
+    // The premises a request reads: the scope its consumer holds. C3 adds the definition whose collection is active and the
+    // inadmissible bindings here, in ViewOf (BU-29); a source's state and its check under way stay on the source (SourceStates, BU-59).
     private readonly record struct EvidenceView(BindingScope Premises);
 
     // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
@@ -78,30 +78,18 @@ public sealed partial class Binding
         return new() { Positive = positive, Negative = negative };
     }
 
+    // A Contract premise is available when the Contract and each ancestor (the deduplicated transitive closure) are valid sources: its
+    // declaration context and its published source state (Binding.SourceStates).
     private bool AvailableContractPremise(BindingSymbol contract)
     {
-        // Ancestors is already the deduplicated transitive closure. Recurse only through
-        // actual closed obligations, not through that flattened refinement list again.
         var ancestors = contract.Contract?.Ancestors;
         for (var i = -1; i < (ancestors?.Count ?? 0); i++)
         {
             var source = i < 0 ? contract : ancestors![i];
             if (this.InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration) ||
-                !this.contractPremiseQueries.Add(source))
+                this.ReadSourceState(source) != ConstraintProof.Proven)
             {
                 return false;
-            }
-
-            try
-            {
-                if (this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)source.Declaration) != ConstraintProof.Proven)
-                {
-                    return false;
-                }
-            }
-            finally
-            {
-                this.contractPremiseQueries.Remove(source);
             }
         }
 
@@ -187,23 +175,62 @@ public sealed partial class Binding
     private void AddContractPremises(BoundContract shape, BoundType self, BindingScope scope)
     {
         var environment = scope.Constraints ??= new();
-        AddClauses(shape);
-        for (var i = 0; i < shape.Ancestors.Count; i++)
+        foreach (var (ancestor, declaration, premise) in new ContractSupply(this, shape, self, scope))
         {
-            this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[i])), shape.Symbol);
-            AddClauses(shape.Ancestors[i].Contract!);
-        }
-
-        void AddClauses(BoundContract declaration)
-        {
-            this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
-            for (var i = 0; i < declaration.ClauseStorage.Count; i++)
+            if (premise is not null)
             {
-                if (declaration.ClauseStorage[i].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
+                this.AddConstraintFact(environment, premise, shape.Symbol);
+                continue;
+            }
+
+            if (ancestor >= 0)
+            {
+                var inherited = this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[ancestor]));
+                this.AddConstraintFact(environment, inherited, shape.Symbol);
+            }
+
+            this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
+        }
+    }
+
+    // SPEC 8.3.2: what a Contract premise `self is shape` supplies from its declarations, the one enumeration of it, in the order
+    // AddContractPremises adds it: the Contract, then each ancestor (Ancestor: -1, then the ancestor's index), each first as itself
+    // (Premise null: its own facts, an ancestor's `self is A` and the arithmetic premises, AddContractPremises'), then each of its clause
+    // constraints that depends on the Contract's Self (DependentConstraint) as `self` and `scope` make it (ContractConstraint, not
+    // normalized), evaluated when reached. Read by AddContractPremises and by retention's handed signatures (HandedContract).
+    private ref struct ContractSupply(Binding binding, BoundContract shape, BoundType self, BindingScope scope)
+    {
+        private int ancestor = -1;
+        private int next; // The declaration's next item: 0 the declaration itself, i + 1 its clause i.
+
+        public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise) Current { get; private set; }
+
+        public readonly ContractSupply GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            for (; this.ancestor < shape.Ancestors.Count; (this.ancestor, this.next) = (this.ancestor + 1, 0))
+            {
+                var declaration = this.ancestor < 0 ? shape : shape.Ancestors[this.ancestor].Contract!;
+                if (this.next == 0)
                 {
-                    this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false, declaration.Symbol), shape.Symbol);
+                    (this.next, this.Current) = (1, (this.ancestor, declaration, null));
+                    return true;
+                }
+
+                for (; this.next <= declaration.ClauseStorage.Count; this.next++)
+                {
+                    if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint &&
+                        binding.DependentConstraint(constraint, contractSelf: true))
+                    {
+                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol));
+                        this.next++;
+                        return true;
+                    }
                 }
             }
+
+            return false;
         }
     }
 }

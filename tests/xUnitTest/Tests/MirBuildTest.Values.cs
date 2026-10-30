@@ -20,29 +20,29 @@ public sealed partial class MirBuildTest
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
     // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
     // its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage), and the Field initializer of a declaration Binding did not bind (a
-    // struct with a misplaced `length` slot), in each constructor. Building goes on after each. The unbuilt form is a position of a Type
-    // parameter, which PLAN G167 builds; its Opaque names the root of the position's value, built already (DECISIONS R5-M84).
+    // struct with a misplaced `length` slot), in each constructor. Building goes on after each. The unbuilt form is the tuple operator
+    // without its comparison (Unbuilt); its Opaque names the roots of its operands.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = CompilationTestHelper.Parse(
             "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            "func f<I>(a: i32, values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let c = values[p]\n    return a\nfunc g() -> i32 => missing\n" +
-            "func h<I>(a: i32, c: bool, values: [3 of i32], q: I) -> i32\n    I is PrimitiveInteger\n    defer\n        let d = values[q]\n" +
-            "    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
+            Unbuilt.Declarations + $"func f(a: i32, x: ref/{Unbuilt.Tuple}, y: ref/{Unbuilt.Tuple}) -> i32\n    let c = x == y\n    return a\n" +
+            $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: ref/{Unbuilt.Tuple}, v: ref/{Unbuilt.Tuple}) -> i32\n    defer\n" +
+            "        let d = u == v\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
         Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         c.Bind();
         _ = c.Binding.CheckStartup(OutputKind.Application);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
-        var position = bodies["f"];
-        Assert.True(position.HasOpaque);
-        Assert.Equal([3], position.OpaqueRoots.ToArray());
-        Assert.Contains(position.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
+        var unbuilt = bodies["f"];
+        Assert.True(unbuilt.HasOpaque);
+        Assert.Equal([2, 3], unbuilt.OpaqueRoots.ToArray());
+        Assert.Contains(unbuilt.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
         var records = program.Records.Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
-        Assert.Equal(["p", "q"], records);
-        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "q"));
+        Assert.Equal(["u == v", "x == y"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u == v"));
 
         Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
@@ -50,25 +50,29 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
-    // that do not exist and records nothing, so each body validates: an acquisition Binding's Copy proof left unset on a Type it rejected
-    // (a raw read of a struct whose C layout it rejected) is the acquired node's derived Opaque value; a Field Binding formed no stored
-    // Type for (one naming a missing Type, or inferred from a call it rejected) has no Place, so a constructor places no initializer
-    // there; and an empty body falling through a non-Unit result, which control flow rejects, leaves no value, as a body ending in a
-    // statement does.
+    // that do not exist and records nothing, so each body validates: a Field Binding formed no stored Type for (one naming a missing Type,
+    // or inferred from a call it rejected) has no Place, so a constructor places no initializer there, nor a base subobject whose base
+    // clause Binding formed no Type for, so its base call, written, omitted or with arguments, is not placed (PLAN G320, fail-before: a
+    // Projection finding at the call); and an empty body falling through a non-Unit result, which control flow rejects, leaves no value,
+    // as a body ending in a statement does. (A raw read of a C-layout struct Binding rejected was the derived Opaque's row until
+    // DECISIONS R4-M134 Q8 made such a declaration no Binding error.)
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\n", "InvalidCLayout_Kd", "*p")]
-    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd", null)]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd", null)]
-    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd", null)]
-    public void ValuesBindingDidNotFormAreDerived(string source, string code, string? opaque)
+    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd")]
+    [InlineData(
+        "group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n",
+        "UnprovenConstraint_Kd")]
+    [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() : base() => ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() => ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("struct D : Missing\n    public init(k: i32) : base(k + 1) => ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd")]
+    public void ValuesBindingDidNotFormAreDerived(string source, string code)
     {
         var c = Compile(source);
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
-        var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray());
-        Assert.Equal(opaque is null ? [] : [opaque], sites.Select(x => c.SyntaxOf(x.Source).ToString()));
+        Assert.Empty(program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray()));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`/`or`, a runtime Type test, a
@@ -221,6 +225,27 @@ public sealed partial class MirBuildTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 13.7.1, 3.1.3 (DECISIONS R5-M159): the right side is secured at the destination Type, the element's, before a diverging key
+    // is evaluated: a call's result, a stored exclusive reference Reborrowed and a reference read through its layers, each in a temp of
+    // that Type with no record and no finding (fail-before: a Never temp, written by the call with a Type and a NeverWrite finding, the
+    // Reborrow's InternalInvariant_Kd, the read not built).
+    [Theory]
+    [InlineData("var a: [1 of string] = [\"old\"]\n    a[(return 42)] = echo(\"new\")", "a[(return 42)]", "string")]
+    [InlineData("var x = \"x\"\n    var y = \"y\"\n    var us: [1 of uniq/string] = [x@uniq]\n    let s = y@uniq\n    us[(return 42)] = s", "us[(return 42)]", "uniq/string")]
+    [InlineData("let x = \"x\"\n    let r = x@ref\n    let rr = r@ref\n    var us: [1 of ref/string] = [r]\n    us[(return 42)] = rr", "us[(return 42)]", "ref/string")]
+    public void ARightSideIsSecuredAtTheElementTypeBeforeADivergingKey(string statements, string target, string type)
+    {
+        var c = Compile("func echo(text: string) -> string => text@move\nfunc f() -> i32\n    " + statements + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
+        var temps = f.Locals.ToArray().Where(x => x.Kind == MirLocalKind.Temp && c.SyntaxOf(x.Source.Syntax).ToString() == target).Select(static x => TyCtxt.Name(x.Type));
+        Assert.Contains(type, temps);
+        Assert.DoesNotContain("Never", temps);
     }
 
     // SPEC 17.6.3 (PD22): a verification records each Scalar operand of its built-in comparison, side 0 the left and 1 the right: a
