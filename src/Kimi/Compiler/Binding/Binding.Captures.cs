@@ -71,7 +71,8 @@ public sealed partial class Binding
         };
 
     // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
-    // unsupported captured Type is reported at the written capture entry when there is one.
+    // unsupported captured Type is reported at the written capture entry when there is one, resting on the projection use that formed
+    // it (BU-61).
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -115,6 +116,14 @@ public sealed partial class Binding
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
                     ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
         {
+            // DECISIONS BU-61 (SPEC 23.1.2): a projection whose use's conformance check rejects it names no Type, so the failure rests
+            // on the use judged on the closure's own scope chain. Only the closure's first failure records it, so an earlier independent
+            // failure stays direct.
+            if (function.BindingFailure == BindingFailure.None && this.ProjectionUseOf(type, this.ConstraintScope(function)) is { } use)
+            {
+                this.AddPendingPrerequisite(function, use);
+            }
+
             if (entry is { } written)
             {
                 this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);
