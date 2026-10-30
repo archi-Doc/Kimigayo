@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf, CheckLocalTypeUse).
 public sealed partial class Binding
 {
-    internal static bool HasLocalRegion(BoundType type)
+    internal bool HasLocalRegion(BoundType type)
     {
         if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
         {
@@ -31,7 +31,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (HasLocalRegion(type.Components[i]))
+            if (this.HasLocalRegion(type.Components[i]))
             {
                 return true;
             }
@@ -173,7 +173,7 @@ public sealed partial class Binding
 
     private BoundType ResolveLocalResultOrigins(BoundType type)
     {
-        if (!HasLocalRegion(type))
+        if (!this.HasLocalRegion(type))
         {
             return type;
         }
@@ -241,5 +241,5 @@ public sealed partial class Binding
     }
 
     private bool CheckLocalTypeUse(BoundType actual, BoundType expected, Koto use)
-        => (HasLocalRegion(actual) || HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use);
+        => (this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use);
 }

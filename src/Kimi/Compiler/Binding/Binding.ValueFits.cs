@@ -66,7 +66,7 @@ public sealed partial class Binding
         // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
         if ((polarity == OriginVariance.Contravariant ?
                 FitsTypeCore(expected, actual, this, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)) &&
-            !HasLocalRegion(actual) && !HasLocalRegion(expected))
+            !this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
         {
             return true;
         }

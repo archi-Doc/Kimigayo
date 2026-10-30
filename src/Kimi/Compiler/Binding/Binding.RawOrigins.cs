@@ -37,7 +37,6 @@ public sealed partial class Binding
 {
     // The member borrows a step or a retention walk is reading (RawMembers), in stack order: each reader truncates to where it started.
     private readonly List<RawMember> rawMembers = new();
-    private readonly TypeMemo<BoundType?> erasedParts = new(); // WithoutRawOrigins' results.
 
     // SPEC 5.4, 5.7: whether a conversion stating `claimed` is a fit: the premises prove that its operand's Origin, none for an
     // unstated pointer or an address, outlives the claimed one.
@@ -50,7 +49,7 @@ public sealed partial class Binding
     // with them at R6-check. A part's result depends on the part alone, so each distinct part is erased once per call (DECISIONS BU-19,
     // BU-58).
     internal BoundType? WithoutRawOrigins(BoundType? type)
-        => type is null || !type.CarriesRawOrigin ? type : this.ErasedParts(type, this.erasedParts.Begin(this.storageVersion));
+        => type is null || !type.CarriesRawOrigin ? type : this.ErasedParts(type, this.rewrittenParts.Begin(this.storageVersion));
 
     // SPEC 15.2.3, 5.7: a layer's member of OwnedOrigins: its Origin, or its raw Origin other than `self`.
     private static BoundOrigin? OwnedOrigin(BoundType type) => type.Origin ?? (type.RawOrigin is { Kind: not OriginKind.Holder } raw ? raw : null);
@@ -98,10 +97,10 @@ public sealed partial class Binding
             return part;
         }
 
-        if (!this.erasedParts.TryGet(part, query, out var result))
+        if (!this.rewrittenParts.TryGet(part, query, out var result))
         {
             result = this.ErasedParts(part, query);
-            this.erasedParts.Set(part, query, result);
+            this.rewrittenParts.Set(part, query, result);
         }
 
         return result!;

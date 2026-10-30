@@ -17,7 +17,6 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> enumPayloadTypes = new();
     private readonly TypeMemo<BoundType?> completedParts = new(); // CompleteProjections' results.
-    private readonly TypeMemo<BoundType> markedParts = new(); // WithUnstatedOrigins' results.
     private readonly TypeMemo<bool> layoutParts = new(); // The Tuples and fixed arrays a container frame met that added no cycle.
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
@@ -238,7 +237,7 @@ public sealed partial class Binding
     // dependent, is not marked. A declared part is never a Semantics family (a family
     // comes only from an expression's adaptation): one is a broken contract. A part's result depends on the part alone, so each distinct
     // part is marked once per call (DECISIONS BU-19, BU-58).
-    private BoundType WithUnstatedOrigins(BoundType declared) => this.MarkedParts(declared, this.markedParts.Begin(this.storageVersion));
+    private BoundType WithUnstatedOrigins(BoundType declared) => this.MarkedParts(declared, this.rewrittenParts.Begin(this.storageVersion));
 
     // A component's result (WithUnstatedOrigins), each distinct one with components marked once per query; a leaf is cheaper to mark
     // again than to record.
@@ -249,13 +248,13 @@ public sealed partial class Binding
             return this.MarkedParts(part, query);
         }
 
-        if (!this.markedParts.TryGet(part, query, out var result))
+        if (!this.rewrittenParts.TryGet(part, query, out var result))
         {
             result = this.MarkedParts(part, query);
-            this.markedParts.Set(part, query, result);
+            this.rewrittenParts.Set(part, query, result);
         }
 
-        return result;
+        return result!;
     }
 
     // A declared part, its components marked first (WithUnstatedOrigins).
