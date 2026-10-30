@@ -39,7 +39,8 @@ public class ArchitectureRulesTest
     // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
     // pattern from matching its source.
     private const string DeletedByR6Gen =
-        @"\b(?:BodyLowerin[g]|EmissionModul[e]|LlvmModuleWrite[r]|LlvmEmitte[r]|GenericStoragePla[n]|(?:Failed|Failure|Analyze)Instanc[e]\b)";
+        @"\b(?:BodyLowerin[g]|EmissionModul[e]|EmissionOpcod[e]|LlvmModuleWrite[r]|LlvmEmitte[r]|GenericStoragePla[n]|StaticScalarEntr[y]|" +
+        @"(?:Object|Virtual|Default)GenerationPla[n]|CompilerFunctionAdapter[s]|WindowsLowerin[g]|(?:Failed|Failure|Analyze)Instanc[e]\b)";
 
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]

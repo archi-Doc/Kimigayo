@@ -6,20 +6,26 @@ Paths: `T/` = `tests/xUnitTest/Tests/`; row lines are `T/ArchitectureRulesTest.c
 
 ## 1. Census (2026-10-31, `25570bb00`)
 
-| Name | `src` (every folder, every file type) | `tests` (every folder) | `scripts` |
+| Name | `src` | `tests` | `scripts` |
 | --- | ---: | ---: | ---: |
-| `BodyLowering`, `EmissionModule`, `LlvmModuleWriter`, `LlvmEmitter`, `GenericStoragePlan` (substring, comments included) | 0 | 0 | 0 |
-| `\b(?:Failed\|Failure\|Analyze)Instance\b` (the old analysis's instance entry points, G7) | 0 | 0 | 0 |
+| `BodyLowering`, `EmissionModule`, `LlvmModuleWriter`, `LlvmEmitter`, `GenericStoragePlan` (substring, comments included, every file type) | 0 | 0 | 0 |
+| The other Emission types R6-gen deleted (review 1): `EmissionOpcode`, `ObjectGenerationPlan`, `VirtualGenerationPlan`, `DefaultGenerationPlan`, `CompilerFunctionAdapters`, `StaticScalarEntry`, `WindowsLowering` | 0 in `*.cs`; 1 elsewhere | 0 | 0 |
+| `\b(?:Failed\|Failure\|Analyze)Instance\b` (the old analysis's instance entry points, G7) | 0 in `*.cs`; 1 elsewhere | 0 | 0 |
 | `LegacyRuntimeHelpers` (Backend, `[Transitional("R8")]`) | 139 lines | (included) | 0 |
 
-- `Binding.FailedInstancePart` (Binding.TypeRelations.cs) is not `FailedInstance` (the trailing `\b`).
+- Outside `*.cs` (G11's stale text; the rows scan `*.cs` only): `src/Benchmark/O2Corpus.md:51` names `AnalyzeInstance`, and
+  `src/Kimi/Compiler/Emission/WindowsRuntime.ll.in:18` names `WindowsLowering`. Revision 0 claimed 0 in every file type for the
+  instance entry points; its grep was `*.cs` only (review 1).
+- `Binding.FailedInstancePart` (Binding.TypeRelations.cs) is not `FailedInstance` (the trailing `\b`); a plural such as
+  `FailedInstances` escapes it too, as it escaped the old row.
+- A new C# project under `src` is not scanned until a row names its folder.
 - History text naming the deleted components stays in `docs/` (DECISIONS, PLAN_HISTORY) and `draft/`: out of scope.
 - `bin/`/`obj/` of a fresh worktree hold no such name (generated files come from current sources).
 
 ## 2. Design
 
 - **One pattern, four rows** of `SourcePatternDoesNotGrow` at limit 0 (the existing table; no new mechanism): the five components
-  R6-gen deleted (R5-M162, R5-M163) and the old analysis's instance entry points (R5-M162's instance half), over `src/Kimi`,
+  of plan row G10 and, from review 1, §5.4 item 4's other deleted Emission types (twelve names; R5-M162, R5-M163) and the old analysis's instance entry points (R5-M162's instance half), over `src/Kimi`,
   `src/Benchmark`, `src/Playground` and `tests`. The plan's "src" is the C# sources: `src/kimi-ext` (TypeScript; its `node_modules`,
   ~17k files, costs ~0.4 s per walk in a checkout that has it), `src/backend` (its one `.cs` is `invoke-verification`'s job object)
   and `src/third_party` hold no compiler C#.
@@ -63,3 +69,7 @@ generator's own); nothing to re-point.
   (`LlvmEmitter`, `BodyLowering.Calls`, `AnalyzeInstance`, `GenericStoragePlans`, `LlvmModuleWriterState`, a `//` comment naming
   `GenericStoragePlan`) and 0 for `FailedInstancePart` and `IEmissionModule`; each row's folder exists (741, 40, 1 and 840 `.cs` files)
   and counts 0.
+- Review 1 (ACCEPT, one fold): the pattern gains the seven other deleted Emission types (the plan's three generation plans as one
+  alternation); tests +1, DECISIONS +1. A probe catches each of the 15 names, a stem and a comment once, and none of
+  `FailedInstancePart`, `IEmissionModule`, `CompilerFunctionKind`, `WindowsProfile`, `EmissionArtifacts`, `GenerationPlan`,
+  `ObjectGeneration`, `StaticScalar` or `Kernel32Imports`; the four folders still count 0.
