@@ -116,11 +116,6 @@ internal sealed class TestCatalog
             inputs.AddRange(["pipeline", "mir"]); // Plan 12.1: the pipeline is part of the effective configuration (R3–R5).
         }
 
-        if (compilation.Codegen == CompilerCodegen.Legacy)
-        {
-            inputs.AddRange(["codegen", "legacy"]); // R5 PD4: so is the code generator, MIR's by default from G3.
-        }
-
         var aliases = Compilation.EffectiveAliases(project.ProjectFile.Alias).ToArray();
         Section("aliases", aliases.Length);
         inputs.AddRange(aliases);

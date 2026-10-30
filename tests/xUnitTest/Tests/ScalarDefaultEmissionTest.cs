@@ -32,25 +32,6 @@ public class ScalarDefaultEmissionTest
         ScalarEmissionTest.EmitFixture(Prefix + "ElementBounds", Source, string.Empty, 1, $"Hello.kimi:1:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
     }
 
-    [Fact]
-    public void PreparedElementReceiverCannotAliasAnotherArgument()
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func f(x: (i32, i32), other: (i32, i32), y: i32 = x.0) -> i32 => y\nf((1, 2), (3, 4))",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        var source = KotoTree.Walk(function.Parameters[2].DefaultValue!).Single(static x => x.SymbolOf()?.Kind == BindingSymbolKind.Parameter);
-        var original = source.SymbolOf()!;
-        source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        source.SetSymbol(original);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPreparedElementReadsReuseStorage()
@@ -332,59 +313,6 @@ public class ScalarDefaultEmissionTest
             "begin\n",
             0,
             observationMilliseconds: 250);
-
-    [Fact]
-    public void PreparedReadCannotAliasAnotherAcquiredArgument()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32, z: i32 = x + y) -> i32 => z\nf(2, 4)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read);
-        var other = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 4);
-        Assert.True(read > other && other >= 0);
-        body.ValueOperands[body.Values[read].Start] = other;
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.NotNull(error);
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("expression")]
-    [InlineData("order")]
-    public void CorruptDefaultPlansFailBeforeWritingAndRecover(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1, z: i32 = y + 2) -> i32 => z\nf(2)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "f");
-        var plan = call.CallOf()!;
-        var defaults = plan.DefaultArguments.ToArray();
-        if (mutation == "missing")
-        {
-            defaults = [];
-        }
-        else if (mutation == "expression")
-        {
-            defaults[0] = defaults[0] with { Expression = call.ArgumentNodes[0] };
-        }
-        else
-        {
-            Array.Reverse(defaults);
-        }
-
-        plan.Set(plan.Target, plan.ReturnType, null, plan.ArgumentToParameter, [], operations: plan.ArgumentOperations, defaults: defaults);
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.NotNull(error);
-        Assert.Empty(writer.ToString());
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
 
     [Theory]
     [InlineData("func f(x: string, y: string = x) => ()\nf(\"a\", \"b\")")]

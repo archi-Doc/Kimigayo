@@ -59,35 +59,6 @@ public class StringComparisonEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("wrong_read")]
-    [InlineData("early_end")]
-    [InlineData("plan")]
-    [InlineData("type")]
-    public void MissingLoanIsRejectedAndReanalysisRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let text = \"a\"\ntext == text", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies[0];
-        Assert.Equal(2, body.ComparisonLoans.Count);
-        Assert.True(c.Validate(out var error), error);
-        var plan = body.StringComparisons[0];
-        switch (defect)
-        {
-            case "missing": body.StringComparisons[0] = plan with { LeftLoan = -1 }; break;
-            case "wrong_read": body.StringComparisons[0] = plan with { LeftLoan = plan.RightLoan }; break;
-            case "early_end": body.LoanInputs[plan.Operation] = -1; break;
-            case "plan": body.StringComparisons.Clear(); break;
-            case "type": body.StringComparisons[0] = plan with { Left = body.Operations[plan.Operation].Place }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void ConditionSecuresBoolBeforeDestructionAndBranching()
     {

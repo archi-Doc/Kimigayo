@@ -12,7 +12,7 @@ using Kimi.Compiler.Mir;
 namespace Benchmark;
 
 // The instance collector's cost inside one compilation (PLAN10-P3's collection share; R5 plan §5.3 item 10, §5.4 item 6, §5.5 item 7;
-// DECISIONS R5-M148), without a compiler hook. For each compiler pipeline input, a sel compilation is bound and its MIR built, validated
+// DECISIONS R5-M148), without a compiler hook. For each compiler pipeline input, a mir-pipeline compilation is bound and its MIR built, validated
 // and analyzed outside timing by the two components Compilation.BuildMir composes (MirBuilder, then MirAnalysis), not by BuildMir, which
 // also collects (on every pipeline since DECISIONS BU-48). Three fresh collectors then run over that program in order, each timed with its
 // construction: cold, the compilation's first collection, with its Layout (the collection-and-layout share, and the check-time cost of
@@ -123,7 +123,7 @@ internal static class CollectionCostMeasurements
         };
     }
 
-    // One operation: a checked sel compilation and its built, validated and analyzed MIR outside timing, then the three collections over
+    // One operation: a checked mir-pipeline compilation and its built, validated and analyzed MIR outside timing, then the three collections over
     // that program, cold first, each timed with its construction; the three must be equal element by element.
     private static Collections Operation(string source)
     {
@@ -153,8 +153,8 @@ internal static class CollectionCostMeasurements
     {
         var operation = Operation(input.Source);
         Require(operation.Bytes[0] > operation.Bytes[2], $"cold allocates {operation.Bytes[0]} B, warm {operation.Bytes[2]} B: cold is not cold.");
-        Require(operation.Compilation.Analyze().IsVerified, "The sel analysis rejected the program.");
-        var own = operation.Compilation.Instances ?? throw new InvalidOperationException("The sel compilation has no checked set.");
+        Require(operation.Compilation.Analyze().IsVerified, "The analysis rejected the program.");
+        var own = operation.Compilation.Instances ?? throw new InvalidOperationException("The compilation has no checked set.");
         Require(Difference(operation.Cold, own) is null, $"The collection differs from the compilation's own: {Difference(operation.Cold, own)}.");
         var keys = Keys(operation.Cold);
         if (keys.Length > 1)
@@ -176,12 +176,11 @@ internal static class CollectionCostMeasurements
         Console.WriteLine("PASS collection cost: the comparison fails on a reordered collection, a changed record code and a changed location");
     }
 
-    // A compilation of the source under sel (the mir pipeline with MIR code generation), prepared, parsed, bound and started.
+    // A compilation of the source on the mir pipeline, prepared, parsed, bound and started.
     private static Compilation Checked(string source)
     {
         var c = Compilation.CreateForTest();
         c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Mir;
         Require(c.Prepare("x86_64-pc-windows-msvc"), "Target preparation failed.");
         c.Kotonoha.AddSource(new SourceDocument("CollectionCost.kimi", source));
         Require(c.Bind().IsComplete, "Binding failed.");

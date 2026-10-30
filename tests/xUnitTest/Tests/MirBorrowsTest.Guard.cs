@@ -555,7 +555,7 @@ public sealed partial class MirBorrowsTest
                 "nest: z = 5", "esrc: z = 5", "hsrc: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
-        var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        var old = MinimalEmissionTest.Analyze(source);
         var records = old.Problems.Select(x => (Function: Function(old.SyntaxOf(x.Subject)), x.Code)).ToArray();
         Assert.All(forms.Where(static x => x.Name != x.Twin), x => Assert.Equal(Of(x.Twin), Of(x.Name)));
 
@@ -642,8 +642,7 @@ public sealed partial class MirBorrowsTest
             public func main() -> () => ()
 
             """;
-        CompilerCodegen?[] codegens = [null, CompilerCodegen.Legacy]; // The process's, then the old path.
-        Assert.All(codegens, codegen => Assert.Empty(Records(MinimalEmissionTest.Analyze(Source, codegen: codegen))));
+        Assert.Empty(Records(MinimalEmissionTest.Analyze(Source)));
 
         // The analysis's records: the function and the code of each.
         static string[] Records(Compilation c) => [.. c.Problems.Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {x.Code}")];

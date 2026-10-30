@@ -139,37 +139,6 @@ public class BitwiseEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
-    [Theory]
-    [InlineData(KotoKind.LessThanLessThan, false)]
-    [InlineData(KotoKind.LessThanLessThan, true)]
-    [InlineData(KotoKind.Ampersand, true)]
-    [InlineData(KotoKind.Caret, true)]
-    [InlineData(KotoKind.And, false)]
-    [InlineData(KotoKind.Or, false)]
-    public void InvalidOperatorPlansFailBeforeWritingAndRecover(KotoKind op, bool boolean)
-    {
-        var c = MinimalEmissionTest.Analyze("let b = true\nlet x = 1 << 2", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Operator == KotoKind.LessThanLessThan);
-        body.Values[id] = body.Values[id] with { Operator = op };
-        if (boolean)
-        {
-            var value = Enumerable.Range(0, id).First(i => body.Values[i].Kind == OwnershipValueKind.Constant && body.Places[body.Operations[i].Place].Type == BoundType.Boolean);
-            body.ValueOperands[body.Values[id].Start + 1] = value;
-        }
-        else if (op == KotoKind.LessThanLessThan)
-        {
-            body.Values[id] = body.Values[id] with { Kind = OwnershipValueKind.Unary, Count = 1 };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBitwiseAnalysisAndWritingAllocateNothing()

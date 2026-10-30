@@ -132,24 +132,5 @@ public class OwnershipJoinTest
     public void ReassigningABorrowLocalToAnotherBorrowRuns()
         => ScalarEmissionTest.EmitFixture("OwnershipJoinReassign", "let z = 0\nvar r = z@ref\nlet n = 5\nr = n@ref\nrequire r@follow == 5 else => $abort(\"r\")", string.Empty);
 
-    [Fact]
-    public void CheckedValuesRejectLostOriginDependency()
-    {
-        var c = MinimalEmissionTest.Analyze(
-            Pair + "    let selected = if c => a@ref else => b@ref\n    let n = selected.value\ninspect(true)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "inspect");
-        var phi = body.Values.FindIndex(value => value.Kind == OwnershipValueKind.Phi);
-        var incoming = body.PhiInputs[body.Values[phi].Start].Value;
-        var narrowed = body.Places[body.Operations[incoming].Input].Type;
-        var place = body.Operations[phi].Place;
-        body.PlaceStorage[place] = body.Places[place] with { Type = narrowed };
-        body.Operations[phi].Source.SetType(narrowed);
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
     private static string Source() => Repository.ReadText("tests", "milestones", "Milestone15.kimi");
 }

@@ -161,40 +161,6 @@ public class DeferredEmissionTest
         ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", observationMilliseconds: 1000);
     }
 
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("entry")]
-    [InlineData("continuation")]
-    [InlineData("completion")]
-    [InlineData("duplicate")]
-    [InlineData("segment")]
-    [InlineData("escape")]
-    public void MalformedCleanupPlansFailBeforeWriting(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze(Snapshot, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.DeferredPlans[0];
-        switch (mutation)
-        {
-            case "missing": body.DeferredPlanStorage.Clear(); break;
-            case "entry": body.DeferredPlanStorage[0] = plan with { Edge = 0 }; break;
-            case "continuation": body.DeferredPlanStorage[0] = plan with { Continuation = plan.Entry }; break;
-            case "completion": body.DeferredPlanStorage[0] = plan with { CanComplete = false }; break;
-            case "duplicate": body.DeferredPlanStorage.Add(plan); break;
-            case "segment": body.CleanupPlanStorage.Add(body.CleanupPlans[0]); break;
-            case "escape":
-                var edge = body.EdgeHeads[plan.Entry];
-                body.EdgeStorage[edge] = body.Edges[edge] with { To = 0 };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.NotNull(error);
-        Assert.Empty(writer.ToString());
-    }
-
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]

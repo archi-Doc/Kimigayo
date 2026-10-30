@@ -211,40 +211,6 @@ public class ConversionEmissionTest
         Assert.Equal(0, allocated);
     }
 
-    [Theory]
-    [InlineData("input")]
-    [InlineData("count")]
-    [InlineData("source-type")]
-    [InlineData("result-type")]
-    [InlineData("unary")]
-    [InlineData("classification")]
-    public void MalformedConversionPlansNeverWriteIr(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("let flag = true\nlet x: u32 = 1\nlet y = x@i32", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
-        var value = body.Values[id];
-        switch (mutation)
-        {
-            case "input": body.ValueOperands[value.Start] = -1; break;
-            case "count": body.Values[id] = value with { Count = 0 }; break;
-            case "source-type":
-                body.ValueOperands[value.Start] = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 1);
-                break;
-            case "result-type":
-                var place = body.Operations[id].Place;
-                body.PlaceStorage[place] = body.Places[place] with { Type = BoundType.Primitives["u32"] };
-                break;
-            case "unary": body.Values[id] = value with { Kind = OwnershipValueKind.Unary }; break;
-            case "classification": ((ConversionKoto)body.Operations[id].Source).SetConversion(ConversionBinding.Literal); break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
     // A conversion of an operand that never completes has no value (its MIR: tests/mir/values.kimi `neverConverted`) and no instruction.
     [Fact]
     public void NoncompletingOperandsHaveNoConversionValueOrInstruction()

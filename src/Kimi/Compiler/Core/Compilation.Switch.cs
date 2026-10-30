@@ -1,16 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the Transitional pipeline switch: the pipeline (plan 12.1) and the code generator (R5 PD4) a compilation runs, two independent
-// selections, and the compiler identity the non-default selections of the process mark (SPEC 23.2.1). MIR code generation is the default
-// from R6-gen's G3; KIMI_CODEGEN=legacy selects the old generator, G3's rollback until G4 (DECISIONS R5-M152 S6).
-// Input: KIMI_PIPELINE and KIMI_CODEGEN, read once per process. Output: the process defaults (DefaultPipeline, DefaultCodegen), a
-// compilation's selection (Pipeline, Codegen) and CompilerIdentity. The generation entry (Compilation.Generation.cs) follows the code
-// generator; every pipeline analyzes and publishes alike (DECISIONS R5-M156), so the pipeline selects only the difference ledger's
-// observation (tests), the identity mark and the test manifest entry.
-// Invariants: the type initializer reads both variables once, so every thread gets the one pair the environment names (PLAN G199); either
-// code generator runs on either pipeline (R5-M156 ends PD4's pairing); changing either selection revokes prior analysis.
+// Owns the Transitional pipeline switch: the pipeline (plan 12.1) a compilation runs, and the compiler identity the process's non-default
+// pipeline marks (SPEC 23.2.1). Every pipeline analyzes, publishes and generates alike (DECISIONS R5-M156; MIR code generation, the one
+// code generator since R6-gen's G4, DECISIONS R5-M160), so the pipeline selects only the difference ledger's observation (tests), the
+// identity mark and the test manifest entry.
+// Input: KIMI_PIPELINE, read once per process. Output: the process default (DefaultPipeline), a compilation's selection (Pipeline) and
+// CompilerIdentity.
+// Invariants: the type initializer reads the variable once, so every thread gets the one value the environment names (PLAN G199);
+// changing the selection revokes prior analysis.
 // Must not: read the environment again, fall back silently from an invalid value, or decide what a selection runs (the entries do).
-// Removal (DECISIONS R5-M152): G4 the code generator selection, H12 the rest.
+// Removal (DECISIONS R5-M152): H12.
 
 namespace Kimi.Compiler;
 
@@ -22,26 +21,12 @@ public partial class Compilation
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     internal static readonly CompilerPipeline DefaultPipeline = PipelineOf(Environment.GetEnvironmentVariable("KIMI_PIPELINE"));
 
-    /// <summary>The code generator of a new compilation, read once per process from <c>KIMI_CODEGEN</c> (R5 PD4) by the type initializer,
-    /// as <see cref="DefaultPipeline"/> is.</summary>
-    [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-    internal static readonly CompilerCodegen DefaultCodegen = CodegenOf(Environment.GetEnvironmentVariable("KIMI_CODEGEN"));
-
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     private CompilerPipeline pipeline = DefaultPipeline;
-    [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-    private CompilerCodegen codegen = DefaultCodegen;
 
-    /// <summary>Gets the compiler identity a check document records (SPEC 23.2.1): the pipeline and the code generator are part of the
-    /// effective configuration, so each non-default selection of the process marks <see cref="CompilerVersion"/>, the pipeline first:
-    /// <c> [mir]</c>, <c> [codegen legacy]</c> or <c> [mir, codegen legacy]</c> (DECISIONS R5-M152, R5-M156).</summary>
-    internal static string CompilerIdentity => (DefaultPipeline, DefaultCodegen) switch
-    {
-        (CompilerPipeline.Legacy, CompilerCodegen.Mir) => CompilerVersion,
-        (CompilerPipeline.Mir, CompilerCodegen.Mir) => CompilerVersion + " [mir]",
-        (CompilerPipeline.Legacy, _) => CompilerVersion + " [codegen legacy]",
-        _ => CompilerVersion + " [mir, codegen legacy]",
-    };
+    /// <summary>Gets the compiler identity a check document records (SPEC 23.2.1): the pipeline is part of the effective configuration, so
+    /// the process's non-default pipeline marks <see cref="CompilerVersion"/> with <c> [mir]</c> (DECISIONS R5-M156, R5-M160).</summary>
+    internal static string CompilerIdentity => DefaultPipeline == CompilerPipeline.Mir ? CompilerVersion + " [mir]" : CompilerVersion;
 
     /// <summary>Gets or sets the pipeline; changing it revokes prior analysis.</summary>
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
@@ -58,22 +43,6 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Gets or sets the code generator, on either pipeline (with the mir pipeline the pair is "sel"); changing it revokes prior
-    /// analysis.</summary>
-    [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-    internal CompilerCodegen Codegen
-    {
-        get => this.codegen;
-        set
-        {
-            if (this.codegen != value)
-            {
-                this.codegen = value;
-                this.InvalidateSourceAnalysis();
-            }
-        }
-    }
-
     /// <summary>Reads a <c>KIMI_PIPELINE</c> value: <c>mir</c>, or <c>legacy</c> or unset for the old path alone.</summary>
     /// <param name="value">The value.</param>
     /// <returns>The pipeline.</returns>
@@ -85,19 +54,6 @@ public partial class Compilation
         "mir" => CompilerPipeline.Mir,
         _ => throw new InvalidOperationException($"KIMI_PIPELINE must be mir or legacy, not '{value}'."),
     };
-
-    /// <summary>Reads a <c>KIMI_CODEGEN</c> value: <c>mir</c> or unset for MIR code generation, or <c>legacy</c> for the old generator
-    /// (G3's rollback until G4), on either pipeline (DECISIONS R5-M152, R5-M156).</summary>
-    /// <param name="value">The value.</param>
-    /// <returns>The code generator.</returns>
-    /// <exception cref="InvalidOperationException">Any other value: a configuration error, never a silent fallback.</exception>
-    [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-    internal static CompilerCodegen CodegenOf(string? value) => value switch
-    {
-        null or "" or "mir" => CompilerCodegen.Mir,
-        "legacy" => CompilerCodegen.Legacy,
-        _ => throw new InvalidOperationException($"KIMI_CODEGEN must be mir or legacy, not '{value}'."),
-    };
 }
 
 /// <summary>The pipeline the entry points of a <see cref="Compilation"/> run (plan 12.1; R6 removes the switch).</summary>
@@ -108,16 +64,5 @@ internal enum CompilerPipeline : byte
     Legacy,
 
     /// <summary>As <see cref="Legacy"/>, observed by the difference ledger and marked in the compiler identity and the test manifest.</summary>
-    Mir,
-}
-
-/// <summary>The code generator of a <see cref="Compilation"/> (R5 PD4; G4 removes the selection).</summary>
-[Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-internal enum CompilerCodegen : byte
-{
-    /// <summary>The old Emission path, selected only by <c>KIMI_CODEGEN=legacy</c> or a test's pin until G4.</summary>
-    Legacy,
-
-    /// <summary>MIR code generation, the default on either pipeline.</summary>
     Mir,
 }

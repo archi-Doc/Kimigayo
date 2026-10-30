@@ -141,34 +141,6 @@ public class StringEmissionTest
         Assert.Empty(function.LiveFlags);
     }
 
-    [Theory]
-    [InlineData("temporary")]
-    [InlineData("action")]
-    [InlineData("input")]
-    public void InvalidStringPlansFailBeforeWritingAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies[0];
-        if (defect == "input")
-        {
-            var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write && x.Input >= 0 && ReferenceEquals(body.Places[x.Place].Type, BoundType.String));
-            body.OperationStorage[write] = body.OperationStorage[write] with { Input = -1 };
-        }
-        else
-        {
-            var index = body.CleanupStepStorage.FindIndex(x => ReferenceEquals(body.Places[x.Place].Type, BoundType.String) &&
-                (defect == "temporary" ? body.Places[x.Place].Kind == OwnershipPlaceKind.Temporary : body.IsReachable(x.Operation) && x.Action == CleanupAction.Destroy));
-            Assert.True(index >= 0);
-            body.CleanupStepStorage[index] = body.CleanupStepStorage[index] with { Action = defect == "temporary" ? CleanupAction.Conditional : CleanupAction.Skip };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-    }
-
     // A right-hand side that never completes writes nothing (its MIR: tests/mir/updates.kimi `noncompletingWrite`).
     [Fact]
     public void NoncompletingRhsHasNoStringWrite()

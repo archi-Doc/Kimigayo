@@ -292,30 +292,6 @@ public class GenericStorageEmissionTest
         => MinimalEmissionTest.AssertGenerationResourceLimit(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)", "grow<Box<T>>(Box<T>.init(value@move), n - 1)");
 
     [Fact]
-    public void OversizedSubstitutionSetsAreResourceDiagnosed()
-    {
-        // A third distinct closed context of choose exceeds a lowered substitution set limit: the old generator's own limit, on a
-        // compilation pinned to it, which goes by G4 at the latest (DECISIONS R5-M85).
-        var limit = GenericStoragePlan.SubstitutionSetLimit;
-        GenericStoragePlan.SubstitutionSetLimit = 2;
-        try
-        {
-            var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)", codegen: CompilerCodegen.Legacy);
-            using var output = new StringWriter();
-            Assert.False(c.WriteIr(output, out var error));
-            Assert.Empty(output.ToString());
-            Assert.True(c.Emission.FailureIsResourceLimit, error);
-            Assert.Contains("choose", error, StringComparison.Ordinal);
-            GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-        }
-        finally
-        {
-            GenericStoragePlan.SubstitutionSetLimit = limit;
-        }
-    }
-
-    [Fact]
     public void FiniteGenericRecursionReusesItsInstance()
     {
         var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value@move, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");
@@ -363,47 +339,6 @@ public class GenericStorageEmissionTest
         Assert.Empty(c.Problems);
         Assert.Equal(places, generic.Places.ToArray());
         Assert.Contains(generic.Places, x => x.Acquisition == AcquisitionKind.CopyOrMove);
-    }
-
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("projection")]
-    [InlineData("cleanup")]
-    [InlineData("parameter")]
-    public void MalformedPlansFailAndReanalysisRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
-        var c = MinimalEmissionTest.Analyze(
-            "struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n" +
-            "    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
-        if (defect == "projection")
-        {
-            body.Projections[0] = body.Projections[0] with { Selector = 42 };
-        }
-        else if (defect == "cleanup")
-        {
-            body.CleanupStepStorage.Clear();
-        }
-        else if (defect == "parameter")
-        {
-            var place = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Parameter);
-            body.PlaceStorage[place.Id] = place with { Type = BoundType.String };
-        }
-        else
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Projection >= 0 && x.Kind == OwnershipOperationKind.Produce);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]

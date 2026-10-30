@@ -13,9 +13,9 @@ namespace XunitTest;
 /// fixtures would run <c>Compilation</c>'s type initializer before the test and write into the parent's evidence.</summary>
 internal static class FreshProcess
 {
-    // The variables of the KIMI_ namespace a child keeps, a whitelist: the pipeline selection (src/Kimi's Compilation reads both, and
-    // the children's tests compare their defaults with it). Every other KIMI_ variable selects evidence or a location of the run.
-    private static readonly string[] SelectionVariables = ["KIMI_PIPELINE", "KIMI_CODEGEN"];
+    // The variables of the KIMI_ namespace a child keeps, a whitelist: the pipeline selection (src/Kimi's Compilation reads it, and the
+    // children's tests compare their default with it). Every other KIMI_ variable selects evidence or a location of the run.
+    private static readonly string[] SelectionVariables = ["KIMI_PIPELINE"];
 
     /// <summary>Gets the environment of a child process.</summary>
     /// <param name="parent">The parent's environment.</param>

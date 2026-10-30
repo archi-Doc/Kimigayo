@@ -185,7 +185,7 @@ public class DictionaryLibraryTest
         => ScalarEmissionTest.EmitFixture("DictionaryLibraryCapacity" + name, source, string.Empty, 1, stderr);
 
     // K12 (DECISIONS R4-M13a, R5-M145): the capacity decisions, reserve and grow, are generated library bodies of ordinary source; their
-    // caller location is the native capacity fixtures' (CapacityFailuresReportTheCallerLocation, under both generators).
+    // caller location is the native capacity fixtures' (CapacityFailuresReportTheCallerLocation).
     [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {

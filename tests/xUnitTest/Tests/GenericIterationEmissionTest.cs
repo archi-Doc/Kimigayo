@@ -39,43 +39,4 @@ public class GenericIterationEmissionTest
     [Fact]
     public void SharedAdditionChecksOverflow()
         => ScalarEmissionTest.EmitFixture("GenericIterationOverflow", "func increment<T>(x: T, n: isize) -> isize => n + 1\nlet value = increment<i32>(7, 9223372036854775807)", string.Empty, 1, "Hello.kimi:1:47: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
-
-    [Theory]
-    [InlineData("endpoint")]
-    [InlineData("operator")]
-    [InlineData("operand")]
-    public void RejectsCorruptIterationAndRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt iteration plan is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(
-            "func first(values: ref/[1 of i32]) -> isize\n    for index in values.indices\n        return index\n    return values.length\n" +
-            "let values: [1 of i32] = [7]\nlet result = first(values@ref)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "first");
-        if (defect == "endpoint")
-        {
-            var index = body.Sequences.FindIndex(x => x.Kind == SequenceOperation.Start);
-            body.Sequences[index] = body.Sequences[index] with { Receiver = 0 };
-        }
-        else
-        {
-            var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Binary);
-            if (defect == "operator")
-            {
-                body.Values[id] = body.Values[id] with { Operator = KotoKind.Asterisk };
-            }
-            else
-            {
-                body.ValueOperands[body.Values[id].Start] = id;
-            }
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
 }

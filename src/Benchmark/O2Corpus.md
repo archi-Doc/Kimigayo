@@ -31,8 +31,8 @@ takes two checkouts with Release builds of Kimi and Benchmark (`dotnet build Kim
 script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's compiler.
 
 `-CandidateEnvironment` sets its variables only for B's kernel builds and B's `--compiler-pipeline` runs, for example
-`KIMI_CODEGEN=legacy`; both variants' executables run in the script's environment. A runs the default pipeline and
-code generator (MIR code generation from R6-gen's G3): the script fails before any work if it would inherit `KIMI_PIPELINE` or `KIMI_CODEGEN`.
+`KIMI_PIPELINE=mir`; both variants' executables run in the script's environment. A runs the default pipeline (MIR code generation
+is the one code generator from R6-gen's G4): the script fails before any work if it would inherit `KIMI_PIPELINE`.
 Pass the list with `pwsh -Command` or as separate array elements: `pwsh -File` binds `A=x,B=y` as one string, which the
 script rejects.
 
