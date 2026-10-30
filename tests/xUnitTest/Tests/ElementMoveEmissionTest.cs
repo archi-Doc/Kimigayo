@@ -103,32 +103,6 @@ public class ElementMoveEmissionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("selector")]
-    [InlineData("projection")]
-    [InlineData("type")]
-    public void CorruptedMovePlansFailAndReanalysisRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        switch (defect)
-        {
-            case "acquisition": body.OperationStorage[plan.Output] = body.Operations[plan.Output] with { Acquisition = AcquisitionKind.None }; break;
-            case "selector": body.Projections[0] = plan with { Selector = 1 }; break;
-            case "projection": body.OperationStorage[plan.Output] = body.Operations[plan.Output] with { Projection = -1 }; break;
-            case "type": body.PlaceStorage[body.Operations[plan.Output].Place] = body.Places[body.Operations[plan.Output].Place] with { Type = BoundType.I32 }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void OnlyConditionalRemaindersNeedFlags()
     {

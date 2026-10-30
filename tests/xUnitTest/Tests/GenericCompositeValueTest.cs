@@ -90,36 +90,6 @@ public class GenericCompositeValueTest
         Assert.Empty(output.ToString());
     }
 
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("payload")]
-    [InlineData("cleanup")]
-    public void RejectsCorruptOwnershipPlansAndRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        if (defect == "acquisition")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.AcquirePattern);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else if (defect == "payload")
-        {
-            body.DecompositionStorage[0] = body.Decompositions[0] with { PayloadStart = 0 };
-        }
-        else
-        {
-            body.CleanupStepStorage.Clear();
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Fact]
     public void InstancesKeepCopyAndDifferentDestructorsForEqualSizes()
     {

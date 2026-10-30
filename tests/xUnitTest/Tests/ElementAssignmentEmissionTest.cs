@@ -168,45 +168,6 @@ public class ElementAssignmentEmissionTest
         ScalarEmissionTest.EmitFixture("ElementAssignmentIndexDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
-    [Theory]
-    [InlineData("write")]
-    [InlineData("loan")]
-    [InlineData("root")]
-    [InlineData("input")]
-    [InlineData("inputRange")]
-    [InlineData("parent")]
-    [InlineData("release")]
-    [InlineData("source")]
-    [InlineData("mutable")]
-    [InlineData("value")]
-    public void InvalidWritePlansAreRejectedAndReanalysisRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [0]\na[0] = 42", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        var write = body.Operations[plan.Write];
-        switch (defect)
-        {
-            case "write": body.Projections[0] = plan with { Write = -1 }; break;
-            case "loan": body.Projections[0] = plan with { Loan = -1 }; break;
-            case "root": body.Projections[0] = plan with { Root = -1 }; break;
-            case "input": body.OperationStorage[plan.Write] = write with { Input = plan.Root }; break;
-            case "inputRange": body.OperationStorage[plan.Write] = write with { Input = int.MaxValue }; break;
-            case "parent": body.Projections[0] = plan with { Parent = 0 }; break;
-            case "release": body.LoanStates[plan.Write - 1] = plan.Loan; break;
-            case "source": body.OperationStorage[plan.Write] = write with { Source = body.Operations[plan.Operation].Source }; break;
-            case "mutable": body.PlaceStorage[plan.Root] = body.Places[plan.Root] with { Mutable = false }; break;
-            case "value": body.Values[plan.Write] = default; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmElementWritesAllocateNothing()

@@ -12,38 +12,6 @@ namespace XunitTest;
 
 public class OwnershipStorageLimitTest(ITestOutputHelper output)
 {
-    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
-    // by G4 at the latest (DECISIONS R5-M85).
-    [Fact]
-    public void ConcreteInstanceLimitsRemainResourceFailuresAndRecover()
-    {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var initial), initial);
-        var previous = OwnershipStorage.ByteLimit;
-        try
-        {
-            // Reuse the fully prepared instance; retained arrays must not bypass a later request's limit.
-            OwnershipStorage.ByteLimit = 8;
-            using var writer = new StringWriter();
-            Assert.False(c.WriteIr(writer, out var failure));
-            Assert.Empty(writer.ToString());
-            Assert.True(c.Emission.FailureIsResourceLimit, failure);
-            Assert.Contains("ownership", failure!, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("8", failure, StringComparison.Ordinal);
-            Assert.True(c.Analysis.IsVerified);
-            Assert.Empty(c.Problems);
-        }
-        finally
-        {
-            OwnershipStorage.ByteLimit = previous;
-        }
-
-        Assert.True(c.WriteIr(TextWriter.Null, out var recovered), recovered);
-        Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.Empty(c.Problems);
-    }
-
     [Fact]
     public void OversizedProductsReportResourcesBeforeAllocationOrOverflow()
     {

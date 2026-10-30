@@ -1198,15 +1198,13 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 21.4.3, 22.2 (DECISIONS R5-M92, R5-M145): each storage byte primitive's definition, the nullable Alloc's and the byte copy's, is one
-    // runtime text spliced from its FunctionAbi, which a module whose bodies call them defines exactly once under either generator (the old
-    // generator's pin goes by G4).
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void TheStorageBytePrimitivesAreDefinedOnceFromTheirTexts(bool mir)
+    // runtime text spliced from its FunctionAbi, which a module whose bodies call them defines exactly once (the old generator's row went
+    // with its selection at G4, DECISIONS R5-M160).
+    [Fact]
+    public void TheStorageBytePrimitivesAreDefinedOnceFromTheirTexts()
     {
         const string Source = "var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n";
-        var ir = mir ? Generate(Source) : CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy));
+        var ir = Generate(Source);
         var primitives = new[] { (RuntimeAbi.TryAllocateBytes, LlvmModuleText.TryAllocate), (RuntimeAbi.TransferBytes, LlvmModuleText.TransferBytes) };
         foreach (var (abi, text) in primitives)
         {

@@ -176,44 +176,6 @@ public class ReferenceEmissionTest
         Assert.Equal(0, emissionBytes);
     }
 
-    [Theory]
-    [InlineData("missing_loan")]
-    [InlineData("early_end")]
-    [InlineData("exclusive")]
-    [InlineData("source")]
-    [InlineData("no_result_contract")]
-    [InlineData("missing_result")]
-    [InlineData("dependent_result")]
-    [InlineData("end_position")]
-    [InlineData("reference_value")]
-    public void InvalidPlansNeverPublishIr(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Same + "let a = \"a\"\nsame(a, a)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var loan = body.ComparisonLoans[0];
-        var call = body.CallLoans[0];
-        var entry = body.Operations.Select((operation, index) => (operation, index)).First(x => x.operation.Kind == OwnershipOperationKind.CallEntry).index;
-        switch (defect)
-        {
-            case "missing_loan": body.ComparisonLoans.Clear(); break;
-            case "early_end": body.LoanInputs[call.Call] = -1; break;
-            case "exclusive": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { LoanMode = LoanRequirement.Uniq }; break;
-            case "source": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { Place = body.Operations[loan.Read].Input }; break;
-            case "no_result_contract": body.CallLoans.Clear(); break;
-            case "missing_result": body.CallLoans[0] = call with { Result = -1, End = -1 }; break;
-            case "dependent_result": body.CallLoans[0] = call with { ResultRequirement = LoanRequirement.Ref }; break;
-            case "end_position": body.CallLoans[0] = call with { End = call.Result }; break;
-            case "reference_value": body.ValueOperands[body.Values[entry].Start] = -1; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void ReparseReusesThePhysicalAbi()
     {

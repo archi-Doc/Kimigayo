@@ -272,27 +272,6 @@ public class ElementBorrowEmissionTest
         }
     }
 
-    // SPEC 3.4, 5.4, 10.2: emission never admits a borrow of a temporary read from its own Place selection, in any mode.
-    [Theory]
-    [InlineData(LoanRequirement.Ref)]
-    [InlineData(LoanRequirement.Uniq)]
-    public void ABorrowOfATemporaryReadOfItsSelectionFailsBeforeOutputAndRecovers(LoanRequirement mode)
-    {
-        var c = MinimalEmissionTest.Analyze(SharedCopyPart, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind == OwnershipOperationKind.Borrow && o.Source is Kimi.Compiler.Parsing.MemberAccessKoto));
-        var borrow = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto });
-        var part = body.Operations[borrow];
-        body.PlaceStorage[part.Place] = body.Places[part.Place] with { Source = part.Source, Type = BoundType.I32 };
-        body.OperationStorage[borrow] = part with { LoanMode = mode };
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Theory]
     [InlineData("Comparison", "func f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
     [InlineData("Argument", "func inspect(a: ref/string, b: bool) => ()\nfunc f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    inspect(a.0, (return \"ok\"))\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
@@ -348,39 +327,6 @@ public class ElementBorrowEmissionTest
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, observationMilliseconds: 300);
 
-    // SPEC 3.4.3, 4.7.1: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
-    // exclusive fixed-array element only in exclusive mode; a corrupted route record fails before output and a fresh analysis recovers.
-    [Theory]
-    [InlineData("receiver")]
-    [InlineData("base")]
-    [InlineData("mode")]
-    public void CorruptedElementRoutesFailBeforeOutputAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nvar ys: [2 of i32] = [1, 2]\nlet i: isize = 0\nbump(ys[i]@uniq)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto }));
-        var part = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto });
-        var fixedElement = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, LoanMode: LoanRequirement.Uniq, Source: Kimi.Compiler.Parsing.IndexKoto index } && index.Left.TypeOf() is { Kind: BoundTypeKind.FixedArray });
-        var element = body.ValueOperands[body.Values[part].Start];
-        switch (defect)
-        {
-            case "receiver":
-                var receiver = body.Places[body.Operations[part].Place];
-                body.PlaceStorage[body.Operations[part].Place] = receiver with { Type = c.Types.Reference(Kimi.Compiler.Parsing.SemanticsKind.Uniq, BoundType.I32, receiver.Type.Origin) };
-                break;
-            case "base": body.OperationStorage[element] = body.Operations[element] with { Source = body.Operations[part].Source }; break;
-            case "mode": body.OperationStorage[fixedElement] = body.Operations[fixedElement] with { LoanMode = LoanRequirement.Ref }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     // SPEC 15.6.3: an edit that moves a part borrow to another Array removes its conflict, and the reverse edit restores it; each
     // analysis follows only the current source.
     [Fact]
@@ -417,54 +363,6 @@ public class ElementBorrowEmissionTest
             Assert.False(c.Analyze().IsVerified);
             Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         }
-    }
-
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("operation")]
-    [InlineData("source")]
-    [InlineData("selector")]
-    [InlineData("dynamic")]
-    [InlineData("loan")]
-    [InlineData("mode")]
-    [InlineData("parent")]
-    [InlineData("release")]
-    [InlineData("move")]
-    [InlineData("type")]
-    [InlineData("inspection")]
-    public void CorruptedBorrowPlansFailBeforeOutputAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            Same + "let a: [2 of string] = [\"held\", \"sibling\"]\nlet equal = same(a[0], a[0])\nlet inspected = a[1] == a[1]",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        var loan = body.LoanStates[plan.Borrow];
-        switch (defect)
-        {
-            case "missing": body.Projections[0] = plan with { Borrow = -1 }; break;
-            case "operation": body.OperationStorage[plan.Borrow] = body.Operations[plan.Borrow] with { Projection = 1 }; break;
-            case "source": body.OperationStorage[plan.Borrow] = body.Operations[plan.Borrow] with { Source = body.Operations[body.Projections[1].Borrow].Source }; break;
-            case "selector": body.Projections[0] = plan with { Selector = 1 }; break;
-            case "dynamic": body.Projections[0] = plan with { Path = -1 }; break;
-            case "loan": body.ComparisonLoans[loan] = body.ComparisonLoans[loan] with { Projection = 1 }; break;
-            case "mode": body.ComparisonLoans[loan] = body.ComparisonLoans[loan] with { Mode = LoanRequirement.Uniq }; break;
-            case "parent": body.ComparisonLoans[loan] = body.ComparisonLoans[loan] with { Parent = plan.Loan }; break;
-            case "release": body.LoanStates[plan.Borrow] = -1; break;
-            case "move": body.OperationStorage[plan.Borrow] = body.Operations[plan.Borrow] with { Acquisition = AcquisitionKind.Move }; break;
-            case "type":
-                var place = body.Operations[plan.Borrow].Input;
-                body.PlaceStorage[place] = body.Places[place] with { Type = BoundType.I32 };
-                break;
-            case "inspection": body.StringComparisons[0] = body.StringComparisons[0] with { LeftLoan = -1 }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]

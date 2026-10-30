@@ -41,67 +41,6 @@ public class EmissionPlanTest
         Assert.Equal($"define internal void @__kimi_entry_body() #0 {{\nentry:\n  %p{slot.Place} = alloca %kimi.string, align 8\n  br label %b0\nb0:\n  store %kimi.string {{ ptr @__kimi_text, i64 13, i8 0 }}, ptr %p{slot.Place}, align 8\n  call void @__kimi_write_line(ptr noundef nonnull align 8 dereferenceable(24) %p{slot.Place}, ptr @__kimi_location, i64 14)\n  call void @__kimi_destroy_string(ptr %p{slot.Place}, ptr @__kimi_location, i64 14)\n  ret void\n}}\ndefine void @__kimi_start() noreturn #0 {{\nentry:\n  call void @__kimi_entry_body()\n  call void @__kimi_exit(i32 0)\n  unreachable\n}}\n", ir[begin..end]);
     }
 
-    [Theory]
-    [InlineData("missing-successor")]
-    [InlineData("cycle")]
-    [InlineData("branch")]
-    [InlineData("abort-resumes")]
-    [InlineData("missing-cleanup-step")]
-    [InlineData("missing-cleanup-plan")]
-    [InlineData("conditional-cleanup")]
-    public void UnsupportedOrIncompleteLoweringNeverWritesFallbackIr(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out _)); // Exercise reuse after a previously successful plan.
-        var body = c.Ownership.Bodies.Single(x => ReferenceEquals(x.Function, c.Kotonoha.GeneratedFunction));
-        var firstEdge = body.EdgeHeads[0];
-        // Mutate the continuation after argument acquisition, preserving the converged
-        // input state queried by the gate. The test targets lowering, not a forged solver.
-        var deliver = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Deliver);
-        var terminalEdge = body.EdgeHeads[deliver];
-        switch (mutation)
-        {
-            case "missing-successor":
-                body.EdgeHeads[deliver] = -1;
-                break;
-            case "cycle":
-                body.EdgeStorage[terminalEdge] = body.Edges[terminalEdge] with { To = deliver };
-                break;
-            case "branch":
-                body.EdgeStorage[firstEdge] = body.Edges[firstEdge] with { Kind = OwnershipEdgeKind.True };
-                break;
-            case "abort-resumes":
-                var abort = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.Abort);
-                body.EdgeStorage[abort] = body.Edges[abort] with { To = 0 };
-                break;
-            case "missing-cleanup-step":
-                body.OperationSteps[body.CleanupSteps[0].Operation] = -1;
-                break;
-            case "missing-cleanup-plan":
-                body.CleanupPlanStorage.Clear();
-                break;
-            case "conditional-cleanup":
-                // The first row can describe an unexecuted Abort edge. Corrupt the live lifetime's destruction rows.
-                Assert.Contains(body.CleanupSteps, x => x.Action == CleanupAction.Destroy);
-                for (var i = 0; i < body.CleanupSteps.Count; i++)
-                {
-                    if (body.CleanupSteps[i].Action == CleanupAction.Destroy)
-                    {
-                        body.CleanupStepStorage[i] = body.CleanupSteps[i] with { Action = CleanupAction.Conditional };
-                    }
-                }
-
-                break;
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out var error));
-        Assert.NotNull(error);
-        Assert.Equal(string.Empty, output.ToString());
-        Assert.False(c.Emission.TryPrepare(out var rejected, out _));
-        Assert.Throws<InvalidOperationException>(() => rejected.WriteIr(output));
-    }
-
     [Fact]
     public void ReanalysisReusesThePlanWithoutDuplicatingSlotsOrInstructions()
     {

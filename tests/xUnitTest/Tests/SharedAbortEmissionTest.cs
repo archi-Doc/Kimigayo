@@ -20,42 +20,4 @@ public class SharedAbortEmissionTest
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
         StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions, exit, stderr);
     }
-
-    // BodyLowering validates every lowered body, including each monomorphized instance, so a corrupt
-    // ownership graph is rejected on the ordinary body it belongs to (SPEC 21.3.1).
-    [Fact]
-    public void RejectsInventedNormalContinuationAndRecovers()
-    {
-        var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\nlet v = true\nfail(v)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
-        var edge = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.Abort);
-        Assert.True(edge >= 0);
-        body.EdgeStorage[edge] = body.Edges[edge] with { Kind = OwnershipEdgeKind.Normal };
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Fact]
-    public void ChangedEntryCannotExecuteCheckingOnlyCode()
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func fail(value: ref/bool)\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
-        var after = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Source is Kimi.Compiler.Parsing.StringLiteralKoto { Literal: "after" });
-        Assert.True(after >= 0);
-        Assert.False(body.IsReachable(after));
-        var edge = body.EdgeHeads[0];
-        body.EdgeStorage[edge] = body.Edges[edge] with { To = after };
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
 }

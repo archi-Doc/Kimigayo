@@ -163,41 +163,6 @@ public class ElementReplacementEmissionTest
         Assert.Empty(module.GetFunction(0).LiveFlags);
     }
 
-    [Theory]
-    [InlineData("exclusive")]
-    [InlineData("mode")]
-    [InlineData("release")]
-    [InlineData("input")]
-    [InlineData("type")]
-    [InlineData("write")]
-    [InlineData("root")]
-    [InlineData("output")]
-    public void CorruptedReplacementPlansFailBeforeOutputAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a = ((\"old\", 0), 1)\na.0 = (\"new\", 42)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        var write = body.Operations[plan.Write];
-        switch (defect)
-        {
-            case "exclusive": body.Projections[0] = plan with { Exclusive = -1 }; break;
-            case "mode": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Mode = LoanRequirement.Ref }; break;
-            case "release": body.LoanStates[plan.Write + 1] = plan.Exclusive; break;
-            case "input": body.OperationStorage[plan.Write] = write with { Input = plan.Root }; break;
-            case "type": body.PlaceStorage[write.Input] = body.Places[write.Input] with { Type = BoundType.String }; break;
-            case "write": body.Projections[0] = plan with { Write = -1 }; break;
-            case "root": body.PlaceStorage[plan.Root] = body.Places[plan.Root] with { Mutable = false }; break;
-            case "output": body.Projections[0] = plan with { Output = plan.Write }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmReplacementAnalysisAndEmissionAllocateNothing()

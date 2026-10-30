@@ -151,12 +151,8 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     public void AVariableWithNoCandidateIsALocalRegion(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            c.Pipeline = pipeline;
-            var verified = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze() is { IsVerified: true, ErrorCount: 0 };
-            Assert.True(verified, $"{pipeline}: {MinimalEmissionTest.Describe(c, null)}");
-        }
+        var verified = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze() is { IsVerified: true, ErrorCount: 0 };
+        Assert.True(verified, MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 15.3.6, 15.4.4, 15.6.5 (BU's review of 2a0-3b, B1; PLAN G225; DECISIONS R4-M112, BU-28): a call-local borrow stored through a

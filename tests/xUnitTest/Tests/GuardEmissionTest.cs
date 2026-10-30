@@ -118,42 +118,6 @@ public class GuardEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
     }
 
-    [Theory]
-    [InlineData("candidate")]
-    [InlineData("acquire")]
-    [InlineData("cleanup")]
-    [InlineData("boolean")]
-    public void MalformedGuardPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var arm = body.MatchArms[0];
-        if (defect == "candidate")
-        {
-            var read = body.OperationStorage.FindIndex(x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
-            body.OperationSteps[read] = -1;
-        }
-        else if (defect == "boolean")
-        {
-            body.MatchArmStorage[0] = arm with { GuardValue = arm.Test };
-        }
-        else
-        {
-            var from = defect == "acquire" ? arm.Test : arm.GuardCleanupStart;
-            var edge = body.EdgeStorage.FindIndex(x => x.From == from && (defect != "acquire" || x.Kind == OwnershipEdgeKind.True));
-            body.EdgeStorage[edge] = body.Edges[edge] with { To = arm.BodyEntry };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindingReusesDistinctCandidateIdentity()

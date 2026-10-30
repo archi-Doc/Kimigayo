@@ -94,45 +94,6 @@ public class ElementEmissionTest
         Assert.Equal(("TypeMismatch_Kd", source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
-    [Theory]
-    [InlineData("loan")]
-    [InlineData("root")]
-    [InlineData("index")]
-    [InlineData("output")]
-    [InlineData("parent")]
-    [InlineData("active")]
-    [InlineData("source")]
-    public void MalformedPlansFailBeforeWritingAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet n = a[0]", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        body.Projections[0] = defect switch
-        {
-            "loan" => plan with { Loan = -1 },
-            "root" => plan with { Root = -1 },
-            "index" => plan with { Index = -1 },
-            "output" => plan with { Output = -1 },
-            "parent" => plan with { Parent = 0 },
-            _ => plan,
-        };
-        if (defect == "active")
-        {
-            body.LoanInputs[plan.Operation] = -1;
-        }
-        else if (defect == "source")
-        {
-            body.OperationStorage[plan.Index] = body.Operations[plan.Index] with { Source = body.Operations[plan.Operation].Source };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     // Intermediate projections copy nothing; each read copies its final element once (its MIR: tests/mir/places.kimi `nestedProjections`).
     [Fact]
     public void IntermediateProjectionsDoNotCopyAndTheFinalAggregateCopiesOnce()

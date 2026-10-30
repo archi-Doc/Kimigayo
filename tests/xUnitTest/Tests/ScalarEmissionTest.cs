@@ -93,41 +93,6 @@ public class ScalarEmissionTest
         Assert.All(function.Slots, slot => Assert.True(body.Places[slot.Place].Kind == OwnershipPlaceKind.Local || ReferenceEquals(body.Places[slot.Place].Type, BoundType.String)));
     }
 
-    [Theory]
-    [InlineData("missing-value")]
-    [InlineData("alias-cycle")]
-    [InlineData("replacement")]
-    [InlineData("phi-input")]
-    public void IncompleteScalarPlansFailBeforeWriting(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 1\nif x > 0 and true => x = 2", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write);
-        if (mutation == "missing-value")
-        {
-            body.Values[write] = default;
-        }
-        else if (mutation == "alias-cycle")
-        {
-            body.ValueOperands[body.Values[write].Start] = write;
-        }
-        else if (mutation == "replacement")
-        {
-            body.OperationSteps[write] = -1;
-        }
-        else
-        {
-            var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
-            body.PhiInputs[body.Values[phi].Start] = body.PhiInputs[body.Values[phi].Start + 1];
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.NotNull(error);
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
     internal static string EmitFixture(
         string name, string source, string stdout, int exit = 0, string? stderr = null, int observationMilliseconds = 0, LegacyNative? legacy = null)
     {
