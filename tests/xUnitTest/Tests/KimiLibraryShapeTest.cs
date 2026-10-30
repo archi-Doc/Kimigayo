@@ -10,7 +10,7 @@ namespace XunitTest;
 
 /// <summary>The shapes of the embedded Kimi library that the compiler and the static <c>.ll.in</c> runtime rely on (SPEC 22.1).
 /// A shape is the declaration's source header with its direct member lines; Binding gives the same text the same meaning.</summary>
-public class KimiLibraryShapeTest
+public partial class KimiLibraryShapeTest
 {
     // Read-only: no test changes the library or its Binding.
     private static readonly Lazy<Compilation> Library = new(() =>
@@ -132,7 +132,7 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(186, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(187, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -324,21 +324,23 @@ public class KimiLibraryShapeTest
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
-    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), and whether in place,
-    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan).
+    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), whether in place,
+    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan), and the
+    // by-value Callable parameter it calls, `removeAll`'s `matching` only (PLAN G264 U0′: `truncate` destroys as `clear` does).
     [Fact]
     public void PublishedRowsAreFixed()
     {
         var c = Library.Value;
         var rows = KimiLibraryCatalog.Entries.ToArray().Where(static x => x.Row is not null)
-            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace}");
+            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace} {x.Row.Calls}");
         Assert.Equal(
             [
-                "Replace  -1 0 True", "ArrayClear  -1 0 False", "ArrayCapacityImplementation  -1 -1 False", "ArrayRepeatingImplementation  -1 -1 False",
-                "TextToString format 0 -1 False", "TextTryFormat format 0 -1 False", "WriterWrite format 1 -1 False", "DictionaryReserve  -1 -1 False",
-                "DictionaryTryInsert equals 1 -1 False", "DictionaryInsertOrReplace equals 1 1 False", "DictionaryRemove equals 1 -1 False",
-                "DictionaryTryGet equals 1 -1 False", "DictionaryClear  -1 0 False", "DictionaryShrinkToFit  -1 -1 False",
-                "DictionaryIndexUniq equals 1 -1 False", "DictionaryStorageFindEntry equals 1 -1 False",
+                "Replace  -1 0 True -1", "ArrayClear  -1 0 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
+                "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
+                "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
+                "DictionaryTryGet equals 1 -1 False -1", "DictionaryClear  -1 0 False -1", "DictionaryShrinkToFit  -1 -1 False -1",
+                "DictionaryIndexUniq equals 1 -1 False -1", "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayTruncate  -1 0 False -1",
+                "ArrayRemoveAll  -1 0 False 1",
             ],
             rows);
     }

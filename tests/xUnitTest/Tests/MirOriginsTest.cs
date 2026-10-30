@@ -19,10 +19,11 @@ public sealed partial class MirOriginsTest
     // names `a` instead, reports the escape at `local@ref`.
     internal const string FailedClause = ClauseHead + "zz" + ClauseTail;
 
-    // A repeated binding set: `{x}` is already bound by the parameter's Type, so the local's slots stay Unbound and its row `k` meets two.
+    // A repeated binding set: `{x}` is already bound by the parameter's Type, so the clause names no bound Origin, the local's slots stay
+    // Unbound (DECISIONS BU-68) and its row `k` meets two.
     internal const string RepeatedSet = "struct Holder {a}\n    public let item: ref/i32 during a\n" +
         "    public init(item: ref/i32 during a) => self.item = item\n    public func peek(self: ref/Self) -> i32 => self.item@follow\n" +
-        "func run(h: ref/Holder{x}) -> i32\n    let k: ref/Holder{x} = h\n        origin x.a == static\n    return k.peek()\n";
+        "func run(h: ref/Holder{x}) -> i32\n    let k: ref/Holder{x} = h\n        origin x.a == zz\n    return k.peek()\n";
 
     private const string Main = "public func main() => ()\n";
 
@@ -299,7 +300,8 @@ public sealed partial class MirOriginsTest
     // SPEC 23.1.2 and 15.6.5 (DECISIONS R4-M118): a chain through a Dependent node holds whatever the unresolved Origin is, so it is judged
     // between its ends at its last edge: T1's local Borrow returned `during a` (also with the clause omitted, and with a plain local), a
     // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`), and BU's forms through a slot
-    // no failed clause names (one local's, a Tuple's second set, an assignment's).
+    // no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
+    // stay, the assignment's at `p.q`.
     [Theory]
     [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
@@ -314,7 +316,7 @@ public sealed partial class MirOriginsTest
     [InlineData(
         Pair + "    var p: P{x} = P.init(a, a)\n        origin x.s outlives zz\n    p = P.init(a, l@ref)\n    return p.q\n",
         "Unsatisfied",
-        "return p.q")]
+        "p.q")]
     public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, string site)
         => Assert.Equal([$"{verdict}OriginRelation_Kd {site}"], Origins(MirBuildTest.Compile(source + Main)));
 

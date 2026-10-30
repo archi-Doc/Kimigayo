@@ -474,6 +474,10 @@ public sealed partial class Binding
     {
         internal Koto Owner { get; } = owner;
 
+        // A local's (a FieldKoto, the parser's local declaration), whose clauses are checks that assume nothing (SPEC 15.3.3); every
+        // other owner's clauses are its contract.
+        internal bool IsLocal => this.Owner is FieldKoto;
+
         internal BindingScope? Scope { get; set; }
 
         // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
@@ -489,8 +493,13 @@ public sealed partial class Binding
         internal Koto? PendingFailure { get; set; }
 
         // The clauses that bound in a declaration whose contract failed: never premises of its uses (the contract is unavailable), only of
-        // the declaration judge's (ExtractOriginPremises' R1 while judgingDeclarationRows).
+        // the dependence queries (ReadFailedContract while readingFailedContracts; DECISIONS BU-62, BU-69).
         internal List<OriginRelation>? RejectedRelations { get; set; }
+
+        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): a local's failed clause
+        // leaves Unbound only the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and a contract's is repaired by
+        // the dependence query (DECISIONS BU-69). Kept across binds.
+        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses { get; set; }
 
         internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
 
@@ -510,6 +519,7 @@ public sealed partial class Binding
             this.Failure = null;
             this.PendingFailure = null;
             this.RejectedRelations?.Clear();
+            this.FailedClauses?.Clear();
             this.Scope = null;
             this.Body = default;
             this.Sets.Clear();

@@ -677,11 +677,12 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 23.1.2, DIAGNOSTICS (DECISIONS R4-M133; reviews B1, F3): a pending relation is recorded as a binding-time fit is: a local
     // annotation's fit at its initializer, under a Consuming receiver too (d3, Refuted; and d1 above), and a failure that no chain refutes
-    // in a failed Origin environment a dependent of that failure (b1: the clause's record alone, as the same Unknown formed in the
-    // function body). They were at the whole declaration and an independent record.
+    // in a failed Origin environment a dependent of that failure only when a repair of the failed clause could prove it (DECISIONS BU-69;
+    // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
+    // They were at the whole declaration and an independent record.
     [Theory]
     [InlineData(LocalAnnotatedConsuming, "UnsatisfiedOriginRelation_Kd n@ref")]
-    [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz")]
+    [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]
     public void APendingRelationIsRecordedAsABindingTimeFit(string function, string records)
     {
         var source = function + "public func main() => ()\n";

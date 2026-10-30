@@ -772,7 +772,8 @@ internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
 // `Supplier` is the atom (or meet operand) that supplied `Longer` at the use: the end after the Origin declarations and local initializers
 // and before any Closure's receiver resolution (Binding.SuppliedAtUse); the record's Borrow is the one whose Origin is it, by identity
-// (BorrowSource; DECISIONS R4-M133).
+// (BorrowSource; DECISIONS R4-M133). `Condition` is the Semantics case a fit's position exists in (0: every case), which the
+// dependence query reads (DECISIONS BU-69).
 internal readonly record struct OriginRelationFact(
     Koto At, BoundOrigin Longer, BoundOrigin Supplier, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null,
-    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);
+    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false, ulong Condition = 0);
