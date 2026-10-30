@@ -18,11 +18,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<BindingSymbol> contractPremiseQueries = new(ReferenceEqualityComparer.Instance);
     private BoundConstraint[] contractFactScratch = [];
 
-    // The premises a request reads: the scope its consumer holds. C3 adds the source states, the definition whose collection is
-    // active, the inadmissible bindings and the check under way here, in ViewOf (BU-29).
+    // The premises a request reads: the scope its consumer holds. C3 adds the definition whose collection is active and the
+    // inadmissible bindings here, in ViewOf (BU-29); a source's state and its check under way stay on the source (SourceStates, BU-59).
     private readonly record struct EvidenceView(BindingScope Premises);
 
     // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
@@ -79,30 +78,18 @@ public sealed partial class Binding
         return new() { Positive = positive, Negative = negative };
     }
 
+    // A Contract premise is available when the Contract and each ancestor (the deduplicated transitive closure) are valid sources: its
+    // declaration context and its published source state (Binding.SourceStates).
     private bool AvailableContractPremise(BindingSymbol contract)
     {
-        // Ancestors is already the deduplicated transitive closure. Recurse only through
-        // actual closed obligations, not through that flattened refinement list again.
         var ancestors = contract.Contract?.Ancestors;
         for (var i = -1; i < (ancestors?.Count ?? 0); i++)
         {
             var source = i < 0 ? contract : ancestors![i];
             if (this.InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration) ||
-                !this.contractPremiseQueries.Add(source))
+                this.ReadSourceState(source) != ConstraintProof.Proven)
             {
                 return false;
-            }
-
-            try
-            {
-                if (this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)source.Declaration) != ConstraintProof.Proven)
-                {
-                    return false;
-                }
-            }
-            finally
-            {
-                this.contractPremiseQueries.Remove(source);
             }
         }
 

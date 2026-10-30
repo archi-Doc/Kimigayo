@@ -26,7 +26,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
-    private readonly Dictionary<BoundType, MirModeDepths> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
+    private readonly Dictionary<MirHoldingKey, MirModeDepths> walked = new(); // HoldsLoans' scratch.
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
