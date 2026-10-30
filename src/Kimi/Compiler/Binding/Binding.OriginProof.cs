@@ -377,7 +377,7 @@ public sealed partial class Binding
 
             var firstSupplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, use), first.Longer, use);
             var recorded = first with { Supplier = firstSupplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
-            if (this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded))
+            if (this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded, this.UnrefutedCause(use, recorded)))
             {
                 return;
             }
