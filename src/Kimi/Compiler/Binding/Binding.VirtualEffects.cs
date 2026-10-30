@@ -51,7 +51,7 @@ public sealed partial class Binding
 
             var summary = rejected is null ? this.effectSummary ??= new(this) : this.destructionSummary ??= new(this);
             var scope = this.scopes[function];
-            if (summary.Check(symbol, scope.ImplementationPremises ?? scope, rejected is not null, implementationBody: true))
+            if (summary.CheckBody(symbol, scope.ImplementationPremises ?? scope, rejected is not null))
             {
                 continue;
             }

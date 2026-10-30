@@ -15,7 +15,7 @@ namespace XunitTest;
 /// rows <c>input kind output</c> (the result, or <c>store j</c>, the storage input j's exclusive, raw or invariant layers let the call
 /// write), whether the result is untied, the untied stores and the stores written only in the receiver's referent (<c>referent store
 /// j</c>, DECISIONS BU-42).</summary>
-public sealed class RetentionTest
+public sealed partial class RetentionTest
 {
     // A struct B that stores its Type argument, and B^64<i32> and B^65<i32>, whose storage heights are 64 and 65 (DECISIONS BU-12's bound
     // is 64).

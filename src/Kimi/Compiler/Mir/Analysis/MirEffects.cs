@@ -43,6 +43,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
+    private const byte Shared = 1 + (int)SemanticsKind.Ref; // (a published row's Callable input is called through a shared borrow),
     private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
@@ -197,6 +198,14 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             if (row.Destroys >= 0)
             {
                 this.Item(this.Below(symbol, subst, row.Destroys), Drop);
+            }
+
+            if (row.Calls >= 0)
+            {
+                // SPEC 4.9.6, 8.11.4: the row's Callable input, called through a shared borrow of the actual argument and then destroyed.
+                var callable = this.Below(symbol, subst, row.Calls);
+                this.Item(callable, Shared);
+                this.Item(callable, Drop);
             }
 
             return;

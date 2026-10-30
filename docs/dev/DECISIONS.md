@@ -8956,6 +8956,54 @@ resumed by R4-M86 (2026-10-20).
     is needed. The test names and comments that say "interim" or "flip back" (MirBorrowsTest.Raw.cs, MirBorrowsTest.Referents.cs) change
     with R4's 15.6.4 example unit.
 
+- **BU-70 A published row names the Callable input an operation calls: `PublishedRow.Calls`; `truncate` and `removeAll` have rows**
+  (2026-10-27, chosen 2026-10-31; PLAN G264 U0′, a Full change under WORKFLOW Q11: BU's design-first candidate `claude/bu-u0p-design`
+  and R4's prototype-first candidate (lane B, `claude/a5-u0p-proto` 818d4ac1e), judged by the shared tests `claude/bu-u0p-tests`
+  ff3cd37d8; BU and R4 chose this one by the results, WORKFLOW Full 4; R4-M150 stays U2's) SPEC 4.9.6 publishes Array `truncate`
+  ("Destruction of the relevant `T`") and `removeAll` ("Calls of `matching`; destruction of the removed `T`") as rows, the operations'
+  complete published effects, which callers use and never a library body; 15.6.4 composes the destruction a row lists at the call (R4's
+  U2 reads `Destroys`); 8.11.4 composes a Callable argument's calls at the caller through the actual argument. `ArrayTruncate` had no row
+  and `removeAll` no `KimiDeclarationId`, so A4 entered both bodies at every caller, and `PublishedRow` could not say "calls the Callable
+  input", so a row for `removeAll` would have accepted a printing callback under `confined` (E1, E3).
+  - The representation: `PublishedRow(Runs, On, Destroys, InPlace, Calls)`, `Calls` the parameter slot of the by-value Callable input whose
+    calls the row publishes (-1 none), called through a shared borrow of it, the receiver its Callable premise declares (every 4.9.6
+    "Calls of" row: `removeAll`, `sort(by:)`, `firstIndexWhere`), and destroyed after the last call (15.6.4, 16.3.3: a by-value input's
+    cleanup is the callee's, as 8.11.4's owner acquisition destroys the remaining environment). `TyCtxt.Published`, where the row is formed,
+    checks once, before it forms the first Calls row, that every Calls row's premise declares `ref` (`CheckCallsRows` through
+    `Binding.CallableReceiver`; a violated catalog contract is an internal error); a later read costs what any row's does. Rows:
+    `ArrayTruncate` `Target` (as `clear`), `ArrayRemoveAll` `CallsThenTarget` (`Destroys: 0, Calls: 1`; 4.9.7: destroyed after the last
+    call). `KimiDeclarationId.ArrayRemoveAll` is one more ID (not a closed vocabulary; R5-M28's precedent).
+  - Readers: `TyCtxt.Published` gives `Calls` to A4, where `MirEffects.Function` and `Enter` compose, after the row's `Runs` and `Destroys`,
+    a call through the Type below that parameter (`Below`: the actual argument under the call's substitution, a Closure, a function item,
+    an abstract input or a Function Type) with the shared receiver and that Type's destruction, through the one path a body's Value call
+    uses (`Item`/`Process`). `Binding.PublishedOperations.SummarizePublishedOperation` reads the whole row from `TyCtxt.Published`, its
+    requirement and its Callable input, and counts their effects as published, so both bodies are verified against their rows
+    (`PublishedOperationBodiesStayWithinTheirRows`, 11 → 13). The row's effects hold only for that check (`EffectSummary.CheckPublished`);
+    a definition's own body is checked by `EffectSummary.CheckBody` (also a virtual function's), so `Check` takes no row and no mode
+    parameter. A5 is unchanged: C3's guard (R4-M143) keeps W at both calls until U2.
+  - The choice: both candidates pass 47 of the 48 shared rows on both pipelines (the kept-apart G266 row `removeAllWriteBad` fails on
+    both) at a cost within noise (R4's A/B: A4 and step 3 at 0.99-1.00). Lane B has the same column but reads the receiver from the
+    premise at every call and composes no destruction of the input, so its A4 accepts RmLoud, RmLoudLet, RmLoudLocal and PruneLoud (a
+    by-value `matching` owning a value whose `drop` prints, under `confined`), which the bodies and Binding reject: unsound. MirEffectsTest's
+    RmLoud, RmLoudLocal and PruneLoud rows (with their RmQuiet, RmRefLoudLocal and PruneQuiet twins) fail without that destruction.
+  - Rejected: an A4 rule calling every by-value input whose Type is a Callable-bounded parameter at a published operation's call (a consumer
+    deciding by the callee's shape what the catalog should publish, AGENTS symptom fixes; a second copy in the body verification; it would
+    call an input an operation only stores); keeping A4 in the two bodies with only `Destroys` published (a row half read, the callee-keyed
+    exception R1.3 withdrew); a receiver column (no 4.9 row calls its input otherwise; a row, not a case, when one does); lane B's receiver
+    read from the premise at each call (the declaration's fact read again per call; the row's contract fixes `ref`, which `TyCtxt.Published`
+    checks once where the row is formed); lane B's row without the input's destruction (unsound, above).
+  - Consequences: A4 gets E1/E3/E5/E7 through the rows, not the bodies; no A5 verdict changes (the shared tests' 22 A5 forms and 22
+    both-pipeline records hold); the retention rows are unchanged (a row changes no retention row, BU-42, BU-47). Binding's old effect
+    check, `EffectSummary`, whose records every pipeline publishes (R5-M156), still enters the bodies at callers (its `Target` keys
+    `ArrayClear` and `Replace`) until R6-check deletes it. A4 reports `OwnershipDepthLimit_Kd` for `truncate` or `removeAll` on an Array
+    whose element is a 32-deep struct chain, where the bodies accepted (R4's review N2), as `clear`'s row already does: `Destroys` names
+    the container, so the walk meets the element one level deeper; a located limit that misses no effect, open with that column.
+    Open: SPEC 4.9.6's `removeAll` row does not name the destruction of `matching`, which this row composes by 15.6.4's by-value sentence
+    (equal to the body's effects); whether 4.9.6's text names it is the owner's (R4's review O1).
+  - Cost: src +24/−6 lines; tests +9/−8 in the pins (`PublishedRowsAreFixed` two rows and the `Calls` column, 186 → 187 entries), the
+    shared tests unchanged; records +25. Fix round 1: the summary's own file (`Binding.PublishedOperations.cs`), the row read whole, the
+    premise check, `CheckBody`, and six MirEffectsTest rows.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
