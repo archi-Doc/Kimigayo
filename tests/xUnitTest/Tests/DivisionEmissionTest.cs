@@ -161,30 +161,6 @@ public class DivisionEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MismatchedDivisionPlansFailBeforeWriting(bool wrongKind)
-    {
-        var c = MinimalEmissionTest.Analyze("let b = true\nvar x = 7\nlet y = x / 2", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Operator == KotoKind.Slash);
-        if (wrongKind)
-        {
-            body.Values[id] = body.Values[id] with { Kind = OwnershipValueKind.Unary, Count = 1 };
-        }
-        else
-        {
-            var boolean = Enumerable.Range(0, body.Values.Count).First(i => body.Values[i].Kind == OwnershipValueKind.Constant && body.Places[body.Operations[i].Place].Type == BoundType.Boolean);
-            body.ValueOperands[body.Values[id].Start + 1] = boolean;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
     [Fact]
     public void AbortTableHasStableIndicesAndDerivedLengths()
     {

@@ -4,7 +4,7 @@
 // item of the checked set from its validated, analyzed MIR body in the item's instance (a StaticInit item's with its static's slot), of
 // one DropGlue item by its Type's row, of one ClosureErasure or ItemAdapter item or of one Builtin or PropertyWitness item. Every MIR
 // form of an accepted program has its row; a form the backend does not generate is the capability table's gap at check (DECISIONS
-// R5-M146, which ended PD11's coverage rows). Each concern file (Files) owns its rows, in its header or at its writer: the forms it
+// R5-M146). Each concern file (Files) owns its rows, in its header or at its writer: the forms it
 // writes and the DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its row, writes the unconditional
 // branch and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,

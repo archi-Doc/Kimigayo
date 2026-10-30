@@ -105,9 +105,7 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("duplicate")]
     public void ConditionalFlagsRejectMissingOrIncorrectTransitions(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(
-            "func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)",
-            codegen: CompilerCodegen.Legacy);
+        var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
         var function = module.GetFunction(1);
@@ -130,58 +128,6 @@ public class ElementBorrowOwnerEmissionTest
         }
 
         Assert.False(BodyLowering.ValidateStringFlags(body, function, new int[body.Places.Count + body.Operations.Count]));
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData("parameter", "func f(a: (string, i32)) -> bool => a.0 == a.0\nf(make())")]
-    [InlineData("construction", "let equal = (\"held\", 0).0 == \"held\"")]
-    [InlineData("call", "let equal = make().0 == \"held\"")]
-    [InlineData("selection", "let equal = (if true => (\"held\", 0) else => (\"held\", 1)).0 == \"held\"")]
-    public void BorrowOwnersRequireTheirStoragePlan(string defect, string source)
-    {
-        var c = MinimalEmissionTest.Analyze(Make + source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Projections.Count > 0);
-        var root = body.Projections[0].Root;
-        switch (defect)
-        {
-            case "parameter": body.PlaceStorage[root] = body.Places[root] with { Kind = OwnershipPlaceKind.Temporary }; break;
-            case "construction": body.ConstructionStorage.Clear(); break;
-            case "call":
-                var produce = body.OperationStorage.FindIndex(x => x.Place == root && x.Kind == OwnershipOperationKind.Produce);
-                body.OperationStorage[produce] = body.Operations[produce] with { Kind = OwnershipOperationKind.Declare };
-                break;
-            case "selection": body.SlotResults.Clear(); break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData(OwnershipOperationKind.LocateReceiver)]
-    [InlineData(OwnershipOperationKind.Cleanup)]
-    public void SecuredSelectionStorageIsUnavailableDuringItsCleanup(OwnershipOperationKind kind)
-    {
-        const string Source = "let equal = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (\"held\", 0)\n).0 == \"held\"";
-        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        var deferred = Assert.Single(body.DeferredPlans, x => body.IsReachable(x.Entry));
-        var id = body.OperationStorage.FindIndex(deferred.Entry, deferred.End - deferred.Entry, x => x.Kind == (kind == OwnershipOperationKind.Cleanup ? OwnershipOperationKind.Cleanup : OwnershipOperationKind.Produce));
-        Assert.True(id >= 0);
-        Assert.True((body.GetInputState(id, result.Place) & PlaceState.MustInit) != 0);
-        body.OperationStorage[id] = body.Operations[id] with { Kind = kind, Place = result.Place };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.Contains("normal delivery", error);
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 

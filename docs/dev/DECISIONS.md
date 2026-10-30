@@ -8990,6 +8990,7 @@ structure is recorded here by the unit that first implements it.
   until G4). Ask A-10
   goes to R4: from C0b2, R4's MIR-builder merges run the sel pending check and record any rise; from G3, they select the
   affected native families and O2 kernels. Rejected: a CI sel lane (full sweeps run at family group reviews, X1 and G3).
+  - Amended by R5-M160 (G4): the pending-ledger gate and VERIFICATION's R5 rows are deleted.
 - **R5-M9 Binding syntax reads and synthetic Koto at R7** (owner, 2026-10-18; OQ12, OQ13; a later removal stage) Binding's
   reads of the 36 Koto forwarding properties, the properties themselves and ARCH's extension of Syntax's restriction to the
   whole Binding layer move from R6 to R7 (superseding CR-A7's R6 marking of the properties, whose attributes change at
@@ -9165,6 +9166,7 @@ structure is recorded here by the unit that first implements it.
     exception) and (c) carrying Type arguments before G2 (MIR representation work in W1 for a form no library or milestone uses);
     for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
+  - Amended by R5-M160 (G4): the temporary sel-only behaviors and the R5 tooling of the package end with the code generator selection.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
   `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
@@ -9558,6 +9560,7 @@ structure is recorded here by the unit that first implements it.
     moves it into the generation entry and C0b1 deletes it.
   - Rejected: a process-wide selector only (no compilation could select MIR code generation in a test); sharing the driver's `MirReach`
     (an edit of the driver); the refusal in the old generator's `TryPrepare` or `ReportFailure` (it is not that generator's failure).
+  - Amended by R5-M160 (G4): the `KIMI_CODEGEN` selector, `CompilerCodegen` and the per-compilation `Codegen` are deleted.
 - **R5-M36 Closure contexts as `Subst`** (2026-10-18, planning session; plan K2 (A5P-C1), package K §4.2 and §9, S2-S4 X10, under
   R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes(type, instance)` sets it to
   exactly the substitution `Binding.InstantiateStorageType(type, subst)` instantiates under, its conforming Self included (PLAN G142,
@@ -10059,6 +10062,7 @@ structure is recorded here by the unit that first implements it.
   - Rejected: an entry returning the prepared old module (Core would publish `EmissionModule`, which MIR code generation replaces);
     buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
+  - Amended by R5-M160 (G4): `verify.ps1 -Codegen` and the old-generator branch of `Generate`, `WriteIr` and `Validate` are deleted.
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -10086,6 +10090,7 @@ structure is recorded here by the unit that first implements it.
   passed now); the print options in default runs (only sel reads names, and the default path stays unchanged); one ledger file (lanes serialize, PD10); a reason column (the group file groups, the
   commit explains); a standalone script reading `summary.json` (written after the steps, so Verify could neither record the report as
   a step nor its totals).
+  - Amended by R5-M160 (G4): the pending ledger, its report and `scripts/codegen-pending.ps1` are deleted.
 - **R5-M60 Drop glue, destructor and static edges of the checked set** (2026-10-19, planning session; plan K7, the K package's §4.5 rows
   7, 9, 10 and "DropGlue", §4.7 and §4.8, S2-S4 X3, X23, X27, X33 (a) and X34; under R5-M18, R5-M35 and R5-M44; DEC Q6 form 1) Every Drop
   (A2's verdicts do not narrow the checked set) and every `DestroyValues` call is the `DropGlue` item of its Type in the item's instance,
@@ -10423,6 +10428,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a call writer for `writeLine` alone (the legacy rows share the parameter mapping); grouping by the first coverage
     record a test meets (no record names its test); a catch-all file named by no group (R5-M66); pending rows for the depth test (the
     old generator it asserts still runs under sel).
+  - Amended by R5-M160 (G4): the pending files and their filing rule are deleted; the depth test's old-generator half moved to MIR
+    code generation.
 - **R5-M74 Object descriptors and VTables of the checked set** (2026-10-19, K lane; plan K8, the K package's §4.3 ObjectDescriptor and
   VTable rows and §4.5 rows 4, 8 and 12, package F §4.2-§4.3, S2-S4 X5 and X15; under R5-M18, R5-M60 and R5-M62; DEC Q6 form 1;
   `MonoKind.ObjectDescriptor` and `MonoKind.VTable` are approved with the K package, §11; round 2 after the independent review's B1)
@@ -10644,6 +10651,7 @@ structure is recorded here by the unit that first implements it.
   not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
   - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
     input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
+  - Amended by R5-M160 (G4): the gate, `-UpdatePending` and the native pending result are deleted.
 - **R5-M82 Unsupported static storage is a capability row at its declaration** (2026-10-19, K lane; unit K11b, the planning session's
   decisions on R4's sel pending check and on K11b's review; under R5-M18, R5-M40, R5-M53 and R5-M77; the capability rows approved with
   the K package, §11) Since K11 MIR code generation reaches only what an output requires, so a form a codegen coverage row refused only
@@ -10747,6 +10755,8 @@ structure is recorded here by the unit that first implements it.
     the old generator's halves after a check that now rejects are deleted; the own-limit pins whose programs pass check stay until G4.
   - Amended by R5-M158 (G3): every generated-output `Expect` and `LegacyNative` is reduced to its target; the catalog is empty and
     the form, checked on a synthetic sample, stays until G4.
+  - Amended by R5-M160 (G4): the form, the catalog and `CodegenDeviationTest` are deleted; the pinned old-generator tests that
+    reached it through `Compilation.WriteIr`/`Validate` are deleted with their pins.
 - **R5-M86 The owner's decisions of 2026-10-21: R5's departures list and PLAN G157 (19)** (owner, 2026-10-21, on the R5 planning
   session's explanation; verbatim 「departures list：K6b（R5-M70）、K8（R5-M74）、C0c（R5-M78）の 3 件を、すべて承認します。」 and
   「G157は、(a) 旧生成器を直す（推奨）でお願いします」, then, asked about R5-M6, the answer 「(a) のまま（R5-M6 の例外）」; the
@@ -11018,6 +11028,7 @@ structure is recorded here by the unit that first implements it.
   - Rejected: an internal prepare/write split of `Generate` for the benchmark (a seam without semantics, whose prepare would be the
     gate, roots and mark, not layout); the benchmark copying GenerateMir's steps (a second copy of the gate); a sel-only shape filter
     (a shape allowlist for one interim use); a separate E14b for the comparison.
+  - Amended by R5-M160 (G4): the benchmark's old-generator branch is deleted.
 - **R5-M95 The drop glue of MIR code generation, one level per Type (C4a-1)** (2026-10-21, C lane; plan C4a, package C 3.6 and §4's C4a
   row, X3 and X27, PD18; the planning session's decisions on C4a's design and its split; under R5-M18 form 1, R5-M60 and R5-M78)
   - Rows: `DropGlue.Row` gives a closed Type's glue row, which `FunctionCodegen.Glue.cs` writes: a string's calls the runtime release
@@ -11356,6 +11367,7 @@ structure is recorded here by the unit that first implements it.
     the call, store and failure writers, PD3); the old generator's text Abort (`__kimi_abort_message`, not SPEC 22.5.2's row); a MIR form
     for the state machine (held MIR); a `MonoKind` per slot (the StaticInit item is one); `MirStatic` carrying the key now (P42's full
     process); one `{value, state}` global per slot.
+  - Amended by R5-M160 (G4): `LegacyNative`, the `.deviation` sidecar and `compare-fixtures.ps1`'s deviating count are deleted.
 - **R5-M107 The owner confirms C7's departures** (owner, 2026-10-22, on the R5 planning session's explanation before C7 landed; verbatim
   「C7 の逸脱 2 件（NativeAllocationAudit の LegacyNative を最初の利用者が出るまで見送ること、tests/mir/statics.kimi の代わりに
   StaticRows をネイティブ実行すること）を承認します。」; the consequences are the planning session's) The two departures R5-M106 records are confirmed:
@@ -13110,6 +13122,8 @@ structure is recorded here by the unit that first implements it.
     pairing, R5-M64's `-Codegen mir` rule, R5-M41's "until G2" and R5-M85's `checked-set-at-check`.
   - Rejected: a per-row exception for `StaticStorage` (a per-row gate); G2 waiting for P42 (P42 follows H5: circular); a `Codegen.Expect`
     deviation for the P42 rows (R5-M144 (b); keyed by the code generator, which G2 does not switch); a third G1 file for the records.
+  - Amended by R5-M160 (G4): S6's rollback has ended. S7's "re-pointed to `Compilation.Emission`" applies only where a test already
+    reads `Compilation.Emission`; a pin reaching the old generator through `Compilation.WriteIr`/`Validate` goes with its test.
 - **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
   g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
   Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
@@ -13286,6 +13300,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a per-row exception for `StaticStorage` or any other record (a per-row gate); filtering a record away or shrinking a
     scaling input to keep a pinned test's old expectation (a weakening); an environment rollback for the records (a second mode); a
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
+  - Amended by R5-M160 (G4): `KIMI_CODEGEN=legacy`'s rollback and the kept `C-frame.tsv` are deleted; the depth test's 64-level
+    half kept until G4 moved to MIR code generation.
 - **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, R6-gen; plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and
   OI-3 as applied, with the planning session's rulings Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
   - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's
@@ -13318,6 +13334,8 @@ structure is recorded here by the unit that first implements it.
     `CompilerCodegen.Legacy` pins (99 in 71 files) and the direct `Emission.TryPrepare` readers stay (G4, G5, G7; R5-M85).
   - Rejected: Q1 (a), deleting the form at G3 (S7 deletes it with the selector at G4); Q2 (b), the gate on every default run (the sel
     lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
+  - Amended by R5-M160 (G4): the rollback lane, the empty deviation form, `-Codegen` and the remaining `CompilerCodegen.Legacy`
+    pins are deleted (the direct `Emission.TryPrepare` readers stay for G5 and G7).
 - **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
   G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
   Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
@@ -13369,3 +13387,58 @@ structure is recorded here by the unit that first implements it.
     `ElementReplacementTransfer*` audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the
     right side as the old generator does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a
     transfer abandons (G157 (45)'s part for them).
+  - Amended by R5-M160 (G4): the rollback lane's refusal of an exclusive borrow below a diverging key ended with the old generator's
+    selection; MIR code generation runs those forms.
+- **R5-M160 The R5 scaffolding removed (R6-gen G4)** (2026-10-30, R6-gen; plan §4.9 row G4, PD4, PD10, OQ9; R5-M152 S6 and S7; design
+  `draft/Sketches/R6-gen/G4-design.md` with the planning session's rulings Q-P1 to Q-P6; under R5-M18, R5-M156 and R5-M158; Major,
+  G:R6-gen-del)
+  - Rule: the code generator selection ends, and with it G3's rollback (S6). Removed: `KIMI_CODEGEN`, `CompilerCodegen`,
+    `Compilation.DefaultCodegen`, `Codegen` and `CodegenOf`, the ` [codegen legacy]` marks, the test manifest's `codegen` rows and
+    `verify.ps1 -Codegen`.
+    - Nothing reads `KIMI_CODEGEN`. A stale value selects nothing, since no second generator exists. No guard either: it would be a
+      second reading of a removed name.
+    - `Compilation.Generate` is the gate plus MIR code generation; `WriteIr` and `Validate` are MIR-only until G9b.
+    - No product path reaches the old generator. Tests reading `Compilation.Emission` reach it until G5 and G7,
+      `CompilerPlanMeasurements` and `InheritanceLifecycleMeasurements` until G7, and a publication failure's record until G9b.
+    - `KIMI_PIPELINE` stays until H12.
+  - R5's metric machinery goes (PD10, OQ9):
+    - the pending ledger with its gate, report, filing rule, `-UpdatePending`, native pending result and regressions (R5-M66, R5-M73,
+      R5-M81);
+    - the deviation form with its catalog, `.deviation` sidecar and `compare-fixtures.ps1`'s deviating count (R5-M85, R5-M106);
+    - VERIFICATION's R5 rows (R5-M8);
+    - the coverage rows' remnants, which were references only.
+  - Pins (Q-P1; R5-M85, R5-M152 S7): `Compilation.WriteIr`/`Validate` follow the compilation's generator, and tests may not call
+    `Compilation.Emission`'s `WriteIr`/`Validate` (ArchitectureRulesTest, limit 0). So a pinned test that reached the old generator only
+    through them is deleted with its pin. That covers G157 (21)'s 76 injection methods, which observed the old generator's own plans,
+    profile and failure text; MIR code generation trusts validated MIR (one validator per IR). It also covers K13's 5 own-limit
+    methods. Their limits are the old generator's own: `GenericStoragePlan.SubstitutionSetLimit` and `InstanceStorageLimit` with its
+    instance note. Check covers the rules:
+    - the collector's admission bounds: `InstanceCollectorTest.TheDepthAndSetLimitsStopAtTheirCalls`,
+      `GrowingDestructorContextsAreResourceDiagnosed` and `GrowingSubstitutionKeysAreResourceDiagnosed` (R5-M40);
+    - A1's arena: `MirDataflowTest.TheStorageLimitCarriesItsArguments` (R4-M15a).
+  - Other pins:
+    - Dropped where the test reads `Compilation.Emission.TryPrepare` directly; G5 deletes those tests.
+    - Moved to MIR code generation: TypeDagScaling's chain generation and the depth test's 64-level half (R5-M73).
+    - A test that ran on both generators keeps its MIR row; `G235TransplantedFunctionLegacy*` goes with its row.
+    - PD14's injection reads leave at G4, not G6.
+    - PLAN G314's pipeline loops repeat one check since R5-M156 and go; `PipelineSwitchTest`'s switch loops stay until H12.
+    - `--analyze-cost` measures one configuration: its three were one check (schema 3).
+    - Ratchets: ownership bodies 159 → 84, prepared modules 113 → 112, instance reads 3 → 1, failure facts 9 → 1.
+  - STATUS's old-generator rows go here, where the boundary changes (Q-P3), not at G11.
+  - Behavior-preserving on the default configuration (Q-P2):
+    - the diagnostic snapshot equals the base's;
+    - every common fixture's `.ll` and sidecar is identical, and only the removed stems go missing;
+    - the receiver-layers, static-cycle and G235 families pass natively, as do the milestones and the five CLI harnesses.
+  - Rejected:
+    - re-pointing to `Compilation.Emission.WriteIr` (+218 calls on a limit-0 ratchet);
+    - a test-only `Codegen` setter until G7 (a mode kept past its stage);
+    - one `--analyze-cost` row per `KIMI_PIPELINE` value (identical checks);
+    - keeping the pipeline loops (duplicate cases).
+  - Supersedes by name, each with its amendment line:
+    - R5-M8's R5 rows;
+    - the selector clauses of R5-M35, R5-M64 and R5-M94;
+    - R5-M66, R5-M73 and R5-M81;
+    - R5-M85, and R5-M106's native half;
+    - R5-M18's temporary sel-only behaviors;
+    - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers);
+    - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.

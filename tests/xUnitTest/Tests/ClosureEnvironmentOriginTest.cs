@@ -422,19 +422,16 @@ public class ClosureEnvironmentOriginTest
     [InlineData(BodyError, nameof(DiagnosticCode.TypeMismatch_Kd), "5\n")]
     public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var error = Assert.Single(ContextualCaptureTest.PublishedRecords(source, pipeline));
-            Assert.Equal(code, error.Code);
-            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-        }
+        var error = Assert.Single(ContextualCaptureTest.PublishedRecords(source));
+        Assert.Equal(code, error.Code);
+        Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 23.1 (DECISIONS BU-28): an enclosing local's region is shown as that local's omitted Origin, never by its atom's kind.
     [Fact]
     public void AnEnclosingRegionIsNamedByItsLocal()
     {
-        var error = Assert.Single(ContextualCaptureTest.PublishedRecords(VarStore, CompilerPipeline.Legacy));
+        var error = Assert.Single(ContextualCaptureTest.PublishedRecords(VarStore));
         Assert.Equal("requires x outlives the omitted Origin of arr, which is not proven", error.Label);
     }
 
@@ -461,10 +458,7 @@ public class ClosureEnvironmentOriginTest
     [InlineData(EnvBorrow + "    let c = func [n, p] () -> i32\n        var r = p\n        r = n@ref\n        return r@follow\n    return c()\n")]
     public void AnEnvironmentReadOrItsOwnOriginStaysValid(string function)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
-        }
+        Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n"));
     }
 
     // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested or root function's signature or clause that
@@ -498,16 +492,13 @@ public class ClosureEnvironmentOriginTest
         "r>")]
     public void ANestedSignatureNamingABodyLocalIsUnsupported(string source, params string[] at)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
+            .OrderBy(static x => x.Span.Start).ToArray();
+        Assert.Equal(at.Length, errors.Length);
+        for (var i = 0; i < at.Length; i++)
         {
-            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
-                .OrderBy(static x => x.Span.Start).ToArray();
-            Assert.Equal(at.Length, errors.Length);
-            for (var i = 0; i < at.Length; i++)
-            {
-                Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), errors[i].Code);
-                Assert.StartsWith(at[i], source[errors[i].Span.Start..], StringComparison.Ordinal);
-            }
+            Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), errors[i].Code);
+            Assert.StartsWith(at[i], source[errors[i].Span.Start..], StringComparison.Ordinal);
         }
     }
 
@@ -551,15 +542,12 @@ public class ClosureEnvironmentOriginTest
     [InlineData(NestedHead + "    let put = func [] " + PutSignatureStore + NestedStore, Unproven, "v)")]
     public void AnEnclosingContractOriginOrAClosureHeaderKeepsItsJudgment(string source, string? code, string? at)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        Assert.Equal(code is null ? Array.Empty<string>() : [code], errors.Select(static x => x.Code));
+        if (at is not null)
         {
-            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
-                .ToArray();
-            Assert.Equal(code is null ? Array.Empty<string>() : [code], errors.Select(static x => x.Code));
-            if (at is not null)
-            {
-                Assert.StartsWith(at, source[errors[0].Span.Start..], StringComparison.Ordinal);
-            }
+            Assert.StartsWith(at, source[errors[0].Span.Start..], StringComparison.Ordinal);
         }
     }
 
@@ -585,14 +573,11 @@ public class ClosureEnvironmentOriginTest
         foreach (var beside in new[] { false, true })
         {
             var source = function + (beside ? "func unrelated() -> i32\n    let wrong: Missing = 1\n    return 0\n" : string.Empty) + "public func main() => ()\n";
-            foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-            {
-                var records = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-                var error = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.UnresolvedBinding_Kd));
-                Assert.Equal(Unproven, error.Code);
-                Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-                Assert.Equal(beside ? 2 : 1, records.Length);
-            }
+            var records = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+            var error = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.UnresolvedBinding_Kd));
+            Assert.Equal(Unproven, error.Code);
+            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+            Assert.Equal(beside ? 2 : 1, records.Length);
         }
     }
 
@@ -767,10 +752,7 @@ public class ClosureEnvironmentOriginTest
         "        same9([(a@ref, .None), (b@ref, .None)])\n" + CallF)]
     public void AReceiverContainmentTheBodyNeedsNotStaysValid(string function)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
-        }
+        Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n"));
     }
 
     // The receiver's well-formedness (DECISIONS R4-M152, PLAN G270) gives only that each Origin stored in the environment outlives ρ: two
@@ -798,12 +780,9 @@ public class ClosureEnvironmentOriginTest
     public void TheReceiversWellFormednessProvesOnlyItsStoredOrigins(string function, string at)
     {
         var source = function + "public func main() => ()\n";
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var records = ContextualCaptureTest.PublishedRecords(source, pipeline);
-            Assert.Contains(records, x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) &&
-                source[x.Span.Start..].StartsWith(at, StringComparison.Ordinal));
-        }
+        var records = ContextualCaptureTest.PublishedRecords(source);
+        Assert.Contains(records, x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) &&
+            source[x.Span.Start..].StartsWith(at, StringComparison.Ordinal));
     }
 
     // D-13's Option form under an Exclusive receiver and g6c, G6's Consuming control, hold by SPEC: Binding and the MIR accept them; the
@@ -840,13 +819,10 @@ public class ClosureEnvironmentOriginTest
     public void APendingRelationIsJudgedOnceOnEveryPathThatBindsTheBody(string function, int count)
     {
         var source = function + "public func main() => ()\n";
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var records = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-            Assert.Equal(count, records.Length);
-            var error = Assert.Single(records, static x => x.Code == Unproven);
-            Assert.StartsWith("p\n", source[error.Span.Start..], StringComparison.Ordinal);
-        }
+        var records = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(count, records.Length);
+        var error = Assert.Single(records, static x => x.Code == Unproven);
+        Assert.StartsWith("p\n", source[error.Span.Start..], StringComparison.Ordinal);
 
         var c = MinimalEmissionTest.Analyze(source);
         var first = c.Binding.Issues.Select(static x => $"{x.Code} {x.Node.Span.Start}").Order(StringComparer.Ordinal).ToArray();

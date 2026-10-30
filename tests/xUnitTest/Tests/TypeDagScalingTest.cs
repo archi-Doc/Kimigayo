@@ -121,7 +121,7 @@ public partial class TypeDagScalingTest
 
     // The old analysis's walks (the owner's D5 exception): whether a cleanup observes Loans over shared struct, enum and Tuple parts,
     // generic ones too, Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for
-    // the instance chains also the old Emission's instance analyses.
+    // the instance chains also their collection and code generation.
     [Theory]
     [InlineData("structs", 28)]
     [InlineData("structUses", 24)]
@@ -133,7 +133,7 @@ public partial class TypeDagScalingTest
     [InlineData("chainValues", 26)]
     public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
     {
-        var c = OldPath(Source(shape, size));
+        var c = Checked(Source(shape, size));
 
         // originLets' last Tuple holds 2^28 references, 2^31 bytes, past the layout size bound: check's one record, at the local's
         // declaration (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
@@ -160,7 +160,7 @@ public partial class TypeDagScalingTest
         var deep = $"    let d = {Nest(depth)}\n";
         var shallow = $"    let s = {Nest(10)}\n";
         var source = "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code).Concat(Enumerable.Repeat("GenerationResourceLimit_Kd", Math.Max(0, depth - 64))), Problems(OldPath(source)));
+        Assert.Equal(Codes(code).Concat(Enumerable.Repeat("GenerationResourceLimit_Kd", Math.Max(0, depth - 64))), Problems(Checked(source)));
 
         static string Nest(int levels) => new string('(', levels) + "value@ref" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
     }
@@ -175,7 +175,7 @@ public partial class TypeDagScalingTest
         var source = "struct Observer {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + (drop ? "    drop => ()\n" : string.Empty) +
             "var value = 42\nlet t = ((Observer.init(value@ref), Observer.init(value@ref)), (Observer.init(value@ref), Observer.init(value@ref)))\n" +
             (written ? "value = 99\n" : string.Empty) + "require value > 0 else => $abort(\"x\")\n";
-        Assert.Equal(Codes(code), Problems(OldPath(source)));
+        Assert.Equal(Codes(code), Problems(Checked(source)));
     }
 
     // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (AddType's set per Place).
@@ -191,7 +191,7 @@ public partial class TypeDagScalingTest
         }
 
         source.Append(written ? "    v = 2\n" : string.Empty).Append("    let z = a7\n    return\n");
-        Assert.Equal(Codes(code), Problems(OldPath(source.ToString())));
+        Assert.Equal(Codes(code), Problems(Checked(source.ToString())));
     }
 
     // SPEC 8.15: Copy proofs over shared Tuples of an associated projection hold (an interned constraint's projection walk).
@@ -218,7 +218,7 @@ public partial class TypeDagScalingTest
     {
         var source = "struct Node\n    public var x: i32\n    public var next: Option<rc/Node>\n    public init(x: i32)\n        self.x = x\n        self.next = .None\n" +
             "public func main() -> ()\n    var value = 42\n    let n = Node.init(x: 1)\n    let t = ((n@move, value@ref), 3)\n" + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), Problems(OldPath(source)));
+        Assert.Equal(Codes(code), Problems(Checked(source)));
     }
 
     [Fact]
@@ -226,7 +226,7 @@ public partial class TypeDagScalingTest
     {
         const string Source = "contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n    S is HasElem\n" +
             "    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\npublic func main() -> ()\n    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n    return\n";
-        Assert.Empty(Problems(OldPath(Source)));
+        Assert.Empty(Problems(Checked(Source)));
     }
 
     // A warm Analyze of a program whose Types share parts allocates nothing: the old analysis's answer tables keep their capacity.
@@ -234,7 +234,7 @@ public partial class TypeDagScalingTest
     [Trait("Purpose", "Allocation")]
     public void WarmAnalyzeOfSharedTypesAllocatesNothing()
     {
-        var c = OldPath(Source("structUses", 12));
+        var c = Checked(Source("structUses", 12));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
@@ -323,9 +323,10 @@ public partial class TypeDagScalingTest
 
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
 
-    // A checked compilation pinned to the old generator: the old analysis's rows judge its walks, and the chain shapes generate through the
-    // old Emission's instance analyses; the checked set's records publish at check under either generator (DECISIONS R5-M156).
-    private static Compilation OldPath(string source) => MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+    // A checked compilation: the old analysis's rows judge its walks, the checked set's records publish at check (DECISIONS R5-M156), and
+    // the chain shapes generate through MIR code generation, the old generator's instance analyses having left with its selection at G4
+    // (DECISIONS R5-M160).
+    private static Compilation Checked(string source) => MinimalEmissionTest.Analyze(source);
 
     // The codes of the analysis's problems: the old path's, then the MIR's records.
     private static string[] Problems(Compilation c) => [.. c.Problems.Select(static x => x.Code.ToString())];

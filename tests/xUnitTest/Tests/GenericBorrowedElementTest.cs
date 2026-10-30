@@ -93,35 +93,4 @@ public class GenericBorrowedElementTest
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Sequence && x.ScalarOperator == "ArrayStorageRead");
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.TransferAggregate);
     }
-
-    // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-    // a corrupt element-read plan is rejected on the ordinary body that owns it.
-    [Fact]
-    public void RejectsUncheckedElementProducerAndRecoversAfterReload()
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func at(a: ref/[1 of i32], i: isize) -> i32 => a[i]\nlet a: [1 of i32] = [7]\nlet n = at(a@ref, 0)",
-            codegen: CompilerCodegen.Legacy);
-        using var first = new StringWriter();
-        Assert.True(c.WriteIr(first, out var error), error);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var body = c.Ownership.Bodies.Single(x => x.Sequences.Count != 0);
-        body.Sequences[0] = body.Sequences[0] with { Index = 0 };
-        using var invalid = new StringWriter();
-        Assert.False(c.WriteIr(invalid, out _));
-        Assert.Empty(invalid.ToString());
-        var restored = Compilation.CreateForTest();
-        restored.Codegen = CompilerCodegen.Legacy;
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        Assert.True(restored.Bind().IsComplete);
-        restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Analyze().IsVerified);
-        using var second = new StringWriter();
-        Assert.True(restored.WriteIr(second, out error), error);
-        Assert.Equal(first.ToString(), second.ToString());
-    }
 }

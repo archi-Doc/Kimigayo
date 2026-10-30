@@ -103,7 +103,7 @@ public class DictionaryCapacityTest
     }
 
     // The compiled DictionaryStorage reserve and append, called with their private caller-location pair (SPEC 22.5.1): the program generated
-    // by MIR code generation whatever the process's generators, each function its body item's (DECISIONS R5-M145).
+    // by MIR code generation, each function its body item's (DECISIONS R5-M145).
     private static (string Ir, string Reserve, string Append) Runtime()
     {
         var c = FunctionCodegenTest.GeneratedDefinitions("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)").C;

@@ -93,43 +93,8 @@ public class ScalarEmissionTest
         Assert.All(function.Slots, slot => Assert.True(body.Places[slot.Place].Kind == OwnershipPlaceKind.Local || ReferenceEquals(body.Places[slot.Place].Type, BoundType.String)));
     }
 
-    [Theory]
-    [InlineData("missing-value")]
-    [InlineData("alias-cycle")]
-    [InlineData("replacement")]
-    [InlineData("phi-input")]
-    public void IncompleteScalarPlansFailBeforeWriting(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 1\nif x > 0 and true => x = 2", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write);
-        if (mutation == "missing-value")
-        {
-            body.Values[write] = default;
-        }
-        else if (mutation == "alias-cycle")
-        {
-            body.ValueOperands[body.Values[write].Start] = write;
-        }
-        else if (mutation == "replacement")
-        {
-            body.OperationSteps[write] = -1;
-        }
-        else
-        {
-            var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
-            body.PhiInputs[body.Values[phi].Start] = body.PhiInputs[body.Values[phi].Start + 1];
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.NotNull(error);
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
     internal static string EmitFixture(
-        string name, string source, string stdout, int exit = 0, string? stderr = null, int observationMilliseconds = 0, LegacyNative? legacy = null)
+        string name, string source, string stdout, int exit = 0, string? stderr = null, int observationMilliseconds = 0)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
@@ -139,27 +104,16 @@ public class ScalarEmissionTest
         Assert.True(bodyStart.Success);
         Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {AbortReasons.IntegerDivisionZero}, i32 {AbortReasons.IntegerOverflow}\n|%minusone\d+, i\d+ )", ir[bodyStart.Index..]);
         Assert.DoesNotMatch(@"store i1\b", ir);
-        WriteFixture(name, ir, stdout, exit, stderr, observationMilliseconds, legacy);
+        WriteFixture(name, ir, stdout, exit, stderr, observationMilliseconds);
         return ir;
     }
 
-    // A fixture's IR and its expected outcome. With a deviation's legacy outcome (DECISIONS R5-M85, R5-M106), the outcome is the running
-    // code generator's side and both runs write the same .deviation sidecar, which compare-fixtures.ps1 reads; no fixture passes one from G3
-    // (DECISIONS R5-M158), and G4 deletes the parameter.
-    internal static void WriteFixture(
-        string name, string ir, string stdout, int exit = 0, string? stderr = null, int observationMilliseconds = 0, LegacyNative? legacy = null)
+    // A fixture's IR and its expected outcome.
+    internal static void WriteFixture(string name, string ir, string stdout, int exit = 0, string? stderr = null, int observationMilliseconds = 0)
     {
         var path = FixtureDirectory();
         var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
         stderr ??= exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
-        if (legacy is not null)
-        {
-            var deviates = (stdout, exit, stderr) != (legacy.Stdout, legacy.Exit, legacy.Stderr);
-            Assert.True(deviates, $"The deviation {legacy.Deviation.Id} keeps an equal legacy outcome.");
-            File.WriteAllBytes(Path.Combine(path, name + ".deviation"), Codegen.Sidecar(legacy, stdout, exit, stderr));
-            (stdout, exit, stderr) = Codegen.Legacy ? (legacy.Stdout, legacy.Exit, legacy.Stderr) : (stdout, exit, stderr);
-        }
-
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
         File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
         File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));

@@ -135,53 +135,6 @@ public class MatchEmissionTest
         ScalarEmissionTest.EmitFixture("MatchWidth" + type, $"func f(n: {type}) -> string\n    return match n\n        {literal} => \"ok\"\n        _ => \"bad\"\nConsole.writeLine(f({literal}))", "ok\n");
     }
 
-    [Theory]
-    [InlineData("subject")]
-    [InlineData("test_input")]
-    [InlineData("arm_edge")]
-    [InlineData("acquisition")]
-    [InlineData("arrival")]
-    public void MalformedPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "let result = match \"a\"@move\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var match = body.Matches[0];
-        var test = body.MatchArms[0].Test;
-        if (defect == "subject")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-            body.OperationStorage[id] = body.Operations[id] with { Input = match.Subject };
-        }
-        else if (defect == "test_input")
-        {
-            body.OperationStorage[test] = body.Operations[test] with { Input = match.Subject };
-        }
-        else if (defect == "arm_edge")
-        {
-            var id = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.MatchArm);
-            body.EdgeStorage[id] = body.Edges[id] with { To = body.MatchArms[1].Test };
-        }
-        else if (defect == "acquisition")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.AcquirePattern);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else
-        {
-            var arrival = body.ResultArrivals[0];
-            body.ResultArrivals[0] = arrival with { Write = test };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void SubjectAliasesAcquiredStorageAndFinalArmHasNoTest()
     {
@@ -244,32 +197,5 @@ public class MatchEmissionTest
         Assert.Empty(function.LiveFlags);
         Assert.Empty(function.Slots);
         Assert.DoesNotContain(function.Instructions, x => x.Opcode is EmissionOpcode.StoreStaticString or EmissionOpcode.MoveString or EmissionOpcode.Phi);
-    }
-
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("wrong_source")]
-    [InlineData("binding")]
-    public void ScalarSnapshotPlansAreValidated(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "let unrelated = 123\nlet result = match 7@move\n    let n => n\nif result == 7 => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.OperationStorage.FindIndex(x => x.Kind == (defect == "binding" ? OwnershipOperationKind.AcquirePattern : OwnershipOperationKind.InitializeSubject));
-        if (defect == "wrong_source")
-        {
-            var unrelated = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 123);
-            body.ValueOperands[body.Values[id].Start] = unrelated;
-        }
-        else
-        {
-            body.Values[id] = default;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 }

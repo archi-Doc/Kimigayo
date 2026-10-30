@@ -51,7 +51,7 @@ public sealed partial class FunctionCodegenTest
         "func witnessErased<T>() -> (objref/T, i32) -> i32\n    T is Reader and Owned\n    return T.score\n" +
         "func scoreItem(v: objref/Scored) -> i32 => witnessItem(v)\nfunc scoreErased() -> (objref/Scored, i32) -> i32 => witnessErased<Scored>()\n";
 
-    // SPEC 6.4.3, 6.4.4, 6.4.6 (DECISIONS R5-M114): dispatch by the Dynamic Type through every form, natively under both generators: member,
+    // SPEC 6.4.3, 6.4.4, 6.4.6 (DECISIONS R5-M114): dispatch by the Dynamic Type through every form, natively: member,
     // nested, inherited and qualified calls, a call through a reference to a handle, an Item called, passed and erased, a receiver behind a
     // zero-sized parameter with an aggregate and a borrow result, the Item of that slot erased, a generic family's slot, a virtual witness.
     private const string VirtualRows =

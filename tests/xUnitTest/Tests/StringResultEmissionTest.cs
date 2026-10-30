@@ -181,48 +181,6 @@ public class StringResultEmissionTest
     }
 
     [Theory]
-    [InlineData("plan")]
-    [InlineData("write")]
-    [InlineData("arrival")]
-    [InlineData("duplicate")]
-    [InlineData("declaration")]
-    [InlineData("branch_place")]
-    [InlineData("produce")]
-    [InlineData("type")]
-    [InlineData("dominance")]
-    public void MalformedResultPlansAreRejectedAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Choice, codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        switch (defect)
-        {
-            case "plan": body.SlotResults.Clear(); break;
-            case "write": body.ResultWrites.RemoveAt(0); break;
-            case "arrival": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = -1 }; break;
-            case "duplicate": body.ResultArrivals[1] = body.ResultArrivals[0]; break;
-            case "declaration": body.SlotResults[0] = result with { Declare = result.Join }; break;
-            case "branch_place": body.OperationStorage[result.Join] = body.OperationStorage[result.Join] with { Place = result.Place }; break;
-            case "type":
-                var scalar = body.PlaceStorage.FindIndex(x => ReferenceEquals(x.Type, BoundType.Boolean));
-                var write = body.ResultWrites[0].Operation;
-                body.OperationStorage[write] = body.OperationStorage[write] with { Input = scalar };
-                break;
-            case "dominance": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = body.ResultArrivals[1].Write }; break;
-            case "produce":
-                var literal = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Source is StringLiteralKoto);
-                body.OperationStorage[literal] = body.OperationStorage[literal] with { Source = body.Places[result.Place].Source };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Theory]
     [InlineData("let text = if true => \"a\"")]
     [InlineData("if false\n    let text = if true => \"a\"")]
     [InlineData("func f() -> string => if true => \"a\" else => " + MinimalEmissionTest.FloatExpression + "\nConsole.writeLine(\"ok\")")]
