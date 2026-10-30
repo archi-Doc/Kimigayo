@@ -7057,8 +7057,12 @@ resumed by R4-M86 (2026-10-20).
   arguments' raw Origins; for Type slots since BU-34); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops:
   superseded by BU-34.
   - Amended by R5-M164 (G9a): `SameModuloOpenOrigins` is deleted (no reader since G7). The `PlaceOriginSource` exception's first
-    reason, that the old Emission reads it, ended at G7; its second (it passes forms `NextPathStep` treats as roots, an Array range
-    selection) stays. Its removal condition: BU states it at review.
+    reason, that the old Emission reads it, ended at G7; its second reason, measured at BU's review of G9a: the walks differ for a
+    stored Field with a custom getter (`PlaceOriginSource` stops at the getter's result; `NextPathStep`'s `InlinePart` steps it) and a
+    UniqSlice view range selection (a `NextPathStep` root that `PlaceOriginSource` steps to its receiver), not for an Array range
+    selection, which both pass. Removal condition: BU's reslice unit (PLAN G177) makes every range selection and every getter result a
+    `NextPathStep` root (SPEC 4.8.2; `IsBarePlace`); `PlaceOriginSource` then walks `NextPathStep`'s Place steps up to the first node
+    carrying an Origin, and the exception ends.
 - **BU-27** (2026-10-23; amended by R4-M145: a Place in Discard Context is a bare acquisition position; the BU planning session
   after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached

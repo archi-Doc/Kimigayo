@@ -197,8 +197,8 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 4.7.1, 4.8.2, 5.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's
     // forms that PathAuthority, PathOrigin and ContainedOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
-    // root, a guard candidate or a special receiver). Exception (DECISIONS BU-24): PlaceOriginSource keeps its own walk, which passes
-    // forms this treats as roots (an Array range selection).
+    // root, a guard candidate or a special receiver). Exception (DECISIONS BU-24): PlaceOriginSource keeps its own walk, which steps a
+    // UniqSlice view range selection this treats as a root and stops at a stored Field's getter result, which this steps.
     private static PathStep NextPathStep(Koto source, out Koto next)
     {
         next = source;

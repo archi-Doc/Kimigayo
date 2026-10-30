@@ -118,7 +118,7 @@ public sealed partial class Binding
         {
             CopyItemArguments(type, function, own);
             // Compiler entries and virtual Items consume already-acquired logical parameters. Their public
-            // contract operands serve generation and effect checks without inventing a source invocation.
+            // contract operands serve effect checks without inventing a source invocation.
             var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
             for (var i = 0; i < operations.Length; i++)
             {
