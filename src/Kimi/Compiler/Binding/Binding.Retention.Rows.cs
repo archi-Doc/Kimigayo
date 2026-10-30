@@ -92,7 +92,8 @@ public sealed partial class Binding
     // premises followed) from one of its targets reaches an occurrence of the input, by Value where the closure from a position's node
     // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held from its
     // holds, the result's whole Type or each position the storage walk names for input j, DECISIONS BU-52; each position once per lent
-    // bit, BU-35, BU-40): a raw input's own value where a layer with an Origin or an abstract part can hold it (R4-M116 R-B4), every
+    // bit, BU-35, BU-40): a raw input's own value at a raw layer with an Origin and where a callable may retain it at an abstract part
+    // (DECISIONS BU-66), every
     // input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing it), the raw inputs at
     // one the result lends (R′); one stepping Unstated or Static, not lent, unties every storage of the output, where a transfer operation
     // writes it (TransferWrites, as for rule A), and a result atom whose non-static Origin reaches no input unties the result. A result
@@ -146,7 +147,6 @@ public sealed partial class Binding
             this.retentionKindPool.Clear();
         }
 
-        this.RawReach(environment);
         var whole = (result, (BoundType?)null, (BoundType?)null);
         var untied = this.Hold(CallRetention.ResultOutput, new(in whole), inputs, kept, (key, callee, premises), ref transfer);
         if (within >= 0)
@@ -537,8 +537,9 @@ public sealed partial class Binding
     // `lent`: below a borrow in the result (BorrowReferent: a borrow layer, a pair layer admitting only borrows, a Slice's or UniqSlice's
     // elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as that borrow
     // would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw input other than `output`
-    // whose Type the position can hold retains its own value there (R-B4: a raw layer stating an Origin or `static` that agrees with it,
-    // Origins fitted as rule 2 fits a position, Fits, SPEC 3.8; or an abstract part, which an instance may make one); at a raw
+    // retains its own value at a raw layer stating an Origin or `static`, whatever its pointee Type (it retains as the borrow its Origin
+    // belongs to would, SPEC 15.6.4, and a raw cast keeps the address, 5.4), and at an abstract part only where a callable the call may
+    // run may retain it there (HoldsRaw: rule 3, DECISIONS BU-66; no premise makes an abstract part such storage); at a raw
     // layer without an Origin rule A or R′ decides it (RetentionRows); a pointer is never part of its own pointee. A raw layer steps by
     // DeclaredStep (its declaration's cap where `written` states the layer, its Origin's kind elsewhere, DECISIONS BU-24): Unstated is
     // what the call writes there (Holding.Unstated) or lends (Holding.Lent), and Static is storage the body does not own (Holding.Static,
@@ -572,9 +573,9 @@ public sealed partial class Binding
 
         RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
         var rawCase = (this.LayerAdmitted(type) & SemanticsMask.Raw) != 0;
-        foreach (var (input, pointer) in this.retentionRawInputs)
+        foreach (var (input, _) in this.retentionRawInputs)
         {
-            var holds = rawCase || (Abstract(type) && this.HoldsRaw(type, input)) || (step is not (null or RawStep.Unstated) && this.Fits(type, pointer));
+            var holds = rawCase || (Abstract(type) && this.HoldsRaw(type, input)) || step is not (null or RawStep.Unstated);
             kept[input] |= input != output && holds ? RetentionKind.Value : RetentionKind.None;
         }
 

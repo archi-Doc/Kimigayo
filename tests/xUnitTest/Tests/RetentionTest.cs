@@ -677,13 +677,14 @@ public sealed class RetentionTest
     }
 
     // SPEC 5.7 Calls (the design review's item 3): two raw layers stating one Origin each walk its members as their own input's content
-    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike; the
-    // abstract `T` they and `n` reach may hold the other's own value (SPEC 15.6.4, DECISIONS R4-M116).
+    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike. The abstract
+    // `T` they and `n` reach holds neither's own value: no premise makes it storage that can hold a `raw/u8` and no callable is handed
+    // the body (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66, G297 fix 1: the Origin relation `T` outlives `a` does not).
     [Fact]
     public void TwoRawLayersOfOneOriginKeepTheirRows()
         => Assert.Equal(
-            "store 0: own {0 Content, 1 Value Content, 2 Value Content}, reached {0 Content, 1 Value Content, 2 Value Content}, " +
-            "store 1: own {0 Content, 1 Content, 2 Value Content}, reached {2 Value}, store 2: own {0 Content, 1 Value Content, 2 Content}, reached {1 Value}",
+            "store 0: own {0 Content, 1 Content, 2 Content}, reached {0 Content, 1 Content, 2 Content}, " +
+            "store 1: own {0 Content, 1 Content, 2 Content}, reached {}, store 2: own {0 Content, 1 Content, 2 Content}, reached {}",
             Declared(Bind("struct K<T> {s}\n    internal let at: uniq/T during s\nfunc f<T>(n: uniq/(K<T> during a), p: raw/u8 during a, q: raw/u8 during a) => ()\n"), "f"));
 
     // SPEC 5.7 Calls, 15.6.4 (R4-M52): an erased callable's signature is its own scope for its raw layers, also when it has fewer inputs
@@ -771,15 +772,16 @@ public sealed class RetentionTest
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66, R4-M154 rules 2 and 3): an abstract part holds a raw argument's own value
-    // only where the premises make it one (TwoRawLayersOfOneOriginKeepTheirRows) or where an erased callable the call may run may store
-    // a value of its Type there: `make`, which `T is MakeW` hands the body, returns a `T` from a `raw/u8` (`p`'s Type, not `raw/i32`'s);
+    // only where a callable the call may run may retain it there; no premise makes it storage that can hold one
+    // (TwoRawLayersOfOneOriginKeepTheirRows). `make`, which `T is MakeW` hands the body, returns a `T` from raw pointers, whatever their
+    // pointee (a raw cast keeps the address, SPEC 5.4; G297 fix 1, fails on fd7058a42: `raw/i32` gave no row);
     // a requirement on an abstract Self is such a callee itself (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、今の動作のまま進
     // める」), so `T.make`'s result keeps both. A pair layer admitting `raw` is, in that case, a raw layer without an Origin the call
     // writes (rule A); one admitting only owner and uniq holds what its target `T` holds. `putRaw<s/T>`'s `value` keeps no handle
     // (PLAN G297; fails before: `store 1: own {0 Value, 1 Content}`).
     [Theory]
     [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
     [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]

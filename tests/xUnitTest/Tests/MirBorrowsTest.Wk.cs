@@ -344,12 +344,21 @@ public sealed partial class MirBorrowsTest
                 "<T, F>(value: uniq/i32 during o, other: T, make: ref/F) -> ()\n    F is Callable<(Wrap{w}) -> T>\n    origin w.a == o\n",
                 WkMoved + "let wr = Wrap.init(r: child@move)\nsneakC(slot@uniq, wr@move, make)",
                 "slot"),
-        ["rawReq"] = "contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" +
+        ["rawReq"] = "contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\ncontract MakeP\n    func make(p: raw/(raw/i32)) -> Self\n" +
             "func fillRaw<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return\nfunc fillBare<T>(dst: uniq/T, p: raw/u8) => ()\n" +
+            WkForm("fill32", "<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n", "var slot: raw/u8 = null\ndst@follow = T.make(p: slot@raw, q: p@raw/u8)") +
+            WkForm("fillP", "<T>(dst: uniq/T, p: raw/i32)\n    T is MakeP\n", "var s = p\ndst@follow = T.make(p: s@raw)") +
+            WkForm("useH", "<T>(dst: uniq/T, p: raw/i32, mk: (raw/u8) -> T)\n", "dst@follow = mk(p@raw/u8)") +
+            WkForm("fill32Bad", "<T>(x: T) -> ()\n    T is MakeW\n", WkRawFill("fill32", "i32") + "y = 5\nconsume(t@move)") +
+            WkForm("fillPBad", "<T>(x: T) -> ()\n    T is MakeP\n", WkRawFill("fillP", "i32") + "y = 5\nconsume(t@move)") +
+            WkForm("useHBad", "<T>(x: T, mk: (raw/u8) -> T) -> ()\n", WkRawFill("useH", "i32", ", mk@move") + "y = 5\nconsume(t@move)") +
             WkForm("makeRawBad", "<T>() -> ()\n    T is MakeW\n", WkRawMake + "y = 5\nconsume(t@move)") +
             WkForm("makeRawOk", "<T>() -> ()\n    T is MakeW\n", WkRawMake + "consume(t@move)\ny = 5") +
             WkForm("fillRawBad", "<T>(x: T) -> ()\n    T is MakeW\n", WkRawFill("fillRaw") + "y = 5\nconsume(t@move)") +
             WkForm("fillBareLate", "<T>(x: T) -> ()\n", WkRawFill("fillBare") + "y = 5\nconsume(t@move)"),
+        ["rawCast"] = "func usep(p: raw/u8) => ()\n" + WkCastHolder("S8", "u8") + WkCastHolder("S32", "i32") +
+            WkCastTwins("cast8", "S8", "u8", "raw/i32", "p@raw/u8") + WkCastTwins("same8", "S8", "u8", "raw/u8", "p") +
+            WkCastTwins("cast32", "S32", "i32", "raw/i32", "p@raw/u8") + WkCastTwins("same32", "S32", "i32", "raw/u8", "p"),
     };
 
     // M3, SPEC 15.6.4 with R1: a call keeps what the direct stores its Types permit would keep, whatever the storage's position or identity:
@@ -499,8 +508,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("erasedSetter", "setHeldBad: s.item = 9 CallActivationConflict_Kd 1")]
     // A raw argument's own value (DECISIONS BU-66): the erased requirement `T.make` (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、
     // 今の動作のまま進める」) and fillRaw, whose premise hands it `make`, keep the pointer to `w` in `t`; fillBare, handed nothing, does not.
-    // Fails on dev by design: fillBareLate `y = 5` 1.
-    [InlineData("rawReq", "fillRawBad: y = 5 1|makeRawBad: y = 5 1")]
+    // Fails on dev by design: fillBareLate `y = 5` 1. Rule 3 reads no Type (SPEC 15.6.4, 5.4: a raw cast keeps the address and
+    // provenance; G297 fix 1): fill32 casts `p` to `make`'s `raw/u8`, fillP hands a pointer to a local holding it, useH casts it into a
+    // handed callable value; each keeps the pointer to `w` in `t`. Fails on fd7058a42: fill32Bad, fillPBad and useHBad valid.
+    [InlineData("rawReq", "fill32Bad: y = 5 1|fillPBad: y = 5 1|fillRawBad: y = 5 1|makeRawBad: y = 5 1|useHBad: y = 5 1")]
+    // A raw layer stating an Origin retains a raw argument's own value whatever its pointee Type (SPEC 15.6.4: as the borrow its Origin
+    // belongs to would; 5.4: a raw cast keeps the address; DECISIONS BU-66, R4's P2): cast8 and cast32 store `p: raw/i32` as a `raw/u8`
+    // into `s.q`, as same8 and same32 store a `raw/u8`. Fails on dev and fd7058a42 (R4's probe): cast8Bad and cast32Bad valid.
+    [InlineData("rawCast", "cast32Bad: y = 5 1|cast8Bad: y = 5 1|same32Bad: y = 5 1|same8Bad: y = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -537,7 +552,24 @@ public sealed partial class MirBorrowsTest
     // `callee` from a raw pointer to `w`, which refers to `y`.
     private static string WkRawPair(string parameters, string cases) => $"<s/T>({parameters}) -> ()\n    s is {cases}\n    T is Copy\n";
 
-    private static string WkRawFill(string callee) => $"var t = x@move\nvar y: i32 = 1\nvar w: ref/i32 = y@ref\n{callee}(t@uniq, w@raw@raw/u8)\n";
+    // A G297 cast row's holder (R4's P2): a struct whose `raw/u8 during a` Field `q` shares its Origin with a `ref/<anchor> during a` Field.
+    private static string WkCastHolder(string name, string anchor)
+        => $"struct {name} {{a}}\n    public var q: raw/u8 during a\n    public let r: ref/{anchor} during a\n    public init(r: ref/{anchor} during a)\n" +
+            "        self.q = null\n        self.r = r\n";
+
+    // A cast row's twins: `{name}` stores `p: {pointer} during k.a` as `{stored}` into `s.q`; the Ok form uses `s.q` before `y = 5`.
+    private static string WkCastTwins(string name, string holder, string anchor, string pointer, string stored)
+        => $"func {name}(s: uniq/{holder}{{k}}, p: {pointer} during k.a) => s.q = {stored}\n" +
+            WkTwins(
+                $"{name}Ok",
+                $"{name}Bad",
+                "() -> ()\n",
+                $"var z: {anchor} = 0\nvar y: i32 = 1\nlet w = y@ref\nlet bw = w@ref\nvar s = {holder}.init(z@ref)\n{name}(s@uniq, bw@follow@raw@{pointer})",
+                "usep(s.q)",
+                "y = 5");
+
+    private static string WkRawFill(string callee, string pointee = "u8", string more = "")
+        => $"var t = x@move\nvar y: i32 = 1\nvar w: ref/i32 = y@ref\n{callee}(t@uniq, w@raw@raw/{pointee}{more})\n";
 
     // A function: its name, its head (what follows the name, Constraint lines included) and its body, one line per `\n`.
     private static string WkForm(string name, string head, string body = "")

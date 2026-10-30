@@ -41,8 +41,8 @@ public sealed partial class Binding
     private readonly HashSet<BoundOrigin> retentionInstantiated = new(ReferenceEqualityComparer.Instance);
 
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where a raw input's own value may be held, each a raw input
-    // with a carrier (null: any abstract part of the outputs), by the premises (rule 2: RawReach) or by an erased callable the call may run
-    // (rule 3: ErasedFills; the computation's own erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
+    // with a carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the
+    // computation's own erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
     private readonly List<(int Input, BoundType? Part)> retentionFills = new();
 
     // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types
@@ -434,24 +434,24 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4's abstract-Type sentence (rule 3; DECISIONS BU-66): where an erased signature handed to the body (its atoms from `start`,
-    // its raw inputs from `raws`) may store a contract raw input's own value (retentionFills): the input passed as one of its raw inputs
-    // whose Type fits (Fits; the contract's raw inputs precede `raws`), at each carrier its result holds or it writes (the atoms
-    // AddErasedRelations reads, R4-M154 Revision 3), but in that raw input's own pointee (a pointer is never part of its own pointee).
+    // its raw inputs from `raws`) may retain each contract raw input (retentionFills; the contract's raw inputs precede `raws`): at each
+    // carrier its result holds or it writes (the atoms AddErasedRelations reads, R4-M154 Revision 3) through one of its raw inputs, whatever
+    // their pointee Types (a raw cast keeps the address and provenance, SPEC 5.4; a pointer to a local holding the input is read through),
+    // but in that raw input's own pointee (a pointer is never part of its own pointee).
     private void ErasedFills(int start, int raws)
     {
         var (atoms, raw) = (this.retentionAtoms, this.retentionRawInputs);
-        for (var k = raws; k < raw.Count; k++)
+        for (var j = start; j < atoms.Count; j++)
         {
-            for (var j = start; j < atoms.Count; j++)
+            var stored = false;
+            for (var k = raws; !stored && k < raw.Count; k++)
             {
-                var stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.Writable && atom.Input != raw[k].Input));
-                for (var i = 0; stored && i < raws; i++)
-                {
-                    if (this.Fits(raw[k].Type, raw[i].Type))
-                    {
-                        this.retentionFills.Add((raw[i].Input, atoms[j].Carrier));
-                    }
-                }
+                stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.Writable && atom.Input != raw[k].Input));
+            }
+
+            for (var i = 0; stored && i < raws; i++)
+            {
+                this.retentionFills.Add((raw[i].Input, atoms[j].Carrier));
             }
         }
     }
