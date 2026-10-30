@@ -4,7 +4,8 @@
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// (MirProgram.Drops), TyCtxt's obligations and callee facts.
+// (MirProgram.Drops), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
+// DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).
 // Output: IncompatibleContractImplementation_Kd,
 // UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
 // per view (Keys, Field).
@@ -45,6 +46,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
     private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
+    private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
     private byte[] local = []; // The classes of each node's local facts.
@@ -137,7 +139,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
-    // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
+    // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A tuple operator's call runs its parts'
+    // comparisons (Compared). A requirement call that selects a built-in
     // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
     // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
     // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
@@ -154,7 +157,13 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Kind == MirCalleeKind.Fn)
         {
-            this.Function(program, terminator);
+            this.Function(program, callee);
+        }
+        else if (callee is { Kind: MirCalleeKind.Requirement, Arg: not 0 })
+        {
+            var contract = TyCtxt.Contract(callee.Symbol!);
+            this.compared.Clear();
+            this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)!); // The builder's root.
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Symbol.CompilerFunction: not CompilerFunctionKind.None, Subst.Self: { } self })
         {
@@ -183,11 +192,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
     }
 
-    private void Function(MirProgram program, in MirTerminator terminator)
+    private void Function(MirProgram program, in MirCallee call)
     {
-        var symbol = terminator.Callee.Symbol!;
-        var subst = terminator.Callee.Subst;
-        if (terminator.Callee.Arg == 0 && types.Published(symbol) is { } row)
+        var symbol = call.Symbol!;
+        var subst = call.Subst;
+        if (call.Arg == 0 && types.Published(symbol) is { } row)
         {
             if (row.Runs is { } requirement)
             {
@@ -202,9 +211,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return;
         }
 
-        if (program.Callee(terminator.Callee) is { } target)
+        if (program.Callee(call) is { } target)
         {
-            if (terminator.Callee.Arg > 0)
+            if (call.Arg > 0)
             {
                 this.AddEdge(target, subst); // SPEC 8.13: a default is always the original's, evaluated before a specialization is called.
                 return;
@@ -223,6 +232,41 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
 
         this.Enter(null, subst, symbol);
+    }
+
+    // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
+    // operators (the validator checked it composes), what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf
+    // the requirement under the caller's premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf and a
+    // Composite's own node nothing. A None leaf, no answer (a broken contract the collector records as InternalInvariant_Kd at the item,
+    // a dependent in an incomplete Binding), is what Require gives a Type nothing resolves for: the Limit, never a silent empty summary.
+    private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
+    {
+        if (!this.compared.Add(node))
+        {
+            return;
+        }
+
+        foreach (var part in node.Parts)
+        {
+            this.Compared(program, body, contract, part);
+        }
+
+        switch (node.Kind)
+        {
+            case ComparisonKind.Composite or ComparisonKind.Builtin:
+                break;
+            case ComparisonKind.Witness:
+                this.Function(program, new(MirCalleeKind.Fn, node.Target, node.Subst));
+                break;
+            case ComparisonKind.Requirement:
+                this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
+                break;
+            case ComparisonKind.None:
+                this.found |= Limit;
+                break;
+            default:
+                throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
+        }
     }
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or

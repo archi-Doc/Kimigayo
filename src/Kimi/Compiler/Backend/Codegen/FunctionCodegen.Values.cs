@@ -95,13 +95,11 @@ internal sealed partial class FunctionCodegen
     private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
 
     // The layout a form needs past the item's by-value set (LayoutNeeds; DECISIONS R5-M149), the one path code generation reads such a Type
-    // by: the Type the form's row names (LayoutNeeds.TypeOf: a projection step's, a raw pointer displacement's, a compared Tuple's, a call's
+    // by: the Type the form's row names (LayoutNeeds.TypeOf: a projection step's, a raw pointer displacement's, a call's
     // Type argument at an index, that Type given too) laid out in the item's instance; null after a record (Laid).
     private ValueLowering? Needed(MirPlace step) => this.Representation(LayoutNeeds.TypeOf(this.body, step));
 
     private ValueLowering? Needed(in MirRvalue operation) => this.Representation(LayoutNeeds.TypeOf(this.body, operation));
-
-    private ValueLowering? Needed(ComparisonNode node) => this.Laid(LayoutNeeds.TypeOf(node)); // A shim's tree is of its closed Self.
 
     private ValueLowering? Needed(Subst subst, int index, out BoundType? type)
     {

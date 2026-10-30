@@ -96,7 +96,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         Array.Clear(this.writes, 0, body.Locals.Length);
         this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts);
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts, types);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
@@ -137,7 +137,8 @@ internal sealed partial class MirValidator(TyCtxt types)
         bool[] ensured,
         List<(MirRvalue Adapt, SourceInfo Source)> adapts,
         byte[] writes,
-        HashSet<BoundType> parts) : IMirUses
+        HashSet<BoundType> parts,
+        TyCtxt types) : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;
