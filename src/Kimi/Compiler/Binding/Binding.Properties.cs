@@ -322,6 +322,14 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
+        // SPEC 11.3, 11.4, 23.1.2: the Type a use takes is the Property's. The check reads neither the receiver nor the declaration
+        // context, so it is the declaration's own failure beside theirs, and a use formed under that Type always rests on it.
+        if (AccessorTypeMismatch(accessor))
+        {
+            this.Fail(syntax!, BindingFailure.TypeMismatch);
+            return ConstraintProof.Error;
+        }
+
         if (syntax is not null)
         {
             // Header failures leave the operation unavailable, not a disproven receiver or conformance.
@@ -399,7 +407,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (AccessorTypeMismatch(accessor) || (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit)))
+        if (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit))
         {
             this.Fail(syntax!, BindingFailure.TypeMismatch);
             return ConstraintProof.Error;

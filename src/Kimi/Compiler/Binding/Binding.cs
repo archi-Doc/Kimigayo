@@ -987,7 +987,7 @@ public sealed partial class Binding
             var node = this.nodes[i];
             // API and constraint validation can invalidate a target or Type after call selection; a node whose own selection calls a
             // declaration that failed (CallPlan.Called: a call's target, a Property use's accessors) rests on that failure (SPEC 23.1.2).
-            if (node.BindingFailure == BindingFailure.None && this.InvalidCalledDeclaration(node) is { } invalidTarget)
+            if (this.InvalidCalledDeclaration(node) is { } invalidTarget && node.BindingFailure == BindingFailure.None)
             {
                 this.CompleteDependent(node, invalidTarget);
             }

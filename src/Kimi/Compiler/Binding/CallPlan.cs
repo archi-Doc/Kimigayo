@@ -202,8 +202,9 @@ public sealed class CallPlan
     /// <returns>The declaration, or null when the node calls none at that position.</returns>
     internal static Koto? Called(Koto node, int ordinal = 0) => node switch
     {
-        InvocationKoto { BoundCall: { } call } when ordinal == 0 => node.CodeContext.Compilation.Binding.Library.PresentedTarget(call.Target).Declaration,
-        MemberAccessKoto or IdentifierNameKoto => Of(node, ordinal)?.Target.Declaration is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : null,
+        InvocationKoto invocation => ordinal == 0 && invocation.BoundCall is { } call ? node.CodeContext.Compilation.Binding.Library.PresentedTarget(call.Target).Declaration : null,
+        MemberAccessKoto or IdentifierNameKoto when node.BoundSymbol?.Property is not null =>
+            Of(node, ordinal)?.Target.Declaration is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : null,
         _ => null,
     };
 
