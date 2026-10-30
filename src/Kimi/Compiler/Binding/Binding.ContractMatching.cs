@@ -151,6 +151,9 @@ public sealed partial class Binding
         return true;
     }
 
+    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
+    // answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
+    // its published source state.
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
@@ -210,7 +213,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ContractType(this.SelfType(conformance.Type), scope);
-            var declarationProof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)conformance.Type.Declaration);
+            var declarationProof = this.ReadSourceState(conformance.Type);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
                 return ConstraintProof.Error;
