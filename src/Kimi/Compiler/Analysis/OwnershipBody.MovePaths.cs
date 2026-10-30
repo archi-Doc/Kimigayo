@@ -33,17 +33,6 @@ public sealed partial class OwnershipBody
         return this.State(place);
     }
 
-    internal PlaceState GetElementState(int operation, int projection, bool receiver = false)
-    {
-        if (!this.Reachable[operation])
-        {
-            return PlaceState.None;
-        }
-
-        this.LoadInput(operation);
-        return this.ElementState(projection, receiver);
-    }
-
     // The cleanup collector loads one converged snapshot, then reads every sparse
     // remainder from it without replaying the block separately for each element.
     internal void LoadPathInput(int operation) => this.LoadInput(operation);
@@ -63,19 +52,6 @@ public sealed partial class OwnershipBody
         }
 
         return true;
-    }
-
-    internal bool IsPathWithin(int path, int ancestor)
-    {
-        for (; path >= 0; path = this.movePaths[path].Parent)
-        {
-            if (path == ancestor)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static PlaceState Combine(PlaceState left, PlaceState right)
