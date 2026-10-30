@@ -7054,7 +7054,8 @@ resumed by R4-M86 (2026-10-20).
     between it and the entry's parent (an enclosing local or parameter, or an outer environment binding in a Consuming outer call); SPEC 7.7.2 gives the meet of the Origins that contain the child, so a nested entry through a
     borrowed outer receiver is also within that receiver, which `EnclosingAtom` does not give (n2b accepted on both pipelines; 2c-D).
 
-- **BU-29** (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
+- **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for
+  staging `Completion`) (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
   `draft/Sketches/G170/C1/C1-design.md` §5 and §8; one design, one review, Q6) `Binding.ContractSolver` owns premise derivation and
   evidence availability (SPEC 8.3, PlanB §4.1), R7's Contract-solver premise responsibility brought forward. `Supply(proposition,
   view)` answers `Evidence` (`Positive`, `Negative`, `Invalid`) under the `EvidenceView` that `ViewOf(scope)`, the one derivation
@@ -8545,24 +8546,38 @@ resumed by R4-M86 (2026-10-20).
   declaration's closed-clause check and never runs it (C1 §5: C never runs verification).
   - States: every declaration container's own symbol, ConstraintProof and its cause (no new vocabulary): Pending = Unknown, Valid =
     Proven, Invalid = Refuted or Error. A source under check is Pending, so a check reaching itself reads no evidence (SPEC 8.3.3
-    Recursion); `contractPremiseQueries` is deleted. Pending also encodes the final Unknown a publication leaves after its rounds; no
-    reader tells them apart, and C3's Provisional marking makes them final at the publication's end, the one point that knows.
+    Recursion); `contractPremiseQueries` is deleted. Pending also encodes the final Unknown a publication leaves after its rounds,
+    with or without a limit (`SourceCause`). Within the rounds a reader tells neither a Pending state from a final Unknown nor a limit
+    not yet propagated from none, which is why the rounds repeat until neither a state nor a limit changes; C3's Provisional marking
+    makes them final at the publication's end, the one point that knows.
   - Writer: `Binding.SourceStates.PublishSourceStates`, the only caller of `CheckClosedDeclarationConstraints`, after
     `ExpandContractPremises` and in each `ValidateConformances` after its re-verification reset; `ResetSourceStates` makes every state
     Pending at `BindConstraints`' start, so no state crosses passes.
   - B1's rule: a publication (1) makes Valid every declaration with nothing to prove (no `ClosedClause`), the rest Pending; (2) runs
-    rounds over the Pending ones until a round changes none, each in a fresh capability epoch (`ClearCapabilityResults`). An answer
-    computed from a Pending read dies with its round; the last round changes nothing, so its answers read final states only, and the
-    least fixpoint is order-free. A state resolved in a round that read a Pending state is kept: that is order-free because an Unknown
+    rounds over the Pending ones until a round changes no state and no limit presence, each in a fresh capability epoch
+    (`ClearCapabilityResults`). A limit presence is whether a Pending one's Unknown rests on a limit (BU-22's L between U and R): a
+    reader tells it apart (an Unknown resting on a limit is an Error on its site where it is no longer combined, a bare Unknown is
+    unproven), so it is part of the state the rounds settle (review 1, B1: stopping on states alone kept a limit gained in the last
+    round from its readers, so a reader's record followed the declaration order, and alternation changed one against forward rounds).
+    An answer reads states, never limits, and a state only leaves Pending, so once a round changes no state none changes again; the
+    round after one that changed a state restarts the Pending limits from none, since a limit read before that change could keep
+    itself through a cycle of Pending reads, and from there a limit only appears. An answer computed from a Pending read dies with its
+    round; the last round changes nothing, so its answers read final states and limits only: the least fixpoint, order-free in both.
+    Which of several limits a final Unknown rests on is BU-22's first read in the last round, which can follow the check order where a
+    cycle of Pending reads reaches more than one, but no record depends on it: each limit's site is needed by the check of its own
+    clause, so a record resting on either is derived from a reported one (lim2, lim2e: two sites in a cycle of Pending reads, one
+    output in every order). A state resolved in a round that read a Pending state is kept: that is order-free because an Unknown
     read never decides a verdict (SPEC 8.3.2); contradictory evidence hidden by a Pending premise is the one case where it could (none
     constructed; re-review N3). The epoch rather than a Provisional capability node: the epoch is the existing lifecycle of every
     cached proof answer (component summaries follow it); a Provisional node needs a per-node mark, its propagation to dependents and
     its own re-run, a second scheduler before C3's. With nothing to prove (the library, the 44 milestones) no round runs.
   - Order (re-review N2; the planning session's decision): each round runs over the Pending declarations in the reverse of the
-    previous round's order, so a chain settles in at most three rounds in either declaration order, and a publication ends within one
-    round more than its Pending declarations. Forward rounds took N rounds on a top-down chain, O(N²) checks (warm Bind, chain of 400:
-    454 ms against its base's 30.9 ms). Alternation changes no record or verdict against forward rounds: 76 probes (the reviews' 74 and
-    two chains of 25) give byte-identical output on both pipelines. Any remaining quadratic case (dependencies running against both
+    previous round's order. Bound: at most P rounds change a state and, after the last of them, at most P a limit presence, for P
+    Pending declarations, so a publication ends within 2P + 1 rounds; a chain settles in at most five rounds in either declaration
+    order, three without a limit. Forward rounds took N rounds on a top-down chain, O(N²) checks (warm Bind, chain of 400: 454 ms
+    against its base's 30.9 ms). Alternation changes no record or verdict against forward rounds: 196 probes (the design reviews' 74,
+    two chains of 25, review 1's 80, and the limited families sumy, sumz, sumw, lim2 and lim2e in every order) give byte-identical
+    output on both pipelines, one output per family in every order. Any remaining quadratic case (dependencies running against both
     directions) is C3's, removed by its scheduler (PLAN G170). `SourceCheckWork` publishes a pass's checks to the scaling test.
   - Readers: `AvailableContractPremise` (the Contract and each ancestor: declaration context, then the state) and
     `VerifyConformance`'s prerequisite, each through `ReadSourceState`, `EndProof(BeginProof(), ReadVerdict(state, cause))`, the
@@ -8582,13 +8597,21 @@ resumed by R4-M86 (2026-10-20).
     (occ1r) is InvalidConstraint_Kd in both orders, the check running outside conformance verification, so the limit is an Error on
     its site (BU-22); Contracts whose closed clauses read each other as premises (n3d, re-review N1) make Y1–Y3's `Self is Ri` and
     headers InvalidConstraint_Kd in every order (dev: Unproven through `contractPremiseQueries`' re-entry cut; the Contract's Error
-    absorbs, SPEC 8.3.1–8.3.2).
+    absorbs, SPEC 8.3.1–8.3.2), and so does a Contract whose closed clause needs its own conformance (rc, rcself: Y's `Self is R` and
+    header). A chain ending in a refuted clause (ch3bad, Q → Y → Z with `string is Copy`) gives Y's `Pair<Z> is Copy`
+    InvalidConstraint_Kd and its `Self is R` UnsatisfiedConstraint_Kd in every order (dev: both Unsatisfied or both Invalid by the
+    order). A closed clause limited by a component summary's site (sumy, sumz, sumw: X's `TreeNode<Nd> is Owned`; lim2, lim2e: two
+    sites in a cycle) and each declaration reading it, directly or through another: every `Self is K` is an Error resting on the site,
+    which carries the record (dev: InvalidConstraint_Kd at each).
   - Tests (ClosedConformancePrerequisiteBindingTest): cap6, cap6n, cap3b, cap9, cap10, n3b and n3c (top-down chains) valid in both
     orders, which fail without the epoch where a Pending read is kept (cap6n, cap10, n3b, n3c); pr2, n3a and cyc1 unproven and occ1
-    and n3d invalid in both orders, failing on dev where they assert a change; a chain of 64 against one of 16 in both orders, at most
-    5 times the checks (forward rounds: 303 against 4,287).
+    and n3d invalid in both orders, failing on dev where they assert a change; sumy, sumz and sumw, one record set in every order with
+    no `Self is K` record, failing on dev and on review 1's head; a chain of 64 against one of 16 in both orders, at most 5 times the
+    checks (forward rounds: 303 against 4,287).
   - Rejected: forward rounds (quadratic chains); a Provisional capability node (above); the state in `EvidenceView` (the owner);
-    keeping the per-read check with a re-entry set (the order-dependent records above).
+    keeping the per-read check with a re-entry set (the order-dependent records above); rounds until the limit itself (the cause
+    object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
+    either sweep order (a four-cycle does under alternation).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

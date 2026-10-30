@@ -104,6 +104,28 @@ public class ClosedConformancePrerequisiteBindingTest
         Assert.All(records, static x => Assert.Equal("InvalidConstraint_Kd", x.Code));
     }
 
+    // SPEC 8.3.3 Finality, 23.1.2, BU-22: a closed clause limited by a component summary's site (X) is an Unknown resting on that limit,
+    // and so is each declaration whose closed clause reads it, directly (Y) or through another (Z), in every order and however the rounds
+    // run (B's valid check makes a round change a state): each `Self is K` rests on the site, one record set in all orders.
+    [Theory]
+    [InlineData("sumy")]
+    [InlineData("sumz")]
+    [InlineData("sumw")]
+    public void ALimitReachesEachReaderInEveryOrder(string family)
+    {
+        var shape = Shape(family);
+        string[]? first = null;
+        foreach (var order in Orders(shape.Declarations))
+        {
+            var source = shape.Prefix + string.Concat(order);
+            var records = Records(source).Select(x => x.Code + " " + Owner(source, x.Span.Start) + ": " + x.Text)
+                .Order(StringComparer.Ordinal).ToArray();
+            Assert.DoesNotContain(records, static x => x.EndsWith(": Self is K", StringComparison.Ordinal));
+            first ??= records;
+            Assert.Equal(first, records);
+        }
+    }
+
     // The rounds' bound (BU-59): each round runs in the reverse of the previous round's order, so a chain of declarations whose closed
     // clauses each rest on the next one's conformance settles in at most three rounds in either order, and the checks grow linearly.
     [Theory]
@@ -147,6 +169,21 @@ public class ClosedConformancePrerequisiteBindingTest
     // A family's declarations in their order or reversed, between a fixed prefix and a fixed tail of uses.
     private static string Program(string family, bool reverse)
     {
+        var shape = Shape(family);
+        return shape.Prefix + string.Concat(reverse ? Enumerable.Reverse(shape.Declarations) : shape.Declarations) + shape.Tail;
+    }
+
+    // Every order of a family's declarations.
+    private static IEnumerable<string[]> Orders(string[] declarations)
+        => declarations.Length <= 1 ? new[] { declarations }
+            : declarations.SelectMany((first, i) => Orders([.. declarations[..i], .. declarations[(i + 1)..]]).Select(rest => rest.Prepend(first).ToArray()));
+
+    // The header of the declaration a record's span starts in.
+    private static string Owner(string source, int start)
+        => source[(source.LastIndexOf("\npublic ", start, StringComparison.Ordinal) + 1)..].Split('\n')[0];
+
+    private static (string Prefix, string[] Declarations, string Tail) Shape(string family)
+    {
         const string k = "public contract K\n";
         const string r = "public contract R: Copy\n";
         const string pair = "public struct Pair<T>\n    Self is Copy when T is R\n    var first: T\n";
@@ -162,7 +199,12 @@ public class ClosedConformancePrerequisiteBindingTest
         const string r2 = "public contract R2: Copy\n    P3<Y3> is Copy\n";
         const string c = "public contract C\n";
         const string a = "public struct A\n    B is C\n    Self is C\n";
-        (string Prefix, string[] Declarations, string Tail) shape = family switch
+        const string tree = "public contract Tree\n    associate Child is Tree\npublic contract OTree: Tree, Owned\n    Self.(Tree).Child is OTree\n" +
+            "public struct TreeNode<T>\n    T is Tree\n    let v: T\n    let kids: Array<TreeNode<T.(Tree).Child>>\n" +
+            "public struct Nd\n    Self is OTree\n    associate Tree.Child is Nd\n" + k;
+        const string limited = "public struct X\n    TreeNode<Nd> is Owned\n    Self is K\n";
+        const string reader = "public struct Y\n    X is K\n    Self is K\n";
+        return family switch
         {
             "cap6" => (string.Empty, [x, k, r, pair, y], string.Empty),
             "cap6n" => (string.Empty, [x, k, r, pair, "public struct Y\n    i32 is Copy\n    Self is R\n"], useK),
@@ -190,14 +232,19 @@ public class ClosedConformancePrerequisiteBindingTest
                 string.Empty,
                 [
                     "public contract Bumps\n    func bump(self: uniq/Self) -> ()\npublic open struct Base\n    public var count: i32 = 1\n" +
-                        "    public func bump(self: uniq/Self) -> () => self.count += 1\npublic struct Leaf: Base\n    Self is Bumps\n    public init() => ()\n",
+                        "    public func bump(self: uniq/Self) -> () => self.count += 1\n" +
+                        "public struct Leaf: Base\n    Self is Bumps\n    public init() => ()\n",
                     "public contract K\npublic struct X\n    Leaf is Bumps\n    Self is K\n",
                 ],
                 string.Empty),
+            "sumy" => (tree, [limited, reader], string.Empty),
+            "sumz" => (tree, [limited, reader, "public struct Z\n    Y is K\n    Self is K\n"], string.Empty),
+            "sumw" => (
+                tree,
+                ["public struct Z\n    Y is K\n    Self is K\n", reader, limited, "public struct B\n    i32 is Copy\n    Self is K\n"],
+                string.Empty),
             _ => throw new ArgumentOutOfRangeException(nameof(family)),
         };
-
-        return shape.Prefix + string.Concat(reverse ? Enumerable.Reverse(shape.Declarations) : shape.Declarations) + shape.Tail;
     }
 
     private static Compilation Bind(string source)

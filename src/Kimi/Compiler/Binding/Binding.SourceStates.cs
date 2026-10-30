@@ -11,10 +11,13 @@
 //   ExpandContractPremises and where each ValidateConformances starts; every state is Pending from the pass's start (ResetSourceStates)
 //   and while its own check runs, so a check reaching its own declaration again reads no evidence (SPEC 8.3.3 Recursion). A
 //   publication makes every declaration with nothing to prove Valid before any round, then runs rounds over the Pending ones until a
-//   round changes none, each in a fresh capability epoch (no answer computed from a Pending read outlives its round) and in the reverse
-//   of the previous round's order. Bound: a chain settles in at most three rounds in either declaration order, and a publication ends
-//   within one round more than its Pending declarations (a quadratic case left is C3's, whose scheduler replaces the rounds). A state
-//   still Pending after the rounds is a final Unknown.
+//   round changes no state and no limit presence (whether a Pending one rests on a limit, BU-22's L), each in a fresh capability epoch
+//   (no answer computed from a Pending read outlives its round) and in the reverse of the previous round's order; after the last state
+//   change the limits restart from none. Bound: at most P rounds change a state and, after them, at most P a limit, for P Pending
+//   declarations, so a publication ends within 2P + 1 rounds; a chain settles in at most five in either declaration order (three
+//   without a limit). A quadratic case left is C3's, whose scheduler replaces the rounds. A state still Pending after the rounds is a
+//   final Unknown, resting on a limit or not, order-free; which of several limits it rests on follows BU-22's first read, on which no
+//   record depends (each limit's site is needed by its own clause's check).
 // - Prohibitions: no check run by a reader; no report or failure here (callers decide); no state kept across passes; no mode or bool
 //   parameter.
 
@@ -67,28 +70,41 @@ public sealed partial class Binding
         }
     }
 
-    // The least fixpoint of the checks (SPEC 8.3.3 Finality): a declaration with nothing to prove is Valid before any round, so no round
-    // reads it Pending, and each round clears the capability results, so no answer from a Pending read outlives the round that read it;
-    // the last round changes nothing, so its answers read final states only. The publication is one proof scope, so a check's answer
-    // keeps its cause instead of becoming its own Error (EndProof).
+    // The least fixpoint of the checks (SPEC 8.3.3 Finality) over each state and whether a Pending one rests on a limit (BU-22's L, which
+    // a reader tells apart from a bare Unknown). A declaration with nothing to prove is Valid before any round, so no round reads it
+    // Pending, and each round clears the capability results, so no answer from a Pending read outlives the round that read it. A state
+    // only leaves Pending and an answer reads states, not limits, so once a round changes no state none changes again; the round after
+    // one that did restarts the limits from none (a limit read before that change could otherwise keep itself through a cycle), and from
+    // there a limit only appears. The last round changes neither, so its answers read final states and limits only. The publication is
+    // one proof scope, so a check's answer keeps its cause instead of becoming its own Error (EndProof).
     private void PublishSourceStates()
     {
         var declarations = this.sourceDeclarations;
-        var pending = false;
+        var stateChanged = false;
         for (var i = 0; i < declarations.Count; i++)
         {
             var closed = this.HasClosedClause((DeclarationContainerKoto)declarations[i].Declaration);
             declarations[i].SourceState = closed ? ConstraintProof.Unknown : ConstraintProof.Proven;
             declarations[i].SourceCause = null;
-            pending |= closed;
+            stateChanged |= closed;
         }
 
         var outer = this.BeginProof();
         var reverse = false;
-        for (var changed = pending; changed; reverse = !reverse)
+        var limitChanged = false;
+        while (stateChanged || limitChanged)
         {
             this.ClearCapabilityResults();
-            changed = false;
+            for (var n = 0; stateChanged && n < declarations.Count; n++)
+            {
+                if (declarations[n].SourceState == ConstraintProof.Unknown)
+                {
+                    declarations[n].SourceCause = null;
+                }
+            }
+
+            stateChanged = false;
+            limitChanged = false;
             for (var n = 0; n < declarations.Count; n++)
             {
                 var symbol = declarations[reverse ? declarations.Count - 1 - n : n];
@@ -101,10 +117,14 @@ public sealed partial class Binding
                 this.errorRead = null;
                 this.sourceChecks++;
                 var proof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)symbol.Declaration);
-                symbol.SourceCause = this.ProofCause(proof);
+                var cause = this.ProofCause(proof);
+                stateChanged |= proof != ConstraintProof.Unknown;
+                limitChanged |= (cause is null) != (symbol.SourceCause is null);
                 symbol.SourceState = proof;
-                changed |= proof != ConstraintProof.Unknown;
+                symbol.SourceCause = cause;
             }
+
+            reverse = !reverse;
         }
 
         this.EndProof(outer, ConstraintProof.Proven);
