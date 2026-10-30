@@ -23,6 +23,9 @@ public partial class LayoutAttributeBindingTest
     private const string Compared = "func cmp(flag: bool) -> bool\n    let q: raw/(X, i32) = null\n    var r = false\n    if flag\n        unsafe\n" +
         "            let a = ((*q)@ref, 1)\n            r = same(a@ref, a@ref)\n    return r\nlet z = cmp(false)\n";
 
+    private const string TwoSites = "func two(p: ref/(X, i32), q: ref/(X, i32)) -> bool\n    let first = p == q\n    let second = p != q\n" +
+        "    return first and second\n";
+
     // The declarations whose C layout is unavailable with a public Field n, the Type text X of their uses, and their twins.
     private static readonly (string Name, string Declaration, string Type, string TwinDeclaration, string TwinType)[] Projected =
     [
@@ -68,6 +71,12 @@ public partial class LayoutAttributeBindingTest
             EquatableP + Compared.Replace("X", "P<()>", StringComparison.Ordinal),
             "InvalidCLayout_Kd x == y",
             EquatableP + Compared.Replace("X", "P<i32>", StringComparison.Ordinal)),
+        // G308 D1: tuple operators at two sites, whose operands' Tuple lies past a ref layer, each a use of its Tuple's offsets (SPEC 23.1.2).
+        (
+            "compare-sites",
+            EquatableP + TwoSites.Replace("X", "P<()>", StringComparison.Ordinal),
+            "InvalidCLayout_Kd p == q|InvalidCLayout_Kd p != q",
+            EquatableP + TwoSites.Replace("X", "P<i32>", StringComparison.Ordinal)),
     ];
 
     // SPEC 8.15.3 (DECISIONS R5-M149): each form that reads a layout past its root's storage is one record at the form.

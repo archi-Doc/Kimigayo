@@ -29,17 +29,6 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-62): the one writer of PendingFailure. A declaration that ends without completing its pending Origins leaves them
-    // unbound, resting on the part that failed: its failed clause (CompleteOriginDeclaration), or, when completion is skipped, its Type,
-    // alias target or payload operand (path c). No State change: a later bind in State 1 keeps the same pending atom.
-    private static void RestPendingOn(OriginDeclaration? declaration, Koto part)
-    {
-        if (declaration is { State: 1 })
-        {
-            declaration.PendingFailure ??= part;
-        }
-    }
-
     private static bool OriginVisible(BoundOrigin origin, Koto use)
     {
         if (origin.Binder is FunctionTypeKoto binder)
@@ -403,12 +392,9 @@ public sealed partial class Binding
         return origin;
     }
 
-    // The part an Unbound atom rests on: its declaration's PendingFailure (paths a and c), else its binder, the slot whose own omission
-    // failed (OmittedOrigin, path b). The declaration is the atom's binder's owner (PendingOrigin made it there).
-    private Koto UnboundCause(BoundOrigin atom)
-        => OriginOwner(atom.Binder!) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&
-            declaration.PendingFailure is { } failure ? failure : atom.Binder!;
-
+    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses; a failed clause makes its contract unavailable, or a local's
+    // rests the slots it names (Binding.OriginDeclarations.Failures.cs); otherwise its equalities substitute, its pending slots
+    // complete, and its Types and Origins are rewritten to the completed Origins.
     private void CompleteOriginDeclaration(OriginDeclaration? declaration)
     {
         if (declaration is null || declaration.State != 1)
@@ -422,26 +408,9 @@ public sealed partial class Binding
             var clause = clauses[i];
             var a = this.BindOrigin(clause.Left, declaration.Scope!);
             var b = this.BindOrigin(clause.Right, declaration.Scope!);
-            var recovered = IsRecovery(clause, out _);
-            if (recovered || a is null || b is null)
+            if (IsRecovery(clause, out _) || a is null || b is null)
             {
-                // A guessed operator or unavailable operand supplies no equality, outlives edge or elision evidence.
-                if (recovered)
-                {
-                    this.Fail(clause, BindingFailure.InvalidOrigin);
-                }
-                else
-                {
-                    this.CompleteDependent(clause, a is null ? clause.Left : clause.Right);
-                }
-
-                if (declaration.Owner.BindingFailure == BindingFailure.None)
-                {
-                    this.Fail(declaration.Owner, BindingFailure.InvalidOrigin);
-                    this.AddPrerequisite(declaration.Owner, clause);
-                }
-
-                declaration.Failure ??= clause;
+                this.FailOriginClause(declaration, clause, a, b);
             }
             else
             {
@@ -450,27 +419,35 @@ public sealed partial class Binding
             }
         }
 
-        if (declaration.Failure is { } failure)
+        if (declaration.Failure is { } failure && this.FailOriginDeclaration(declaration, failure))
         {
-            RestPendingOn(declaration, failure);
-
-            // The contract is unavailable. In particular, its missing relations cannot justify defaulting a result to
-            // static, or supply premises through the valid-looking subset of the same rejected declaration; only the
-            // declaration judge reads that subset (RejectedRelations).
-            (declaration.RejectedRelations ??= new(declaration.Relations.Count)).AddRange(declaration.Relations);
-            declaration.Relations.Clear();
-            declaration.State = 3;
-            this.originStateVersion++;
-            foreach (var pending in declaration.Pending)
-            {
-                this.CompleteDependent(pending.Use, failure);
-            }
-
             return;
         }
 
-        // Equalities are substitutions before result defaulting. Revisit equations after
-        // each substitution so chains are independent of clause order.
+        this.SubstituteOriginEqualities(declaration);
+        this.CompletePendingOrigins(declaration);
+        var visitor = this.originRewriteVisitor ??= new(this);
+        visitor.Declaration = declaration;
+        visitor.Visit(declaration.Owner);
+        visitor.Declaration = null;
+        for (var i = 0; i < declaration.Relations.Count; i++)
+        {
+            var relation = declaration.Relations[i];
+            declaration.Relations[i] = relation with
+            {
+                Longer = this.ResolveOrigin(relation.Longer, declaration),
+                Shorter = this.ResolveOrigin(relation.Shorter, declaration),
+            };
+        }
+
+        declaration.State = 3;
+        this.originStateVersion++;
+    }
+
+    // Equalities are substitutions before result defaulting. Revisit equations after
+    // each substitution so chains are independent of clause order.
+    private void SubstituteOriginEqualities(OriginDeclaration declaration)
+    {
         for (var pass = 0; pass <= declaration.Relations.Count; pass++)
         {
             var changed = false;
@@ -495,7 +472,7 @@ public sealed partial class Binding
                     (a, b) = (b, a);
                 }
 
-                if (Flexibility(a) != 0 && !Contains(b, a))
+                if (Flexibility(a) != 0 && !ContainsOrigin(b, a))
                 {
                     declaration.Replacements[a] = b;
                     this.originStateVersion++;
@@ -509,12 +486,39 @@ public sealed partial class Binding
             }
         }
 
+        int Flexibility(BoundOrigin origin)
+        {
+            if (origin.Kind == OriginKind.Unbound)
+            {
+                // An enclosing input can complete an equality class containing a nested
+                // signature or result. Such dependent occurrences must not elide first.
+                foreach (var pending in declaration.Pending)
+                {
+                    if (ReferenceEquals(pending.Origin, origin))
+                    {
+                        return !ReferenceEquals(pending.Context.Owner, declaration.Owner) ? 4 :
+                            pending.Context.Position == TypePosition.Parameter ? 2 : 3;
+                    }
+                }
+
+                return 3;
+            }
+
+            return ReferenceEquals(origin.Binder, declaration.Owner) && declaration.Owner is FunctionKoto or PropertyAccessorKoto &&
+                origin.Kind is OriginKind.Parameter or OriginKind.Input ? 1 : 0;
+        }
+    }
+
+    // The pending slots no equality substituted and no failed clause rests (RestsOnFailedClause) complete: a result slot a nontrivial
+    // outlives clause names as an aggregate input, any other by the position rule (OmittedOrigin).
+    private void CompletePendingOrigins(OriginDeclaration declaration)
+    {
         declaration.State = 2; // Further omission performs the established position rule.
         this.originStateVersion++;
         foreach (var pending in declaration.Pending)
         {
             var origin = this.ResolveOrigin(pending.Origin, declaration);
-            if (origin.Kind != OriginKind.Unbound || !ReferenceEquals(origin, pending.Origin))
+            if (origin.Kind != OriginKind.Unbound || !ReferenceEquals(origin, pending.Origin) || this.RestsOnFailedClause(declaration, origin))
             {
                 continue;
             }
@@ -528,7 +532,7 @@ public sealed partial class Binding
                 {
                     var a = this.ResolveOrigin(relation.Longer, declaration);
                     var b = this.ResolveOrigin(relation.Shorter, declaration);
-                    if (!relation.Equality && !OriginOutlives(a, b) && (Contains(a, origin) || Contains(b, origin)))
+                    if (!relation.Equality && !OriginOutlives(a, b) && (ContainsOrigin(a, origin) || ContainsOrigin(b, origin)))
                     {
                         quantified = true;
                         break;
@@ -573,77 +577,6 @@ public sealed partial class Binding
                 this.originStateVersion++;
             }
         }
-
-        var visitor = this.originRewriteVisitor ??= new(this);
-        visitor.Declaration = declaration;
-        visitor.Visit(declaration.Owner);
-        visitor.Declaration = null;
-        for (var i = 0; i < declaration.Relations.Count; i++)
-        {
-            var relation = declaration.Relations[i];
-            declaration.Relations[i] = relation with
-            {
-                Longer = this.ResolveOrigin(relation.Longer, declaration),
-                Shorter = this.ResolveOrigin(relation.Shorter, declaration),
-            };
-        }
-
-        declaration.State = 3;
-        this.originStateVersion++;
-
-        int Flexibility(BoundOrigin origin)
-        {
-            if (origin.Kind == OriginKind.Unbound)
-            {
-                // An enclosing input can complete an equality class containing a nested
-                // signature or result. Such dependent occurrences must not elide first.
-                foreach (var pending in declaration.Pending)
-                {
-                    if (ReferenceEquals(pending.Origin, origin))
-                    {
-                        return !ReferenceEquals(pending.Context.Owner, declaration.Owner) ? 4 :
-                            pending.Context.Position == TypePosition.Parameter ? 2 : 3;
-                    }
-                }
-
-                return 3;
-            }
-
-            return ReferenceEquals(origin.Binder, declaration.Owner) && declaration.Owner is FunctionKoto or PropertyAccessorKoto &&
-                origin.Kind is OriginKind.Parameter or OriginKind.Input ? 1 : 0;
-        }
-
-        static bool Contains(BoundOrigin expression, BoundOrigin atom)
-        {
-            if (ReferenceEquals(expression, atom))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < expression.Operands.Count; i++)
-            {
-                if (Contains(expression.Operands[i], atom))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
-    // Queried only after an Origin fit failed: structural Type failures and refuted lifetime relations stay independent.
-    private Koto? FailedOriginEnvironment(Koto use)
-    {
-        for (var owner = use; owner is not null; owner = owner.Parent)
-        {
-            if (this.originDeclarations.TryGetValue(owner, out var declaration) && declaration.Failure is { } failure)
-            {
-                return failure;
-            }
-        }
-
-        return null;
     }
 
     private BoundType RewriteOrigins(BoundType type, OriginDeclaration declaration)

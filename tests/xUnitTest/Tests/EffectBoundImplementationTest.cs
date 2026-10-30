@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // SPEC 8.11.3: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
-public class EffectBoundImplementationTest
+public partial class EffectBoundImplementationTest
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n" +
         "group Metrics\n    public var puts: isize = 0\n    public func record() => Metrics.puts += 1\n";
@@ -143,8 +143,9 @@ public class EffectBoundImplementationTest
     }
 
     // SPEC 4.9.6: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
-    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, and the capacity and clear rows
-    // publish none at Binding (destructions are checked after ownership analysis).
+    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, `removeAll`'s `matching` the only
+    // Callable input one publishes (the summary reads both from the row), and the capacity, clear and truncate rows publish none at
+    // Binding (destructions are checked after ownership analysis).
     [Fact]
     public void PublishedOperationBodiesStayWithinTheirRows()
     {
@@ -167,14 +168,14 @@ public class EffectBoundImplementationTest
                 continue;
             }
 
-            var published = KimiLibraryCatalog.Row(operation)!.Value.Runs is null ? null : equals;
-            var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, published);
+            Assert.True(c.Types.Published(operation)!.Value.Runs is not { } runs || runs == equals, entry.Name); // The summary reads the row.
+            var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation);
             Assert.True(valid, $"{entry.Name}: {violation} at {node}");
 
             operations++;
         }
 
-        Assert.Equal(11, operations);
+        Assert.Equal(13, operations);
     }
 
     // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic

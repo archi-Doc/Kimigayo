@@ -279,13 +279,14 @@ public sealed partial class MirBuildTest
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
     }
 
-    // SPEC 13.4, 23.1.2 (DECISIONS BU-38): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or through a
-    // handle, has its comparison, since what the leaf's witness runs does not depend on that part: its leaf calls build, with no record of
-    // the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the operator).
+    // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M166): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
+    // through a handle, has its comparison, since what the leaf's witness runs does not depend on that part: its comparison call (equals
+    // under the operator mode) builds, with no record of the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the
+    // operator).
     [Theory]
     [InlineData("struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n")]
     [InlineData("struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n")]
-    public void ATupleOperatorOverRejectedStorageBuildsItsLeaves(string source)
+    public void ATupleOperatorOverRejectedStorageBuildsItsComparison(string source)
     {
         var c = Compile(source);
         Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
@@ -294,7 +295,10 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
         var f = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
         Assert.False(f.HasOpaque);
-        Assert.Contains(f.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "equals" });
+        Assert.Contains(f.Blocks.ToArray(), static x => x.Terminator is
+        {
+            Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Requirement, Symbol.Name: "equals", Arg: (int)ComparisonMode.Operator },
+        });
     }
 
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the

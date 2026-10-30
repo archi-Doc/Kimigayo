@@ -1281,29 +1281,38 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
     }
 
-    // K 4.3, F package 4.6: a built-in comparison of a composite Self, a generic instance's comparison over its Type parameter, is its
-    // Builtin shim, keyed by its compiler function and the erased Self, whose targets are its leaves' witnesses under the Contract's mapping
-    // (TyCtxt.Comparison), depth first: each user leaf's equals or compare body, none for a built-in leaf; two instances comparing one
-    // erased Self share its shim. A tuple operator is no shim: its expansion calls its leaves' witnesses in the instance (F package 4.8,
-    // DECISIONS R5-M75).
+    // K 4.3, F package 4.6, DECISIONS R5-M166: a built-in comparison of a composite Self, a generic instance's comparison over its Type
+    // parameter, is its Builtin item, keyed by its compiler function, its mode and the erased Self, whose targets are its direct parts'
+    // (TyCtxt.Comparison under the Contract's mapping): a composite part's own item, shared by every Self that has that part, a user leaf's
+    // equals or compare body, none for a built-in leaf; two instances comparing one erased Self share its item. A tuple operator is one
+    // such item under its operator mode, keyed at the template while its Type has a parameter (same's (ref/T, i32) at T = Box), whose T
+    // leaf runs its Contract mapping in the instance (Box's equals).
     [Fact]
-    public void AComparisonShimsTargetsAreItsLeafWitnesses()
+    public void AComparisonItemsTargetsAreItsDirectParts()
     {
         var (program, set) = Collect(CompareSource);
         Assert.Empty(set.Records);
-        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
-        Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
-        Assert.Equal(["Fn compare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
+        Assert.Equal(["Builtin ref/Box BuiltinEquals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
+        Assert.Equal(
+            ["Builtin (ref/Box, i32) BuiltinEquals", "Builtin ref/Box BuiltinEquals"],
+            Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
+        Assert.Equal(["Builtin ref/Rank BuiltinCompare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
+        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin ref/Box BuiltinEquals"));
+        Assert.Equal(["Fn compare"], Targets(program, set, "Builtin ref/Rank BuiltinCompare"));
         Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn equal [(ref/Box, i32)]"));
         Assert.Equal(
             set.Targets(Item(program, set, "Fn equal [(ref/Box, i32)]"))[0].Item,
             set.Targets(Item(program, set, "Fn differ [(ref/Box, i32)]"))[0].Item);
-        Assert.Equal(["Fn equals"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals Operator"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(["Builtin ref/Box BuiltinEquals Operator"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals Operator"));
+        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin ref/Box BuiltinEquals Operator"));
         Assert.Equal(
-            ["struct Box", "struct Box", "struct Box", "struct Rank"],
-            new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }
+            ["struct Box", "struct Rank", "struct Box"],
+            new[] { "Builtin ref/Box BuiltinEquals", "Builtin ref/Rank BuiltinCompare", "Builtin ref/Box BuiltinEquals Operator" }
                 .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
                 .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
+        var template = set.Items[Item(program, set, "Builtin (ref/Box, i32) BuiltinEquals Operator")].Key;
+        Assert.True(template.Type!.ContainsParameter && template.Body.Erased is not null, $"{template}");
     }
 
     // K 4.3, DECISIONS R5-M70: a Builtin item is keyed by its compiler function and the erased Self, so two built-in operations on one Self
@@ -2087,6 +2096,30 @@ public sealed partial class InstanceCollectorTest
                 $"struct S{i}\n    public var value: i32\n    public init(value: i32) => self.value = value\nlet s{i} = first(S{i}.init({i}))\n"));
     }
 
+    // G308 S4 (a generic equality whose T is P_n's compared Tuple, MirBuildTest.Dag), S6 (a Dictionary keyed by that Tuple: insert and
+    // tryGet; V16): at n = 8, 12, 16 the collector's Work and the checked set's items grow linearly in n, the distinct Types (the ratio rule
+    // of MirBuildTest.DropTreesScaleLinearly). F rows as stated, but they pass on dev 9613a512e (items 4 and Work 4, items 18 and Work 72 at
+    // every n: the checked set admits no item per leaf), which the planning session was told; they guard the collector's linearity.
+    [Theory]
+    [InlineData(MirBuildTest.DagContract)]
+    [InlineData(MirBuildTest.DagKey)]
+    public void AContractMappingOnADagGrowsWithItsDistinctTypes(string form)
+    {
+        var sizes = new[] { 8, 12, 16 };
+        var work = sizes.Select(n =>
+        {
+            var c = MirBuildTest.Compile(MirBuildTest.Dag(n, form));
+            var collector = new InstanceCollector(c.Types, c.Layout);
+            var set = collector.Run(c.BuildMir(), 1);
+            Assert.Empty(set.Records);
+            return (Items: (long)set.Items.Length, Work: (long)collector.Work);
+        }).ToArray();
+        var (items, steps) = (work.Select(static x => x.Items).ToArray(), work.Select(static x => x.Work).ToArray());
+        TestContext.Current.TestOutputHelper?.WriteLine($"N {string.Join(", ", sizes)}: items {string.Join(", ", items)}; work {string.Join(", ", steps)}");
+        Assert.True(items[2] - items[1] <= (2 * (items[1] - items[0])) + 8, $"items {string.Join(", ", items)}; work {string.Join(", ", steps)}");
+        Assert.True(steps[2] - steps[1] <= (2 * (steps[1] - steps[0])) + 8, $"work {string.Join(", ", steps)}; items {string.Join(", ", items)}");
+    }
+
     // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
     // program, which the old analysis rejects at the same accesses), whose statics of P42's storage (vars, Resource lets, the unused one
     // included, and the static of a generic container's group, X33 (a)) are the static-storage gap at their declarations (DECISIONS R5-M82).
@@ -2319,6 +2352,7 @@ public sealed partial class InstanceCollectorTest
         {
             var variant = item.Key.Kind switch
             {
+                MonoKind.Builtin when item.Key.Variant != 0 => $" {item.Key.Symbol!.CompilerFunction} {(ComparisonMode)item.Key.Variant}",
                 MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
                 MonoKind.LegacyRow => " " + item.Key.Body.Def.Decl!.CompilerFunction,

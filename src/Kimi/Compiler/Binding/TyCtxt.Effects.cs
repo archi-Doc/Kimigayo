@@ -9,6 +9,8 @@ namespace Kimi.Compiler;
 // read, all under one premise scope per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
+    private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
+
     // SPEC 8.11.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
     // definition Binding rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.6) an
     // environment effect; any other is unclassified.
@@ -21,17 +23,23 @@ internal sealed partial class TyCtxt
     };
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
-    // parameter On, the parameter below which it destroys, -1 for none, and whether it destroys that target in place (`replace`); null for
-    // an operation without a row.
-    internal (BindingSymbol? Runs, int On, int Destroys, bool InPlace)? Published(BindingSymbol operation)
+    // parameter On, the parameter below which it destroys, -1 for none, whether it destroys that target in place (`replace`), and the
+    // by-value Callable parameter it calls through a shared borrow and then destroys, -1 for none (`removeAll`); null for an operation
+    // without a row.
+    internal (BindingSymbol? Runs, int On, int Destroys, bool InPlace, int Calls)? Published(BindingSymbol operation)
     {
         if (KimiLibraryCatalog.Row(operation) is not { } row)
         {
             return null;
         }
 
+        if (row.Calls >= 0 && !this.callsRowsChecked)
+        {
+            this.CheckCallsRows();
+        }
+
         var requirement = row.Runs is { } runs ? this.OwnRequirement(runs) : null; // The one its Contract declares, not an inherited one.
-        return (requirement, row.On, row.Destroys, row.InPlace);
+        return (requirement, row.On, row.Destroys, row.InPlace, row.Calls);
     }
 
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract (Binding.Witnesses), appended to a caller-owned list with each
@@ -63,4 +71,20 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
+
+    // The catalog's contract (DECISIONS BU-70), checked for every row once, before the first Calls row is formed: a row's Callable input is
+    // called through a shared borrow, which its premise declares; a violation is a defect of the compiler build.
+    private void CheckCallsRows()
+    {
+        foreach (var entry in KimiLibraryCatalog.Entries)
+        {
+            if (entry.Row is { Calls: >= 0 and var calls } && library.GetSymbol(entry.Id) is { } operation &&
+                binding.CallableReceiver(operation, Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
+            {
+                throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
+            }
+        }
+
+        this.callsRowsChecked = true;
+    }
 }
