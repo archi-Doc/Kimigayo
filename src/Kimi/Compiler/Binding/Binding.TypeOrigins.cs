@@ -11,14 +11,14 @@ public sealed partial class Binding
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
-        if (Contains(type.Origin, origin))
+        if (type.Origin is { } own && ContainsOrigin(own, origin))
         {
             return true;
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (Contains(type.OriginArguments[i], origin))
+            if (ContainsOrigin(type.OriginArguments[i], origin))
             {
                 return true;
             }
@@ -33,24 +33,6 @@ public sealed partial class Binding
         }
 
         return false;
-
-        static bool Contains(BoundOrigin? expression, BoundOrigin atom)
-        {
-            if (ReferenceEquals(expression, atom))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < (expression?.Operands.Count ?? 0); i++)
-            {
-                if (Contains(expression!.Operands[i], atom))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     internal BoundType SelfType(BindingSymbol symbol)
@@ -84,6 +66,25 @@ public sealed partial class Binding
             this.typeScratch.Return(types, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+    }
+
+    // Whether an Origin expression names an atom, itself or through a meet's operands.
+    private static bool ContainsOrigin(BoundOrigin expression, BoundOrigin atom)
+    {
+        if (ReferenceEquals(expression, atom))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < expression.Operands.Count; i++)
+        {
+            if (ContainsOrigin(expression.Operands[i], atom))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Koto OriginFormationSite(Koto node, BoundType type)
