@@ -581,6 +581,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   gate is the plan's R3 gate.
 - **R3-3** Tests read analysis and generation through the `Compilation` entry points. `TryPrepare(out var module)` reads
   wait for R5, and `Ownership.Bodies` and control-flow structure reads for the R4 dump goldens, under ratchets.
+  - Amended by R5-M161 (G5): the `TryPrepare(out var module)` reads are deleted; no test reads `Compilation.Emission`.
 - **R3-4** R3 budget: Mir 6,600, Binding 350 lines over its R2b-exit size, Core 1,820, the old paths unchanged (D5).
 - **R3-5** A built-in form without an intrinsic row gets an interim row mapping it to an existing compiler function or
   legacy helper, each with its R8 disposition.
@@ -926,6 +927,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
   Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
+  - Amended by R5-M161 (G5, G6): the R5 reads are gone (library reach at K12, 75 injection reads at G4, the other 12 and the 40 pairing
+    reads at G5 and G6); R6's are 22 (VirtualPlanReuseTest's two compared old-body storage around MIR code generation) and U10's 8
+    (OwnershipJoinTest's left with G4's pinned tests).
 - **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; superseded by Q5) Binding's token cap rises from 375,051 to
   377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
   measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
@@ -10063,6 +10067,8 @@ structure is recorded here by the unit that first implements it.
     buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
   - Amended by R5-M160 (G4): `verify.ps1 -Codegen` and the old-generator branch of `Generate`, `WriteIr` and `Validate` are deleted.
+  - Amended by R5-M161 (G5): the direct test readers are deleted; only the two `src/Benchmark` measurements run the old generator,
+    until G7.
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -13336,6 +13342,7 @@ structure is recorded here by the unit that first implements it.
     lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
   - Amended by R5-M160 (G4): the rollback lane, the empty deviation form, `-Codegen` and the remaining `CompilerCodegen.Legacy`
     pins are deleted (the direct `Emission.TryPrepare` readers stay for G5 and G7).
+  - Amended by R5-M161 (G5): the direct `Emission.TryPrepare` readers are deleted.
 - **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
   G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
   Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
@@ -13442,3 +13449,35 @@ structure is recorded here by the unit that first implements it.
     - R5-M18's temporary sel-only behaviors;
     - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers);
     - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.
+  - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and three other sites;
+    ratchets: ownership bodies 84 → 30, prepared modules 112 → 0, instance reads 1 → 0, failure facts 1 → 0.
+- **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, R6-gen; plan §4.9 rows G5 and G6, PD14,
+  §5.1 M8; R5-M152 S7; under R5-M12 and R5-M160; the planning session's rulings Q1-Q5 on the unit's census; Major, G:R6-gen-del)
+  - Rule: a test that observes the old generator's own representation goes; a rule it stood for stays where MIR code generation
+    observes it, at the lowest public layer (G4-design §3's classification; R5-M12's classes S, I and P).
+  - G5: the tests reading `Compilation.Emission` (105 methods, 112 `TryPrepare` reads; the plan's 113/119 before G4), with the 8
+    `BodyLowering.Validate*Flags` injections and every `EmissionOpcode`, `EmissionOperandKind`, `ArithmeticCheckKind` and
+    `FailureIsResourceLimit` read:
+    - 66 methods deleted. Each deleted rule's MIR-layer holder was checked first: FunctionCodegenTest's rows, GeneratedIrTest's
+      requirement, InstanceCollectorTest, MirDropTest, the tests/mir goldens and the native audits of the same programs.
+    - 29 reduced to their native fixtures (all 33 native parts kept, so every `.ll` is unchanged) and 7 kept without their old-module
+      lines.
+    - 3 assertions moved to the MIR layer in place (NoInitTest, VirtualConditionalDispatchTest, VirtualOwnershipTest), and
+      CompositeMatchTest's warm allocation is measured on MIR code generation.
+  - G6: R4-M13a's R5 `Ownership.Bodies` reads: 12 injection and 34 pairing reads inside G5's methods, and these sites outside them:
+    - `GenericPointerEmissionTest.VerifiedTemplateBuildsDependentConcreteReads`, moved here from plan row G7: its `AnalyzeInstance` call
+      is the old generator's plan provider (OQ6), and `DependentInstantiationsPreserveTheCompletePointee` holds its rule on MIR. G7
+      deletes `AnalyzeInstance` without a test caller.
+    - `GenericStorageEmissionTest.InstanceAnalysisLeavesSourceBodiesAndIssuesUnchanged`, vacuous since G4 (`Validate` runs no instance
+      analysis), and `ReferenceEmissionTest`'s Borrow count of the old body (its IR checks and native audit stay).
+    - `VirtualPlanReuseTest`'s two R6-class reads, which compared the old bodies' storage around a code generation that has not
+      touched them since G3.
+  - Ratchets: prepared module 112 → 0, generation failure facts 1 → 0, instance reads 1 → 0, ownership bodies 84 → 30 (22 R6 and 8 R4
+    U10; 22 once U10 lands). The plan's 33 counted OwnershipJoinTest's U10 read, deleted at G4. The zeroed rows stay at limit 0 until
+    G7 deletes their members.
+  - Rejected:
+    - keeping the old-analysis halves of the pairing methods (R4-M13a's R5 class; their consumer is gone);
+    - copying deleted old-IR text into FunctionCodegenTest where its rows hold the rule;
+    - keeping VirtualPlanReuseTest's reads for R6-check (they observe no rule of the old analysis).
+  - Amends, each with its amendment line: R3-3's `TryPrepare` reads, R4-M13a's R5 and R6 counts, and the G5 clauses of R5-M64,
+    R5-M158 and R5-M160.
