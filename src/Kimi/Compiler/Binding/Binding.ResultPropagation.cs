@@ -123,7 +123,9 @@ public sealed partial class Binding
         None = 0,
         Never = 1,
         Literal = 2,
-        Callable = 4,
+
+        // A part of kind Waiting (ClassifyPart) that its call completes (WaitsByKind).
+        Waiting = 4,
     }
 
     // SPEC 14.9.2 step 3: whether an expression, bound or waiting, takes its position's Type once that is decided.
@@ -146,7 +148,8 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.PartsAwait(array.Elements),
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
-            FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } => Awaiting.Callable,
+            FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } => Awaiting.Waiting,
+            _ when this.WaitsByKind(node) => Awaiting.Waiting,
             _ => node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) ? Awaiting.Literal : Awaiting.None,
         };
     }
@@ -212,13 +215,35 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 3, 4.3, 10.5.1, 12.3: an unfitted literal reached without an expected Type waits, unbound, while its position's Type
-    // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). An anonymous
-    // function that is a result of a call's control-flow argument, at a position its call completes (CallableTarget), waits for that call
-    // (SPEC 10.5.1: such an argument is Waiting; DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
+    // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). A result
+    // source of a call's control-flow argument whose kind is Waiting waits for that call (WaitsByKind).
     private bool WaitsForPosition(Koto node, BoundType? expected)
-        => expected is null && node.BindingState == BindingState.Unvisited &&
-            (IsUnfittedLiteral(node) ? this.DecidedLater(node) :
-                node is FunctionKoto { IsAnonymous: true } && CallableTarget(node) is { } target && this.UnderArgumentProbe(target));
+        => expected is null && node.BindingState == BindingState.Unvisited && (IsUnfittedLiteral(node) ? this.DecidedLater(node) : this.WaitsByKind(node));
+
+    // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, R4-M155): a result of a call's control-flow argument, at a position its call completes
+    // (CallableTarget), whose kind by the one classifier (ClassifyPart) is Waiting and that is not yet bound: an anonymous function, a
+    // function reference or a contextual Case. It waits for that call, which completes it as it completes a waiting argument, and its
+    // kind is recorded, which the join's classification reads (ClassifiedByCall); a part the probe deferred waits by its own record.
+    private bool WaitsByKind(Koto node)
+    {
+        if (node.BoundType is not null || node.BindingFailure != BindingFailure.None || CallableTarget(node) is not { } target)
+        {
+            return false;
+        }
+
+        if (this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting)
+        {
+            return true; // Recorded under the probe, a deferred call's too; its call completes it.
+        }
+
+        if (!this.UnderArgumentProbe(target) || this.ClassifyPart(node) != ArgumentKind.Waiting)
+        {
+            return false;
+        }
+
+        this.RecordKind(node, ArgumentKind.Waiting);
+        return true;
+    }
 
     // The result target to which the position an expression supplies belongs, or null. The one walk passes the forms that deliver it
     // (DeliveredOperand) and the Tuple, array (a fill's included, DECISIONS BU-43) and dictionary literals it is a part of; `collecting`
@@ -647,7 +672,9 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            FunctionKoto { IsAnonymous: true } closure => this.ClosureSignatureFits(closure, target) ? target : null, // One waiting for its call.
+            // One waiting for its call fits as a Waiting argument part does, the rest checked by the selected candidate (FitArgument).
+            _ when this.KindOf(node) == ArgumentKind.Waiting =>
+                this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 

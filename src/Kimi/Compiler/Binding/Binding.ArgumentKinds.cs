@@ -152,9 +152,9 @@ public sealed partial class Binding
     // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
     // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
     // (`shape`, its first aggregate part), or one whose results hold an anonymous function, which waits for the call, is Composite: its
-    // results are classified position by position (Binding.ArgumentKinds.Positions.cs), a position holding the anonymous function
-    // Waiting, which replaces a Waiting a nested call deferred in one of its parts gave the probe; a scalar one of literals keeps the
-    // kind its survey gave it.
+    // results are classified position by position (Binding.ArgumentKinds.Positions.cs), a position holding the waiting source Waiting,
+    // which replaces a Waiting a nested call deferred in one of its parts gave the probe; a scalar one of literals keeps the kind its
+    // survey gave it. A waiting source is any of kind Waiting (WaitsByKind: an anonymous function, a function reference, a contextual Case).
     private bool ClassifiedByCall(Koto join, Koto? shape)
     {
         if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))
@@ -162,7 +162,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsWaitingFunction(join))
+        if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsWaitingSource(join))
         {
             this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Composite, null, false);
         }
@@ -249,9 +249,11 @@ public sealed partial class Binding
         => ControlFlowExpression(part) is { } flow ? this.SurveyResult(flow, scope, type).Fits : this.FitsInputLiteral(part, type, scope);
 
     // SPEC 10.5: a function name that is a call argument or the part under the argument probe is not bound as its Item without an
-    // expectation; PrepareArgument decides whether it is evidence or waits for S.
+    // expectation; PrepareArgument decides whether it is evidence or waits for S. A result of the probe's control-flow part waits for the
+    // call (WaitsByKind), as its other Waiting sources do (SPEC 10.5.1, 14.9.2).
     private bool AtArgumentPosition(Koto node)
-        => (TryNameRoot(node, out var root) && root.Parent is InvocationKoto) || ReferenceEquals(this.argumentProbe, node);
+        => (TryNameRoot(node, out var root) && root.Parent is InvocationKoto) || ReferenceEquals(this.argumentProbe, node) ||
+            (this.argumentProbe is not null && CallableTarget(node) is { } target && !ReferenceEquals(target, node) && this.UnderArgumentProbe(target));
 
     // Independent argument evidence is prepared once for named and constraint-based calls.
     private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)

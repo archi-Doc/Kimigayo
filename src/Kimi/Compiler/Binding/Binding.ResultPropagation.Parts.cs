@@ -180,15 +180,17 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.5.1 (DECISIONS BU-43): whether a join's results hold an anonymous function that waits for its call.
-    private bool HoldsWaitingFunction(Koto join)
+    // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, R4-M155): whether a join's results hold a part that waits for its call, by its recorded kind
+    // (WaitsByKind).
+    private bool HoldsWaitingSource(Koto join)
     {
         var start = this.positionParts.Count;
         this.AddResults(join);
         var holds = false;
         for (var i = start; !holds && i < this.positionParts.Count; i++)
         {
-            holds = this.positionParts[i] is FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited };
+            holds = this.positionParts[i].BoundType is null && this.RecordedFact(KotoHelper.UnwrapParentheses(this.positionParts[i])).Kind == ArgumentKind.Waiting &&
+                !this.WasDeferred(this.positionParts[i]);
         }
 
         this.ClosePosition(start);

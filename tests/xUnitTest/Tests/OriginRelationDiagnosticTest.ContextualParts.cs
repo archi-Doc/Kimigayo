@@ -141,15 +141,16 @@ public partial class OriginRelationDiagnosticTest
 
     // Joins (d3 §4): the sources of an `if` or `match` argument or initializer form one value, judged once. jt1_ok, mj4 and cv4 (whose `t`
     // gives the relation by its signature's well-formedness) are valid; jt1 errs at the argument and mj4_n at its annotation only. A `match`
-    // argument is outside the implemented subset, so mj1 and its twin keep dev's located Unsupported_Kd with the call's dependent record.
+    // argument whose sources are contextual Cases waits for its call as an `if` one does (R4-M155, B5's join rule): mj1 errs at the
+    // argument as jt1 does and mj1_ok is valid (both were dev's located Unsupported_Kd with the call's dependent record).
     [Theory]
     [InlineData("jt1_ok", JoinHead + WithPremise + InnerPair + "    return inner((if c => Option.None else => Option.None, 1), q)\n", "")]
     [InlineData("jt1", JoinHead + InnerPair + "    return inner((if c => Option.None else => Option.None, 1), q)\n", "UnprovenOriginRelation_Kd (if c => Option.None else => Option.None, 1)")]
     [InlineData("mj4", JoinHead + WithPremise + "    let t: Option<ref/(ref/i32 during q) during r> = " + MatchNone + NestedInner + "    return inner(t, q)\n", "")]
     [InlineData("mj4_n", JoinHead + "    let t: Option<ref/(ref/i32 during q) during r> = " + MatchNone + NestedInner + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("cv4", "func k(q: ref/i32, r: ref/i32, c: bool, t: (Option<ref/(ref/i32 during q) during r>, i32)) -> ref/i32 during r\n" + InnerPair + "    return inner(if c => t else => (Option.None, 1), q)\n", "")]
-    [InlineData("mj1", JoinHead + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "UnprovenConstraint_Kd inner((match c; Unsupported_Kd match c")]
-    [InlineData("mj1_ok", JoinHead + WithPremise + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "UnprovenConstraint_Kd inner((match c; Unsupported_Kd match c")]
+    [InlineData("mj1", JoinHead + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "UnprovenOriginRelation_Kd (match c")]
+    [InlineData("mj1_ok", JoinHead + WithPremise + NestedInner + "    return inner((" + MatchNone + "    ), q)\n", "")]
     public void AJoinedArgumentIsJudgedAsOneValue(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
@@ -262,6 +263,24 @@ public partial class OriginRelationDiagnosticTest
 
     // AssertRecords, and for a contextual payload (`payload` not null) D-1's related location: every Error record relates the payload's
     // text.
+    // SPEC 10.5.1, 14.9.2 (DECISIONS R4-M155, BU-43; BU review 2 B5): a join with a result source whose kind is Waiting (a contextual
+    // Case, a function reference, an anonymous function) waits for its call, by the one classifier's recorded kinds, on a value call (jv)
+    // and a named call (jn) alike; the call completes it at the selected parameter Type (BU's three forms and their named twins, which
+    // failed on dev). The _n twins have a source that fits no parameter: its own record, or at a named call the call's record (d3).
+    [Theory]
+    [InlineData("jv1", "func k(c: bool, g: (Option<i32>) -> i32) -> i32\n    return g(if c => .None else => .Some(1))\n", "")]
+    [InlineData("jv2", "func k(c: bool, g: (Option<i32>) -> i32) -> i32\n    return g(if c => Option.None else => .Some(1))\n", "")]
+    [InlineData("jv3", "func one(x: i32) -> i32\n    return x\nfunc two(x: i32) -> i32\n    return x + 1\nfunc k(c: bool, g: ((i32) -> i32) -> i32) -> i32\n    return g(if c => one else => two)\n", "")]
+    [InlineData("jv1_n", "func k(c: bool, g: (Option<i32>) -> i32) -> i32\n    return g(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
+    [InlineData("jv3_n", "func one(x: i32) -> i32\n    return x\nfunc two(x: i32) -> i32\n    return x + 1\nfunc three(x: i64) -> i32\n    return 0\nfunc k(c: bool, g: ((i32) -> i32) -> i32) -> i32\n    return g(if c => one else => three)\n", "TypeMismatch_Kd three")]
+    [InlineData("jn1", "func h(o: Option<i32>) -> i32\n    return 0\nfunc k(c: bool) -> i32\n    return h(if c => .None else => .Some(1))\n", "")]
+    [InlineData("jn2", "func h(o: Option<i32>) -> i32\n    return 0\nfunc k(c: bool) -> i32\n    return h(if c => Option.None else => .Some(1))\n", "")]
+    [InlineData("jn3", "func one(x: i32) -> i32\n    return x\nfunc two(x: i32) -> i32\n    return x + 1\nfunc ap(f: (i32) -> i32) -> i32\n    return f(1)\nfunc k(c: bool) -> i32\n    return ap(if c => one else => two)\n", "")]
+    [InlineData("jn1_n", "func h(o: Option<i32>) -> i32\n    return 0\nfunc k(c: bool) -> i32\n    return h(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
+    [InlineData("jn3_n", "func one(x: i32) -> i32\n    return x\nfunc two(x: i32) -> i32\n    return x + 1\nfunc three(x: i64) -> i32\n    return 0\nfunc ap(f: (i32) -> i32) -> i32\n    return f(1)\nfunc k(c: bool) -> i32\n    return ap(if c => one else => three)\n", "NoApplicableOverload_Kd ap(if c => one else => three)")]
+    public void AJoinWithAWaitingSourceWaitsForItsCall(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
+
     private static void AssertRecordsRelating(string form, string body, string records, string? payload)
     {
         AssertRecords(form, body, records, null);

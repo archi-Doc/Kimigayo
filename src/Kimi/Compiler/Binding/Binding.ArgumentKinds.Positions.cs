@@ -103,7 +103,7 @@ public sealed partial class Binding
             {
                 literal = true;
             }
-            else if (!this.IsAggregatePart(part) && part.BindingState != BindingState.Resolved)
+            else if (!this.IsAggregatePart(part) && (part.BindingState != BindingState.Resolved || this.KindOf(part) == ArgumentKind.Waiting))
             {
                 return ArgumentKind.Waiting;
             }
