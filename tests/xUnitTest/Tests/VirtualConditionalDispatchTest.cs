@@ -18,13 +18,6 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
     public void InapplicableSlotsKeepTheirIndexWithoutABodyDependency(bool block)
     {
         var source = Program(block);
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Equal(2, module.Objects.Count);
-        Assert.All(module.Objects, item => Assert.Equal(3, item.VirtualSlots.Length));
-        Assert.NotNull(module.Objects[0].VirtualSlots[1]);
-        Assert.Null(module.Objects[1].VirtualSlots[1]);
-        Assert.NotNull(module.Objects[1].VirtualSlots[2]);
         ScalarEmissionTest.EmitFixture("VirtualConditionalDispatch" + block, source, string.Empty);
     }
 
@@ -113,15 +106,18 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         Assert.Contains("cannot be proven", record.Note!, StringComparison.Ordinal);
     }
 
+    // An edited premise rebuilds the table: the refuted slot is empty, and after the edit and a rebind the module equals a fresh
+    // compilation's of the edited source, whose slot holds the override.
     [Fact]
     public void EditingAPremiseRevokesAndRebuildsTheTable()
     {
         const string Source = "open struct Base<T>\n    T is Owned\n    public init() => ()\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Leaf<T> : Base<T>\n    T is Owned\n    public init() => ()\n    override func read(self: objref/Self) -> i32 => 2\nlet a = Leaf<string>.init()@obj";
+        const string Table = @"@__kimi_object_virtuals\d+ = private constant \[1 x ptr\] \[ptr ";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var before, out var failure), failure);
-        var previousTable = Assert.Single(before.Objects).VirtualSlots;
-        Assert.Null(previousTable[0]);
+        Assert.Matches(Table + "null\\]", CompilationTestHelper.WriteIr(c));
         var donor = MinimalEmissionTest.Analyze(Source.Replace("T is Copy", "T is Owned", StringComparison.Ordinal));
+        var expected = CompilationTestHelper.WriteIr(donor);
+        Assert.Matches(Table + @"@__kimi_f\d+\]", expected);
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var replacement = ParseTestHelper.Detach(changed.TypeConstraints[0], new CodeBlockKoto(original.CodeContext));
@@ -130,9 +126,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Emission.TryPrepare(out var after, out failure), failure);
-        Assert.NotNull(Assert.Single(after.Objects).VirtualSlots[0]);
-        Assert.Null(previousTable[0]); // Previously published physical records are not mutated.
+        Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }
 
     [Trait("Purpose", "Allocation")]

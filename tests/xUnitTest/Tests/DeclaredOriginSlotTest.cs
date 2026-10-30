@@ -12,6 +12,10 @@ public class DeclaredOriginSlotTest
 {
     private const string Main = "public func main() => ()\n";
 
+    private const string SlotW = "struct W {s}\n    public var items: Array<ref/i32 during s>\n    public init(items: Array<ref/i32 during s>) => self.items = items@move\n";
+
+    private const string Item = "contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\n";
+
     [Theory]
     [InlineData("public struct View<T> {source}\n    private let data: ref/T during buffer\n", "buffer", "header", "{source}")]
     [InlineData("struct Pair {source}\n    let first: ref/i32 during source\n    let second: ref/i32 during souce\n", "souce", "header", "{source}")]
@@ -91,6 +95,42 @@ public class DeclaredOriginSlotTest
         var source = "public struct Renamed<T> {buffer}\n    private let data: ref/T during buffer\nfunc wrong<T>(value: Renamed<T>) -> Renamed<T>{result}\n    origin result.buffer == value.sorce\n    return 1\n" + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([nameof(DiagnosticCode.InvalidOriginBinding_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], errors.Select(static x => x.Code).ToArray());
+    }
+
+    // SPEC 23.1.2, 15.3.1 (PLAN G312): a parenthesis or meet whose operand failed, and an associated Type application whose Origin
+    // argument failed, rest on that operand, so a written Origin reports each cause once, at the operand: a non-borrow name, an absent
+    // slot (also nested, and in a clause), BU-56's located Unsupported_Kd and a missing Name; a meet whose two operands fail keeps both
+    // records, and the valid twins bind.
+    [Theory]
+    [InlineData("func f(a: ref/i32, n: i32, b: ref/i32 during (n and a)) => ()", "InvalidOriginBinding_Kd: n")]
+    [InlineData(SlotW + "func f(w: ref/W, b: ref/i32 during (w.zz)) => ()", "InvalidOriginBinding_Kd: zz")]
+    [InlineData(SlotW + "func f(w: ref/W, b: ref/i32 during ((w.zz))) => ()", "InvalidOriginBinding_Kd: zz")]
+    [InlineData(SlotW + "func f(a: ref/i32, w: ref/W, b: ref/i32 during (w.zz and a)) => ()", "InvalidOriginBinding_Kd: zz")]
+    [InlineData(SlotW + "func f(a: ref/i32, w: ref/W)\n    origin (w.zz) outlives a\n    ()", "InvalidOriginBinding_Kd: zz")]
+    [InlineData(
+        SlotW + "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    var w: W{x} = W.init(items: arr@move)\n" +
+            "    func put(slot: uniq/Array<ref/i32 during (x.s)>, v: ref/i32) => slot@follow.append(v)\n    return 0",
+        "Unsupported_Kd: x.s")]
+    [InlineData(SlotW + "func f(n: i32, w: ref/W, b: ref/i32 during (n and w.zz)) => ()", "InvalidOriginBinding_Kd: n", "InvalidOriginBinding_Kd: zz")]
+    [InlineData(Item + "func f(x: ref/i32 during source) -> S.Item((missing)) => 42", "MissingOriginBinding_Kd: missing")]
+    [InlineData(SlotW + "func f(a: ref/i32, w: ref/W, b: ref/i32 during ((a and w.s))) => ()")]
+    [InlineData(Item + "func f(x: ref/i32 during source) -> S.Item((source)) => 42")]
+    public void AWrittenOriginReportsEachCauseOnceAtItsOperand(string declarations, params string[] records)
+        => Assert.Equal(records, RawPointerSyntaxTest.Records(declarations));
+
+    // A warm rebind of those parents reuses the prerequisite storage.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ParentsRestingOnAFailedOperandRebindWithoutAllocating()
+    {
+        var c = MinimalEmissionTest.Analyze(SlotW + Item + "func f(n: i32, w: ref/W, b: ref/i32 during ((n and w.zz))) -> S.Item((missing)) => 42\n" + Main);
+        var invalid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Bind();
+            invalid &= !c.Binding.Result.IsComplete;
+        }));
+        Assert.True(invalid);
     }
 
     // SPEC 5.7, 15.3.5: a raw layer's Origin is no use of a slot for Loan requirements, so a slot only a raw layer states is Phantom and

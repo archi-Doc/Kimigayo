@@ -31,9 +31,7 @@ public sealed class VirtualPlanReuseTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        var before = c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
-        Assert.Equal(before, c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes));
     }
 }

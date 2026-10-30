@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -63,13 +62,6 @@ public class StringComparisonEmissionTest
     public void ConditionSecuresBoolBeforeDestructionAndBranching()
     {
         const string Source = Echo + "if echo(\"condition\") == \"literal\" => Console.writeLine(\"bad\")\nConsole.writeLine(\"after\")";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        var comparison = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StringEquals);
-        var destroy = function.Instructions.FindIndex(comparison + 1, x => x.Callee == RuntimeAbi.DestroyString);
-        var branch = function.Instructions.FindIndex(comparison + 1, x => x.Opcode == EmissionOpcode.ConditionalBranch);
-        Assert.True(comparison >= 0 && comparison < destroy && destroy < branch);
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonConditionOrder", Source, "after\n");
         StringEmissionTest.WriteAuditedFixture("StringComparisonConditionOrder", ir, "after\n", "condition=1;literal=0;bad=0;after=1", order: [0, 3]);
     }
@@ -90,28 +82,6 @@ public class StringComparisonEmissionTest
         const string Source = "func forever() -> string\n    loop => ()\nlet text = \"held\"\ntext == forever()";
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
-    }
-
-    [Fact]
-    public void ConditionalTemporaryFlagsAreInitializedAndValidated()
-    {
-        var c = MinimalEmissionTest.Analyze("var c = false\nif c and \"a\" == \"a\" => ()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var function = module.GetFunction(0);
-        Assert.Empty(body.ComparisonLoans);
-        Assert.Equal(2, function.LiveFlags.Count);
-        var scratch = new int[body.Places.Count + body.Operations.Count];
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.InitializeLiveFlag);
-        var instruction = function.Instructions[index];
-        function.Instructions.RemoveAt(index);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.Insert(index, instruction);
-        function.Instructions.Insert(index, instruction);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.RemoveAt(index);
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
     }
 
     [Fact]

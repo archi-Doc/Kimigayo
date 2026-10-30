@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Xunit;
 
@@ -66,31 +65,6 @@ public class ScalarEmissionTest
         });
         Assert.True(success);
         Assert.Equal(0, bytes);
-    }
-
-    [Fact]
-    public void PreoptimizationIrPreservesReadOrderChecksAndStorage()
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 2\nlet y = x + x++\nif y == 4 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        var loads = function.Instructions.Where(x => x.Opcode == EmissionOpcode.LoadScalar).ToArray();
-        var adds = function.Instructions.Where(x => x.ScalarOperator == "sadd").ToArray();
-        Assert.Equal(2, adds.Length);
-        Assert.Equal(loads[0].Operation, function.GetOperands(adds[1])[0].Value);
-        Assert.Equal(loads[1].Operation, function.GetOperands(adds[1])[1].Value);
-        using var output = new StringWriter();
-        module.WriteIr(output);
-        var ir = output.ToString();
-        var call = ir.IndexOf(" = call { i32, i1 } @llvm.sadd.with.overflow.i32", StringComparison.Ordinal);
-        var branch = ir.IndexOf("  br i1 %overflow", call, StringComparison.Ordinal);
-        var store = ir.IndexOf("  store i32", branch, StringComparison.Ordinal);
-        Assert.True(call >= 0 && branch > call && store > branch);
-        Assert.Contains("call void @__kimi_abort(i32 6", ir);
-        Assert.DoesNotContain("nsw", ir);
-        Assert.DoesNotContain("nuw", ir);
-        var body = c.Ownership.Bodies[0];
-        Assert.All(function.Slots, slot => Assert.True(body.Places[slot.Place].Kind == OwnershipPlaceKind.Local || ReferenceEquals(body.Places[slot.Place].Type, BoundType.String)));
     }
 
     internal static string EmitFixture(

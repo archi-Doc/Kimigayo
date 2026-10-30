@@ -38,13 +38,6 @@ public class FloatConversionEmissionTest
     public void IdentityPreservesNonfiniteValuesAndHasNoConversionInstruction(string type)
     {
         var source = $"func id(x: {type}) -> {type} => x@{type}\nvar z: {type} = 0.0\nvar one: {type} = 1.0\nlet nan = id(z / z)\nlet zero = id(-0.0)\nlet inf = id(one / z)\nif nan != nan and 1.0 / zero < 0.0 and inf > 1.0 => Console.writeLine(\"ok\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        for (var i = 0; i < module.FunctionCount; i++)
-        {
-            Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);
-        }
-
         ScalarEmissionTest.EmitFixture("FloatConvertIdentity" + type, source, "ok\n");
     }
 

@@ -581,6 +581,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   gate is the plan's R3 gate.
 - **R3-3** Tests read analysis and generation through the `Compilation` entry points. `TryPrepare(out var module)` reads
   wait for R5, and `Ownership.Bodies` and control-flow structure reads for the R4 dump goldens, under ratchets.
+  - Amended by R5-M161 (G5): the `TryPrepare(out var module)` reads are deleted; no test reads `Compilation.Emission`.
 - **R3-4** R3 budget: Mir 6,600, Binding 350 lines over its R2b-exit size, Core 1,820, the old paths unchanged (D5).
 - **R3-5** A built-in form without an intrinsic row gets an interim row mapping it to an existing compiler function or
   legacy helper, each with its R8 disposition.
@@ -926,6 +927,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
   Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
+  - Amended by R5-M161 (G5, G6): the R5 reads are gone (library reach at K12, 75 injection reads at G4, the other 12 and the 40 pairing
+    reads at G5 and G6); R6's are 22 (VirtualPlanReuseTest's two, which compared old-body storage around MIR code generation, are
+    deleted) and U10's 8 (OwnershipJoinTest's left with G4's pinned tests).
 - **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; superseded by Q5) Binding's token cap rises from 375,051 to
   377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
   measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
@@ -3587,7 +3591,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
     決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
 - **R4-M118 Dependent ends: an Origin end a Binding failure left Unbound is a pass-through node, never a source or a judged target;
-  the view's findings are published** (2026-10-24; unit 2a-1c, the third of G:A5-F4, DEC Q6 form 2, under the full process: designs A
+  the view's findings are published** (superseded in part by BU-62: site (1))
+  (2026-10-24; unit 2a-1c, the third of G:A5-F4, DEC Q6 form 2, under the full process: designs A
   and B, the design review's merge M, adopted by the R4 planning session, `s2-2a-1c/final-design.md`; the vocabulary entry is the planning
   session's under the owner's decision of 2026-10-24, verbatim 「(a) 計画セッションが決める (推奨)」; the fix round after the A5-part
   final review's F1, the owner's choice of 2026-10-24, verbatim 「(a) 通過点として扱う (推奨)」, and BU's Binding-part review W1-W3)
@@ -6676,7 +6681,8 @@ resumed by R4-M86 (2026-10-20).
   `.Defaults`' copy rows, `MirAnalysisTest`'s effect row (now an R3 Drop) and `OriginRowsTest`'s static rows 6, 7 and 7' (7 and 7' keep
   an accessor storage witness; R4 restores row 6's Closure case), the effect rule's witnesses being `MirBorrowsTest.Rooted`'s.
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
-- **BU-26** (2026-10-22; the BU planning session after the full process: designs A and B, the design review's merge M, R4
+- **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed") (2026-10-22;
+  the BU planning session after the full process: designs A and B, the design review's merge M, R4
   agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
   body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
   signature's well-formedness (a requirement's, an override's, a specialization's, a nested Function Type part) and a clause's
@@ -8746,6 +8752,64 @@ resumed by R4-M86 (2026-10-20).
     re-running the conformance proof at the capture (a consumer re-running a check); Binding's null for a rejected projection
     (R5-M155 (c)).
 
+- **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
+  copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (2026-10-30; PLAN G206 (7),
+  unit bu71, Major; designs rounds 0–2 under `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g206-7\`, joint design review 3, BU's and
+  R4's, ACCEPT; the owner, 2026-10-30, on round 2, verbatim 「もう1回だけ直す でお願いします」, the recommended option: every row to the
+  whole rule with no pre-filter, records at the edge where the chain fails, the staged move recorded) SPEC 23.1.2: each independent
+  failed requirement is reported; a declaration's rows (BU-26) reach no slice (R4-M101), so Binding is their only judge.
+  - The fact: `PendingFailure`, the failed part a declaration's pending Origins rest on: its failed clause (path a), or the Type, alias
+    target or Case payload operand that failed before completion (path c). One writer, `RestPendingOn`, at path a's failure branch and
+    the three path-c sites (`BindType`'s null and recovery returns, `PrepareStorage`'s payload, `AliasTarget`); no State change, so a
+    later bind in State 1 keeps the pending atom. `UnboundCause(atom)` reads the atom's declaration's `PendingFailure`, else its
+    binder (path b, `OmittedOrigin`'s own failure). It is written for every owner and read only for a declaration's rows: a local's
+    pending Origins reach body rows, A5's. Not the rejected lookups: R4-M118 rejected a failure lookup per binder for the view's class
+    (a MIR read; a binder a later pass resolves; path c) and BU-36 a per-declaration lookup beside a null part; here path c is written
+    at its failure site, a later-resolved binder does not reproduce for a declaration row (round 0), the fact is reset each pass, and
+    its one reader is Binding's own prerequisite.
+  - The rule, `JudgeDeclarationRows`: a `CallBorrows` row stays the calls'; a row the published premises at its use entail forms no
+    edge (`ProvesOriginOutlives` only, never region inference or the rejected clauses: Binding's direct proof, A5's 2a0-D D1; BU-26 E3,
+    a signature's well-formed input), the input rule of both holders; a fixed-fixed row is judged at once by the position judge (an
+    equality row one problem, R4-M114); a row with an Unbound end is never judged itself (`Binding.OriginClauses.Chains`): an Unbound
+    atom, or a meet with one, is a Dependent node, nodes are canonical Origins resolved at the use, edges follow MeetNode's rule at both
+    ends, a Fixed→Fixed edge is judged at once, each Fixed source is searched through any number of Dependent nodes, and every edge from
+    a Dependent node into a Fixed node X is a last edge where S >= X is judged at its use, once per (edge, source), under each minimal
+    condition until one records; no pair is merged; a chain that starts or ends at a Dependent node records nothing; such rows fail
+    `Unsupported`, derived on `UnboundCause`.
+  - The Semantics condition (SPEC 15.6.5): `BindingObligation.Condition` is the set of pair binders that must all be borrows for a row
+    to be required (bits of `PairBinders`' order at its use, outer scopes first), and a premise serves a request only when its binders
+    lie within the request's (`OriginPremiseClosure.Close`). A chain is required where each of its rows is: its condition is the OR of
+    its rows' Conditions, the conjunction of their cases; a Dependent node adds none.
+  - The premise contract: the rule judges from the premises at the edge's use and the clauses that bound in a failed enclosing
+    declaration (`RejectedRelations`, kept before path a's `Relations.Clear()`, read by `ExtractOriginPremises`' R1 only while
+    `judgingDeclarationRows`), which only ever remove a dependent report; every other request still sees the contract unavailable.
+  - The staged move (`[Transitional("R6-check")]`): the rule has two holders with one contract, A5's (`MirOrigins.Chains`) for a body's
+    rows and this copy for a declaration's, each judging only what Binding does not prove (D1) and each chain under its rows' minimal
+    conditions. PLAN G318 (R4 with BU, Full, accepted by R4's planning session on 2026-10-30; due at R6-check) moves A5's core
+    below both phases, which both read, and
+    deletes the copy; the stage ledger's R6 row lists it. Its declaration adapter keeps the premise contract above.
+  - R4-M118 site (1) is superseded (BU writes, R4 approves, joint review 3): dependence is a property of the chain (bu68 item 5). Until
+    G318 the chain rule has two holders with one contract, A5's for body rows and the declaration judge's Transitional copy for
+    declaration rows. A record at an edge with a Dependent end is derived, unless that edge is the last edge of a chain through
+    Dependent nodes that fails between its non-Dependent ends; site (1)'s two clauses fall away. Binding's fit records stay direct until
+    A5's chain judgment is published at R6-check and H11 retires the fit twins (PLAN G206 (6)). Site (2) is applied by this entry.
+  - Supersedes BU-26's pre-filter (`JudgeOriginObligation`'s verdict on a row with an Unbound end, which region inference or a rejected
+    clause could prove) and its clause "derived when that end's binder failed".
+  - Records (probes: round 1's 76 and R4's review-2 29 forms, both pipelines with one delta; reviews 3's 52 and 46): chains path a hid
+    are reported at their last edge (x-chain-a, t-two-a, m-meet-a, m-operand-a, fan-a, eq-cycle-a, mp-a, nest-a, m-shared-a, pu-a); on
+    path c a dependent `Unsupported_Kd` gives way to the chain's record or to nothing (Field Type, Case payload, alias Type argument,
+    base); independent records stay; each matches its valid twin. Open in PLAN G206 (7), each an extra dependent report published as
+    direct, never a hidden error: a premise the failure removed (p-base-c, pf-c on path c; pz-a and pf-a, new on path a, where dev
+    derived every row; f-param-c, f-init-c). A pre-existing hidden independent error (SPEC 23.1.2) is PLAN G319's (two-decl-a,
+    two-decl-ac, eq-field-a; base reproducer two-decl-a-uses).
+  - Tests: `OriginRelationDiagnosticTest.Chains` (each form with its valid twin; every row but the premise guard p-base-a fails on dev
+    fe6133860, 23 of 24) and its warm rebind (0 B; a node with two records allocates its second, as on dev: PLAN G321).
+  - Rejected: round 0's per-row derivation (hides x-chain-a's chain); widening `Failure` to path c (`FailedOriginEnvironment` keeps
+    structural Type failures independent; it hid a method's independent record); round 1's one-hop rule and pair records (a narrowed
+    copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
+    Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
+    premises; R4's lanes are full).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
@@ -10090,6 +10154,8 @@ structure is recorded here by the unit that first implements it.
     buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
   - Amended by R5-M160 (G4): `verify.ps1 -Codegen` and the old-generator branch of `Generate`, `WriteIr` and `Validate` are deleted.
+  - Amended by R5-M161 (G5): the direct test readers are deleted; only the two `src/Benchmark` measurements run the old generator,
+    until G7.
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -13363,6 +13429,7 @@ structure is recorded here by the unit that first implements it.
     lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
   - Amended by R5-M160 (G4): the rollback lane, the empty deviation form, `-Codegen` and the remaining `CompilerCodegen.Legacy`
     pins are deleted (the direct `Emission.TryPrepare` readers stay for G5 and G7).
+  - Amended by R5-M161 (G5): the direct `Emission.TryPrepare` readers are deleted.
 - **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
   G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
   Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
@@ -13469,3 +13536,35 @@ structure is recorded here by the unit that first implements it.
     - R5-M18's temporary sel-only behaviors;
     - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers);
     - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.
+  - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites;
+    ratchets: ownership bodies 84 → 30, prepared modules 112 → 0, instance reads 1 → 0, failure facts 1 → 0.
+- **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, R6-gen; plan §4.9 rows G5 and G6, PD14,
+  §5.1 M8; R5-M152 S7; under R5-M12 and R5-M160; the planning session's rulings Q1-Q5 on the unit's census; Major, G:R6-gen-del)
+  - Rule: a test that observes the old generator's own representation goes; a rule it stood for stays where MIR code generation
+    observes it, at the lowest public layer (G4-design §3's classification; R5-M12's classes S, I and P).
+  - G5: the tests reading `Compilation.Emission` (105 methods, 112 `TryPrepare` reads; the plan's 113/119 before G4), with the 8
+    `BodyLowering.Validate*Flags` injections and every `EmissionOpcode`, `EmissionOperandKind`, `ArithmeticCheckKind` and
+    `FailureIsResourceLimit` read:
+    - 66 methods deleted. Each deleted rule's MIR-layer holder was checked first: FunctionCodegenTest's rows, GeneratedIrTest's
+      requirement, InstanceCollectorTest, MirDropTest, the tests/mir goldens and the native audits of the same programs.
+    - 29 reduced to their native fixtures (all 33 native parts kept, so every `.ll` is unchanged) and 7 kept without their old-module
+      lines.
+    - 3 assertions moved to the MIR layer in place (NoInitTest, VirtualConditionalDispatchTest, VirtualOwnershipTest), and
+      CompositeMatchTest's warm allocation is measured on MIR code generation.
+  - G6: R4-M13a's R5 `Ownership.Bodies` reads: 12 injection and 34 pairing reads inside G5's methods, and these sites outside them:
+    - `GenericPointerEmissionTest.VerifiedTemplateBuildsDependentConcreteReads`, moved here from plan row G7: its `AnalyzeInstance` call
+      is the old generator's plan provider (OQ6), and `DependentInstantiationsPreserveTheCompletePointee` holds its rule on MIR. G7
+      deletes `AnalyzeInstance` without a test caller.
+    - `GenericStorageEmissionTest.InstanceAnalysisLeavesSourceBodiesAndIssuesUnchanged`, vacuous since G4 (`Validate` runs no instance
+      analysis), and `ReferenceEmissionTest`'s Borrow count of the old body (its IR checks and native audit stay).
+    - `VirtualPlanReuseTest`'s two R6-class reads, which compared the old bodies' storage around a code generation that has not
+      touched them since G3.
+  - Ratchets: prepared module 112 → 0, generation failure facts 1 → 0, instance reads 1 → 0, ownership bodies 84 → 30 (22 R6 and 8 R4
+    U10; 22 once U10 lands). The plan's 33 counted OwnershipJoinTest's U10 read, deleted at G4. The zeroed rows stay at limit 0 until
+    G7 deletes their members.
+  - Rejected:
+    - keeping the old-analysis halves of the pairing methods (R4-M13a's R5 class; their consumer is gone);
+    - copying deleted old-IR text into FunctionCodegenTest where its rows hold the rule;
+    - keeping VirtualPlanReuseTest's reads for R6-check (they observe no rule of the old analysis).
+  - Amends, each with its amendment line: R3-3's `TryPrepare` reads, R4-M13a's R5 and R6 counts, and the G5 clauses of R5-M64,
+    R5-M158 and R5-M160.

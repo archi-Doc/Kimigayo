@@ -328,11 +328,13 @@ public sealed partial class Binding
             if (IsRecovery(syntax, out _))
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
+                RestPendingOn(originDeclaration, syntax);
                 return Complete(syntax, null);
             }
 
             if (type is null)
             {
+                RestPendingOn(originDeclaration, syntax);
                 return null;
             }
 
