@@ -5828,6 +5828,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `ALoanStaysLiveIntoANeverFormsContinuation` (each Never form above, `defer` and the observing Drop included, an error at its
     reachable twin's location; valid counterparts, a holder without a `drop` and one moved away before the write among them).
   - Old path: such forms without an unreachable local use stay accepted until R6-check (STATUS, Unreachable code).
+- **R4-M159 G273, a Closure literal's Type carries the images of its enclosing anonymous functions' atoms as Origin arguments**
+  (2026-10-31; Full change, prototype-first candidate `claude/a5-g273-pf`, design `r4-notes\g273-pf\design.md`; lands only if chosen)
+  SPEC 3.2.1, 5.7, 15.3.4, 15.8.2 (PLAN G273).
+  - Cause: a Closure value returned from a maker (an anonymous function's call) has a signature naming the maker's atoms (its receiver
+    ρ, environment bindings, per-call inputs); no representation mapped them to the receiver and arguments of the call that returned
+    it, so R4-M152 made every such value call F1's located `Unsupported_Kd`.
+  - Rule: the literal's EnvironmentType carries, as Origin arguments, each atom of an enclosing anonymous function that its signature
+    names (raw layers included), once, in walk order (`Binding.EnclosingAtoms`). Every Type walk already substitutes Origin arguments,
+    so the maker's publication and each maker call map them to their images with no new walk. `ClosureSignature` reads the definition
+    under the Type's arguments (`SubstituteStoredOrigins` with `PerCallImages.Enclosing`). A value call's declared signature, A5's
+    contract, stays `ClosureContract`, the definition's terms, so TyCtxt.Retains reads the receiver environment and the result in one
+    set of terms.
+  - F1 stays for atoms no Origin argument carries (a maker's body-local Places, whose literal fails P8).
+  - Old path unchanged (K2, R4-M126 (vi)): its `SupportsType` rejects a Closure Type with Origin arguments, so in-maker forms dev's
+    default accepted are located `Unsupported_Kd` there (D2 reduction regressions, listed at landing).
+  - Rejected: body-local Places as arguments (q7 reported P8 twice); the mapped signature as the declared signature (A5 lost every
+    Loan); old-path `SupportsType` acceptance (accepts w1_raw_retain_bad on the default, D1).
+  - Raw-role ratchet: `Binding.ClosureInstances.cs` 1 -> 2 (EnclosingAtoms reads `.RawOrigin`; BU's agreement asked at the choice).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

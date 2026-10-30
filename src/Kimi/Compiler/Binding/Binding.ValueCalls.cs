@@ -4,9 +4,10 @@
 // - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
 //   (AcquireValueCallArguments), the per-call inputs solved and substituted, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
-//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a result naming,
-//   in a non-raw Origin position, an atom of a Closure that does not enclose the call is F1's located Unsupported_Kd (a raw layer's is
-//   PLAN G273's open issue); R1's condition is the old analysis's gate fact.
+//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages). A Closure value
+//   returned from a maker carries the maker call's images of the atoms its signature names as its Type's Origin arguments (DECISIONS
+//   R4-M159, ClosureSignature); a result still naming an atom of a Closure that does not enclose the call, one no Origin argument
+//   carries, is F1's located Unsupported_Kd; R1's condition is the old analysis's gate fact.
 // - Inputs: the call, the callee's call signature (TryCallable; a Closure Type's definition, BoundClosure.Of) and its receiver mode.
 //   Outputs: the call's plan (CallPlan.SetValue) and its result Type, or a failure at the call.
 // - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
@@ -225,10 +226,10 @@ public sealed partial class Binding
 
     // The atoms of Closures a value call's result names in its non-raw Origin positions (SPEC 15.8.2; DECISIONS R4-M152): its callee
     // Closure's call receiver ρ and call result, each of which the call substitutes, and F1's located limit, an atom of another Closure
-    // that does not enclose the call (its receiver's, an environment binding's or an input's): a Closure value returned from that
-    // Closure's call, whose signature names that Closure's atoms, which no representation maps to the receiver and arguments of the call
-    // that returned the value (the owner's 「2c-5 F1: (c')」). A raw layer's Origin is not read here (PLAN G273's open issue, with the
-    // raw role's sites, DECISIONS BU-24).
+    // that does not enclose the call and that no Origin argument of the returned Closure's Type carries: the maker's call substitutes
+    // the arguments (its receiver's, environment bindings' and inputs' atoms, raw layers included; DECISIONS R4-M159), so the limit
+    // remains for the atoms a literal's Type does not carry, a maker's body-local Places (the owner's 「2c-5 F1: (c')」). A raw layer's
+    // Origin is not read here (the raw role's sites, DECISIONS BU-24).
     private static CallAtoms CallAtomsOf(BoundType type, FunctionKoto closure, Koto call)
     {
         if (!type.CarriesAnyOrigin)
@@ -655,7 +656,7 @@ public sealed partial class Binding
     // complete call contracts; a result over the per-call inputs takes the arguments' Origins, as an ordinary call's does; one written
     // over a fixed Origin of the calling body stays as written. A Closure's result naming its call receiver ρ takes the receiver
     // acquisition's Origin and its call result atom the call's Unbound atom, each image built only where the result names its atom;
-    // one naming another Closure's atom is F1's located limit. R1's condition (`dependent`, or a per-call result naming the receiver)
+    // one naming another Closure's atom that no Origin argument carries is F1's located limit (R4-M159). R1's condition (`dependent`, or a per-call result naming the receiver)
     // is the old analysis's gate fact (Binding.ValueCallGate), written on the call's plan.
     private BoundType? ValueCallResult(
         InvocationKoto call,
@@ -674,7 +675,7 @@ public sealed partial class Binding
         var atoms = closure is null ? CallAtoms.None : CallAtomsOf(result, closure, call);
         if ((atoms & CallAtoms.Foreign) != 0)
         {
-            return this.Fail(call, BindingFailure.Unsupported); // F1's located limit (DECISIONS R4-M152): the owner's (c').
+            return this.Fail(call, BindingFailure.Unsupported); // F1's located limit (DECISIONS R4-M152, R4-M159): the owner's (c').
         }
 
         if (inputBinder is not null || atoms != CallAtoms.None)
