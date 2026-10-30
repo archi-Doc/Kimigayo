@@ -39,18 +39,37 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // The result target at whose position its call completes a waiting callable, through the forms that deliver it and the aggregates
-    // whose parts TakeWaiting passes (CallableParts); null when there is none.
+    // The result target at whose position its call completes a waiting callable: the first result target on the part path (PartParent).
     private static Koto? CallableTarget(Koto node)
     {
         var source = node;
-        while (source.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), source) || CallableParts(parent) is not null))
+        while (PartHolder(source) is { } holder)
         {
-            source = parent;
+            source = holder;
         }
 
         return ResultTarget(source);
     }
+
+    // The part path, down (SPEC 10.5.1, 14.4, 14.9.1): the part a form delivers, through parentheses, a label and an expression body
+    // (DeliveredOperand), the one key of a part's recorded kind.
+    private static Koto PartCore(Koto node)
+    {
+        while (DeliveredOperand(node) is { } operand)
+        {
+            node = operand;
+        }
+
+        return node;
+    }
+
+    // The part path, up: the next node from a part toward its argument, the form that delivers it or the Tuple or array literal holding
+    // it (PartHolder), else the result target it is a source of (ResultTarget: a selection body, a transfer's operand, a `do` body).
+    private static Koto? PartParent(Koto node) => PartHolder(node) ?? ResultTarget(node);
+
+    // The form delivering the part or the aggregate whose part it is (CallableParts), or null.
+    private static Koto? PartHolder(Koto node)
+        => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || CallableParts(parent) is not null) ? parent : null;
 
     // Each waiting callable of the part at an F of the owner, in source order: the part itself, a part of its aggregate at that part's
     // position (CallableParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position

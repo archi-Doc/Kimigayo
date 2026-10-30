@@ -523,7 +523,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            binding.argumentParts[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(PartKind.Literal, type);
+            binding.argumentParts[SourceRef.Of(PartCore(literal))] = new(PartKind.Literal, type);
             applied = true;
             if (binding.FitsLiteralPart(literal, type, this.Scope))
             {

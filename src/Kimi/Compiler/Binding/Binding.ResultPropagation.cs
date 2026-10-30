@@ -147,7 +147,7 @@ public sealed partial class Binding
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
             FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } => Awaiting.Callable,
-            _ when node.BindingState == BindingState.Unvisited && this.RecordedPart(KotoHelper.UnwrapParentheses(node)).Kind == PartKind.Case =>
+            _ when node.BindingState == BindingState.Unvisited && this.RecordedPart(node).Kind == PartKind.Case =>
                 Awaiting.Callable, // A Case result its call completes (P2).
             _ => node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) ? Awaiting.Literal : Awaiting.None,
         };

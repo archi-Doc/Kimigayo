@@ -86,8 +86,10 @@ public sealed partial class Binding
         }
     }
 
-    // The join of a control-flow part its call classifies by element (ClassifiedByCall), or null.
-    private Koto? ComposedJoin(Koto part) => this.KindOf(part) == PartKind.Join ? ControlFlowExpression(part) : null;
+    // The join of a control-flow part its call completes by its results: a Join (ClassifiedByCall), or a nested join that waits for its
+    // position (WaitingResult), walked as a result source's is (AddResultPart); null otherwise.
+    private Koto? ComposedJoin(Koto part)
+        => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
 
     // The kind of a position of several parts, a join's: Call when a part waits for its call (read from its BindingState until U1.2; see
     // ArgumentKinds' temporary note), Typed at the common Type of its typed parts (literals of it beside them), Aggregate when its parts

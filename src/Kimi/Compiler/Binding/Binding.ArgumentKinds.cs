@@ -68,7 +68,7 @@ public sealed partial class Binding
     // CompleteWaiting, TakeWaiting and IsWaitingPart keep); a Join keeps its own rows (FitArgument, CompleteWaiting).
     private static bool AwaitsCall(Koto part, PartKind kind)
         => kind == PartKind.Call ||
-            (kind is PartKind.Join or PartKind.Case or PartKind.Reference or PartKind.Function && KotoHelper.UnwrapParentheses(part).BoundType is null);
+            (kind is PartKind.Join or PartKind.Case or PartKind.Reference or PartKind.Function && PartCore(part).BoundType is null);
 
     // SPEC 10.5.1: the kind a part's form gives it: an unfitted literal, a Tuple or array literal or mixed range, an anonymous function, a
     // contextual Case, or Typed. A Join, a Call, a Reference and a Literal control-flow part are their producers' records instead
@@ -96,20 +96,21 @@ public sealed partial class Binding
     // combines the two.
     private PartKind KindOf(Koto part)
     {
+        part = PartCore(part);
         var kind = ClassifyPart(part);
         if (kind is PartKind.Literal or PartKind.Aggregate || part.BoundType is not null)
         {
             return kind;
         }
 
-        var recorded = this.RecordedPart(KotoHelper.UnwrapParentheses(part)).Kind;
+        var recorded = this.RecordedPart(part).Kind;
         return recorded == PartKind.Typed || (recorded is PartKind.Call or PartKind.Reference && part.BindingFailure != BindingFailure.None)
             ? kind : recorded;
     }
 
     // Whether the argument probe deferred the part (a recorded Call): it stays so after its completion, so its Type is never evidence
     // for an outer slot.
-    private bool WasDeferred(Koto node) => this.RecordedPart(KotoHelper.UnwrapParentheses(node)).Kind == PartKind.Call;
+    private bool WasDeferred(Koto node) => this.RecordedPart(node).Kind == PartKind.Call;
 
     // SPEC 10.5.1: whether the part is waiting, which the selected candidate completes: it awaits its call and is not a Join, which keeps
     // its own rows.
@@ -120,14 +121,15 @@ public sealed partial class Binding
 
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
-        => this.RecordedPart(KotoHelper.UnwrapParentheses(part)) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
+        => this.RecordedPart(part) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 WaitsForPosition, P3 DeferNestedCall, P4
-    // ClassifiedByCall), keyed by syntax identity for this pass; DefaultLiteral adds a Literal's default later.
-    private void RecordPart(Koto part, PartKind kind) => this.argumentParts[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(kind, null);
+    // ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass; DefaultLiteral adds a Literal's default later.
+    private void RecordPart(Koto part, PartKind kind) => this.argumentParts[SourceRef.Of(PartCore(part))] = new(kind, null);
 
     private ArgumentPart RecordedPart(Koto node)
-        => node.SyntaxOwner is { } owner && this.argumentParts.TryGetValue(new(owner.Module, node.SyntaxId), out var part) ? part : default;
+        => PartCore(node) is { SyntaxOwner: { } owner } core && this.argumentParts.TryGetValue(new(owner.Module, core.SyntaxId), out var part)
+            ? part : default;
 
     // Whether the part still waits for its call: deferred, not yet completed and with no failure of its own.
     private bool IsWaitingPart(Koto node) => node.BoundType is null && node.BindingFailure == BindingFailure.None && this.WasDeferred(node);
@@ -136,7 +138,7 @@ public sealed partial class Binding
     // results propagate the same way.
     private bool UnderArgumentProbe(Koto part)
     {
-        for (Koto? node = part; this.argumentProbe is not null && node is not null and not FunctionKoto; node = ResultTarget(node))
+        for (Koto? node = part; this.argumentProbe is not null && node is not null and not FunctionKoto; node = PartParent(node))
         {
             if (ReferenceEquals(this.argumentProbe, node))
             {

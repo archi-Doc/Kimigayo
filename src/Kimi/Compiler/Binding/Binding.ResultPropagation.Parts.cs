@@ -192,7 +192,7 @@ public sealed partial class Binding
         {
             var part = this.positionParts[i];
             holds = part is FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } ||
-                (part.BindingState == BindingState.Unvisited && this.RecordedPart(KotoHelper.UnwrapParentheses(part)).Kind == PartKind.Case);
+                (part.BindingState == BindingState.Unvisited && this.RecordedPart(part).Kind == PartKind.Case);
         }
 
         this.ClosePosition(start);
