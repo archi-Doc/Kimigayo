@@ -8454,6 +8454,8 @@ resumed by R4-M86 (2026-10-20).
     `ATransferOperationWritesNoRawLayerOfAnAddedValue` (failing before) and `AWholeValueEscapeKeepsByValueTwinsErringInTheInterim`
     (its default-pipeline source is the ledger's one (b) acceptance program of this entry, `classification.tsv` a5-writes), and
     R5-M129's test re-expected.
+  - Superseded in part by BU-67 (2026-10-30, the owner's 「(B)」 on G264 S1): the interim class and S2's forms are correct errors under SPEC
+    15.6's whole-holder text; rule A is SPEC's rule.
 
 - **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
   struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)
@@ -8832,6 +8834,22 @@ resumed by R4-M86 (2026-10-20).
   - Open: N3, ProjectionSpecification publishing an inherited binding's source path with the base subject, so the walk loses its
     inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
     a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
+
+- **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the BU planning
+  session after the owner's answer on G264 S1, verbatim 「(B)」, relayed by R4 and recorded in PLAN on dev 4a9159bc1; supersedes BU-52's
+  interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does not own follows the holder as Loans do), 15.6.4,
+  5.7.
+  - R4's SPEC drafting and its independent review (R4 notes `g264\spec-review-1.md`, `spec-analysis-2.md`) found that part-level raw reach
+    (option (A)) cannot make 15.6.4's `reset()` valid without a call-timing rule that accepts an unsound program (a callee rewriting a raw
+    Field to a fresh allocation and storing through it), so the whole-holder text stays and the example is corrected by R4's SPEC unit.
+  - Under that text the forms BU-52 recorded as the owner's interim (「暫定として認める (推奨)」, widened to the class 「類として認める」), viaOk, viaRefOk,
+    consumeDrop2Ok, via2Ok, deepQOk, enumBOk, optOk, genPLateOk, litDropOk, lit2DropOk, litObjOk and the class's other members, and S2's
+    forms (exIntoOk, exOldOk, exStructScopedOk, arrTup2Ok, and `append`'s source of arrConsumeOk and arrPlainOk) are correct Language
+    errors: MIR's verdict is SPEC's, and BU-52's rule A and its TransferWrites gate are SPEC's rules, not an interim. The owner's quotes
+    stay with BU-52.
+  - No code changes. PLAN G303 (part-level raw reach) closes without implementation and its row goes; no `Own` split per root storage Type
+    is needed. The test names and comments that say "interim" or "flip back" (MirBorrowsTest.Raw.cs, MirBorrowsTest.Referents.cs) change
+    with R4's 15.6.4 example unit.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -12317,6 +12335,8 @@ structure is recorded here by the unit that first implements it.
     - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
     - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).
   - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
+  - Superseded in part by BU-67: under SPEC 15.6 (the owner's 「(B)」, G264 S1, 2026-10-30) litDropOk, lit2DropOk and litObjOk are invalid;
+    MIR's E is the verdict.
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26, C lane; plan
   C9b, package C 3.2, PD2, PD3, PD21, K package 4.5 rows 2 and 6; SPEC 6.4.6, 7.7.4, 8.6.3, 22.5.1, 22.9.2, 22.9.4, 22.10.1, 22.10.2,
   22.10.5; the planning session's go and rulings Q1-Q8 on C9b's design, `c9b-design.md` and `c9b-go.md`; under R5-M18 form 2 (G:format),
