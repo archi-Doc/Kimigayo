@@ -6550,7 +6550,8 @@ resumed by R4-M86 (2026-10-20).
   open parts, so the table is still needed); a memo across queries (one `Apply` still walks its DAG as a tree); a cap on a Type's
   tree size (narrows accepted programs); waiting for R6 and R7; a per-query `Clear` (very many small substitution queries would pay
   the table's capacity); one stamp shared by nested calls through a field (exact only if every nested call closes in the same
-  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape).
+  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape;
+  superseded by BU-64, a per-query table).
   U2, the old analysis, under the owner's D5 exception of 2026-10-21 (the owner's choice 「例外を認める (推奨)」: performance fixes of
   its walks W1 and W5 with identical verdicts, the Origin-carrying shared Tuples of letr included; nothing else of the frozen path;
   they go with the old analysis at R6-check): `CleanupObservesBorrows` keeps one query per Place, its source and context fixed; its
@@ -8826,10 +8827,49 @@ resumed by R4-M86 (2026-10-20).
     ReplaceHolder reads the holder bit: a part holding no `during self` layer is its own image (Rebuild of unchanged components returns
     the interned part), which replaces its copy of HoldsHolder's rule; a declaration writes the parts holding one inline (no Type
     argument or projection states `during self`, InvalidOriginBinding_Kd), so they form a tree of the text's size and need no table.
+  - Cost: with BU-64's, G309's three units together.
   - Tests: TypeDagScalingTest's raw projection-chain rows (`AWrittenProjectionDagIsWalkedOncePerPart` at n = 40,
     `AWrittenTypeDagIsWalkedOncePerWrittenType` at n = 30) lose Explicit; `AHolderReadRebuildsOnlyThePartsHoldingTheLayer` (n = 40: an
     instance's holder Field at the end of the chain D_i, and a projection chain beside the layer). The summary's readers' verdicts are
     dev's (diagnostic snapshot and Unit runs on both pipelines).
+
+- **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of a
+  table for it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` item 4,
+  design review 1 (its prototype found 0 mismatches in 8,721,555 memo-versus-tree root checks over 847 focused tests and the census
+  forms) and re-check ACCEPT) SPEC 8.2, 8.4; R4's V16.
+  - Census: on `D1<ref/i32 during a>` ContractType/ContractTypeCore took 3,453,264 visits at n = 16 in Bind (7,035 root calls:
+    candidates, adaptations, constraint instantiations) and 4,231,059 in BuildMir (through TyCtxt.Instance -> Binding.StorageInstance
+    and TyCtxt.Retains), ApplyContractEnvironment once per ContractTypeCore visit. On a projection chain over a Type parameter in a
+    generic body (the guard path) the review counted 11,868 / 18,012 / 42,588 / 140,892 ContractTypeCore visits at n = 8 to 14.
+  - The rule: one outermost ContractType call is a query of `contractParts` (BU-19's TypeMemo), its scope, Self, normalize flag,
+    activeRequirementContract and normalizingAssociated's set fixed. ContractTypeCore's component loop continues it (ContractPart), a
+    component with components recorded (BU-55: a leaf is cheaper to rewrite again, a root is met once). The normalizations under a
+    guard push (ProjectionSpecification, the specified Type's and a Type-identity fact's ContractType) enter afresh: nested queries.
+    The associated collection's batch keeps its place at every call (BatchedContractType).
+  - BU-19's rejection re-examined. Its text: "a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the
+    gate suffices on every shape)". Neither reason holds. (i) The guard's set changes only by a push after a part's component loop,
+    popped before that part returns, and what runs under the push is a nested query; so within one query the set is the one the query
+    began with, and an answer is a function of the part and the query's fixed inputs. The writers of activeRequirementContract and
+    collectingAssociated (call binding, associated inference) restore them and run inside no query's component walk. A memo across
+    queries stays rejected. (ii) The gate passes every Origin-carrying part (the census above). This supersedes that clause of BU-19;
+    the rest of BU-19 stands.
+  - Exact as SubstituteType's table is: each answer is the one the recursion gives (the review's prototype compared them root by root),
+    and a nested query can only evict outer entries, which are then recomputed.
+  - Open limit (N2): ApplyContractEnvironment runs once per distinct part, and under a conformance path each run is a StoredType query
+    over the part's subtree; the guard path runs one nested query per normalized level. Both stay O(sum of subtree sizes), quadratic in
+    distinct parts (the review's prototype: +50 / +58 / +66 ContractTypeCore visits per +2), short of BU-55's linear rule; the rows
+    below pass in milliseconds at n = 40, and no row reaches a shared part through a conformance path.
+  - Tests: TypeDagScalingTest `InstanceChainWalksAreLinearInDistinctParts`'s `ref` row (n = 40: the summary's readers, the published
+    result and a Closure with two captures as well) and `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); with
+    the table undone both exceed the runner's 120 s timeout.
+  - Cost of G309's three units (BU-63, BU-64; unpinned A/B from one folder, full JIT, A = dev 1f2d7dea6; two other sessions' heavy runs
+    were registered, so no pinned timing): cold Bind +44,776 / +44,808 / +45,808 B and BuildMir +14,904 / +14,904 / +30,472 B on Hello /
+    Milestone 26 / Milestone 27, the heap with the compilation alive +35,024 / +35,032 / +45,504 B, warm Bind 0 B. Entries per
+    compilation: originSummaries 142 / 143 / 175 (12,224 / 12,256 / 13,256 B, byte-exact), contractParts 159 / 159 / 176, rewrittenParts
+    121 / 121 / 143, visitedParts 161 / 161 / 181 (dev 159 / 159 / 178). Recording a query's root too gave 737 / 743 / 833 contractParts
+    entries and +93 KB cold Bind on Hello, so roots are not recorded. Cold Bind (one run each after a warm-up): PLAN's `ref` form 49 /
+    150 / 2,457 ms at n = 12 / 16 / 20 on dev, 14 to 17 ms up to n = 40; the two-capture form 206 ms / 3.3 s / 73.6 s at n = 12 / 14 /
+    16 on dev, 19 ms at n = 40; the raw chain (`during s`) 12.2 s at n = 24 on dev, 14 ms at n = 40.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
