@@ -1179,7 +1179,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
 - **R4-M34** (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
   step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause; its backward ring
-  superseded by R4-M65) MIR dataflow, forward and
+  superseded by R4-M65, its backward clause by R4-M158) MIR dataflow, forward and
   backward. `IMirFlow.Join(target, incoming)` is the transfer's join and says whether the state grew: A1 keeps union (`MirDataflow.Union`),
   A5's Loan sets will join by node union. `MirDataflow.Begin` decides each chain's phase once per body, P1 where `MirReach`'s runtime walk
   from the entry reaches it, else P2, and records each block's predecessor edges; `Forward` keeps R4-M20's phases, and A4 reads
@@ -4826,6 +4826,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and R4-M145 S2 reserved; R4-M140 the last on dev).
   - R4-M148: a Closure contract has no referent stores, so its receiver takes W; a Closure argument a 4.6–4.9 operation calls inside
     itself is composed at the caller through that Closure contract (this family).
+  - Superseded in part under BU-67's reading (2026-10-30, the owner's 「(B)」 on G264 S1): the known false errors above
+    (appendDrop2Ok, clearDrop2Ok, clearDropOk2, clearObjOk) are correct errors by the same whole-holder text of SPEC 15.6; the guard
+    and its removal condition (PLAN G264) stand.
 - **R4-M145 One consumed-by-value rule: ClosureEffects reads the Adjust rule, and a discarded Place's bare acquisition is its plan
   row (consumed-by-value S2)** (2026-10-26; R4's lane A under the owner's design B with the review's C1–C7 (OQ1 (a), 2026-10-25) and
   the owner's discard answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2
@@ -5790,6 +5793,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
     warm 0 B.
   - Open: `Encloses` costs O(distinct (Type, W) of the Place's Type) per use; a per-Place memo, as `ownAt` has, would make it per
     distinct Place (design review 1's N4).
+- **R4-M158 G305, the backward dataflow is the forward one's transpose: a value used on a Never form's assumed continuation is live
+  before the form** (2026-10-30; the R4 planning session's design `r4-notes\g305\design.md` Option 1; Major; the owner, asked whether
+  R4-M34's backward clause may be superseded and the two MirDataflowTest expectations changed, answered 「Okです」 (2026-10-30,
+  verbatim)) SPEC 14.10.3, 15.6, 15.6.7 (PLAN G305).
+  - Cause: `us[take(x@move)] = x@ref`, `take` of Type Never, was accepted on every pipeline. The MIR is right: the Never call's
+    CheckTarget starts the assumed continuation, which uses the secured `x@ref` (SPEC 13.7.1 step 1). A5's holder liveness
+    (`MirDataflow.Backward`) let a P1 chain join only its runtime successors, so a use on the continuation kept nothing live at the
+    Move, and let a P2 chain join every successor, so a use after a P1 join kept a Loan live on a continuation flowing into the join
+    (`if c` { `take("t")`; `consume(x@move)` }; `use(r)`: a MIR-only false error). The backward edges were not the forward ones
+    reversed.
+  - Rule: one edge rule, `MirDataflow.Flows`: a state flows from chain h along edge i into head s where s is P2, or h is P1 and i a
+    runtime edge (SPEC 14.10.3: an assumed continuation continues from its Never form's state, where every check applies; an item with
+    a real incoming path uses only real paths). `Forward`'s phase solve and `Backward`'s `Unwind` both read it; the phase solve keeps
+    its frozen-P1 shortcut. Every Never form of 14.10.3 shares it (a Never call, also in a `defer`, `$abort`, a transfer, `loop`
+    without exit, a diverging operand), and so does every check that reads holder liveness: Loan conflicts and reservations (`k.bump(lose(k@move))`:
+    `CallReservationConflict_Kd`). A Drop on an assumed continuation observes like any other cleanup (SPEC 14.10.3: "Cleanup is
+    checked the same way"; 15.6.6: what destruction may observe must be valid there; its access is R4-M57's one rule `Dropping`,
+    `Observe` where its case Type observes and its A2 group's verdict is not Elide, no group: the case Type alone; R4-M33 superseded
+    R4-M24's "observes nothing"), so `Flows` now also keeps a Loan such a Drop observes live before the Never form:
+    `let g = Guard.init(x@ref)`, `g`'s Type with a `drop`, then `x = "z"` before `take("t")` or inside a `loop` without exit, is an
+    error at the write (it was valid on A5). A4's effect rule (R4-M6a, `MirEffects.Dropped`: a Drop only the checks reach runs no destructor) is
+    unchanged: it concerns what runs.
+  - Supersedes R4-M34's backward clause ("a P1 chain's runtime successors only and a P2 chain's every successor"). Its reason, "uses on
+    continuations never merge into runtime paths", holds for P1 heads, not for a P2 continuation, which by SPEC 14.10.3 continues from
+    its P1 predecessor's state.
+  - Rejected: joining every successor in both phases (false errors where a transfer's continuation flows into a P1 join, and keeps the
+    false error above); a builder use of the secured operands before each diverging terminator (a clause per form, missing uses in
+    later statements, the two directions still disagreeing); a forward set of invalidated Loans checked at the use on the continuation
+    (a second conflict mechanism for one rule).
+  - Tests (each changed expectation SPEC-required and owner-approved): `MirDataflowTest`'s reference rule is the transpose;
+    `CheckOnlyUsesKeepNothingLiveOnRuntimePaths` became `ValuesStayLiveIntoACheckOnlyContinuation` (x read after a `return` is live at
+    the entry; x read after a conditional `return` is live in no block only the checks reach); `MirBorrowsTest`'s
+    `ALoanStaysLiveIntoANeverFormsContinuation` (each Never form above, `defer` and the observing Drop included, an error at its
+    reachable twin's location; valid counterparts, a holder without a `drop` and one moved away before the write among them).
+  - Old path: such forms without an unreachable local use stay accepted until R6-check (STATUS, Unreachable code).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -8482,7 +8520,8 @@ resumed by R4-M86 (2026-10-20).
     (its default-pipeline source is the ledger's one (b) acceptance program of this entry, `classification.tsv` a5-writes), and
     R5-M129's test re-expected.
   - Superseded in part by BU-67 (2026-10-30, the owner's 「(B)」 on G264 S1): the interim class and S2's forms are correct errors under SPEC
-    15.6's whole-holder text; rule A is SPEC's rule.
+    15.6's whole-holder text; rule A is SPEC's rule. Its test is now
+    `MirBorrowsTest.ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn` (R4's 15.6.4 example unit).
 
 - **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
   struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)
@@ -8754,6 +8793,38 @@ resumed by R4-M86 (2026-10-20).
     keeping the per-read check with a re-entry set (the order-dependent records above); rounds until the limit itself (the cause
     object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
     either sweep order (a four-cycle does under alternation).
+- **BU-61 A projection use is published under its Type and the scope that judges it, `Binding.ProjectionUseOf`; a check that fails
+  only because its Type is a projection rests on the use judged on its own scope chain, at publication (`AddPendingPrerequisite`)**
+  (2026-10-30; PLAN G293's BU part, bu78 fix rounds 1 to 3 on the review's B1 and the re-checks' first findings; the planning session's
+  and the owner's (round 3: 「すべて推奨どおり」) decisions after the addenda `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g293\design.md`
+  A1–A16; class Minor) SPEC 23.1.2.
+  Binding keeps a rejected projection as the binding's Type (R5-M155's (c)), so a capture of it (`[t@move]`, `[t]`) failed with a
+  located Unsupported_Kd without prerequisite, beside the rejection it depends on.
+  - Fact: `BindAssociatedProjection` (Type formation) publishes each projection use under its interned Type and its
+    `ConstraintScope`, the scope whose premise chain its conformance check (`ValidateConformances`' final projection loop) judges it
+    in; the first use per pair is kept (`projectionForms`, cleared with `projectionUses`; reused storage). That check owns the record
+    that rejects it, decided after the bodies, so a reader during the bodies sees the use Unvisited or Resolved and can only name it.
+    One key for every projection: a closed subject needs no other case.
+  - Reader: `Capture`'s environment-Type check takes the use judged on `ConstraintScope(closure)`'s Parent chain, innermost first (the
+    chain whose facts the solver reads, `Supply`), and records it as the closure's part prerequisite with the closure's first failure.
+    No exact key matches: a parameter's or local's Type is formed in the function's or block's scope, the capture sits in the
+    closure's. Innermost first is required: an inner scope's premise (a method clause on its struct's `T`) can validate what an outer
+    formation (the struct's Field) rejects. The walk stops, with no prerequisite, at the first scope that adds premises (its own facts
+    or an Invalid environment) without forming the Type: premises only grow inward, so a use found before any such scope is judged
+    under the capture's own premises and its rejection is the capture's, while one beyond it may be rejected under fewer premises (a
+    Field read in a method whose clause or conditional block validates it: the re-check's q01, q07f). A scope off the chain (a sibling
+    method's, a sibling closure's) is never read. With no use before the stop, no prerequisite is recorded and the record stays
+    direct (a call result, a Field read formed elsewhere or past a premise: an extra record, never a lost one).
+    `AddPendingPrerequisite` keeps the first part whatever its state now (AddPrerequisite drops a part
+    already Resolved), and `UnresolvedPart` reads it at publication: derived when the use was rejected (a parameter, an annotated
+    local, `let u = t`, a primitive, Tuple or Type parameter subject), direct when it resolved (an abstract `T.Tag`). It replaces
+    bu78's `TypeSource` there, which stays only as ConsultTypeSource's mapping for a binding without a Type (G260).
+  - Open: the annotated local's initializer TypeMismatch_Kd (kept by R5-M155) also fails only because the Type names no Type; its fix
+    reads this fact (PLAN G293). Rejected: one use per interned Type (fix round 1: a struct's `T` is shared by methods with different
+    premises, so a sibling's rejection removed a valid scope's independent record, the re-check's r01 and r11); the binding's written
+    Type as the fact (bu78: misses `let u = t` and the primitive and Tuple subjects, whose bindings rest on no failed written part);
+    re-running the conformance proof at the capture (a consumer re-running a check); Binding's null for a rejected projection
+    (R5-M155 (c)).
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (2026-10-30; PLAN G206 (7),

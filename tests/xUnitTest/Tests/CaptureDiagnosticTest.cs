@@ -27,6 +27,11 @@ public class CaptureDiagnosticTest
 
     private const string Main = "\npublic func main() => ()";
 
+    private const string StructOfT = "struct S<T>\n    var v: i32\n";
+
+    // A method whose own premise validates the projection it captures; the capture is Unsupported for its own reason.
+    private const string ValidatedCapture = "    public func good(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        T is Iter<i32>\n        let c = func [t@move] () -> () => ()\n        return";
+
     // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
@@ -163,20 +168,59 @@ public class CaptureDiagnosticTest
 
     // SPEC 7.7.2, 23.1.2 (PLAN G260): an omitted list captures no binding whose Type failed, and the use rests on the binding's
     // declaration, as a written entry does: a local's failed initializer, a loop's failed iterable, a parameter's failed Type, also
-    // through an enclosing omitted list. A use that an explicit list does not hold stays its own error. Each twin writes `valid`.
+    // through an enclosing omitted list. A use that an explicit list does not hold stays its own error. Each twin writes `valid`. A
+    // written entry of a parameter whose Type failed rests on that Type (PLAN G293; it rested on the function, an unresolved link
+    // published as PrerequisiteUnavailable_Kd at the binding).
     [Theory]
     [InlineData("func g() -> i32\n    let z = MISSING\n    let w = func () -> i32 => z\n    return w()", "missing", "1", "", "")]
     [InlineData("func g() -> i32\n    for i in MISSING\n        let w = func () => i\n        _ = w()\n    return 0", "missing", "0..3", "", "")]
     [InlineData("func g(p: MISSING) -> i32\n    let w = func () -> i32 => p\n    return w()", "Missing", "i32", "", "")]
     [InlineData("func g() -> i32\n    let z = MISSING\n    let w = func () -> i32\n        let u = func () -> i32 => z\n        return u()\n    return w()", "missing", "1", "", "")]
     [InlineData("func g() -> i32\n    let z = MISSING\n    let y = 1\n    let w = func [y] () -> i32 => z\n    return w()", "missing", "1", " | InvalidCaptureBinding_Kd z", "InvalidCaptureBinding_Kd z")]
+    [InlineData("func g(p: MISSING) -> i32\n    let w = func [p] () -> i32 => 1\n    return w()", "Missing", "i32", "", "")]
     public void AnOmittedListCapturesNoBindingWhoseTypeFailed(string source, string failed, string valid, string other, string twin)
     {
         Assert.Equal($"UnresolvedBinding_Kd {failed}{other}", Records(source.Replace("MISSING", failed, StringComparison.Ordinal) + Main));
         Assert.Equal(twin, Records(source.Replace("MISSING", valid, StringComparison.Ordinal) + Main));
+    }
 
-        static string Records(string source)
-            => string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
+    // SPEC 23.1.2 (PLAN G293, DECISIONS BU-61): a projection whose use's conformance check rejects it names no Type, and Binding keeps it
+    // as the binding's Type (R5-M155). A capture that fails on it rests on that use whatever carries the Type: `[t@move]`, `[t]`, an
+    // annotated local, `let u = t`, and a primitive, Tuple or Type parameter subject publish only the rejection (a located Unsupported_Kd
+    // at the entry beside it before). A capture Unsupported for its own reason stays: an abstract projection that resolves, in a list
+    // after or before the dependent entry, in another closure, or in a local whose initializer failed. Only a formation judged on the
+    // closure's own scope chain counts, innermost first: a sibling method's rejection of the same projection, before or after the
+    // capture's method, as a parameter or a result, and a Field's rejection outside the method's premise leave the capture of a projection
+    // the method validates its own Unsupported_Kd (they removed it in fix round 1), and so does a scope that adds premises without
+    // forming the Type: a Field read under the method's own premise or a conditional block's keeps its Unsupported_Kd (fix round 2
+    // removed it), as when the method forms the Type or the Field is valid. HOLE takes `bad`, then `good`.
+    [Theory]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f() -> ()\n    let t: HOLE = true\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | TypeMismatch_Kd true", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let u = t\n    let c = func [u@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "i32.(Iter<i32>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd i32.(Iter<i32>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "(i32, u8).(Iter<i32>).Tag", "B.(Iter<i32>).Tag", "UnprovenConstraint_Kd (i32, u8).(Iter<i32>).Tag", "")]
+    [InlineData("func f<T>(t: HOLE) -> ()\n    T is Iter<i32>\n    let c = func [t@move] () -> () => ()\n    return", "T.(Iter<u8>).Tag", "T.(Iter<i32>).Tag", "UnprovenConstraint_Kd T.(Iter<u8>).Tag", "Unsupported_Kd t@move")]
+    [InlineData("func f<T>(t: HOLE, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [x@move, t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(t: HOLE, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [t@move] () -> () => ()\n    let d = func [x@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "1", "y", "TypeMismatch_Kd 1 | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "missing", "y", "UnresolvedBinding_Kd missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func h<T>(a: T.Tag) -> T.Tag\n    T is Iter<i32>\n    return a\nfunc f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "h<T>(y, y)", "h<T>(y@move)", "NoApplicableOverload_Kd h<T>(y, y) | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "y.missing", "y", "UnresolvedBinding_Kd y.missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return\n", "", "UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData(StructOfT + ValidatedCapture + "\nHOLE", "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return", "", "Unsupported_Kd t@move | UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag", "Unsupported_Kd t@move")]
+    [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad()\n", "", "UnprovenConstraint_Kd bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad() | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE" + ValidatedCapture, "    var v: T.(Iter<i32>).Tag\n", "    var v: i32\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t: T.(Iter<i32>).Tag = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\n    T is Iter<i32>\n    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\nHOLE        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "        T is Iter<i32>\n", "Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("contract Named\n    func name(self: ref/Self) -> string\nstruct S<T>\nHOLE    var w: T.(Iter<i32>).Tag\n    Self is Named when T is Iter<i32>\n        public func name(self: ref/Self) -> string => \"s\"\n        public func good(self: ref/Self) -> ()\n            let t = self.w\n            let c = func [t@move] () -> () => ()\n            return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var w: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    public void ACaptureOfARejectedTypeRestsOnIt(string body, string bad, string good, string records, string twin)
+    {
+        const string Tag = "contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n";
+        Assert.Equal(records, Records(Tag + body.Replace("HOLE", bad, StringComparison.Ordinal) + Main));
+        Assert.Equal(twin, Records(Tag + body.Replace("HOLE", good, StringComparison.Ordinal) + Main));
     }
 
     // SPEC 7.7.3, 8.10: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in
@@ -254,4 +298,8 @@ public class CaptureDiagnosticTest
     [InlineData("Receivers", "func apply<F>(f: F) -> string\n    F is Callable<owner, () -> string>\n    return f@move()\nfunc count<F>(f: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\nlet text = \"abc\"\nlet take = func [text@move] () => text@move\nConsole.writeLine(apply(take@move))\nlet start = 0\nvar step = func [var start] () -> i32\n    start += 1\n    return start\nlet first = count(step@uniq)\nlet second = count(step@uniq)\nrequire first == 1 and second == 2 else => $abort(\"count\")", "abc\n")]
     public void PermittedCapturesAndReceiversRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("CaptureDiagnostic" + name, source, stdout);
+
+    // Each record as its code and the source text it is located at.
+    private static string Records(string source)
+        => string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }

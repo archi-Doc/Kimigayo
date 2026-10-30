@@ -543,19 +543,16 @@ public sealed partial class MirBorrowsTest
                     y = 5
                 """));
 
-    // The interim of DECISIONS BU-52 (the owner's 「暫定として認める (推奨)」, then 「類として認める」): each form here uses `slot` before
-    // `y = 5` and is valid by the parts its raw layers address, yet errs on the MIR, as dev's viaRefOk (the borrowed twin) does. The class
-    // is A5's whole-value Φ_E at calls (DECISIONS R4-M120, departure 1): where a call's row writes through an argument whose value carries
-    // Φ_E (here an untied constructor's result, Plain.init's, Writer.init's or Bx.init's, whose raw Field the caller rewrote afterwards),
-    // W reaches E at its first step, and E receives every input the row retains, so it keeps every chain the whole value carries, y's
-    // Loan with it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk in an enum's
-    // payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each flips back to valid when part-level raw reach
-    // lands (PLAN G303, G264 U2), except that arrConsumeOk and arrPlainOk have a second Φ_E source: `append`'s receiver store is untied
-    // (rule A at the element storage it writes), so they also wait for that row's reading (PLAN G264's arrAppendOk item, R4's U2), by
-    // which they flip back or are correct errors. The default pipeline's analysis reports nothing: its old analysis reads no retention,
-    // and the MIR analyses' problems are unpublished until H3 and decide acceptance only from H5 (DECISIONS R5-M152).
+    // SPEC 15.6 (the owner's 「(B)」 of 2026-10-30, PLAN G264 S1; DECISIONS BU-67): storage the body does not own follows the whole
+    // holder, so a value an untied constructor made (Plain.init's, Writer.init's or Bx.init's result) reaches it through every raw Field,
+    // also after the caller rewrote one. A call that writes through such a value stores there every chain its row retains, y's Loan with
+    // it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk; viaRefOk through a borrow) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk
+    // in an enum's payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each is a correct error at `y = 5`
+    // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
+    // names keep their earlier suffix. The default pipeline's analysis reports nothing: its old analysis reads no retention, and the MIR
+    // analyses' problems are unpublished until H3 and decide acceptance only from H5 (DECISIONS R5-M152).
     [Fact]
-    public void AWholeValueEscapeKeepsByValueTwinsErringInTheInterim()
+    public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
         const string Source = WriterShapes + ByValueShapes + """
             func usep<T>(p: raw/T) => ()

@@ -255,7 +255,8 @@ public sealed partial class InstanceCollectorTest
     // R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in the clause and the Block form, which
     // the VTable leaves undecided (before: InternalInvariant_Kd at the creation). DECISIONS R5-M155 (PLAN G293): a local, a parameter (with a
     // generic subject), an Array's element (its glue's) and a captured value typed by a qualified projection that names no Type after
-    // Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw, CheckFaulted_Kd).
+    // Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw, CheckFaulted_Kd); the capture rests on
+    // that error (PLAN G293's BU part; before: Binding's direct Unsupported_Kd at the entry).
     public static TheoryData<string, string, string, string> RejectedCases
     {
         get
@@ -376,7 +377,7 @@ public sealed partial class InstanceCollectorTest
                 { "elementProjection", IterB + "func g(a: Array<IB.(Iter<u8>).Tag>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
                 {
                     "capturedProjection", IterB + "func g(t: IB.(Iter<u8>).Tag) -> ()\n    let c = func [t@move] () -> () => ()\n    return\n",
-                    "UnsatisfiedConstraint_Kd Unsupported_Kd", string.Empty
+                    "UnsatisfiedConstraint_Kd", string.Empty
                 },
             };
         }
