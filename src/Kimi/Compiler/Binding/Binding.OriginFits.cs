@@ -145,7 +145,7 @@ public sealed partial class Binding
 
     // The position search of one fit or one relation (SPEC 15.6.1, 15.6.5; DECISIONS R4-M133).
     // - Responsibility: the first, or with `all` every, Origin position whose relation fails, in the order of the outer borrow layer, the
-    //   Semantics target, then slots and Type arguments, by the variance FitsTypeCore and CheckTypeUse compose (FailedOriginRelation,
+    //   Semantics target, then slots and Type arguments, by the variance RelationWalk and CheckTypeUse compose (FailedOriginRelation,
     //   FailedOriginPart); for a meet at the longer end, the chain of a failing operand, Refuted before Unknown (FailedChain,
     //   AddFailingChains, FailingOperand, OriginPartFails).
     // - Inputs, its constant context: the use, the body that formed the relation (whose classes and judge decide its chains: an
@@ -162,7 +162,7 @@ public sealed partial class Binding
         // Type arguments, whose relation fails; `==` at an invariant position. It is Refuted when the longer end is a body-local finite
         // Origin and the shorter end a fixed one, and Unknown otherwise. With `all`, every failing position, and every failing operand of
         // a meet at its longer end, is added in that order (SPEC 15.6.1: every failed chain is reported).
-        // `polarity` is the variance of the compared position within the fitted Type, composed as FitsTypeCore and CheckTypeUse compose
+        // `polarity` is the variance of the compared position within the fitted Type, composed as RelationWalk and CheckTypeUse compose
         // it (SPEC 15.3.5): a contravariant position names the reverse relation, and an invariant or unused one an `==`, also for every
         // position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
         internal OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, OriginVariance polarity, int depth = 0)

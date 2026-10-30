@@ -66,23 +66,38 @@ public sealed partial class Binding
     // probe classified (a control-flow part, a deferred nested call) by its recorded fact.
     private ArgumentKind KindOf(Koto part)
     {
+        var kind = this.ClassifyPart(part);
+        if (kind is ArgumentKind.Literal or ArgumentKind.Composite)
+        {
+            return kind;
+        }
+
+        var recorded = part.BoundType is null ? this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind : ArgumentKind.Typed;
+        if (recorded == ArgumentKind.Composite || kind == ArgumentKind.Waiting)
+        {
+            return recorded == ArgumentKind.Composite ? ArgumentKind.Composite : ArgumentKind.Waiting;
+        }
+
+        return recorded == ArgumentKind.Literal ? ArgumentKind.Literal : ArgumentKind.Typed;
+    }
+
+    // SPEC 10.5.1: the one classifier of an argument part by its form and binding state: an unfitted literal is Literal, a Tuple or
+    // array literal or a mixed range Composite, an anonymous function or a function reference not yet bound, a contextual Case not yet
+    // bound and a part the probe deferred Waiting, every other part Typed.
+    private ArgumentKind ClassifyPart(Koto part)
+    {
         if (IsUnfittedLiteral(part))
         {
             return ArgumentKind.Literal;
         }
 
-        if (IsAggregateArgument(part) || (part.BoundType is null && this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind == ArgumentKind.Composite))
+        if (IsAggregateArgument(part))
         {
             return ArgumentKind.Composite;
         }
 
-        if (IsWaitingCallable(part) || (NeedsEnumContext(part) && KotoHelper.UnwrapParentheses(part).BoundType is null) || this.IsWaitingPart(part))
-        {
-            return ArgumentKind.Waiting;
-        }
-
-        var literal = part.BoundType is null && this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind == ArgumentKind.Literal;
-        return literal ? ArgumentKind.Literal : ArgumentKind.Typed;
+        return IsWaitingCallable(part) || (NeedsEnumContext(part) && KotoHelper.UnwrapParentheses(part).BoundType is null) || this.IsWaitingPart(part)
+            ? ArgumentKind.Waiting : ArgumentKind.Typed;
     }
 
     // Whether the argument probe deferred the part (a nested call or construction only an outer expectation could type, or control flow

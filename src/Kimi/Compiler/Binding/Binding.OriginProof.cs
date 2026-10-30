@@ -464,7 +464,7 @@ public sealed partial class Binding
         return this.ProvesOriginOutlives(longer, shorter, use, comparison, condition);
     }
 
-    // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
+    // SPEC 10.1: the Origin part of a fit (RelationWalk). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `comparison` is the Callable comparison the
     // fit is part of, whose premises its proof assumes.
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
