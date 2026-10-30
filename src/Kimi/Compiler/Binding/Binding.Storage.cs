@@ -514,15 +514,22 @@ public sealed partial class Binding
                     // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
                     // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
                     var originDeclaration = this.BeginOriginDeclaration(member, scope);
-                    var payloadsBound = true;
+                    Koto? failedPayload = null;
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
-                        payloadsBound &= this.BindType(payload.Operands[j], scope) is not null;
+                        if (this.BindType(payload.Operands[j], scope) is null)
+                        {
+                            failedPayload ??= payload.Operands[j];
+                        }
                     }
 
-                    if (payloadsBound)
+                    if (failedPayload is null)
                     {
                         this.CompleteOriginDeclaration(originDeclaration);
+                    }
+                    else
+                    {
+                        RestPendingOn(originDeclaration, failedPayload);
                     }
 
                     for (var j = 0; j < payload.Operands.Length; j++)

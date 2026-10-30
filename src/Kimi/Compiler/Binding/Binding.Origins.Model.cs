@@ -483,6 +483,15 @@ public sealed partial class Binding
 
         internal Koto? Failure { get; set; }
 
+        // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
+        // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
+        // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
+        internal Koto? PendingFailure { get; set; }
+
+        // The clauses that bound in a declaration whose contract failed: never premises of its uses (the contract is unavailable), only of
+        // the declaration judge's (ExtractOriginPremises' R1 while judgingDeclarationRows).
+        internal List<OriginRelation>? RejectedRelations { get; set; }
+
         internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
 
         internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
@@ -499,6 +508,8 @@ public sealed partial class Binding
         {
             this.State = 0;
             this.Failure = null;
+            this.PendingFailure = null;
+            this.RejectedRelations?.Clear();
             this.Scope = null;
             this.Body = default;
             this.Sets.Clear();
