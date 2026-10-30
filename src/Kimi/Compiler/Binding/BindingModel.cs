@@ -348,6 +348,12 @@ public sealed class BindingSymbol
 
     internal bool HeaderBound { get; set; }
 
+    /// <summary>Gets or sets a declaration container's published closed-clause check (Binding.SourceStates): Unknown while pending or under check.</summary>
+    internal ConstraintProof SourceState { get; set; }
+
+    /// <summary>Gets or sets what <see cref="SourceState"/> rests on (an Unknown's limit, an Error's cause).</summary>
+    internal ICheckCause? SourceCause { get; set; }
+
     internal int Slot { get; set; }
 
     internal bool MutableCapture { get; set; }

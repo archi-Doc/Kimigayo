@@ -34,7 +34,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "handle: obj/Holder, slice: Slice<i32>, view: UniqSlice<i32>, loan: Loan<ref/i32 during a>, " +
             "iterator: ArrayOwningIterator<ref/i32 during a>, action: () -> (), layer: s/T, nest: Nest<i32>)\n    s is owner or ref\n" +
             "    return\n");
-        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("scalar", false), ("text", false), ("numbers", false), ("plain", false), ("raw", true), ("chain", false), ("tree", false),
                 ("forest", true), ("rows", false),
@@ -69,7 +69,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "refKept: RefKept<ref/i32 during a>, uniqKept: UniqKept<ref/i32 during a>, owned: Owned<ref/i32 during a>, " +
             "ownedUniq: Owned<uniq/(ref/i32 during a) during a>, cursor: Cursor<ref/i32 during a>)\n" +
             "    s is owner or uniq\n    return\n");
-        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("borrow", MirWrites.None), ("scalar", MirWrites.None), ("writer", MirWrites.None), ("shared", MirWrites.None),
                 ("unique", MirWrites.Through), ("array", MirWrites.Through), ("option", MirWrites.Through), ("slot", MirWrites.Through),
@@ -100,7 +100,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             $"mixed40: (uniq/(ref/i32 during a) during a, uniq/{Nested(40)} during a), shared40: ref/{Nested(40)}, unique10: uniq/{Nested(10)}, " +
             $"w: Wrap<raw/u8 during x>, limitDeep40: (Wrap<raw/u8 during x>, uniq/{Nested(40)} during a), " +
             $"limitDeep10: (Wrap<raw/u8 during x>, uniq/{Nested(10)} during a))\n    return\n");
-        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("x", MirWrites.Through), ("unique40", MirWrites.Deep), ("value40", MirWrites.Deep), ("mixed40", MirWrites.Through),
                 ("shared40", MirWrites.None), ("unique10", MirWrites.None), ("w", MirWrites.Limit), ("limitDeep40", MirWrites.Limit),
@@ -126,7 +126,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         var deep = Nested(Unique, 40);
         var shallow = Nested(Unique, 8);
         var (body, c) = Probe($"func probe(x: {Unique}, deepFirst: ({deep}, {shallow}), shallowFirst: ({shallow}, {deep}))\n    return\n");
-        var walked = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("x", MirWrites.Through), ("deepFirst", MirWrites.Through), ("shallowFirst", MirWrites.Through)],
             Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], out var writes) ? writes : MirWrites.None)).ToArray());
@@ -153,7 +153,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             $"func probe<T>(x: uniq/(ref/i32 during a) during a, {string.Join(", ", observed.Concat(guarded).Select(static x => $"{x.Name}: {x.Type}"))})\n" +
             "    return\n");
         var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
-        var walked = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             observed.Concat(guarded).Select(static x => (x.Name, x.Answer)).ToArray(),
             Parameters(body).Skip(1).Select(x => (x.Name, x.Name[0] == 'o' ? Observed(x.Type) : Guard(x.Type))).ToArray());
@@ -201,7 +201,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "    var h = Wrap2c3.init(u@follow@raw@raw/u8)\n    let limit = func [h@move] () => ()\n" +
             "public func main() => ()\n");
         Assert.Empty(c.Binding.Issues);
-        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             ["Through", "None", "None", "no Loan", "Through", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
@@ -234,7 +234,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "plain: Outer<raw/u8>, plainA: Hold<raw/u8>, plainE: Opt2<raw/u8>, st: Outer<raw/u8 during static>, dp: Der<raw/u8>, " +
             "ds: DerS)\n" +
             "    return\n");
-        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         var members = new List<RawMember>();
         Assert.Equal(
             [("x", MirWrites.Through), ("q", MirWrites.None), ("w", MirWrites.Limit), ("wr", MirWrites.Through), ("o", MirWrites.Limit),
@@ -283,7 +283,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "top: (Outer<raw/u8>, Holder2), outer: Outer<raw/u8>, wrap: Wrap<raw/u8>, m2: M2<raw/u8>, ps: PS<raw/u8>, pu: PU<raw/u8>, " +
             "hold: Hold<raw/u8>, opt2: Opt2<raw/u8>, derX: DerX<raw/u8>, arr: Array<raw/u8>, ow: Outer<Wrap<raw/u8>>, box2: Box2<raw/u8>)\n" +
             "    return\n");
-        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         var members = new List<RawMember>();
         string[] through =
         [
@@ -369,7 +369,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
         Assert.True(MirTypes.Observation(pairs, c.Types, body.Key.Decl, new(ReferenceEqualityComparer.Instance)).IsNone);
-        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(ReferenceEqualityComparer.Instance), [], out _));
+        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], out _));
     }
 
     // V16 (DECISIONS R4-M153's revision 3): an outcome walk enters a Type again only where it meets it shallower than before (MirDepths),
@@ -402,7 +402,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     public void LibraryTypesClassify()
     {
         var c = MirBuildTest.Compile("public func main() => ()\n");
-        var walked = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var (locals, holding, observing) = (0, 0, 0);
         foreach (var body in c.BuildMir().Bodies)

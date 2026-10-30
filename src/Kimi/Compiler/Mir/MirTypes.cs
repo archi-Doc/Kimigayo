@@ -14,8 +14,9 @@
 // undecided even past any bound, so it outranks Deep, and a verdict both leave undecided is one failure with one record (SPEC 23.1.2), the
 // located Unsupported_Kd. A walk composes its parts' outcomes only by Join and stops early only where no other part changes its answer
 // (decided, the outcome's top; the holding walk's LoanOnly mode, which reads no outcome, at Loan; a disjunction at yes), and its memo
-// enters a Type at the shallowest depth it meets it (MirDepths), so the answer is the same in every order of the parts; a reader asks the
-// published answer and never ranks two outcomes itself.
+// enters a Type at the shallowest depth it meets it (MirDepths; the holding walk keys a stored part's inline parts by what their facts
+// read, MirHoldingKey), so the answer is the same in every order of the parts; a reader asks the published answer and never ranks two
+// outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.

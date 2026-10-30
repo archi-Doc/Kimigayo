@@ -3666,7 +3666,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151 and R4-M157) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
   PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
   where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
   first and second limits)
@@ -5280,8 +5280,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     were falsely Unknown); a per-call gate (N1).
   - Numbering: R4-M152 is free on dev and every remote branch (R4-M150 is G264's, R4-M151 BU-46's R4 side).
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
-  (2026-10-28; G272's design-first candidate, design 2 with the planning session's structure check and additions; class Full, Q11; the
-  owner's 「G272: (1)」 and 「G272 要件: (a)」)
+  (superseded in part by R4-M157: the holding walk's key) (2026-10-28; G272's design-first candidate, design 2 with the planning
+  session's structure check and additions; class Full, Q11; the owner's 「G272: (1)」 and 「G272 要件: (a)」)
   SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis limit a Resource diagnostic at the
   affected declaration, call or token. `MirTypes`' walks end a growing Type (SPEC 15.3.5) at the bound of 32 and answered there with a
   value they did not establish (the guard's write fact, a destruction that is a use), so each reader guessed: liveness kept the Loan of a
@@ -5709,6 +5709,55 @@ and migration obligations remain in force; no numeric cap changes are authorized
     B/A' 1.003; Work 12,254,995, Bytes 268,904 and the 7 problems equal on every side, and so are cold step 4 (87,463,456 B), warm step 4
     (3,424 B) and warm step 2 (3,622,752 B). Bind on Hello and Milestone26 (3 runs x 20 reps): cold B/A 0.995 and 0.995 (A'/A 0.999 and
     0.997), warm 0.993 and 0.997; cold allocation equal (4,858,160 and 4,932,944 B), warm 0 B.
+- **R4-M157 G307, A5's Type walks visit a DAG of Types once per Type: a stored part's inline parts keyed by what their facts read**
+  (2026-10-30; the R4 planning session's design `r4-notes\g307\design.md` revision 3, joint design review 3 ACCEPT by R4's reviewer and
+  review 2 ACCEPT by BU's; Major; the Binding part, `TyCtxt.WrittenAt`, is BU-58) V16 (PLAN G307).
+  - Cause: `MirTypes.Holding.Holds` skipped its memo for an inline Tuple or fixed array of a stored part, since a raw layer there reads
+    its step by its positions (`TyCtxt.RawStep`, `RawMembers`), and so walked every position: on bu69's family `D_i<T> { x: D_{i+1}<(T,
+    T)> }` 2.8 k to 201 M visits from n = 8 to 26 for 348 queries; `MirBorrows.Addresses`' `Inline` (Layering's test, 336 M at n = 26)
+    and `Encloses` (25 M on raw leaves at n = 24) had the same shape. From G2 the default check runs them.
+  - Rule: a raw layer's step and members read the kept layer (the walk's node), the Type the declaration writes at its position
+    (`TyCtxt.WrittenAt`) and the instance; the positions add nothing beyond the written Type, which follows them. The holding memo's key,
+    `MirHoldingKey (Type, Stored, Written, Holder)`, is what a part's facts read: (K, false, null, null) for any part outside a stored
+    part's inline positions; (K, true, null, null) for an inline Tuple or fixed array of a stored part where `WrittenAt` is null; (K,
+    true, W, I) where it is not. Premises, BU-58's contract, both clauses: the facts at or below a node are a function of (K, W, I),
+    and W below follows from W; where W is null no layer at or below steps Own or Shared and none appends a member, which the key's
+    second shape and `Encloses`' null exit both rest on.
+  - Holding: one key path (memo lookup, `Meet` past the bound, the LoanOnly rule, `Enter`), `WrittenAt` asked only at a part's first
+    positions and below a non-null W (`asks`), a stored part's root keyed, and an enum Case's payload components its part's first
+    positions: its payload Tuple is Binding's and no key, since one kept payload can stand for Cases written differently (E3:
+    `A(raw/(ref/i32 during s) during s, i32)` beside `B(raw/(ref/i32 during static) during static, i32)`, one interned payload at `E3
+    during static`). Deleted: the per-position walk and "an inline Tuple or fixed array, whose positions decide it, gives them at once".
+  - Past the bound: an inline part of a stored part gives the bound's facts (Loan in its own storage, Deep where the mode reads the
+    write fact) only where its key is never entered within the bound, R4-M153's per-Type rule on the key. That changes tracking and the
+    guard (`D<(W, N30)>`, W = ((i32, i32), (i32, i32)) at depth 2 and 32: holds true and Deep became false and None) and restores the
+    order independence R4-M153 states, which the "at once" broke (`D<(N30(S), S)>` gave (true, Deep), `D<(S, N30(S))>` (false, None);
+    both now (false, None)).
+  - Addresses: one scratch set of visited (Type, written Type); `Inline` visits each Type once per pre-pass; `Encloses` is false at a
+    null W, else visits each (Type, W) once per enclosing use; each visit of either is a step of `Work` (A3 6.2), which counted one per
+    row before.
+  - Supersedes in part: R4-M120's "a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo" (a raw layer is read at
+    each meeting of its keyed parent) and R4-M153's "The holding walk keys its slots by Type with one per mode".
+  - Rejected: keying below the region by the instance (one shared part walked per instance: `All64<T_20>` 1,280 keys against 20; design
+    review 2's B3); an unkeyed stored-part root (keeps the order dependence past the bound); a key on an enum Case's payload Tuple (E3
+    answers None where Through); a per-position walk bounded by the declaration's text (a closed associated projection writes a 2^n
+    DAG, BU's review 1); a width budget or a Resource record (refuses valid programs a linear walk decides).
+  - Tests: TypeDagScalingTest's Holding rows (raw leaves below the region at T_30, the key set of `D<T_40>`, the Stored bit, the written
+    twins Q2 and Q3, the holder twin SP (`(SP<i32>, SP<B>)` in both orders, one written part whose `during self` layer reads each
+    instance's Type argument), E3, the past-bound and order rows, one Type stored by 64 instances, the projection chain; its raw-leaf
+    rows at n = 30 are Explicit until G309) and MirBorrowsTest's `TheAddressWalksVisitATypeDagOncePerWalk`; each fails first on dev
+    (its exponential walk, or the changed answers), and each key component has a row that fails without it.
+  - Measured. Visits on the family (348 queries, n = 8 / 24): Holds 1,260 / 1,746 (tuple; dev 2,781 / 50.3 M) and 1,081 / 1,257 (raw
+    leaves, 26 `RawStep` calls; dev 1,648 / 33.6 M, 8.4 M), Layering's `Inline` 117 / 277 (dev 1,731 / 83.9 M), `Encloses` 3 (dev 381 /
+    25.2 M). Cost (the G258 host over the 122 census programs, A 4555482e8 = dev 3e614b427 with BU-58's (b), A' its byte copy, B A with
+    this unit, from one folder, interleaved with the side order rotated, 3 runs x 8 reps, CPU 2 pinned, tiering off, a loaded machine;
+    sums of per-program medians): A5's step 4 B/A 0.998, A'/A 0.996, B/A' 1.003 (minima 0.999, 0.995, 1.004), step 2 B/A 1.000; Work
+    12,254,995 to 12,261,128 (the address walks' visits, +49 a program), Bytes 268,904 and the 7 problems equal; cold step 4 +48,584 B
+    over the 122 programs (the visited set and the larger key), retained +376 B a program, warm step 2 and step 4 unchanged. Bind on
+    Hello and Milestone26 (3 runs x 20 reps): cold B/A 1.000 and 0.996 (A'/A 1.007 and 1.006), warm 0.998 and 0.999; allocation equal,
+    warm 0 B.
+  - Open: `Encloses` costs O(distinct (Type, W) of the Place's Type) per use; a per-Place memo, as `ownAt` has, would make it per
+    distinct Place (design review 1's N4).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -7054,7 +7103,8 @@ resumed by R4-M86 (2026-10-20).
     between it and the entry's parent (an enclosing local or parameter, or an outer environment binding in a Consuming outer call); SPEC 7.7.2 gives the meet of the Origins that contain the child, so a nested entry through a
     borrowed outer receiver is also within that receiver, which `EnclosingAtom` does not give (n2b accepted on both pipelines; 2c-D).
 
-- **BU-29** (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
+- **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for
+  staging `Completion`) (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
   `draft/Sketches/G170/C1/C1-design.md` §5 and §8; one design, one review, Q6) `Binding.ContractSolver` owns premise derivation and
   evidence availability (SPEC 8.3, PlanB §4.1), R7's Contract-solver premise responsibility brought forward. `Supply(proposition,
   view)` answers `Evidence` (`Positive`, `Negative`, `Invalid`) under the `EvidenceView` that `ViewOf(scope)`, the one derivation
@@ -7224,10 +7274,12 @@ resumed by R4-M86 (2026-10-20).
     `PairBindings`, before the hash and only when a Component's `CarriesRawOrigin` bit is set (an inlined guard; the unguarded call cost
     about 0.5% warm Bind), for `Constructed` (Component i of a schema slot of Kind Pair, an enclosing declaration's slots and
     Contract references included) and `FunctionItem` (the slot's Component by `Binding.ItemComponent`, the Item layout's one statement,
-    which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit), writing one reused TyCtxt scratch (0 B
-    warm); and `SubstituteTypeCore`'s pair arm, where an original `s/T` reads `PairBinding(arguments[slot])` before the unchanged
-    annotation branch. Invariant (TyCtxt.cs's head): no instance or Item states a raw Origin on a pair slot's argument. Neither point
-    suffices alone: Intern never sees a call's argument list (`id<raw/i32 during x>(q)`), the arm never a written instance.
+    which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit; it also states a requirement Item's
+    Components, only `[Self, Contract reference]`: a generic requirement's Item is `Unsupported_Kd`, so no requirement Item holds a
+    slot's argument; bu75, PLAN G244), writing one reused TyCtxt scratch (0 B warm); and `SubstituteTypeCore`'s pair arm, where an
+    original `s/T` reads `PairBinding(arguments[slot])` before the unchanged annotation branch. Invariant (TyCtxt.cs's head): no
+    instance or Item states a raw Origin on a pair slot's argument. Neither point suffices alone: Intern never sees a call's argument
+    list (`id<raw/i32 during x>(q)`), the arm never a written instance.
   - P1 (the planning session's SPEC reading): `Holder<raw/i32 during x>` and `Holder<raw/i32>` are one Type, and so are the Items
     `id<raw/i32 during x>` and `id<raw/i32>`, and `Outer<raw/i32 during x>.Inner` and `K<raw/i32 during static>` with their unstated
     spellings: the fit (5.7, 3.8) is what the slot receives; a Type parameter denotes the one Type its declaration binds (8.2.3); a
@@ -7518,8 +7570,9 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
-- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46) (2026-10-26; the BU
-  planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46;
+  amended by BU-58: `TyCtxt.WrittenAt`) (2026-10-26; the BU planning session's design S1′, `p13u0/design-U0.md`, accepted with
+  P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
   bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
   guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
   its declaration states it or a Type argument supplies it, and an Exclusive one's members. Below the holder a walk entered nested
@@ -7720,7 +7773,8 @@ resumed by R4-M86 (2026-10-20).
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
 - **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
-  `TyCtxt.RawStated`** (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
+  `TyCtxt.RawStated`** (amended by BU-58: the Local row's walk enters each part once)
+  (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
   review 1 REVISE (B1 the `s/U` application, B2 the class), design 1's revision 1 (`design-U0r-1r1.md`), design 2 written without
   either, the choice of design 1 revision 1 with design 2's findings, R4's design review 2 ACCEPT with N1–N5; PLAN G148 (1), U0's
   revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls decides an Origin-less
@@ -8537,6 +8591,133 @@ resumed by R4-M86 (2026-10-20).
   - Tests: `ClosureEnvironmentOriginTest`: d6, d6c, d6w, d6r2, d6v, d6r, a clause `origin q == x.s` and the root form fail before,
     and so does the store through `r.s` (Unknown); d6b, a local annotated with a parameter's Origin, d6u, `pass`, the three invalid
     names and the Closure twins (BU-28's Unproven store, a valid read) are unchanged.
+
+- **BU-58 A stored part's written Type at inline positions is one TyCtxt view, `TyCtxt.WrittenAt`; the raw-Origin views and the walks
+  over a written Type decide each distinct part once per call** (2026-10-30; the BU planning session after G307's joint design: BU's
+  design `bu\g307\design-r1.md`, BU's design review 1 REVISE (B1) and review 2 ACCEPT with N1–N4, all taken; R4's part R4-M157; PLAN
+  G307's Binding part, unit bu72; class Major) SPEC 5.2.1 condition 3, 5.7; R4's V16. A5's holding and address walks skipped their
+  per-Type memo at a stored part's inline Tuples, because `RawStep` reads positions. At an inline node `RawStep` and `RawMembers` read
+  the kept Type K (A5's node), the Type the declaration writes there, W, and the instance I, and W below a node follows from W at it.
+  - `TyCtxt.WrittenAt(instance, part, positions)` (Binding's `WrittenAt`, extracted from `StoredLayer` by bu72's (a)) answers W: the
+    Type the part's declaration writes at the positions (as for RawStep: a struct's root is [], an enum's positions start at the
+    payload), followed through Tuples and fixed arrays, while it is a Tuple, a fixed array or a raw layer (BU-35's `written`, one
+    private `Written` that the hold walk reads too); null at or past a Type parameter, a pair layer, a nominal or an open projection,
+    where no declaration writes the part, and at an enum's []. It reads the declaration only, in O(|p|), total, 0 B warm.
+  - Invariants from a part's first positions (a struct's [], a Case's [i]): monotone (null at p is null at p·s); at a raw layer it is
+    non-null exactly where `StoredLayer`'s `declared` is, the layer the cap reads; where it is null (G307's Q1 and Q3), every raw layer
+    at or below steps StepOf of its kept Origin (Unstated, Static or Exclusive): never Shared, since only `declared` caps, and never
+    Own, since `self` binds Holder only on a layer a Field's or payload's Type writes inline (`StoredLayer` raises InternalInvariant on
+    a Holder layer whose `declared` is null, so a new admitting form cannot merge silently); and RawMembers appends nothing. At an
+    enum's [] the guarantee does not hold (a payload may step Shared or Own).
+  - The guarantee's two uses (R4-M157): A5's holding key, (K, Stored) below the region and (K, Stored, W, I) in it, is exact because
+    the facts at or below a node are a function of (K, W, I) and, where W is null, of K inside a stored part; `Encloses` ends at a null
+    W (Own needs W). BU's review 2 measured it over 13 classes and its probes, legacy and mir: W equals `declared` at all 175,969
+    StoredStep and StoredMembers calls and is monotone; 0 conflicts for (K, W, I) over 175,525 keys and for K alone below the region
+    (649 keys); dropping I conflicts 72 times (a conditional slot's case) and dropping W once (a twin).
+  - A view and not a bool: a closed projection's resolution is what a declaration writes, so `x: Dup<…Dup<L>.Item…>.Item` with
+    `associate HasItem.Item is (T, T)` writes a Tuple DAG of 2^n positions from O(n) text (review 1's B1). Design 1's `RawWritten`
+    walked it as a tree; W is read at a node instead.
+  - Memos (BU-19's components, each entry call a query; only components with components are recorded, BU-55):
+    `TyCtxt.StatesUnstated(type, seen)` takes the caller's scratch, cleared, and enters each raw-Origin part once (MirTypes.HoldsRaw's
+    form; MirValidator keeps one set for its Local row); `WithoutRawOrigins` records a component's erasure (`erasedParts`) and
+    `WithUnstatedOrigins` its mark (`markedParts`); `TypeAccessCovers` (an existence walk whose false ends the query) and
+    `CollectRequirementEdges` (an edge added once per consumer) share `visitedParts` through `FirstVisit`, so TypeAccessCovers,
+    ProjectionAccessCovers and ConstraintAccessCovers become instance members. Each answer is a function of the part (review 2).
+  - Census (BU-55's instrumentation; the chain `H {s} { loan: Loan<ref/i32 during s>, x: Dup<…Dup<L>.Item…>.Item }` read and passed
+    by value, at n = 16 / 20 / 24): with L = i32, Bind took 0.6 / 1.1 / 2.2 s, from TypeAccessCovers (67,111,065 visits at 24),
+    CollectRequirementEdges (67,110,402) and WithUnstatedOrigins (33,555,065 at Bind and again at MIR); StatesUnstated and
+    WithoutRawOrigins added 50 M each at MIR on the raw chains. After: the i32 chain binds in about 50 ms at n = 40 (676 marked, 3,127
+    access and 1,588 edge visits); StatesUnstated on `T_40 = (T_39, T_39)` enters 40 parts, and `D<T_40>`'s erasure 41.
+  - Amends BU-46's Local-row clause (StatesUnstated walks each raw-Origin part once over the caller's scratch) and BU-41's TyCtxt list
+    (adds WrittenAt). BU-39's kept readers are unchanged: `TyCtxt.RawStep(instance, part, positions)` and `TyCtxt.RawMembers(instance,
+    part, positions, members)`, and Binding's `StepOf`, `SignatureStep` and `RawMembers(origin, scope, members)`.
+  - Rejected: the bool `RawWritten` (above); a BoundType bit (a shared representation for one row); Binding's `visitedParts` for
+    StatesUnstated (the Checker would need a TyCtxt, and the row's seen keys would be hidden); a cross-query cache.
+  - Open (PLAN G309): with raw leaves (`raw/i32 during static`, `raw/i32 during s`) the chain reaches Binding's raw-Origin walks, still
+    exponential (Bind 4.1 / 5.4 s at n = 24 after this unit); their TypeDagScalingTest rows are Explicit until G309.
+  - Evidence: TyCtxtTest `WrittenAtIsTheTypeADeclarationWritesInline`, `WrittenAtTellsApartThePositionsOfOneKeptPart` (P's two Fields,
+    E's and E3's two Cases over one kept part), `WrittenAtFollowsAWrittenProjectionDag`; TypeDagScalingTest
+    `StatesUnstatedEntersEachRawPartOnce` (seen keys), `AnInstancesKeptPartIsErasedOncePerPart`, `AWrittenProjectionDagIsWalkedOncePerPart`
+    (n = 40), together about 1 s; with any one of the five memos undone its row passes the runner's 120 s timeout. The diagnostic
+    snapshot and the registered mir ledger are unchanged.
+  - Cost (pinned, full JIT, A, B and A's byte copy interleaved from one folder, Hello, Milestone 26 and 27): cold +7.1 / +7.1 / +1.6
+    KB and retained +4.1 / +4.1 / +1.1 KB (the tables' capacity, byte-exact; A equals its copy), warm Bind 0 B. Times were noisy, two
+    other sessions' heavy runs having started (cold minima B/A 1.05 / 1.03 / 0.97, A/A 0.99 / 1.00 / 0.98); BU's review 2 measured
+    0.99 / 1.00 / 1.00 on the prototype, within its ±0.7% A/A.
+
+- **BU-59 A premise source's own check is published on its source, `BindingSymbol.SourceState` and `SourceCause`, in rounds of a
+  fresh capability epoch, each in the reverse of the previous round's order** (2026-10-30; PLAN G170 N6 under C1 §5, unit U1, bu74;
+  design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g170-id\n6-design-r1.md`, re-review ACCEPT, its N1–N3 here; the owner,
+  2026-10-30, on the state's place among BU's pending questions: 「すべて推奨の内容でOkです」) SPEC 8.3.3 Finality: proof reads a
+  declaration's closed-clause check and never runs it (C1 §5: C never runs verification).
+  - States: every declaration container's own symbol, ConstraintProof and its cause (no new vocabulary): Pending = Unknown, Valid =
+    Proven, Invalid = Refuted or Error. A source under check is Pending, so a check reaching itself reads no evidence (SPEC 8.3.3
+    Recursion); `contractPremiseQueries` is deleted. Pending also encodes the final Unknown a publication leaves after its rounds,
+    with or without a limit (`SourceCause`). Within the rounds a reader tells neither a Pending state from a final Unknown nor a limit
+    not yet propagated from none, which is why the rounds repeat until neither a state nor a limit changes; C3's Provisional marking
+    makes them final at the publication's end, the one point that knows.
+  - Writer: `Binding.SourceStates.PublishSourceStates`, the only caller of `CheckClosedDeclarationConstraints`, after
+    `ExpandContractPremises` and in each `ValidateConformances` after its re-verification reset; `ResetSourceStates` makes every state
+    Pending at `BindConstraints`' start, so no state crosses passes.
+  - B1's rule: a publication (1) makes Valid every declaration with nothing to prove (no `ClosedClause`), the rest Pending; (2) runs
+    rounds over the Pending ones until a round changes no state and no limit presence, each in a fresh capability epoch
+    (`ClearCapabilityResults`). A limit presence is whether a Pending one's Unknown rests on a limit (BU-22's L between U and R): a
+    reader tells it apart (an Unknown resting on a limit is an Error on its site where it is no longer combined, a bare Unknown is
+    unproven), so it is part of the state the rounds settle (review 1, B1: stopping on states alone kept a limit gained in the last
+    round from its readers, so a reader's record followed the declaration order, and alternation changed one against forward rounds).
+    An answer reads states, never limits, and a state only leaves Pending, so once a round changes no state none changes again; the
+    round after one that changed a state restarts the Pending limits from none, since a limit read before that change could keep
+    itself through a cycle of Pending reads, and from there a limit only appears. An answer computed from a Pending read dies with its
+    round; the last round changes nothing, so its answers read final states and limits only: the least fixpoint, order-free in both.
+    Which of several limits a final Unknown rests on is BU-22's first read in the last round, which can follow the check order where a
+    cycle of Pending reads reaches more than one, but no record depends on it: each limit's site is needed by the check of its own
+    clause, so a record resting on either is derived from a reported one (lim2, lim2e: two sites in a cycle of Pending reads, one
+    output in every order). A state resolved in a round that read a Pending state is kept: that is order-free because an Unknown
+    read never decides a verdict (SPEC 8.3.2); contradictory evidence hidden by a Pending premise is the one case where it could (none
+    constructed; re-review N3). The epoch rather than a Provisional capability node: the epoch is the existing lifecycle of every
+    cached proof answer (component summaries follow it); a Provisional node needs a per-node mark, its propagation to dependents and
+    its own re-run, a second scheduler before C3's. With nothing to prove (the library, the 44 milestones) no round runs.
+  - Order (re-review N2; the planning session's decision): each round runs over the Pending declarations in the reverse of the
+    previous round's order. Bound: at most P rounds change a state and, after the last of them, at most P a limit presence, for P
+    Pending declarations, so a publication ends within 2P + 1 rounds; a chain settles in at most five rounds in either declaration
+    order, three without a limit. Forward rounds took N rounds on a top-down chain, O(N²) checks (warm Bind, chain of 400: 454 ms
+    against its base's 30.9 ms). Alternation changes no record or verdict against forward rounds: 196 probes (the design reviews' 74,
+    two chains of 25, review 1's 80, and the limited families sumy, sumz, sumw, lim2 and lim2e in every order) give byte-identical
+    output on both pipelines, one output per family in every order. Any remaining quadratic case (dependencies running against both
+    directions) is C3's, removed by its scheduler (PLAN G170). `SourceCheckWork` publishes a pass's checks to the scaling test.
+  - Readers: `AvailableContractPremise` (the Contract and each ancestor: declaration context, then the state) and
+    `VerifyConformance`'s prerequisite, each through `ReadSourceState`, `EndProof(BeginProof(), ReadVerdict(state, cause))`, the
+    proof scope the check had (BU-22). Path memos keep only Proven and Invalid, which a Pending read cannot produce wrongly.
+  - Staged to C3 (with its removal condition): `ResolveConformance`'s on-demand verification stays in proof. `VerifyConformance`
+    keeps Proven (`IsVerified`) and Invalid only; Unknown and a non-Invalid Error are verified again at each read, `Checking`
+    answering Unknown. Removed when conformance verification is a node of C3's scheduler (C1 §5) and `ResolveConformance` reads the
+    path's published state, Pending as Provisional.
+  - Supersedes BU-29's staging of `SourceState` (and the source check's `UnderCheck`) to C3 as `EvidenceView` fields, which stays
+    `Premises`: one state per source, a view would only point at it. It also supersedes BU-29's reason for staging `Completion`,
+    "every answer is final for its pass", which no longer holds inside a publication: a round's answers are final only when the rounds
+    end. The owner's answer holds only with B1's rule: the view's Provisional and UnderCheck existed so that no Pending read is kept,
+    which the round epoch now guarantees.
+  - Records (SPEC 8.3.3 Finality: the check order never changes the result; acceptance unchanged): mutual prerequisites, direct
+    (pr2), three (n3a) or through a premise (cyc1), leave every `Self is C` UnprovenConstraint_Kd in every order (dev: one
+    InvalidConstraint_Kd chosen by the declaration order; SPEC 23.1.2 keeps both independent failures); an OCC-X-limited closed clause
+    (occ1r) is InvalidConstraint_Kd in both orders, the check running outside conformance verification, so the limit is an Error on
+    its site (BU-22); Contracts whose closed clauses read each other as premises (n3d, re-review N1) make Y1–Y3's `Self is Ri` and
+    headers InvalidConstraint_Kd in every order (dev: Unproven through `contractPremiseQueries`' re-entry cut; the Contract's Error
+    absorbs, SPEC 8.3.1–8.3.2), and so does a Contract whose closed clause needs its own conformance (rc, rcself: Y's `Self is R` and
+    header). A chain ending in a refuted clause (ch3bad, Q → Y → Z with `string is Copy`) gives Y's `Pair<Z> is Copy`
+    InvalidConstraint_Kd and its `Self is R` UnsatisfiedConstraint_Kd in every order (dev: both Unsatisfied or both Invalid by the
+    order). A closed clause limited by a component summary's site (sumy, sumz, sumw: X's `TreeNode<Nd> is Owned`; lim2, lim2e: two
+    sites in a cycle) and each declaration reading it, directly or through another: every `Self is K` is an Error resting on the site,
+    which carries the record (dev: InvalidConstraint_Kd at each).
+  - Tests (ClosedConformancePrerequisiteBindingTest): cap6, cap6n, cap3b, cap9, cap10, n3b and n3c (top-down chains) valid in both
+    orders, which fail without the epoch where a Pending read is kept (cap6n, cap10, n3b, n3c); pr2, n3a and cyc1 unproven and occ1
+    and n3d invalid in both orders, failing on dev where they assert a change; sumy, sumz and sumw, one record set in every order with
+    no `Self is K` record, failing on dev and on review 1's head; a chain of 64 against one of 16 in both orders, at most 5 times the
+    checks (forward rounds: 303 against 4,287).
+  - Rejected: forward rounds (quadratic chains); a Provisional capability node (above); the state in `EvidenceView` (the owner);
+    keeping the per-read check with a re-entry set (the order-dependent records above); rounds until the limit itself (the cause
+    object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
+    either sweep order (a four-cycle does under alternation).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

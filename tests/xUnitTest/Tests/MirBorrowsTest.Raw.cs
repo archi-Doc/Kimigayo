@@ -1022,6 +1022,20 @@ public sealed partial class MirBorrowsTest
         Assert.True(addressed[1] - addressed[0] - (plain[1] - plain[0]) >= 32, $"plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
     }
 
+    // V16 (PLAN G307; DECISIONS R4-M157): the address pre-pass's Type walks visit a Type once per walk, each visit a step, so over BU's
+    // family D_i<T> { x: D_{i+1}<(T, T)> }, whose last part is a Tuple DAG of 2^(n-1) positions, A5's work grows linearly in n: Layering's
+    // raw test over its raw-free Tuples, and at a read of the part Encloses, which a layer below the written region never steps Own for
+    // (DECISIONS BU-58).
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("raw/i32 during static")]
+    public void TheAddressWalksVisitATypeDagOncePerWalk(string leaf)
+    {
+        long[] work = [.. new[] { 8, 12, 16 }.Select(n => this.Measured(Prelude + TypeDag(leaf, n)).Work)];
+        output.WriteLine($"N 8, 12, 16: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
+    }
+
     // SPEC 15.6.4's chain clause (DECISIONS R4-M131 Q4 (a), BU-40, R4-M138): a Chain row carries what any chain of reads through its
     // argument carries, so a pointee the call may retain two or more reads deep keeps its Loan even when a holder on the way is replaced
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
@@ -1382,5 +1396,20 @@ public sealed partial class MirBorrowsTest
         }
 
         return text.Append(tail).ToString();
+    }
+
+    // BU's family of a size over a leaf, with a read of D_n's part and of its first leaf.
+    private static string TypeDag(string leaf, int size)
+    {
+        var text = new StringBuilder();
+        for (var i = 1; i < size; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"struct D{i}<T>\n    public var x: D{i + 1}<(T, T)>\n");
+        }
+
+        var (path, first) = (string.Concat(Enumerable.Repeat(".x", size - 1)), string.Concat(Enumerable.Repeat(".0", size - 1)));
+        return text.Append(System.Globalization.CultureInfo.InvariantCulture, $"struct D{size}<T>\n    public var x: T\n")
+            .Append(System.Globalization.CultureInfo.InvariantCulture, $"func rd(d: ref/D1<{leaf}>) -> {leaf}\n")
+            .Append(System.Globalization.CultureInfo.InvariantCulture, $"    let v = d{path}.x\n    return v{first}\n").ToString();
     }
 }
