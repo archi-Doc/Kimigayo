@@ -181,7 +181,7 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            if (node is not FunctionKoto function || BoundClosure.Of(function) is null)
+            if (node is not FunctionKoto { ClosureDefinition: not null } function)
             {
                 node.VisitChildren(this);
             }

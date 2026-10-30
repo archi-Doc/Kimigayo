@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Xunit;
 using Xunit.Sdk;
 
@@ -27,7 +28,11 @@ public class NativeAllocationAuditTest
     [InlineData("Control", "call ptr @HeapAlloc(")]
     [InlineData("TailNoalias", "tail call noalias ptr @HeapAlloc(")]
     public void EveryAllocationSpellingIsCounted(string name, string spelling)
-        => Audit(name, Append, 1, 16, transformIr: ir => ir.Replace("call ptr @HeapAlloc(", spelling, StringComparison.Ordinal));
+        => Audit(name, Append, 1, 16, transformIr: ir =>
+        {
+            Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal); // Every runtime allocation site, respelled.
+            return ir.Replace("call ptr @HeapAlloc(", spelling, StringComparison.Ordinal);
+        });
 
     // A count below or above its bound fails the run.
     [Theory]
@@ -76,6 +81,18 @@ public class NativeAllocationAuditTest
     public void AnchorWithoutItsRoutineFails()
         => Assert.Throws<EqualException>(() => Audit("Renamed", Entries, 2, 288, transferred: 96, transformIr: Rename));
 
+    // DECISIONS R5-M145: the byte copy written inline, as MIR code generation wrote it before both generators called one routine, leaves a
+    // transferring program's copies uncounted, so even a bound whose minimum is 0 fails instead of passing vacuously, also when the routine
+    // stays defined beside the inline copies (a module that defines the storage byte primitives as a pair).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnInlineByteCopyFails(bool defined)
+    {
+        var failure = Assert.Throws<TrueException>(() => Audit("Inline", Entries, 2, 288, transferred: new(0, 96), transformIr: defined ? InlineCalls : Inline));
+        Assert.Contains("byte copy", failure.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void BoundWithoutTransferRoutineFails()
     {
@@ -100,13 +117,34 @@ public class NativeAllocationAuditTest
             transferred: transferred,
             transformIr: transformIr);
 
-    // Another spelling of the transfer routine's definition, as a different generator might write it.
+    // Another spelling of the transfer routine's definition, as a different generator might write it. A missing definition fails with a
+    // ContainsException, not the EqualException TransferRoutineWithoutItsAnchorFails expects through Unanchor.
     private static string Respell(string ir)
-        => ir.Replace("define internal void @__kimi_transfer_bytes(", "define internal void @\"__kimi_transfer_bytes\"(", StringComparison.Ordinal);
+    {
+        const string Definition = "define internal void @__kimi_transfer_bytes(";
+        Assert.Contains(Definition, ir, StringComparison.Ordinal);
+        return ir.Replace(Definition, "define internal void @\"__kimi_transfer_bytes\"(", StringComparison.Ordinal);
+    }
 
     // The respelled routine without its anchor: the copy is a memmove, as lowering MoveBytes by its contract would write it.
     private static string Unanchor(string ir)
         => Respell(ir).Replace("@llvm.memcpy.p0.p0.i64(ptr %destination", "@llvm.memmove.p0.p0.i64(ptr %destination", StringComparison.Ordinal);
+
+    // The byte copy's calls written as the intrinsic they call, its definition removed.
+    private static string Inline(string ir)
+    {
+        var definition = Regex.Match(ir, @"(?ms)^define internal void @__kimi_transfer_bytes\(.*?^\}\n").Value;
+        Assert.NotEmpty(definition);
+        return InlineCalls(ir.Replace(definition, string.Empty, StringComparison.Ordinal));
+    }
+
+    // The byte copy's calls written as the intrinsic they call, its definition kept.
+    private static string InlineCalls(string ir)
+    {
+        var inlined = Regex.Replace(ir, @"call void @__kimi_transfer_bytes\(([^)]*)\)", "call void @llvm.memcpy.p0.p0.i64($1, i1 false)");
+        Assert.NotEqual(ir, inlined);
+        return inlined;
+    }
 
     // The growth routine under another name with its body unchanged.
     private static string Rename(string ir)

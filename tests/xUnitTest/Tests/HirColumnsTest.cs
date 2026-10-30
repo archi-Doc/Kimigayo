@@ -185,7 +185,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
-            if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
+            if (op == HirOp.Closure && (((FunctionKoto)node).ClosureDefinition is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
             {
                 problems.Add($"{where} without its closure definition");
             }

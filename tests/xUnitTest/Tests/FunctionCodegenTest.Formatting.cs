@@ -13,7 +13,7 @@ namespace XunitTest;
 // kind, its result slot and location, a capacity Context the length of the fixed array its operand refers to and a kind Context its witness
 // target's Self's, the runtime written once on request, at a direct call, an Item's Value call and an adapter's entry; a user formatter's
 // write, toString or tryFormat runs through its wrappers; a BuiltinFormat item is the built-in witness; Text.writer gives its destination's
-// writer kind and dispatch word; natively under both generators. The kinds are the formatting runtime's own numbering, the one table both
+// writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering, the one table both
 // generators read.
 public sealed partial class FunctionCodegenTest
 {
@@ -85,7 +85,7 @@ public sealed partial class FunctionCodegenTest
         "func wrErased() -> (uniq/Sink) -> Utf8Writer => Text.writer<Sink>\n" +
         "func wrErasedHeap() -> (uniq/Text.HeapBuffer) -> Utf8Writer => Text.writer<Text.HeapBuffer>\n";
 
-    // SPEC 22.7, 22.9 (DECISIONS R5-M128): the buffers, windows, views, validation and a view's writeLine natively under both generators,
+    // SPEC 22.7, 22.9 (DECISIONS R5-M128): the buffers, windows, views, validation and a view's writeLine natively,
     // with Text.fixed's and Text.heap's Items called and a window's limit Aborting at the invoking expression.
     public static TheoryData<string, string, string, int, string> FormattingPrograms => new()
     {

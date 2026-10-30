@@ -53,21 +53,11 @@ internal sealed partial class TyCtxt
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
-    // the declaration enclosing it.
+    // the function enclosing it (EnclosingFunction), else in its own. The closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63,
+    // R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
-    {
-        if (closure.Symbol?.Declaration is not FunctionKoto { BoundClosure: not null } binder)
-        {
-            return null;
-        }
-
-        while (binder is { IsAnonymous: true } && binder.BoundSymbol?.Scope.Function is { } enclosing)
-        {
-            binder = enclosing;
-        }
-
-        return closure.ClosureContext ?? this.Identity(binder);
-    }
+        => closure is { Symbol: { Declaration: FunctionKoto { ClosureDefinition: not null } } symbol }
+            ? closure.ClosureContext ?? this.Identity((this.EnclosingFunction(symbol) ?? symbol).Declaration) : null;
 
     // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call

@@ -4,6 +4,11 @@ namespace Kimi.Compiler.Mir;
 
 // A5's holder liveness (A3 5, Liveness): the holders each location uses and kills, solved backward over the dataflow's chains, and in its
 // replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders.
+// After a Return local 0's holder is live, as the caller uses the value it delivers (the exit's fact, R4-M156), so every reader of a live
+// holder counts the delivered value: the Loan check, the own-step departures and rule W's escape holder. A kept Drop past the destruction
+// walk's bound, whose class is unknown, uses its root's drop slot instead of the root, and every kill of the root kills that slot too, so
+// the slot is live where such a Drop may come before the holder's next kill (drop-liveness, DECISIONS R4-M153); the check sets read it
+// where the holder itself is not live (MirBorrows.CheckSets).
 internal sealed partial class MirBorrows
 {
     private const byte Uses = 1;
@@ -17,7 +22,7 @@ internal sealed partial class MirBorrows
 
     // Each location's touches of holders (A3 5): a use of a holder its Places read, Move, borrow, write through a reference or destroy
     // observingly (a Drop whose verdict is not Elide, or only the checks reach), a kill where it is wholly written, moved, or its storage
-    // or its Loans end; an EndBorrow uses its holder, then kills it.
+    // or its Loans end; an EndBorrow uses its holder, then kills it; a Drop past the destruction walk's bound uses the drop slot.
     private void Touches()
     {
         var statements = this.body.Statements;
@@ -41,13 +46,37 @@ internal sealed partial class MirBorrows
         this.Work += statements.Length + this.body.Blocks.Length + this.touchCount;
     }
 
+    // A touch of a local's holder, a kill also of its drop slot.
     private void Mark(int local, byte flags)
     {
         if (local >= 0 && this.slots[local] >= 0)
         {
-            MirDataflow.Grow(ref this.touches, this.touchCount + 1);
-            this.touches[this.touchCount++] = new(this.slots[local], flags);
+            this.Touched(this.slots[local], flags);
+            if ((flags & Kills) != 0 && this.drops.Count > 0 && this.dropSlots[local] >= 0)
+            {
+                this.Touched(this.dropSlots[local], Kills);
+            }
         }
+    }
+
+    // A Drop's touch of its root's holder (A3 5, R4-M6): an observing destruction uses it, a shallow one touches nothing, and one past the
+    // destruction walk's bound uses its drop slot (R4-M153; MirBorrows.Holders gives every such holder one).
+    private void Dropped(int local, AccessKind kind)
+    {
+        if (kind != AccessKind.Unclassified)
+        {
+            this.Mark(local, kind != AccessKind.Destroy ? Uses : (byte)0);
+        }
+        else if (local >= 0 && this.slots[local] >= 0)
+        {
+            this.Touched(this.dropSlots[local], Uses);
+        }
+    }
+
+    private void Touched(int slot, byte flags)
+    {
+        MirDataflow.Grow(ref this.touches, this.touchCount + 1);
+        this.touches[this.touchCount++] = new(slot, flags);
     }
 
     // The checks replay: the live holders before a chain's head, then after each location.
@@ -80,6 +109,13 @@ internal sealed partial class MirBorrows
 
         public void Block(int block)
         {
+            // The exit's fact (IMirFlow.Entry): a Return delivers local 0 to its caller, which uses it, so its holder is live after the
+            // Return (SPEC 16.2.2, 6.3.4; DECISIONS R4-M156); a diverging exit delivers nothing.
+            if (owner.body.Blocks[block].Terminator.Kind == MirTerminatorKind.Return && owner.slots[0] >= 0)
+            {
+                state[owner.slots[0] >> 6] |= 1UL << owner.slots[0];
+            }
+
             for (var i = owner.body.Blocks[block].Count; i >= 0; i--)
             {
                 var (start, count) = owner.touched[owner.Location(block, i)];
@@ -144,7 +180,7 @@ internal sealed partial class MirBorrows
             }
             else if ((access & MirAccess.DropUse) != 0)
             {
-                owner.Mark(place.Root, owner.Dropping(this.block, place) != AccessKind.Destroy ? Uses : (byte)0);
+                owner.Dropped(place.Root, owner.Dropping(this.block, place));
             }
             else if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows)) != 0)
             {

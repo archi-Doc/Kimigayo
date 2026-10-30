@@ -73,55 +73,9 @@ public class GenericBorrowedElementTest
         var c = MinimalEmissionTest.Analyze(Program21Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture(
             "GenericBorrowedElementProgram21",
             Program21Source,
             "Default index evaluated.\nInferred selection is 10.\nExplicit selection is 30.\nDefault index evaluated.\nForwarded selection is 10.\nDefault index evaluated.\nOrdinary selection is 4.\nDefault index evaluated.\nLocal selection is 7.\nInference and defaults finished.\n");
-    }
-
-    [Fact]
-    public void MonomorphizesAggregateElementReads()
-    {
-        // SPEC 21.3.1: the (i32, bool) instance copies the proved-Copy element from the borrowed array's
-        // element storage instead of keeping the shared entry.
-        var c = MinimalEmissionTest.Analyze(At + "let a: [2 of (i32, bool)] = [(6, false), (7, true)]\nlet n = at<2, (i32, bool)>(a@ref, 1)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
-        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Sequence && x.ScalarOperator == "ArrayStorageRead");
-        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.TransferAggregate);
-    }
-
-    // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-    // a corrupt element-read plan is rejected on the ordinary body that owns it.
-    [Fact]
-    public void RejectsUncheckedElementProducerAndRecoversAfterReload()
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func at(a: ref/[1 of i32], i: isize) -> i32 => a[i]\nlet a: [1 of i32] = [7]\nlet n = at(a@ref, 0)",
-            codegen: CompilerCodegen.Legacy);
-        using var first = new StringWriter();
-        Assert.True(c.WriteIr(first, out var error), error);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var body = c.Ownership.Bodies.Single(x => x.Sequences.Count != 0);
-        body.Sequences[0] = body.Sequences[0] with { Index = 0 };
-        using var invalid = new StringWriter();
-        Assert.False(c.WriteIr(invalid, out _));
-        Assert.Empty(invalid.ToString());
-        var restored = Compilation.CreateForTest();
-        restored.Codegen = CompilerCodegen.Legacy;
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        Assert.True(restored.Bind().IsComplete);
-        restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Analyze().IsVerified);
-        using var second = new StringWriter();
-        Assert.True(restored.WriteIr(second, out error), error);
-        Assert.Equal(first.ToString(), second.ToString());
     }
 }

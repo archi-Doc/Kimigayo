@@ -76,10 +76,7 @@ public class LocalRegionCompletionTest
         var source = "contract Src\n    associate Item\n    func read(self: ref/Self) -> Self.Item\nstruct S {s}\n    Self is Src\n    public let v: ref/i32 during s\n" +
             "    public init(v: ref/i32 during s) => self.v = v\n    public func read(self: ref/Self) -> i32 => 1\nfunc f() -> i32\n    let w: " + written + " = 5\n    return w\n" +
             "public func main() => ()\n";
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Empty(ContextualCaptureTest.PublishedRecords(source, pipeline));
-        }
+        Assert.Empty(ContextualCaptureTest.PublishedRecords(source));
 
         var c = MinimalEmissionTest.Analyze(source);
         var local = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "w");

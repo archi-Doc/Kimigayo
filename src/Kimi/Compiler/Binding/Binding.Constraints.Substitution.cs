@@ -54,7 +54,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (binder is DeclarationContainerKoto && constraint.Left.BoundSymbol?.Kind is not (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter) && constraint.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !IsDependentConstraint(constraint))
+            if (binder is DeclarationContainerKoto &&
+                constraint.Left.BoundSymbol?.Kind is not
+                    (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter) &&
+                constraint.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !this.IsDependentConstraint(constraint))
             {
                 continue;
             }

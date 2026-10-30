@@ -125,10 +125,12 @@ internal static class InheritanceLifecycleMeasurements
         return c;
     }
 
+    // Check and generation through their entries: generation is MIR code generation, which needs the program Analyze keeps (DECISIONS
+    // R5-M94, R5-M162).
     private static void Pipeline(Compilation c)
     {
         if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete ||
-            !c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            !c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
         {
             throw new InvalidOperationException("Every inheritance snapshot must bind, verify and emit.");
         }

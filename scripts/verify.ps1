@@ -22,13 +22,9 @@
 #   ./scripts/verify.ps1 -Mode Session -Configuration Debug
 # Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
-# -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
+# -Pipeline mir (R3-R6) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy. Since G2 it publishes what the
+# default does (DECISIONS R5-M156), so its run is the difference ledger's (KIMI_MIR_DIFF).
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
-# -Codegen mir (R5, until G4) also sets KIMI_CODEGEN=mir, MIR code generation ("sel"), which needs -Pipeline mir; the default is legacy.
-# Its tests print theory arguments in full, and a sel run that wrote test results ends with the pending ledger gate
-# (codegen-pending.ps1): codegen-pending.json and the summary.json field codegenPending. Its test and native steps leave
-# their failing cases and fixtures to the gate, which passes when they equal the ledger; -UpdatePending then writes the ledger.
-#   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir [-UpdatePending]
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test collections. Use -TestParallel 1 for serial execution.
@@ -43,7 +39,6 @@ param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [ValidateSet('legacy', 'mir')] [string] $Pipeline = 'legacy',
-    [ValidateSet('legacy', 'mir')] [string] $Codegen = 'legacy',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
     [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
@@ -55,7 +50,6 @@ param(
     [string[]] $DiagnosticAllowed = @(),
     [string] $Name = '',
     [switch] $VerifyToolchain,
-    [switch] $UpdatePending,
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
@@ -64,23 +58,17 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
 if ($Mode -eq 'Session' -and $Class.Count + $Method.Count -gt 0) { throw 'Session verification runs every test; -Class and -Method select Unit runs.' }
-if ($UpdatePending -and $Codegen -ne 'mir') { throw '-UpdatePending writes the pending ledger of a -Codegen mir run.' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
 . (Join-Path $PSScriptRoot 'verification-native.ps1')
-. (Join-Path $PSScriptRoot 'codegen-pending.ps1')
 $requestedClass = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
 $requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
 $Class = @(Join-KimiCommonTestSelections $requestedClass)
 $Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
-$Mode = if ($Mode -eq 'Session') { 'Session' } else { 'Unit' } # The steps and codegen-pending.ps1 compare the canonical spelling.
+$Mode = if ($Mode -eq 'Session') { 'Session' } else { 'Unit' } # summary.json records the canonical spelling.
 $Pipeline = $Pipeline.ToLowerInvariant()
-$Codegen = $Codegen.ToLowerInvariant()
-Assert-KimiCompilerConfiguration $Pipeline $Codegen
 $previousPipeline = $env:KIMI_PIPELINE
-$previousCodegen = $env:KIMI_CODEGEN
 $env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
-$env:KIMI_CODEGEN = $Codegen
 $repo = Split-Path -Parent $PSScriptRoot
 $buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -175,9 +163,7 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     try {
         $env:KIMI_FIXTURE_DIRECTORY = $fixtureDirectory
         $parallelMode = if ($TestParallel -eq 1) { 'none' } else { 'collections' }
-        # The pending ledger names a sel case by its full name (R5-M66), so xUnit prints its arguments uncut.
-        $names = if ($Codegen -eq 'mir') { @('-printMaxStringLength', '0', '-printMaxEnumerableLength', '0') } else { @() }
-        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -failSkips -result-xml $xml @names @filters *> $log
+        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -failSkips -result-xml $xml @filters *> $log
         $code = $LASTEXITCODE
     }
     finally { $env:KIMI_FIXTURE_DIRECTORY = $previousDirectory }
@@ -186,11 +172,6 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     $ok = $code -eq 0
     $detail = "$line; $log"
     try {
-        if ($Codegen -eq 'mir') {
-            # Under sel the pending gate judges the failing cases, so the step fails on a run error its results record instead.
-            $detail = "$line; failing cases judged by codegen pending; $log"
-            $ok = (Test-Path -LiteralPath $xml) -and @(Select-Xml -LiteralPath $xml -XPath '//assembly[@errors!="0"]').Count -eq 0
-        }
         # Zero executed tests is never evidence, and each requested selector executes a test of its own, so one that matches
         # only Explicit tests is not hidden by the common checks or another selector.
         $executed = @(Get-KimiExecutedTests $xml)
@@ -276,8 +257,7 @@ if (-not $failed -and $VerifyToolchain) {
     Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
 }
 $runsTests = $Mode -eq 'Session' -or $hasTestSelection -or $TestPurpose -ne 'All'
-# The pending gate compares a sel run's results with the methods it selected, every method in a Session.
-if (-not $failed -and $runsTests -and ($Mode -eq 'Unit' -or $Codegen -eq 'mir')) { Test-Selection $Configuration $filters }
+if (-not $failed -and $runsTests -and $Mode -eq 'Unit') { Test-Selection $Configuration $filters }
 if (-not $failed -and $runsTests) { Invoke-Tests $Configuration $filters $(if ($Mode -eq 'Session') { 'full' } else { 'focused' }) }
 
 if (-not $failed -and $DiagnosticSnapshot) {
@@ -314,13 +294,6 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $ok = $ok -and $result.hasSuccessLine
         $detail = $result.detail
         $matched = @(if (Test-Path -LiteralPath $fixtureDirectory) { Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Where-Object Extension -EQ '.ll' })
-        if ($Codegen -eq 'mir') {
-            # Under sel the pending gate judges the fixtures' outcomes; the step needs a result for every fixture it selected.
-            $records = Join-Path $evidence "native$suffix-fixtures/results.json"
-            $result = Get-KimiNativePendingResult $records $matched.Count $log
-            $ok = $result.passed
-            $detail = $result.detail
-        }
         Add-Step "native $pattern" $ok $detail $timer.Elapsed.TotalSeconds
         $matched | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
     }
@@ -338,21 +311,6 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     foreach ($run in $runs) { Complete-ScriptJob $run }
 }
 
-$codegenPending = $null
-$ledger = Join-Path $repo 'tests/xUnitTest/TestData/codegen-pending'
-if ($Codegen -eq 'mir' -and @(Get-ChildItem -LiteralPath $evidence -Filter 'tests-*.xml' -File).Count -gt 0) {
-    # The sel failing set against the pending ledger (R5 E10, E11), also after failed tests: the run passes when they are equal.
-    $timer = Start-Step 'codegen pending'
-    try {
-        $codegenPending = Write-KimiCodegenPending $evidence $Mode $Configuration $Fixtures $ledger
-        $totals = $codegenPending.totals
-        $line = @($totals.Keys | ForEach-Object { "$_ $($totals[$_].tests)/$($totals[$_].fixtures)" }) -join ', '
-        $detail = "$($codegenPending.differences) entries differ from the ledger; cases/fixtures: $line; $($codegenPending.report)"
-        Add-Step 'codegen pending' ($codegenPending.differences -eq 0) $detail $timer.Elapsed.TotalSeconds
-    }
-    catch { Add-Step 'codegen pending' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
-}
-
 if ($null -ne $beforeInputs) {
     $timer = Start-Step 'input stability'
     try {
@@ -367,22 +325,8 @@ if ($null -ne $beforeInputs) {
         Add-Step 'input stability' $false $_.Exception.Message $timer.Elapsed.TotalSeconds
     }
 }
-if ($UpdatePending) {
-    # After the input observations, so the evidence records the ledger it compared, and only when the gate's differences are
-    # the run's one failure: a failed or partial run would drop rows it did not observe.
-    $timer = Start-Step 'update pending'
-    try {
-        $other = @($steps | Where-Object { $_.result -ceq 'FAIL' -and $_.step -cne 'codegen pending' } | ForEach-Object { $_.step })
-        if ($null -eq $codegenPending -or $other.Count -gt 0) { throw "The ledger is not updated: $(if ($other) { "failed $($other -join ', ')" } else { 'no pending report' })." }
-        $changed = @(Update-KimiCodegenLedger $ledger $codegenPending.report)
-        Add-Step 'update pending' $true $(if ($changed) { "$($changed -join ', '); verify the written ledger again" } else { 'no change' }) $timer.Elapsed.TotalSeconds
-    }
-    catch { Add-Step 'update pending' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
-}
 $env:KIMI_PIPELINE = $previousPipeline
-$env:KIMI_CODEGEN = $previousCodegen
-$summary = [ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; codegen = $Codegen; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps }
-if ($Codegen -eq 'mir') { $summary.codegenPending = $codegenPending }
+$summary = [ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps }
 $summary | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

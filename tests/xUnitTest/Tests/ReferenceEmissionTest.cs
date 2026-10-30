@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -133,27 +134,22 @@ public class ReferenceEmissionTest
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
     }
 
+    // IMPL 21.3.1 (AbiRecords; DECISIONS R5-M145 under R5-M12): a shared borrow of a string is passed as its address, noundef nonnull align 8
+    // dereferenceable(24) and never noalias, at the callee's parameters and at its call alike, and the callee is not readonly; the string is
+    // neither copied nor destroyed by the borrow, which the native audit's single destruction shows.
     [Fact]
     public void BorrowedValuesNeedNoPhysicalCopyOrStorage()
     {
         const string Source = Same + "let a = \"a\"\nif same(a, a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies[0];
-        var function = module.GetFunction(0);
-        Assert.Equal(3, body.Operations.Count(x => x.Kind == OwnershipOperationKind.Borrow)); // Two for same, one for writeLine (SPEC 22.1).
-        Assert.DoesNotContain(function.Slots, x => ReferenceTypes.IsString(body.Places[x.Place].Type));
-        var borrowed = module.GetFunction(1);
-        Assert.Empty(borrowed.Slots);
-        Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.MoveString);
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.WriteIr(writer, out var error), error);
         var ir = writer.ToString();
-        Assert.Contains("ptr noundef nonnull align 8 dereferenceable(24) %a0", ir);
-        Assert.Contains("ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
+        const string Shared = @"ptr noundef nonnull align 8 dereferenceable\(24\) %\w+";
+        var same = Assert.Single(Regex.Matches(ir, @"(?ms)^define internal i1 @([\w.]+)\(" + Shared + ", " + Shared + @"\) #0 \{\n.*?^\}"));
+        Assert.Single(Regex.Matches(ir, @"call i1 @" + Regex.Escape(same.Groups[1].Value) + @"\(" + Shared + ", " + Shared + @"\)"));
         Assert.DoesNotContain("noalias", ir);
-        var functionText = ir[ir.IndexOf("define internal i1 @__kimi_f0", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("readonly", functionText);
+        Assert.DoesNotContain("readonly", same.Value);
         StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", ir, "a\n", "a=1");
     }
 
@@ -179,50 +175,11 @@ public class ReferenceEmissionTest
         Assert.Equal(0, emissionBytes);
     }
 
-    [Theory]
-    [InlineData("missing_loan")]
-    [InlineData("early_end")]
-    [InlineData("exclusive")]
-    [InlineData("source")]
-    [InlineData("no_result_contract")]
-    [InlineData("missing_result")]
-    [InlineData("dependent_result")]
-    [InlineData("end_position")]
-    [InlineData("reference_value")]
-    public void InvalidPlansNeverPublishIr(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Same + "let a = \"a\"\nsame(a, a)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var loan = body.ComparisonLoans[0];
-        var call = body.CallLoans[0];
-        var entry = body.Operations.Select((operation, index) => (operation, index)).First(x => x.operation.Kind == OwnershipOperationKind.CallEntry).index;
-        switch (defect)
-        {
-            case "missing_loan": body.ComparisonLoans.Clear(); break;
-            case "early_end": body.LoanInputs[call.Call] = -1; break;
-            case "exclusive": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { LoanMode = LoanRequirement.Uniq }; break;
-            case "source": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { Place = body.Operations[loan.Read].Input }; break;
-            case "no_result_contract": body.CallLoans.Clear(); break;
-            case "missing_result": body.CallLoans[0] = call with { Result = -1, End = -1 }; break;
-            case "dependent_result": body.CallLoans[0] = call with { ResultRequirement = LoanRequirement.Ref }; break;
-            case "end_position": body.CallLoans[0] = call with { End = call.Result }; break;
-            case "reference_value": body.ValueOperands[body.Values[entry].Start] = -1; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Fact]
     public void ReparseReusesThePhysicalAbi()
     {
         const string Source = Same + "let a = \"a\"\nsame(a, a)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
         var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
         var abi = pool.Get(0, same, c.Layout);
@@ -231,7 +188,6 @@ public class ReferenceEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Emission.TryPrepare(out module, out error), error);
         var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
         Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
         Assert.Same(abi, pool.Get(0, renamed, c.Layout));

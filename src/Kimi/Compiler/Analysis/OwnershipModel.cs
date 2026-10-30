@@ -213,6 +213,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement F
         OwnershipRequirement.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipRequirement.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         OwnershipRequirement.OwnStepDeparture => DiagnosticCode.OwnStepDeparture_Kd, // A5's alone (R4-M116); the consistency set's pair.
+        OwnershipRequirement.DepthLimit => DiagnosticCode.OwnershipDepthLimit_Kd, // A4's and A5's alone (R4-M153); the consistency set's pair.
         _ => DiagnosticCode.Unsupported_Kd,
     };
 }
@@ -302,19 +303,12 @@ public sealed partial class OwnershipBody
 
     internal int DefaultParameter { get; set; } = -1;
 
-    internal int ParameterCount => this.DefaultParameter >= 0 ? this.DefaultParameter : this.Function.Parameters.Count;
-
-    internal BoundType? DeclaredResultType => this.DefaultParameter >= 0 ? this.Function.Parameters[this.DefaultParameter].Type.BoundType : this.Function.BoundSymbol?.Type;
-
     internal List<OwnershipIdentity>? Identities { get; set; }
 
     /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.14).</summary>
 
     /// <summary>Gets or sets the anchor Places of the body's raw Place borrows, each sourced at its borrow (SPEC 5.2.2).</summary>
     internal List<int>? Anchors { get; set; }
-
-    /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
-    internal CallPlan? Instance { get; set; }
 
     internal Binding? InstanceBinding { get; set; }
 
@@ -323,8 +317,8 @@ public sealed partial class OwnershipBody
 
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
-    // Concrete, from building and solving to lowering, sees the substituted Type.
+    // A case plan carries its substitution from the start, so every phase that reads a declared Type through Concrete, from
+    // building to solving, sees the substituted Type.
     internal OwnershipTransfers TransfersAt(int operation)
     {
         var entry = this.Operations[operation];
@@ -337,13 +331,12 @@ public sealed partial class OwnershipBody
         };
     }
 
-    internal void Reset(FunctionKoto function, CallPlan? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
+    internal void Reset(FunctionKoto function, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.ResetResolvedCalls();
         this.ResetCleanupEffects();
         this.Function = function;
         this.DefaultParameter = -1;
-        this.Instance = instance;
         this.caseBit = caseBit;
         if (this.caseStorage.Length < cases.Length)
         {
@@ -352,7 +345,7 @@ public sealed partial class OwnershipBody
 
         cases.CopyTo(this.caseStorage);
         this.caseCount = cases.Length;
-        this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
+        this.InstanceBinding = cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
@@ -451,11 +444,10 @@ public sealed partial class OwnershipBody
         return condition;
     }
 
-    // The root stage of Resolve: a case run sees its case Types and an instance plan its closed substitution. Every consumer
-    // names its interpretation context through Resolve (SPEC 7.2.3, 8.15).
+    // The root stage of Resolve: a case run sees its case Types. Every consumer names its interpretation context through Resolve
+    // (SPEC 7.2.3, 8.15).
     private BoundType? Concrete(BoundType? type)
-        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
-        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
+        => type is null || this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
 }
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.

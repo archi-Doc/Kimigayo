@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -317,10 +316,11 @@ public sealed partial class MirBorrowsTest
     // argument form, a Closure, a function item (Item) or a capturing Closure (Cap, whose Bad is b's Loan), and whatever the length
     // argument (truncateFull: the row names no count); `clear`'s twins are the comparison. Over an abstract `T` not proven Copy (Gen), the
     // call is the located Unsupported_Kd and Bad keeps its true `y = 5` (R4-M147's abstract-referent rule, as clearGen's).
-    // Pinned, not SPEC's verdict: every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok,
-    // removeAllItemOk, removeAllCapOk) and removeAllElemBad's second record, its MIR-only `y = 5` beside the activation conflict, are
-    // R4-M143's known false errors, C3's destruction guard keeping W, pinned here until G264 U2 flips them to SPEC's valid. Guards: U0′
-    // changes no A5 verdict, so each row holds today and must hold after.
+    // Every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok, removeAllItemOk, removeAllCapOk), once
+    // R4-M143's known false errors, is a correct error under SPEC 15.6's whole-holder text (DECISIONS BU-67, R4-M143's note; the Array
+    // holding x is consumed, as consumeDrop2Ok's x). Pinned, not SPEC's verdict: removeAllElemBad's second record, its MIR-only `y = 5`
+    // beside the activation conflict, is C3's destruction guard keeping W, pinned here until G264 U2. Guards: U0′ changes no A5 verdict,
+    // so each row holds today and must hold after.
     [Fact]
     public void ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW()
     {
@@ -339,12 +339,12 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // SPEC 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′, G160): the records each form publishes on each pipeline. A Writer form publishes none on
-    // the default pipeline, which publishes no A5 record (G160; SPEC: Bad errs at `y = 5`); the Plain forms are published as SPEC says on
-    // both: a borrow of y live across the call is valid (truncatePlainOk, removeAllPlainOk), a Closure capturing it keeps b's Loan
-    // (removeAllCapPlainBad errs at `y = 5`, its twin valid; removeAllCapBad errs there on both, by b's Loan), and a Closure capturing the
-    // Array or an element borrow live at the call is the activation conflict at the call (removeAllCapArrBad, removeAllElemBad: callbacks
-    // cannot observe the Array). Both pipelines publish the same records. Guards: each row holds today and must hold after.
+    // SPEC 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′, G160): the records each form publishes, the same on every pipeline (DECISIONS R5-M156;
+    // the default and `-Pipeline mir` runs cover both). A Writer form publishes none, since A5's records stay unpublished (G160; SPEC:
+    // Bad errs at `y = 5`); the Plain forms are published as SPEC says: a borrow of y live across the call is valid (truncatePlainOk,
+    // removeAllPlainOk), a Closure capturing it keeps b's Loan (removeAllCapPlainBad errs at `y = 5`, its twin valid; removeAllCapBad errs
+    // there, by b's Loan), and a Closure capturing the Array or an element borrow live at the call is the activation conflict at the call
+    // (removeAllCapArrBad, removeAllElemBad: callbacks cannot observe the Array). Guards: each row holds today and must hold after.
     [Theory]
     [InlineData("removeAllDrop2Bad", "")]
     [InlineData("removeAllDrop2Ok", "")]
@@ -371,10 +371,7 @@ public sealed partial class MirBorrowsTest
     public void ATruncateOrRemoveAllCallPublishesItsRecordsOnBothPipelines(string form, string records)
     {
         var source = DestructionShapes + Form(Forms, form) + "public func main() => ()\n";
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Equal($"{form} {pipeline}: {records}", $"{form} {pipeline}: {Records(source, pipeline)}");
-        }
+        Assert.Equal($"{form}: {records}", $"{form}: {Records(source)}");
     }
 
     // Kept apart (scored apart; PLAN G266's cause, not a row's): SPEC 15.6.4, storage reached through a Closure's captures may retain an
@@ -390,9 +387,9 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(c, Analyze(c), LoanCodes));
     }
 
-    // The published Error records of a program under a pipeline: each code and the first line of its subject, in order.
-    internal static string Records(string source, CompilerPipeline pipeline)
-        => string.Join("; ", ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
+    // The published Error records of a program: each code and the first line of its subject, in order.
+    internal static string Records(string source)
+        => string.Join("; ", ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
             .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length).Split('\n')[0].Trim()}"));
 
     // One form's function in a forms text: from its header to the next top-level declaration or the end.

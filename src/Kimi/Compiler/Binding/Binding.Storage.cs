@@ -11,19 +11,16 @@ public sealed partial class Binding
     private readonly List<DeclarationContainerKoto> storageDeclarations = new();
     private readonly List<PropertyKoto> storedFields = new();
     private readonly List<BoundEnumCase?> storedCases = new();
-    private readonly List<DeclarationContainerKoto> inlineLayoutStack = new();
-    private readonly List<bool> inlineLayoutOwnDeclaration = new();
-    private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
-    private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(GenericsKoto Syntax, BoundType Type)> cLayoutInstances = [];
     private readonly List<BoundType> enumPayloadTypes = new();
-    private bool storagePrepared;
+    private readonly TypeMemo<BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<BoundType> markedParts = new(); // WithUnstatedOrigins' results.
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
     // instance first requested after the last pass on that request. One substitution, two forms (DECISIONS BU-41): the kept parts
     // (Parts, PartsBase; TyCtxt.StoredParts) with the raw Origins it gives, `self` as Holder and Unstated on each raw layer the declaration
-    // writes without `during` (KeptType, DECISIONS BU-46), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
+    // writes without `during` (KeptType, DECISIONS BU-46), each associated projection completed as its subject specifies
+    // (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
     // (R5-M39).
@@ -44,15 +41,10 @@ public sealed partial class Binding
         return instance;
     }
 
-    internal BoundType? StoredType(Koto syntax, BoundType owner)
-    {
-        if (WrittenType(syntax) is not { } field || owner.Symbol is null)
-        {
-            return null;
-        }
-
-        return this.StoredType(field, owner);
-    }
+    // SPEC 8.2.3, 5.7 (DECISIONS BU-50): a stored part's Type under an instance (a Field, a Case payload, a base clause) as a reader
+    // outside a body reads it (a body reads PartTypeIn): its kept part without the Unstated mark, so every reader gets the one
+    // producer's Type (KeptType, its projections completed); null where it does not substitute.
+    internal BoundType? StoredType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.PartType(written, owner) : null;
 
     // The Type a Field or Case payload declaration writes, before any instance substitutes it; null for none.
     private static BoundType? WrittenType(Koto? declaration) => declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
@@ -106,20 +98,163 @@ public sealed partial class Binding
         }
     }
 
-    // The kept part of a declared Field, Case payload or base clause (Substitute): its written Type with each raw layer it writes without
-    // `during` stating Unstated (WithUnstatedOrigins), under the instance's substitution; null where it does not substitute. The one
-    // producer of a Type stating Unstated (DECISIONS BU-46).
-    private BoundType? KeptType(Koto syntax, BoundType owner)
-        => WrittenType(syntax) is { } written && owner.Symbol is not null ? this.StoredType(this.WithUnstatedOrigins(written), owner) : null;
+    // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
+    // completable projections completed (CompleteProjections), then each raw layer it writes without `during` stating Unstated
+    // (WithUnstatedOrigins, the one producer of a Type stating Unstated), then under the instance's substitution, completed again for the
+    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a projection that finally
+    // names none, whatever its subject: a dependent of Binding's records, so the instance's storage is Rejected, DECISIONS BU-38).
+    // `BaseI<Src2<raw/u8>.Item>` is `BaseI<raw/u8>` (SPEC 8.2.3), so its layer is one the declaration writes.
+    private BoundType? KeptType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.KeptType(written, owner) : null;
+
+    private BoundType? KeptType(BoundType written, BoundType owner)
+    {
+        if (owner.Symbol is null)
+        {
+            return null;
+        }
+
+        var declaration = owner.Symbol.Declaration;
+        if (this.CompleteProjections(written, declaration) is not { } declared)
+        {
+            return null;
+        }
+
+        var stored = this.StoredType(this.WithUnstatedOrigins(declared), owner);
+        return stored is null ? null : this.CompleteProjections(stored, declaration);
+    }
+
+    // The read form of a member's declared Type under an instance (StoredType's): KeptType without its marks.
+    private BoundType? PartType(BoundType declared, BoundType owner) => this.WithoutUnstated(this.KeptType(declared, owner));
+
+    // SPEC 8.2.3 (DECISIONS BU-50): the read form as a body in `scope` reads it (a member access, a constructor's `self.f` included, a
+    // Case payload's construction and pattern, a stored witness Field and its bridge): PartType normalized there as a call's signature is
+    // (ContractType), so the use scope's premises complete a projection the storage keeps pending (`HAd<T>`'s `T.Output` is T under
+    // `T is PrimitiveInteger`).
+    private BoundType? PartTypeIn(BoundType declared, BoundType owner, BindingScope scope)
+        => this.PartType(declared, owner) is { } part ? this.ContractType(part, scope) : null;
+
+    private BoundType? PartTypeIn(Koto syntax, BoundType owner, BindingScope scope)
+        => WrittenType(syntax) is { } written ? this.PartTypeIn(written, owner, scope) : null;
+
+    // SPEC 5.7, 8.2.3: the Type a member access `node` of `symbol` reads in `scope`: the stored part of the declaring Type member
+    // selection published, as a body reads it (PartTypeIn), else the symbol's Type; its `during self` layer read through the access.
+    private BoundType? MemberRead(Koto node, BindingSymbol symbol, BindingScope scope)
+    {
+        var type = symbol.Type is { } declared && node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) &&
+            selection.DeclaringType is { } owner ? this.PartTypeIn(declared, owner, scope) : symbol.Type;
+        return type is null ? null : this.ReadHolder(type, node, node);
+    }
+
+    // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection replaced by ProjectionSpecification's outcome: a
+    // builtin output or fixed-array iterator Type as it is, a subject's conformance binding as a kept part of the subject (KeptType), so
+    // a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument) states Unstated and one the
+    // subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a pending projection (one with an abstract
+    // part, or a binding whose evidence is not ready yet) stays a projection; one that finally names no Type, whatever its subject and
+    // reason (SPEC 8.3.3 so ends an expanding or cyclic specification), makes the part null. A part without an abstract part is its own
+    // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
+    // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts. A part's result depends on
+    // the part alone in one query (its declaration fixed), so each distinct part is completed once (DECISIONS BU-19, BU-55).
+    private BoundType? CompleteProjections(BoundType part, Koto declaration)
+        => part.HasAbstractPart ? this.CompletedParts(part, declaration, this.completedParts.Begin(this.storageVersion)) : part;
+
+    // A component's result (CompleteProjections), each distinct one with components completed once per query; a leaf is cheaper to
+    // complete again than to record.
+    private BoundType? CompletedPart(BoundType part, Koto declaration, uint query)
+    {
+        if (!part.HasAbstractPart)
+        {
+            return part;
+        }
+
+        if (part.Components.Count == 0)
+        {
+            return this.CompletedParts(part, declaration, query);
+        }
+
+        if (!this.completedParts.TryGet(part, query, out var result))
+        {
+            result = this.CompletedParts(part, declaration, query);
+            this.completedParts.Set(part, query, result);
+        }
+
+        return result;
+    }
+
+    // A part with an abstract part, its components completed first (CompleteProjections).
+    private BoundType? CompletedParts(BoundType part, Koto declaration, uint query)
+    {
+        var components = this.RentTypes(part.Components.Count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (this.CompletedPart(part.Components[i], declaration, query) is not { } component)
+                {
+                    return null;
+                }
+
+                components[i] = component;
+                changed |= !ReferenceEquals(component, part.Components[i]);
+            }
+
+            var parts = components.AsSpan(0, part.Components.Count);
+            var completed = changed ? this.types.Rebuild(part, parts, part.Origin, (BoundOrigin[])part.OriginArguments) : part;
+            return completed.Kind == BoundTypeKind.AssociatedProjection ? this.CompletedProjection(completed, declaration) : completed;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
+    private BoundType? CompletedProjection(BoundType projection, Koto declaration)
+    {
+        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration]);
+        if (outcome.Type is not { } specified)
+        {
+            return outcome.Pending ? projection : null;
+        }
+
+        if (outcome.Subject is not { } subject)
+        {
+            return specified;
+        }
+
+        return this.KeptType(specified, subject);
+    }
 
     // SPEC 5.7 Fits, Calls (DECISIONS BU-46): a declared Type with each raw layer it writes without `during` stating Unstated, the Origin
     // such a layer counts as stating, so that a kept part tells a layer a declaration writes from one a Type argument supplies at any depth.
     // Provenance follows the binding: substitution copies a layer with its mark (a Type slot's argument, a component), and a layer formed
     // from a pair binder's binding reads it through TyCtxt.PairBinding, which keeps the mark (`s/T`, and `s/U` in ApplySemantics). A layer
-    // stating an Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes) and a callable are kept
-    // as written; an Unbound layer, a reported error's dependent, is not marked. A declared part is never a Semantics family (a family
-    // comes only from an expression's adaptation): one is a broken contract.
-    private BoundType WithUnstatedOrigins(BoundType declared)
+    // stating an Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes; KeptType has completed
+    // the completable projections first, DECISIONS BU-50) and a callable are kept as written; an Unbound layer, a reported error's
+    // dependent, is not marked. A declared part is never a Semantics family (a family
+    // comes only from an expression's adaptation): one is a broken contract. A part's result depends on the part alone, so each distinct
+    // part is marked once per call (DECISIONS BU-19, BU-58).
+    private BoundType WithUnstatedOrigins(BoundType declared) => this.MarkedParts(declared, this.markedParts.Begin(this.storageVersion));
+
+    // A component's result (WithUnstatedOrigins), each distinct one with components marked once per query; a leaf is cheaper to mark
+    // again than to record.
+    private BoundType MarkedPart(BoundType part, uint query)
+    {
+        if (part.Components.Count == 0)
+        {
+            return this.MarkedParts(part, query);
+        }
+
+        if (!this.markedParts.TryGet(part, query, out var result))
+        {
+            result = this.MarkedParts(part, query);
+            this.markedParts.Set(part, query, result);
+        }
+
+        return result;
+    }
+
+    // A declared part, its components marked first (WithUnstatedOrigins).
+    private BoundType MarkedParts(BoundType declared, uint query)
     {
         if (declared.Kind == BoundTypeKind.SemanticsAdaptation)
         {
@@ -138,7 +273,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < declared.Components.Count; i++)
             {
-                components[i] = this.WithUnstatedOrigins(declared.Components[i]);
+                components[i] = this.MarkedPart(declared.Components[i], query);
                 changed |= !ReferenceEquals(components[i], declared.Components[i]);
             }
 
@@ -149,6 +284,32 @@ public sealed partial class Binding
             }
 
             return changed ? this.types.Rebuild(declared, parts, declared.Origin, (BoundOrigin[])declared.OriginArguments) : declared;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
+    // WithUnstatedOrigins' inverse (DECISIONS BU-50): a kept part with each Unstated layer stating no Origin, the Type a body reads, so no
+    // MIR local states Unstated (MirValidator's Local row). Only a part carrying a raw Origin is walked.
+    private BoundType? WithoutUnstated(BoundType? kept)
+    {
+        if (kept is null || !kept.CarriesRawOrigin)
+        {
+            return kept;
+        }
+
+        var components = this.RentTypes(kept.Components.Count);
+        try
+        {
+            for (var i = 0; i < kept.Components.Count; i++)
+            {
+                components[i] = this.WithoutUnstated(kept.Components[i])!;
+            }
+
+            var parts = components.AsSpan(0, kept.Components.Count);
+            return TyCtxt.RawStated(kept) ? this.types.Pointer(parts[0]) : this.types.Rebuild(kept, parts, kept.Origin, (BoundOrigin[])kept.OriginArguments);
         }
         finally
         {
@@ -175,90 +336,6 @@ public sealed partial class Binding
         var tuple = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));
         this.enumPayloadTypes.Clear();
         return tuple;
-    }
-
-    // SPEC 21.3.2: a struct or enum that contains itself by value (through stored Fields and inline
-    // bases, payloads, Tuple/array components and other by-value containers, under the substitution
-    // each use supplies) has no finite inline layout; a reference or object Semantics layer is an
-    // indirection. Every declaration on such a cycle is diagnosed once and published as AdtDef.InlineCycle.
-    private void ValidateInlineLayouts()
-    {
-        this.cyclicInlineLayouts.Clear();
-        this.finiteInlineLayouts.Clear();
-        foreach (var container in this.storageDeclarations)
-        {
-            container.BoundSymbol!.Adt!.InlineCycle = false;
-            if (container.BoundSymbol.Type is { } type)
-            {
-                this.inlineLayoutStack.Clear();
-                this.inlineLayoutOwnDeclaration.Clear();
-                this.VisitInlineLayout(type);
-            }
-        }
-
-        for (var i = 0; i < this.cyclicInlineLayouts.Count; i++)
-        {
-            this.cyclicInlineLayouts[i].BoundSymbol!.Adt!.InlineCycle = true;
-            this.Fail(this.cyclicInlineLayouts[i], BindingFailure.InvalidInlineLayout);
-        }
-    }
-
-    private void VisitInlineLayout(BoundType? type)
-    {
-        if (type is null || this.finiteInlineLayouts.Contains(type))
-        {
-            return;
-        }
-
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
-        {
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                this.VisitInlineLayout(type.Components[i]);
-            }
-
-            return;
-        }
-
-        if ((!AdtDef.IsStruct(type) && !AdtDef.IsEnum(type)) || type.Symbol!.Adt is not { } shape)
-        {
-            return; // Parameters, primitives, references, objects, Slices and pointers store no inline copy of this Type.
-        }
-
-        var container = (DeclarationContainerKoto)type.Symbol.Declaration;
-        var index = this.inlineLayoutStack.IndexOf(container);
-        if (index >= 0)
-        {
-            // The cycle's members are the declarations reached as themselves; a generic container reached
-            // under an instantiation (Box<E> inside E) merely stores the offending Type argument.
-            for (var i = index; i < this.inlineLayoutStack.Count; i++)
-            {
-                if (this.inlineLayoutOwnDeclaration[i] && !this.cyclicInlineLayouts.Contains(this.inlineLayoutStack[i]))
-                {
-                    this.cyclicInlineLayouts.Add(this.inlineLayoutStack[i]);
-                }
-            }
-
-            return;
-        }
-
-        // The declaration itself is visited with its declared stored Types (its own parameters stay open);
-        // an instantiation substitutes them.
-        var own = ReferenceEquals(type, container.BoundSymbol?.Type);
-        this.inlineLayoutStack.Add(container);
-        this.inlineLayoutOwnDeclaration.Add(own);
-        var cycles = this.cyclicInlineLayouts.Count;
-        for (var i = 0; i < shape.Types.Count; i++)
-        {
-            this.VisitInlineLayout(own ? shape.Types[i].BoundType : this.StoredType(shape.Types[i], type));
-        }
-
-        this.inlineLayoutStack.RemoveAt(this.inlineLayoutStack.Count - 1);
-        this.inlineLayoutOwnDeclaration.RemoveAt(this.inlineLayoutOwnDeclaration.Count - 1);
-        if (this.cyclicInlineLayouts.Count == cycles)
-        {
-            this.finiteInlineLayouts.Add(type);
-        }
     }
 
     private void PrepareStorage()
@@ -331,22 +408,29 @@ public sealed partial class Binding
                     // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
                     // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
                     var originDeclaration = this.BeginOriginDeclaration(member, scope);
-                    var payloadsBound = true;
+                    Koto? failedPayload = null;
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
-                        payloadsBound &= this.BindType(payload.Operands[j], scope) is not null;
+                        if (this.BindType(payload.Operands[j], scope) is null)
+                        {
+                            failedPayload ??= payload.Operands[j];
+                        }
                     }
 
-                    if (payloadsBound)
+                    if (failedPayload is null)
                     {
                         this.CompleteOriginDeclaration(originDeclaration);
+                    }
+                    else
+                    {
+                        RestPendingOn(originDeclaration, failedPayload);
                     }
 
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
                         var syntax = payload.Operands[j];
                         shape.Types.Add(syntax);
-                        if (syntax.BoundType is { } type && !TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
+                        if (syntax.BoundType is { } type && !this.TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
                         {
                             this.Fail(member, BindingFailure.Access);
                         }
@@ -399,10 +483,16 @@ public sealed partial class Binding
         return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
     }
 
-    // Substitutes a stored Origin's declared slots and inputs. A pair's outer Origin `o`, a negative slot of its binder, is bound
-    // through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
-    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, ReadOnlySpan<BoundType?> types = default)
+    // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages). A pair's outer Origin `o`, a negative
+    // slot of its binder, is bound through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
+    private BoundOrigin SubstituteStoredOrigin(
+        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, ReadOnlySpan<BoundType?> types = default)
     {
+        if (origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, binder) && images.Reserved(origin.Slot) is { } reserved)
+        {
+            return reserved;
+        }
+
         if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder))
         {
             if ((uint)origin.Slot < (uint)arguments.Length && arguments[origin.Slot] is { } argument)
@@ -427,17 +517,18 @@ public sealed partial class Binding
             }
         }
 
-        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && (uint)origin.Slot < (uint)inputs.Length && inputs[origin.Slot] is { } input)
+        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && (uint)origin.Slot < (uint)images.Inputs.Length &&
+            images.Inputs[origin.Slot] is { } input)
         {
             return input;
         }
 
         if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs, types);
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, images, types);
             for (var i = 1; i < origin.Operands.Count; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs, types));
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, images, types));
             }
 
             return result;
@@ -446,9 +537,10 @@ public sealed partial class Binding
         return origin;
     }
 
-    private BoundType SubstituteStoredOrigins(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, Koto? correspondingBinder = null)
+    private BoundType SubstituteStoredOrigins(
+        BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, Koto? correspondingBinder = null)
     {
-        if (arguments.IsEmpty && inputs.IsEmpty && correspondingBinder is null)
+        if (arguments.IsEmpty && images.IsEmpty && correspondingBinder is null)
         {
             return type;
         }
@@ -460,10 +552,10 @@ public sealed partial class Binding
             return type;
         }
 
-        var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, inputs) : null;
+        var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, images) : null;
         if (type.RawOrigin is { } raw)
         {
-            origin = this.SubstituteStoredOrigin(raw, binder, arguments, inputs);
+            origin = this.SubstituteStoredOrigin(raw, binder, arguments, images);
         }
 
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
@@ -484,13 +576,13 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, inputs, correspondingBinder);
+                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, images, correspondingBinder);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                origins[i] = this.SubstituteStoredOrigin(type.OriginArguments[i], binder, arguments, inputs);
+                origins[i] = this.SubstituteStoredOrigin(type.OriginArguments[i], binder, arguments, images);
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
@@ -505,5 +597,27 @@ public sealed partial class Binding
                 this.lengthScratch.Return(lengths, clearArray: true);
             }
         }
+    }
+
+    // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152): its inputs, in parameter-slot
+    // order, and at a value call of a Closure its two reserved atoms', the call receiver ρ (the receiver acquisition's Origin) and the
+    // call result (the call's Unbound atom, R4-M118), each built only where the result names its atom; a missing image keeps its atom.
+    private readonly ref struct PerCallImages(ReadOnlySpan<BoundOrigin> inputs, BoundOrigin? receiver, BoundOrigin? result)
+    {
+        internal ReadOnlySpan<BoundOrigin> Inputs { get; } = inputs;
+
+        internal bool IsEmpty => this.Inputs.IsEmpty && receiver is null && result is null;
+
+        public static implicit operator PerCallImages(ReadOnlySpan<BoundOrigin> inputs) => new(inputs, null, null);
+
+        public static implicit operator PerCallImages(Span<BoundOrigin> inputs) => new(inputs, null, null);
+
+        // The image of the binder's reserved atom at a Projection slot, null for any other slot.
+        internal BoundOrigin? Reserved(int slot) => slot switch
+        {
+            ClosureValueSlot => receiver,
+            CallResultSlot => result,
+            _ => null,
+        };
     }
 }

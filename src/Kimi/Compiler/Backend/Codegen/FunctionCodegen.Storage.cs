@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Backend;
 // array give the remainder {storage, position, count} = {the first element's address, 0, N} at the result record's Fields 0, 1 and 2 (the
 // declaration order of RefRemainder and UniqRemainder), N the array's closed length in the item's instance; the reference operand's value
 // is the array's address, so nothing is read or copied. DictionaryKernel: each Dictionary kernel over its call's entry layout, of the K
-// and V its substitution binds in the item's instance, with its writer's kernel and number: dictionaryStorage's {address, stride} Tuple,
+// and V its substitution binds in the item's instance (its row's TypeArguments need, Needed; DECISIONS R5-M149), with its writer's kernel
+// and number: dictionaryStorage's {address, stride} Tuple,
 // borrowStorage's and borrowStorageUniq's remainder {storage, stride, link, count}, ownStorage's {storage, stride, link, tail, count} (each
 // at the result record's Fields in declaration order) with the entry stride, and keyAt's and valueAt's slot address at the key's or the
 // value's offset; another writer is a broken contract (LegacyRow.DictionaryKernel names exactly these five).
@@ -19,15 +20,10 @@ internal sealed partial class FunctionCodegen
     private void FixedStorage(in MirTerminator call)
     {
         var source = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
-        if (this.Referent(this.InstanceType(source)) is not { } array || this.LoweringOf(call.Place) is not { } remainder)
+        if (this.Referent(this.InstanceType(source)) is not { } array || this.LoweringOf(call.Place) is not { } remainder ||
+            !this.Operand(source, out var storage) || !this.Address(call.Place, out var record))
         {
             return; // A broken contract, recorded.
-        }
-
-        if (!this.Operand(source, out var storage) || !this.Address(call.Place, out var record))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
         }
 
         var input = new StorageKernelInput(
@@ -45,11 +41,9 @@ internal sealed partial class FunctionCodegen
     // source operand 0's value (a reference's Dictionary address, ownStorage's moved Dictionary in memory, a slot pointer), its result the
     // call Place's record, whose Fields the kernel stores, or, for a result that travels as a scalar (keyAt's and valueAt's pointer), the
     // value the kernel defines.
-    private void DictionaryKernel(in MirTerminator call, LegacyWriter writer)
+    private void DictionaryKernel(in MirTerminator call, LegacyWriter writer, Subst subst)
     {
-        var types = call.Callee.Subst!.Types;
-        if (this.Laid(this.collector.TypeOf(this.item, types[0]!)) is not { } key || this.Laid(this.collector.TypeOf(this.item, types[1]!)) is not { } value ||
-            this.LoweringOf(call.Place) is not { } result)
+        if (this.Needed(subst, 0, out _) is not { } key || this.Needed(subst, 1, out _) is not { } value || this.LoweringOf(call.Place) is not { } result)
         {
             return; // A broken contract, recorded.
         }
@@ -70,8 +64,7 @@ internal sealed partial class FunctionCodegen
         var source = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
         if (!this.Operand(source, out var storage) || !(scalar || this.Address(call.Place, out record)))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var defined = scalar ? new Value('t', this.next++) : default;

@@ -8,7 +8,7 @@ namespace XunitTest;
 
 // The string comparisons and string constants of MIR code generation (R5 C8c; SPEC 13.4, 13.4.1, 14.8.1, 3.4.3, IMPL 21.1.3; DECISIONS
 // R5-M118): a comparison is the string column's routine on its operands' bytes, the routine's i32 compared with 0; a constant passes its
-// pooled bytes and is written whole where it is stored; natively under both generators.
+// pooled bytes and is written whole where it is stored; natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library comparing strings by every operator, against literals and the empty string, through a uniq layer, by literal Patterns and as
@@ -24,7 +24,7 @@ public sealed partial class FunctionCodegenTest
         "func pair() -> (string, i32) => (\"p\", 1)\nfunc words() -> [2 of string] => [\"a\", \"\"]\n" +
         "func some() -> Option<string> => .Some(\"s\")\nfunc put(p: raw/string)\n    unsafe => Raw.initialize(p, \"r\")\n";
 
-    // SPEC 13.4 (DECISIONS R5-M118): string comparisons natively under both generators: every operator, literals and the empty string,
+    // SPEC 13.4 (DECISIONS R5-M118): string comparisons natively: every operator, literals and the empty string,
     // NUL bytes and UTF-8 order, a uniq layer, literal Patterns, tuple orderings and constants stored in aggregates.
     public static TheoryData<string, string, string> StringPrograms => new()
     {

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -25,7 +24,9 @@ public class StringFunctionEmissionTest
         { "Loop", Echo + "var i = 0\nwhile i < 3\n    echo(\"iteration\")\n    i += 1", string.Empty, "iteration=3" },
         { "Recursion", "func repeat(text: string, n: i32) -> string\n    if n == 0 => return text@move\n    return repeat(text@move, n - 1)\nConsole.writeLine(repeat(\"recursive\", 3))", "recursive\n", "recursive=1" },
         { "Snapshot", "func take() -> string\n    var text = \"before\"\n    defer => text = \"after\"\n    return text@move\nConsole.writeLine(take())", "before\n", "before=1;after=1" },
-        { "EarlyArgument", "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(\"pending\", (return))\nf()", string.Empty, "pending=1;bad=0" },
+
+        // The argument a later one abandons is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
+        { "EarlyArgument", Echo + "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(echo(\"pending\"), (return))\nf()", string.Empty, "pending=1;bad=0" },
         { "Shadow", "func writeLine(text: string) => ()\nwriteLine(\"shadow\")", string.Empty, "shadow=1" },
         { "Local", "public func main()\n    func local(text: string) -> string => text@move\n    Console.writeLine(local(\"local\"))", "local\n", "local=1" },
         { "Empty", Echo + "Console.writeLine(echo(\"\"))", "\n", "=1" },
@@ -52,7 +53,10 @@ public class StringFunctionEmissionTest
     [InlineData(true)]
     public void NamedArgumentsDistinguishCallerAndCalleeDestructionOrder(bool transfer)
     {
-        var source = "func choose(first: string, second: string, gap: ()) => ()\nfunc f()\n    choose(second: \"second\", first: \"first\", gap: " + (transfer ? "(return)" : "()") + ")\nf()";
+        // The arguments are calls' results, values both generators make, so an abandoned call's caller has them to destroy (a constant
+        // abandoned there is never materialized by MIR code generation; DECISIONS R5-M145).
+        var source = Echo + "func choose(first: string, second: string, gap: ()) => ()\nfunc f()\n    choose(second: echo(\"second\"), first: echo(\"first\"), gap: " +
+            (transfer ? "(return)" : "()") + ")\nf()";
         var name = transfer ? "StringFunctionCallerOrder" : "StringFunctionCalleeOrder";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
         int[] order = transfer ? [0, 1] : [1, 0];
@@ -76,143 +80,16 @@ public class StringFunctionEmissionTest
     public void DivergentDeferHasNoReturnAndDoesNotForwardTheResultSlot()
     {
         const string Source = Echo + "func f(text: string) -> string\n    defer => loop => ()\n    return echo(text@move)\nConsole.writeLine(f(\"held\"))";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 1 && x.Operations.Any(o => o.Source is LoopKoto));
-        var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
-        Assert.DoesNotContain(function.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-        Assert.All(body.Operations.Select((x, id) => (x, id)).Where(x => x.x.Kind == OwnershipOperationKind.Deliver), x => Assert.False(body.IsReachable(x.id)));
-        var call = Assert.Single(function.Instructions, x => x.Callee?.ResultSlot == true);
-        var result = function.GetOperands(call)[0];
-        Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[(int)result.Value].Kind);
         var ir = ScalarEmissionTest.EmitFixture("StringFunctionDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
-    }
-
-    [Fact]
-    public void ParameterProduceExplicitlyInitializesItsFlag()
-    {
-        // writeLine borrows its argument (SPEC 22.1); a conditional transfer keeps the parameter's live flag.
-        var c = MinimalEmissionTest.Analyze("func f(text: string, c: bool)\n    if c\n        _ = text@move\nf(\"text\", true)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 2);
-        var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
-        var place = Assert.Single(function.LiveFlags);
-        Assert.Equal(OwnershipPlaceKind.Parameter, body.Places[place].Kind);
-        var producer = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == place);
-        var scratch = new int[body.Places.Count + body.Operations.Count];
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StoreLiveFlag && x.Operation == producer);
-        Assert.True(index >= 0);
-        var instruction = function.Instructions[index];
-        Assert.Equal(1, instruction.Constant);
-        function.Instructions.RemoveAt(index);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.Insert(index, instruction);
-        function.Instructions.Insert(index, instruction);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.RemoveAt(index);
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        body.OperationStorage[producer] = body.OperationStorage[producer] with { Kind = OwnershipOperationKind.Read };
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-    }
-
-    [Theory]
-    [InlineData("produce")]
-    [InlineData("result")]
-    [InlineData("argument_result")]
-    [InlineData("parameter")]
-    [InlineData("return_write")]
-    public void MalformedStringFunctionPlansPublishNoIrAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "Console.writeLine(echo(\"text\"))", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 0);
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ReferenceEquals(x.Source.TypeOf(), BoundType.String));
-        if (defect is "parameter" or "return_write")
-        {
-            body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 1);
-            var id = body.OperationStorage.FindIndex(x => x.Kind == (defect == "parameter" ? OwnershipOperationKind.Produce : OwnershipOperationKind.Deliver));
-            if (defect == "parameter")
-            {
-                body.OperationStorage[id] = body.OperationStorage[id] with { Source = body.Function };
-            }
-            else
-            {
-                body.Deliveries[0] = body.Deliveries[0] with { Write = -1 };
-            }
-        }
-        else if (defect == "produce")
-        {
-            body.OperationStorage[call + 1] = body.OperationStorage[call + 1] with { Kind = OwnershipOperationKind.Read };
-        }
-        else if (defect == "result")
-        {
-            body.OperationStorage[call] = body.OperationStorage[call] with { Place = -1 };
-        }
-        else
-        {
-            body.OperationStorage[call - 1] = body.OperationStorage[call - 1] with { Place = body.Operations[call].Place };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Fact]
-    public void ACallCannotOverwriteAnAlreadyInitializedResult()
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "let unit = ()\necho(\"text\")", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 0);
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        var earlier = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Declare && ReferenceEquals(body.Places[x.Place].Type, BoundType.Unit));
-        var literal = body.Operations.First(x => x.Kind == OwnershipOperationKind.Produce && x.Source is StringLiteralKoto);
-        Assert.InRange(earlier, 0, call - 1);
-        var place = body.Operations[call].Place;
-        body.OperationStorage[earlier] = body.OperationStorage[earlier] with { Kind = OwnershipOperationKind.Produce, Place = place, Source = literal.Source };
-        body.Solve();
-        Assert.Empty(body.Issues);
-        Assert.NotEqual(PlaceState.None, body.GetInputState(call, place) & PlaceState.MayInit);
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out var error));
-        Assert.Contains("already live", error);
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
     public void NoncompletingArgumentDoesNotInitializeAStringCallResult()
     {
         const string Source = Echo + "func f()\n    echo((return))\nf()\nConsole.writeLine(\"done\")";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => !x.Function.IsGenerated && x.Function.Parameters.Count == 0);
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        Assert.True(call >= 0);
-        Assert.False(body.IsReachable(call));
-        Assert.False(body.IsReachable(call + 1));
-        var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
-        Assert.DoesNotContain(function.Instructions, x => x.Callee?.ResultSlot == true);
         var ir = ScalarEmissionTest.EmitFixture("StringFunctionNeverArgument", Source, "done\n");
         StringEmissionTest.WriteAuditedFixture("StringFunctionNeverArgument", ir, "done\n", "done=1");
-    }
-
-    [Fact]
-    public void IncomingSlotsAndLogicalNamesHaveNoExtraAllocations()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(a: string, gap: (), b: string) -> string => b@move\nConsole.writeLine(f(\"a\", (), \"b\"))");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.Abi.ResultSlot);
-        Assert.Equal(new[] { "ret", "a0", "a2" }, function.Abi.Parameters.Select(x => x.Name));
-        Assert.Equal(2, function.SlotAddresses.Count(x => x.Kind == EmissionOperandKind.Argument));
-        Assert.Single(function.SlotAddresses, x => x.Kind == EmissionOperandKind.ReturnAddress);
-        Assert.All(function.Slots, x => Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[x.Place].Kind));
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        Assert.Contains("(ptr %ret, ptr %a0, ptr %a2)", writer.ToString());
     }
 
     [Trait("Purpose", "Allocation")]

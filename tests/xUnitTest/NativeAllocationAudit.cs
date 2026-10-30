@@ -2,6 +2,8 @@
 
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
+using Kimi.Compiler.Mir;
 using Xunit;
 
 namespace XunitTest;
@@ -10,8 +12,9 @@ namespace XunitTest;
 // escaping the counters.
 internal static class NativeAllocationAudit
 {
-    // Array growth (__kimi_array_grow) and the Dictionary source's private byte transfer (__kimi_transfer_bytes) each copy
-    // high-water storage once, at their anchor.
+    // The runtime's two transfer routines, which both generators call (DECISIONS R5-M145): Array growth (RuntimeAbi.ArrayGrow) and the
+    // Dictionary source's private byte copy (RuntimeAbi.TransferBytes, Storage.transferBytes) each copy high-water storage once, at their
+    // anchor.
     private const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
     private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
 
@@ -55,11 +58,16 @@ internal static class NativeAllocationAudit
         ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (transferred is not null)
         {
-            // A bound with neither routine would count nothing.
-            var grows = ir.Contains("__kimi_array_grow", StringComparison.Ordinal);
-            Assert.True(grows || ir.Contains("__kimi_transfer_bytes", StringComparison.Ordinal), "A transfer bound needs a routine to count.");
-            ir = CountTransfers(ir, "__kimi_array_grow", CopyAnchor, CopyAnchor + Transferred("%used"));
-            ir = CountTransfers(ir, "__kimi_transfer_bytes", TransferAnchor, Transferred("%size") + TransferAnchor);
+            // A bound with neither routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
+            // of its module's byte copy: a module that writes its transfers in any other form, with or without the routine defined (the
+            // storage byte primitives are defined as a pair), fails here instead of passing a bound vacuously.
+            var grows = ir.Contains(RuntimeAbi.ArrayGrow.Name, StringComparison.Ordinal);
+            var copies = ir.Contains(RuntimeAbi.TransferBytes.Name, StringComparison.Ordinal);
+            Assert.True(grows || copies, "A transfer bound needs a routine to count.");
+            var calls = ir.Contains("call void @" + RuntimeAbi.TransferBytes.Name + "(", StringComparison.Ordinal);
+            Assert.True(calls || !TransfersBytes(source), "A program that transfers bytes needs its module to call the byte copy it counts.");
+            ir = CountTransfers(ir, RuntimeAbi.ArrayGrow.Name, CopyAnchor, CopyAnchor + Transferred("%used"));
+            ir = CountTransfers(ir, RuntimeAbi.TransferBytes.Name, TransferAnchor, Transferred("%size") + TransferAnchor);
         }
 
         // Keep the real startup and cleanup path, including explicitly declared main.
@@ -174,6 +182,32 @@ internal static class NativeAllocationAudit
         var mentioned = ir.Contains(routine, StringComparison.Ordinal);
         Assert.Equal(mentioned, ir.Contains(anchor, StringComparison.Ordinal));
         return mentioned ? Instrument(ir, anchor, instrumented) : ir;
+    }
+
+    // SPEC 22.2 (DECISIONS R5-M145): whether a body the program reaches calls Storage.transferBytes, read from its MIR and the instances its
+    // startup reaches, the program analyzed as FunctionCodegenTest's form analyzes it.
+    private static bool TransfersBytes(string source)
+    {
+        var c = FunctionCodegenTest.GeneratedDefinitions(source).C;
+        var program = c.BuildMir();
+        var set = c.Instances!;
+        for (var item = 0; item < set.Items.Length; item++)
+        {
+            if (set.Items[item].Key.Kind != MonoKind.Body)
+            {
+                continue;
+            }
+
+            foreach (var block in program.Bodies[set.Items[item].BodyOrdinal].Blocks)
+            {
+                if (block.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.LibraryDeclaration: KimiDeclarationId.StorageTransferBytes })
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // Adds bytes to the transferred total.

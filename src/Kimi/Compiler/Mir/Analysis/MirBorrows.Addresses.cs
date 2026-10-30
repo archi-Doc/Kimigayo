@@ -17,24 +17,29 @@ namespace Kimi.Compiler.Mir;
 // stage: the Loan records the layer's own-step entry and positions). An own-step entry makes its root borrowed, so the root's accesses are
 // listed for its departures (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5,
 // R4-M141). The pre-pass runs once per view, after the Loans and before the holders. It walks the view's uses only where Loans saw a raw
-// Ref or a projection row may be or enclose a layer (Layer's and Encloses' Type tests, once per row); elsewhere no use forms an address
-// or a mark (G246).
+// Ref or a projection row may be or enclose a layer (Layer's and Encloses' Type tests: each Type once per pre-pass); elsewhere no use
+// forms an address or a mark (G246). Its Type walks visit a Type, or a (Type, written Type) pair, once per walk (DECISIONS R4-M157), and
+// each visit is a step of Work.
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
 internal sealed partial class MirBorrows
 {
     private readonly MirTable<(int Root, int Owner)> addressOf = new(); // A root's plain address (Owner -1) and its own-step entries.
     private readonly MirTable<(int Root, int Layer)> ownAt = new(); // By a raw Place: its layer's own-step entry, -1 for no layer.
+    private readonly HashSet<(BoundType Type, BoundType? Written)> visited = new(); // A Type walk's visited parts, cleared per walk.
     private int[] positions = []; // An owner's inline positions, from the part on.
     private bool[] layerBorrowed = []; // By location: PQ-10's located Unsupported_Kd.
     private int addressCount;
     private int ownCount; // The layer Places of the view.
 
-    // Whether a Tuple or fixed array holds a raw pointer inline, at any of its positions.
-    private static bool Inline(BoundType type)
+    // Whether a Tuple or fixed array holds a raw pointer inline, at any of its positions: each Type once per pre-pass (Layering), whose
+    // visited Types all hold none, since the pre-pass stops at the first that does.
+    private bool Inline(BoundType type)
     {
         for (var i = 0; i < type.Components.Count && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray; i++)
         {
-            if (type.Components[i].Semantics == SemanticsKind.Raw || Inline(type.Components[i]))
+            this.Work++;
+            var component = type.Components[i];
+            if (component.Semantics == SemanticsKind.Raw || (this.visited.Add((component, null)) && this.Inline(component)))
             {
                 return true;
             }
@@ -77,9 +82,10 @@ internal sealed partial class MirBorrows
     // rows, each a Place's last step): a row whose Type is a raw pointer, or under the view a Tuple or fixed array holding one inline.
     private bool Layering()
     {
+        this.visited.Clear();
         foreach (var row in this.body.Projections)
         {
-            if (row.Type is { } type && (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || Inline(cases.Type(type))))
+            if (row.Type is { } type && (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || this.Inline(cases.Type(type))))
             {
                 return true;
             }
@@ -186,6 +192,7 @@ internal sealed partial class MirBorrows
         this.loans[entry] = new()
         {
             Root = this.Key(root),
+            Place = new(root, owner >= 0 ? owner : 0),
             Group = -1,
             Start = this.loanStepCount,
             Count = steps.Length,
@@ -254,15 +261,24 @@ internal sealed partial class MirBorrows
     private bool Encloses(MirPlace place)
     {
         var type = cases.Type(this.body.TypeOf(place)!);
+        this.visited.Clear();
         return type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray && this.Owner(place, out var part, out var length) is var owner and >= 0 &&
             this.Encloses(cases.Type(this.body.TypeOf(place with { Projection = owner })!), part, length, type);
     }
 
-    // Whether an inline Type at the scratch's positions encloses a layer the instance's part stores stepping Own.
+    // Whether an inline Type at the scratch's positions encloses a layer the instance's part stores stepping Own: never where the
+    // declaration writes nothing there (TyCtxt.WrittenAt null; DECISIONS BU-58, a layer steps Own only where written), else each (Type,
+    // written Type) once per enclosing use, what the step reads beside the instance and part the use fixes (DECISIONS R4-M157).
     private bool Encloses(BoundType instance, int part, int length, BoundType type)
     {
+        if (TyCtxt.WrittenAt(instance, part, this.positions.AsSpan(0, length)) is not { } written || !this.visited.Add((type, written)))
+        {
+            return false;
+        }
+
         for (var i = 0; i < type.Components.Count && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray; i++)
         {
+            this.Work++;
             MirDataflow.Grow(ref this.positions, length + 1);
             this.positions[length] = i;
             var component = type.Components[i];

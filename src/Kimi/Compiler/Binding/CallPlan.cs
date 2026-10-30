@@ -55,6 +55,8 @@ public sealed class CallPlan
     private int inputOriginCount;
     private BoundArgumentOperation[] argumentOperations = [];
     private BoundDefaultArgument[] defaultArguments = [];
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    private byte receiverDependence; // The gate's two facts below in the one byte the plan's layout has room for.
     private Koto? receiver; // The explicit receiver, or a value call's callee.
 
     public CalleeKind Kind { get; private set; }
@@ -191,6 +193,20 @@ public sealed class CallPlan
             return null;
         }
     }
+
+    /// <summary>Gets a declaration a node's own selection calls, which a node resting on a failed target reads (SPEC 23.1.2): an
+    /// invocation's selected target as presented (SPEC 22.1), a Property use's accessors, getter then setter (SPEC 11.3; the accessor
+    /// declarations, not their executing functions). One row per form; a form whose selection calls a declaration adds a row.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="ordinal">The position among the declarations the node calls, in evaluation order.</param>
+    /// <returns>The declaration, or null when the node calls none at that position.</returns>
+    internal static Koto? Called(Koto node, int ordinal = 0) => node switch
+    {
+        InvocationKoto invocation => ordinal == 0 && invocation.BoundCall is { } call ? node.CodeContext.Compilation.Binding.Library.PresentedTarget(call.Target).Declaration : null,
+        MemberAccessKoto or IdentifierNameKoto when node.BoundSymbol?.Property is not null =>
+            Of(node, ordinal)?.Target.Declaration is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : null,
+        _ => null,
+    };
 
     /// <summary>Gets the function that executes a custom accessor (SPEC 11.3), which its calls target: its Type is the accessor's result,
     /// and its parameters (<see cref="Parameter"/>) are the receiver <c>self</c>, then the input <c>value</c>.</summary>
@@ -335,6 +351,23 @@ public sealed class CallPlan
         {
             original.CodeContext.Compilation.Binding.SelectVirtualCall(this, original); // The virtual fields are read only for this kind.
         }
+    }
+
+    // R1's condition at this value call's latest binding (DECISIONS R4-M152): its result depends on its call receiver, which the old
+    // analysis's gate reports as the located Unsupported_Kd (Binding.ValueCallGate).
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    internal bool ReceiverDependentResult
+    {
+        get => (this.receiverDependence & 1) != 0;
+        set => this.receiverDependence = (byte)(value ? this.receiverDependence | 1 : this.receiverDependence & ~1);
+    }
+
+    // Whether the pass's list of receiver-dependent calls holds this call (Binding.ValueCallGate).
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    internal bool ReceiverDependentListed
+    {
+        get => (this.receiverDependence & 2) != 0;
+        set => this.receiverDependence = (byte)(value ? this.receiverDependence | 2 : this.receiverDependence & ~2);
     }
 
     internal void SetValue(Koto callee, BoundType signature, ReadOnlySpan<BoundArgumentOperation> arguments, BoundType declaredSignature, in BoundArgumentOperation receiverOperation, SemanticsKind receiverKind)

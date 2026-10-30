@@ -5,32 +5,32 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn answer @4
-  _0: i32 return @4
+  _0: i32 return @5
   bb0:
     * _0 = const 42_i32 @6
       return @6
 fn negative @7
-  _0: i64 return @7
+  _0: i64 return @8
   bb0:
     * _0 = const -7_i64 @9
       return @9
 fn ratio @11
-  _0: f64 return @11
+  _0: f64 return @12
   bb0:
     * _0 = const 0x3fe0000000000000_f64 @13
       return @13
 fn truth @14
-  _0: bool return @14
+  _0: bool return @15
   bb0:
     * _0 = const true @16
       return @16
 fn greeting @17
-  _0: string return @17
+  _0: string return @18
   bb0:
     * _0 = const "hi" @19
       return @19
 fn floats @20
-  _0: f64 return @20
+  _0: f64 return @21
   _1: f32 var f1 @23 s1
   _2: f32 var f2 @27 s1
   _3: f32 var f3 @31 s1

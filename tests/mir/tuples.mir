@@ -1,6 +1,6 @@
 fn init @9
-  _0: Key return @9
-  _1: i32 arg value @9
+  _0: Key return (Receiver) @9
+  _1: i32 arg value @10
   _2: () temp @11
   _3: () temp @11
   _4: i32 temp @12
@@ -18,16 +18,16 @@ fn init @9
       StorageDead(_2) @11
       return @11
 fn equals @16
-  _0: bool return @16
-  _1: ref/Key arg self @16
-  _2: ref/Key arg other @16
+  _0: bool return @21
+  _1: ref/Key arg self @17
+  _2: ref/Key arg other @19
   bb0:
     * _0 = Eq(copy (*_1).0, copy (*_2).0) proven @22
       return @22
 fn compare @29
-  _0: i32 return @29
-  _1: ref/Key arg self @29
-  _2: ref/Key arg other @29
+  _0: i32 return @34
+  _1: ref/Key arg self @30
+  _2: ref/Key arg other @32
   bb0:
     * _0 = Sub(copy (*_1).0, copy (*_2).0) @35
       return @35
@@ -38,9 +38,9 @@ fn top-level#0 @42
       _0 = const () @43 s1
       return @43
 fn less @44
-  _0: bool return @44
-  _1: (f64, f64) arg a @44
-  _2: (f64, f64) arg b @44
+  _0: bool return @51
+  _1: (f64, f64) arg a @45
+  _2: (f64, f64) arg b @48
   _3: ref/(f64, f64) temp @53
   _4: ref/(f64, f64) temp @54
   _5: bool temp @52
@@ -64,9 +64,9 @@ fn less @44
       _0 = Lt(copy (*_3).0, copy (*_4).0) proven @52
       goto bb1 @52
 fn nested @55
-  _0: bool return @55
-  _1: ((f64, f64), Key) arg a @55
-  _2: ((f64, f64), Key) arg b @55
+  _0: bool return @66
+  _1: ((f64, f64), Key) arg a @56
+  _2: ((f64, f64), Key) arg b @61
   _3: ref/((f64, f64), Key) temp @68
   _4: ref/((f64, f64), Key) temp @69
   _5: bool temp @67
@@ -112,9 +112,9 @@ fn nested @55
       _0 = Gt(copy _7, const 0_i32) proven @67
       goto bb1 @67
 fn text @70
-  _0: bool return @70
-  _1: (string, i32) arg a @70
-  _2: (string, i32) arg b @70
+  _0: bool return @77
+  _1: (string, i32) arg a @71
+  _2: (string, i32) arg b @74
   _3: ref/(string, i32) temp @79
   _4: ref/(string, i32) temp @80
   _5: ref/string temp @78
@@ -138,7 +138,7 @@ fn text @70
       StorageDead(_5) @78
       StorageDead(_4) @80
       StorageDead(_3) @79
-      drop _2 -> bb4 [keep] @70
+      drop _2 -> bb4 [keep] @74
   bb2:
       _0 = Ne(copy (*_3).1, copy (*_4).1) proven @78
       goto bb1 @78
@@ -146,13 +146,13 @@ fn text @70
       _0 = Not(copy _7) proven @78
       goto bb1 @78
   bb4:
-      drop _1 -> bb5 [keep] @70
+      drop _1 -> bb5 [keep] @71
   bb5:
       return @78
 fn generic @81
-  _0: bool return @81
-  _1: (T, f64) arg a @81
-  _2: (T, f64) arg b @81
+  _0: bool return @92
+  _1: (T, f64) arg a @86
+  _2: (T, f64) arg b @89
   _3: bool temp @95 s1
   _4: ref/(T, f64) temp @96 s1
   _5: ref/(T, f64) temp @97 s1
@@ -189,9 +189,9 @@ fn generic @81
       _0 = move _9 @94 s1
       goto bb5 @94 s1
   bb7:
-      drop _2 -> bb8 [keep] @81
+      drop _2 -> bb8 [keep] @89
   bb8:
-      drop _1 -> bb9 [keep] @81
+      drop _1 -> bb9 [keep] @86
   bb9:
       goto bb6 @81
   bb10:
@@ -212,8 +212,8 @@ fn generic @81
       StorageDead(_5) @97 s1
       StorageDead(_4) @96 s1
       StorageDead(_3) @95 s1
-      drop _2 -> bb13 @81
+      drop _2 -> bb13 @89
   bb13:
-      drop _1 -> bb14 @81
+      drop _1 -> bb14 @86
   bb14:
       unreachable @93

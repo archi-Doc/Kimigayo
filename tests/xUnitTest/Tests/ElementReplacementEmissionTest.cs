@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -63,12 +62,18 @@ public class ElementReplacementEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementReplacementEvaluation", ir, Output, "rhs=1;outer=1;inner=1;old=1;new=1;ok=1", order: [0, 1, 2, 3, 5, 4]);
     }
 
+    // SPEC 13.7.1 (DECISIONS R5-M159): the right side, a constant, an aggregate or a call's result, is secured at the element Type before
+    // the diverging key, which leaves the old element; the transfer destroys the secured value (before R5-M159
+    // MIR secured none, the target's Type being Never). The String row's right side is a call's result, as G157 (45)'s cleanup audits
+    // take it (DECISIONS R5-M158).
     [Theory]
-    [InlineData("String", "string", "\"old\"", "\"new\"")]
+    [InlineData("String", "string", "\"old\"", "echo(\"new\")")]
     [InlineData("Aggregate", "(string, i32)", "(\"old\", 0)", "(\"new\", 42)")]
+    [InlineData("Constant", "string", "\"old\"", "\"new\"")]
     public void IndexTransferCleansSecuredInputWithoutReplacingOldValue(string name, string type, string initial, string value)
     {
-        var source = $"func f() -> i32\n    var a: [1 of {type}] = [{initial}]\n    defer => Console.writeLine(\"cleanup\")\n    a[(return 42)] = {value}\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
+        var source = "func echo(text: string) -> string => text@move\n" +
+            $"func f() -> i32\n    var a: [1 of {type}] = [{initial}]\n    defer => Console.writeLine(\"cleanup\")\n    a[(return 42)] = {value}\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
         const string Output = "cleanup\nok\n";
         var fixture = "ElementReplacementTransfer" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, Output);
@@ -100,10 +105,6 @@ public class ElementReplacementEmissionTest
     public void NonterminatingCleanupPreventsDestructionAndPlacement(string name, string expression)
     {
         var source = "var a: [1 of string] = [\"old\"]\n" + expression;
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var function = module.GetFunction(0);
-        Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, observationMilliseconds: 300);
     }
 
@@ -135,61 +136,6 @@ public class ElementReplacementEmissionTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.False(c.WriteIr(TextWriter.Null, out _));
-    }
-
-    [Fact]
-    public void WriteHoldsExclusiveAuthorityAndTransfersOnlyInputResponsibility()
-    {
-        var c = MinimalEmissionTest.Analyze("var a = (\"old\", 0)\na.0 = \"new\"");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        var input = body.Operations[plan.Write].Input;
-        Assert.Equal(plan.Loan, body.LoanInputs[plan.Operation]);
-        Assert.Equal(plan.Exclusive, body.LoanStates[plan.Operation]);
-        Assert.True(body.HasComparisonLoan(plan.Write, plan.Exclusive));
-        Assert.Equal(body.ComparisonLoans[plan.Loan].Parent, body.LoanStates[plan.Write + 1]);
-        Assert.True((body.GetInputState(plan.Write + 1, plan.Root) & PlaceState.MustInit) != 0);
-        Assert.True((body.GetInputState(plan.Write + 1, input) & PlaceState.MayInit) == 0);
-        var instructions = module.GetFunction(0).Instructions.Where(x => x.Operation == plan.Write).ToArray();
-        Assert.Equal(RuntimeAbi.DestroyString, instructions[0].Callee);
-        Assert.Equal(EmissionOpcode.MoveString, instructions[1].Opcode);
-        Assert.Empty(module.GetFunction(0).LiveFlags);
-    }
-
-    [Theory]
-    [InlineData("exclusive")]
-    [InlineData("mode")]
-    [InlineData("release")]
-    [InlineData("input")]
-    [InlineData("type")]
-    [InlineData("write")]
-    [InlineData("root")]
-    [InlineData("output")]
-    public void CorruptedReplacementPlansFailBeforeOutputAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a = ((\"old\", 0), 1)\na.0 = (\"new\", 42)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        var write = body.Operations[plan.Write];
-        switch (defect)
-        {
-            case "exclusive": body.Projections[0] = plan with { Exclusive = -1 }; break;
-            case "mode": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Mode = LoanRequirement.Ref }; break;
-            case "release": body.LoanStates[plan.Write + 1] = plan.Exclusive; break;
-            case "input": body.OperationStorage[plan.Write] = write with { Input = plan.Root }; break;
-            case "type": body.PlaceStorage[write.Input] = body.Places[write.Input] with { Type = BoundType.String }; break;
-            case "write": body.Projections[0] = plan with { Write = -1 }; break;
-            case "root": body.PlaceStorage[plan.Root] = body.Places[plan.Root] with { Mutable = false }; break;
-            case "output": body.Projections[0] = plan with { Output = plan.Write }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]

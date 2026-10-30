@@ -205,7 +205,6 @@ internal static class DiagnosticMeasurements
                 sourcePath,
                 sourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))),
                 pipeline = compilation.Pipeline.ToString(),
-                codegen = compilation.Codegen.ToString(),
                 retainedBytes = retained,
                 medianRetainedBytes = retained.Order().ElementAt(3),
                 cold,

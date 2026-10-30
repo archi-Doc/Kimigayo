@@ -24,11 +24,9 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         Assert.False(c.WriteIr(TextWriter.Null, out _));
         if (!fails)
         {
-            // The unrelated mutable group storage is still outside generation (P42): the old generator's refusal, on a compilation pinned
-            // to it (DECISIONS R5-M85; it goes by G4 at the latest).
-            var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
-            Assert.False(old.WriteIr(TextWriter.Null, out var failure));
-            Assert.Contains("declaration container", failure!, StringComparison.Ordinal);
+            // The unrelated mutable group storage is still outside generation (P42): the collector's StaticStorage record at check, on every
+            // pipeline (DECISIONS R5-M82, R5-M156); P42 reverts it.
+            Assert.Equal("Unsupported_Kd public var count: i32 = 0", MinimalEmissionTest.Problems(c));
         }
     }
 

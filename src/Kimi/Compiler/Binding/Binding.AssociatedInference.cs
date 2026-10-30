@@ -164,7 +164,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (this.ResolveAssociated(path, identity) is { } result && !this.PendingAssociatedType(result))
+                if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[identity] = result;
                     if (this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding))
@@ -320,7 +320,7 @@ public sealed partial class Binding
                     var binding = this.associatedBindings[(path, identity)];
                     foreach (var source in evidence)
                     {
-                        if (!ReferenceEquals(this.ContractType(source.Identity.Contract.Type!, path.Scope), this.ContractType(identity.Contract.Type!, path.Scope)) ||
+                        if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) ||
                             this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) != ConstraintProof.Proven)
                         {
                             continue;
@@ -413,7 +413,12 @@ public sealed partial class Binding
         }
 
         if (required.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(required.Components[0].Symbol, path.Type) &&
-            this.AssociatedInPath(path.RootPath, required.Components[0], required.Symbol!, required.Components.Count == 2 ? required.Components[1] : null) is { } identity &&
+            this.AssociatedInPath(
+                path.RootPath,
+                required.Components[0],
+                required.Symbol!,
+                required.Components.Count == 2 ? required.Components[1] : null,
+                path.Scope) is { } identity &&
             this.InferenceHole(path, identity))
         {
             batch.CheckedTypes.Clear();
@@ -533,7 +538,13 @@ public sealed partial class Binding
         }
 
         found = type.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(type.Components[0].Symbol, path.Type) &&
-            this.AssociatedInPath(path.RootPath, type.Components[0], type.Symbol!, type.Components.Count == 2 ? type.Components[1] : null) is { } identity && this.InferenceHole(path, identity);
+            this.AssociatedInPath(
+                path.RootPath,
+                type.Components[0],
+                type.Symbol!,
+                type.Components.Count == 2 ? type.Components[1] : null,
+                path.Scope) is { } identity &&
+            this.InferenceHole(path, identity);
         for (var i = 0; !found && i < type.Components.Count; i++)
         {
             found = this.ContainsInferenceHole(batch, path, type.Components[i]);
@@ -551,7 +562,13 @@ public sealed partial class Binding
         }
 
         if (required.Kind == BoundTypeKind.AssociatedProjection && required.Components[0].Symbol == path.Type &&
-            this.AssociatedInPath(path.RootPath, required.Components[0], required.Symbol!, required.Components.Count == 2 ? required.Components[1] : null) is { } identity && this.InferenceHole(path, identity))
+            this.AssociatedInPath(
+                path.RootPath,
+                required.Components[0],
+                required.Symbol!,
+                required.Components.Count == 2 ? required.Components[1] : null,
+                path.Scope) is { } identity &&
+            this.InferenceHole(path, identity))
         {
             var binding = this.associatedBindings[(path.RootPath, identity)];
             if (problem > binding.Problem)

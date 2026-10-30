@@ -36,7 +36,9 @@ public sealed partial class Binding
 
                         // Substitute explicit identities, then compare determined concrete atoms.
                         // No case splitting, contrapositive, or general satisfiability solver.
-                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity && p.RequiredType is { } pt && q.RequiredType is { } qt && !DependentType(pt) && !DependentType(qt) && !this.SameCompleteType(pt, qt))
+                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity &&
+                            p.RequiredType is { } pt && q.RequiredType is { } qt &&
+                            !this.DependentType(pt) && !this.DependentType(qt) && !this.SameCompleteType(pt, qt))
                         {
                             return true;
                         }
@@ -174,6 +176,15 @@ public sealed partial class Binding
 
     private bool SameConformanceType(BoundType? a, BoundType? b, BindingScope scope)
         => ReferenceEquals(a, b) || (a is not null && b is not null && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, this.ContractType(a, scope), this.ContractType(b, scope))), scope) == ConstraintProof.Proven);
+
+    // SPEC 8.6.1, 8.2.3: a conformance's bound Contract reference `formal`, in its declaration's terms, names the bound reference
+    // `required` of the same Contract for `receiver` when its instance is one Type with `required` in `scope`, judged as two paths are
+    // (SameConformanceType): the substitution can leave a projection over the receiver's arguments that names a Type
+    // (`Iter<S.(HasItem).Item>` of `B<SrcI>` is `Iter<i32>`), or a premise of `scope` names one, so the substituted form's reference
+    // decides no identity.
+    private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope)
+        => ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, receiver) is { } instance &&
+            this.SameConformanceType(instance, required, scope);
 
     private void BindConditionalDeclarations(bool conditions)
     {
@@ -339,8 +350,7 @@ public sealed partial class Binding
         {
             foreach (var candidate in bindings)
             {
-                if (ReferenceEquals(candidate.Contract.Declaration, contract.Declaration) && candidate.Contract.Type is { } formal &&
-                    ReferenceEquals(this.StoredType(formal, type), contractReference))
+                if (candidate.Contract.Type is { } formal && this.NamesReference(formal, type, contractReference, scope))
                 {
                     identity = candidate;
                     break;
@@ -361,7 +371,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)

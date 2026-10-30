@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -8,7 +7,7 @@ namespace XunitTest;
 // The shared acceptance tests of PLAN G264 U0′ (WORKFLOW Q11; written from the problem statement before either candidate): SPEC 4.9.6's
 // rows for Array `truncate` ("Destruction of the relevant `T`") and `removeAll` ("Calls of `matching`; destruction of the removed `T`")
 // as A4 composes them, the row through the call's substitution, the Callable argument's calls through the actual argument (SPEC 8.11.4,
-// 15.6.4), on the MIR (A4's problems) and as the published records of both pipelines.
+// 15.6.4), on the MIR (A4's problems) and as the published records, which every pipeline publishes alike (DECISIONS R5-M156).
 public sealed partial class MirEffectsTest
 {
     // A printing and a quiet predicate over `ref/i32`.
@@ -54,13 +53,11 @@ public sealed partial class MirEffectsTest
         AssertRows(form, source, problems, records);
     }
 
-    // A form's A4 problems on the MIR and its published Error records on both pipelines, each as the form's row.
+    // A form's A4 problems on the MIR and its published Error records, each as the form's row. Every pipeline publishes the same records
+    // (DECISIONS R5-M156), so the process's pipeline judges them (PLAN G314); the default and `-Pipeline mir` runs cover both.
     private static void AssertRows(string form, string source, string problems, string records)
     {
         Assert.Equal($"{form}: {problems}", $"{form}: {string.Join("|", Problems(source))}");
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Equal($"{form} {pipeline}: {records}", $"{form} {pipeline}: {MirBorrowsTest.Records(source + "public func main() => ()\n", pipeline)}");
-        }
+        Assert.Equal($"{form} published: {records}", $"{form} published: {MirBorrowsTest.Records(source + "public func main() => ()\n")}");
     }
 }

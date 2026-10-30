@@ -22,7 +22,7 @@ public sealed partial class Binding
         {
             signature = this.FunctionItemSignature(implementation);
         }
-        else if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } plan } declaration })
+        else if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { Receiver: SemanticsKind.Ref } plan } declaration })
         {
             signature = this.ClosureSignature(implementation);
             closure = declaration;

@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Mir;
 //   gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
-// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures'.
+// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures', but
+//   an intrinsic row's, which MirValidator.Calls reads through TypeOf (testRecordValue's Scalar).
 internal sealed partial class MirValidator
 {
     private bool[] unknown = [];

@@ -50,8 +50,7 @@ internal sealed partial class FunctionCodegen
         {
             if (!this.Evaluate(operands[i], out this.arguments[i]))
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-                return;
+                return; // A broken contract, recorded.
             }
         }
 
@@ -138,7 +137,10 @@ internal sealed partial class FunctionCodegen
         where TBody : struct, IElementPass
     {
         var id = this.next;
-        var (index, next, offset, done) = (new Value('t', id + 1), new Value('t', id + 2), new Value('t', id + 3), new Value('t', id + 4));
+        var index = new Value('t', id + 1);
+        var next = new Value('t', id + 2);
+        var offset = new Value('t', id + 3);
+        var done = new Value('t', id + 4);
         this.next += 5;
         var output = this.output;
         output.Write("  br label %");

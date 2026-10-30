@@ -5,8 +5,8 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn sum @4
-  _0: i32 return @4
-  _1: ref/Array<i32> arg values @4
+  _0: i32 return @9
+  _1: ref/Array<i32> arg values @5
   _2: i32 var mut total @11 s1
   _3: () temp @14 s1
   _4: ArrayIterator<i32> temp @14 s1
@@ -130,8 +130,8 @@ fn sum @4
       StorageDead(_2) @11 s1
       unreachable @10
 fn positions @29
-  _0: isize return @29
-  _1: [4 of i32] arg values @29
+  _0: isize return @33
+  _1: [4 of i32] arg values @30
   _2: isize var mut total @35 s1
   _3: () temp @39 s1
   _4: Kimi.ResolvedRange temp @41 s1
@@ -255,8 +255,8 @@ fn positions @29
       StorageDead(_2) @35 s1
       unreachable @34
 fn pairs @56
-  _0: i32 return @56
-  _1: Dictionary<i32, bool> arg entries @56
+  _0: i32 return @62
+  _1: Dictionary<i32, bool> arg entries @57
   _2: i32 var mut hits @64 s1
   _3: () temp @67 s1
   _4: DictionaryIterator<i32, bool> temp @67 s1
@@ -368,7 +368,7 @@ fn pairs @56
       _0 = move _19 @78 s1
       goto bb15 @78 s1
   bb17:
-      drop _1 -> bb18 [keep] @56
+      drop _1 -> bb18 [keep] @57
   bb18:
       goto bb16 @56
   bb19:
@@ -383,6 +383,6 @@ fn pairs @56
   bb22:
       StorageDead(_18) @79 s1
       StorageDead(_2) @64 s1
-      drop _1 -> bb23 @56
+      drop _1 -> bb23 @57
   bb23:
       unreachable @63

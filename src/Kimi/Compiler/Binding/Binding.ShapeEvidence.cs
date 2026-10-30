@@ -214,7 +214,7 @@ public sealed partial class Binding
 
                         if (pattern.Kind == BoundTypeKind.Function)
                         {
-                            actual = this.FunctionItemSignature(actual) ?? (actual.Kind == BoundTypeKind.Closure && actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure } ? closure.Signature : actual);
+                            actual = this.FunctionItemSignature(actual) ?? (BoundClosure.Of(actual) is { } closure ? closure.Signature : actual);
                         }
 
                         CollectTypes(pattern, actual, false);

@@ -85,7 +85,7 @@ public sealed partial class Binding
         {
             if (node is FunctionKoto nested)
             {
-                if (nested.BoundClosure is { } child)
+                if (nested.ClosureDefinition is { } child)
                 {
                     this.VisitEntries(nested, child);
                 }

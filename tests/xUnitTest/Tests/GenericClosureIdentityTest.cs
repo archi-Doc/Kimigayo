@@ -40,8 +40,8 @@ public class GenericClosureIdentityTest
         Assert.Empty(first.Components);
     }
 
-    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context, and the old
-    // generator's bridge keeps one call per closure, the same at every request, so each instance runs each closure's own body.
+    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context and keep their
+    // own closed Types, which key their instances, so each instance runs each closure's own body.
     [Fact]
     public void TwoClosuresOfOneInstanceKeepTheirOwnBodies()
     {
@@ -54,8 +54,7 @@ public class GenericClosureIdentityTest
         Assert.Equal(2, closures.Length);
         Assert.Same(closures[0].ClosureContext, closures[1].ClosureContext);
         Assert.Same(c.Types.SubstOf(call), closures[0].ClosureContext);
-        Assert.NotSame(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[1]));
-        Assert.Same(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[0]));
+        Assert.NotSame(closures[0], closures[1]);
         ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", Source, string.Empty);
     }
 
@@ -63,16 +62,14 @@ public class GenericClosureIdentityTest
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "zero\n")]
-    public void ZeroSizedEnvironmentsAllocateOnlyForRequiredDestruction(bool destructor, string output)
+    public void ZeroSizedEnvironmentsAllocateNothing(bool destructor, string output)
     {
         var source = "struct Zero\n" + (destructor ? "    drop => Console.writeLine(\"zero\")\n" : string.Empty) +
             "func keep<T>(value: T) -> () -> i32\n    T is Owned\n    let action = func [value@move] () -> i32 => 7\n    return action@move\nlet result = keep(Zero.init())\nrequire result() == 7 else => $abort(\"zero\")";
 
-        // The zero-sized environment that needs destruction is stored in the Function value's word under MIR code generation (PD19, IMPL
-        // 21.1.3); the old generator allocates it (DECISIONS R5-M104's inline-env deviation).
-        var count = destructor ? Codegen.Expect(0, 1, CodegenDeviations.InlineEnvironment) : 0;
-        var bytes = destructor ? Codegen.Expect(0L, 1L, CodegenDeviations.InlineEnvironment) : 0L;
-        NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, count, count, bytes, output);
+        // A zero-sized environment is stored in the Function value's word, also one that needs destruction (PD19, IMPL 21.1.3; DECISIONS
+        // R5-M104).
+        NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, 0, 0, 0, output);
     }
 
     [Trait("Purpose", "Allocation")]

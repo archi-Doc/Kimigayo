@@ -86,7 +86,8 @@ internal static class DropGlue
 
         return type.Kind switch
         {
-            BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => DropGlueRow.Parts,
+            BoundTypeKind.Nominal or BoundTypeKind.Constructed => DropGlueRow.Parts, // A struct or an enum.
+            BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => DropGlueRow.Parts, // A structural aggregate.
             BoundTypeKind.Function => DropGlueRow.Function,
             BoundTypeKind.Semantics => DropGlueRow.Handle,
             BoundTypeKind.Array => DropGlueRow.Array,

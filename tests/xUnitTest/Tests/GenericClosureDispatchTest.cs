@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Xunit;
 
@@ -17,10 +16,10 @@ public class GenericClosureDispatchTest
         ScalarEmissionTest.EmitFixture("GenericClosureDispatchSpecialization", Source, string.Empty);
     }
 
-    // DECISIONS R5-M34: a closure in a specialization of a generic struct's Type function is generic in the struct's slot (SPEC 6.1.3), while
-    // the old generator keeps generating it once, as before, until G7.
+    // DECISIONS R5-M34: a closure in a specialization of a generic struct's Type function is generic in the struct's slot (SPEC 6.1.3), and
+    // generation writes its instances.
     [Fact]
-    public void TheOldGeneratorKeepsAClosureInAContainerSpecializationClosed()
+    public void AClosureInAContainerSpecializationIsGenericInTheContainersSlot()
     {
         const string Source = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n" +
             "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n        let g = func [] (y: i32) -> i32 => y\n" +
@@ -45,24 +44,6 @@ public class GenericClosureDispatchTest
     {
         const string Source = "struct Item\n    drop => Console.writeLine(\"drop\")\nfunc consume(value: Item) => ()\nlet value = Item.init()\nlet action = func [value@move] (flag: bool) -> ()\n    if flag => consume(value@move)\naction@move(FLAG)\nConsole.writeLine(\"done\")";
         ScalarEmissionTest.EmitFixture("GenericClosureDispatchConditional" + move, Source.Replace("FLAG", move ? "true" : "false", StringComparison.Ordinal), "drop\ndone\n");
-    }
-
-    [Fact]
-    public void ConditionalCaptureFlagInitializationCannotBeOmitted()
-    {
-        var c = MinimalEmissionTest.Analyze("func consume(value: string) => ()\nlet text = \"owned\"\nlet action = func [text@move] (flag: bool) -> ()\n    if flag => consume(text@move)\naction@move(true)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous);
-        var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
-        var place = Assert.Single(function.LiveFlags);
-        var produce = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == place);
-        Assert.Equal(OwnershipValueKind.Capture, body.Values[produce].Kind);
-        var index = function.Instructions.FindIndex(x => x.Operation == produce && x.Opcode == EmissionOpcode.StoreLiveFlag && x.Constant == 1);
-        Assert.True(index >= 0);
-        var scratch = new int[body.Places.Count + body.Operations.Count];
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.RemoveAt(index);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
     }
 
     [Trait("Purpose", "Allocation")]

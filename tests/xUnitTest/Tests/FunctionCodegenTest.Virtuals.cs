@@ -51,7 +51,7 @@ public sealed partial class FunctionCodegenTest
         "func witnessErased<T>() -> (objref/T, i32) -> i32\n    T is Reader and Owned\n    return T.score\n" +
         "func scoreItem(v: objref/Scored) -> i32 => witnessItem(v)\nfunc scoreErased() -> (objref/Scored, i32) -> i32 => witnessErased<Scored>()\n";
 
-    // SPEC 6.4.3, 6.4.4, 6.4.6 (DECISIONS R5-M114): dispatch by the Dynamic Type through every form, natively under both generators: member,
+    // SPEC 6.4.3, 6.4.4, 6.4.6 (DECISIONS R5-M114): dispatch by the Dynamic Type through every form, natively: member,
     // nested, inherited and qualified calls, a call through a reference to a handle, an Item called, passed and erased, a receiver behind a
     // zero-sized parameter with an aggregate and a borrow result, the Item of that slot erased, a generic family's slot, a virtual witness.
     private const string VirtualRows =
@@ -146,7 +146,6 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("call void %(ptr %, i32 %)", never.Shape);
         Assert.Equal((2, stop.Parameters[2]), Dispatch(never));
         Assert.Equal("unreachable", stop.Blocks[^1].Terminator.Shape);
-        Assert.DoesNotContain("__kimi_virtual_item", text, StringComparison.Ordinal);
     }
 
     // SPEC 6.4.4, 6.4.6 (DECISIONS R5-M114): a requirement call whose witness is a virtual function runs its slot, as the witness maps to it;
@@ -182,6 +181,15 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void VirtualProgramsRun() => ScalarEmissionTest.EmitFixture("VirtualRows", VirtualRows, "payload\nerased\nvirtuals\n");
 
+    // The function name of a function's one body item (its index in the checked set), by its container (null: any) and its name.
+    internal static string BodyOf(Compilation c, string? owner, string name)
+    {
+        var set = c.Instances!;
+        return "__kimi_f" + Enumerable.Range(0, set.Items.Length).Single(x =>
+            set.Items[x].Key is { Kind: MonoKind.Body, Body.Def: { Kind: MirBodyKind.Fn, Decl: { } function } } && function.Name == name &&
+            (owner is null || (function.Scope.Owner is DeclarationContainerKoto container && container.Name == owner)));
+    }
+
     // The Virtuals Library generated under MIR code generation: its compilation, its IR and its text.
     private static (Compilation C, GeneratedIr Ir, string Text) ParseVirtuals()
     {
@@ -215,15 +223,6 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("load ptr, ptr %, align 8", descriptor.Shape);
         Assert.Equal("getelementptr i8, ptr %, i64 -16", descriptor.Operands[0].Shape);
         return (slot, descriptor.Operands[0].Operands[0]);
-    }
-
-    // The function name of a function's one body item (its index in the checked set), by its struct (null: any) and its name.
-    private static string BodyOf(Compilation c, string? owner, string name)
-    {
-        var set = c.Instances!;
-        return "__kimi_f" + Enumerable.Range(0, set.Items.Length).Single(x =>
-            set.Items[x].Key is { Kind: MonoKind.Body, Body.Def: { Kind: MirBodyKind.Fn, Decl: { } function } } && function.Name == name &&
-            (owner is null || (function.Scope.Owner is DeclarationContainerKoto container && container.Name == owner)));
     }
 
     // The function of a function's one body item (BodyOf).

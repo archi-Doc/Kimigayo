@@ -74,7 +74,7 @@ internal sealed partial class ModuleCodegen
             return current;
         }
 
-        if (!this.ResultParts(item, kind, out var payload, out var fields))
+        if (this.ResultParts(item, kind) is not { OptionPayload: var payload, Fields: var fields })
         {
             return null; // Recorded.
         }
@@ -91,13 +91,12 @@ internal sealed partial class ModuleCodegen
     // The parts of a helper's descriptor that its item's instance gives from its function's result (TyCtxt.Signature): Pop's Option payload
     // offset, its Some Case's (the ordinal 0 P1b's text tags) element at the Option record's Field 1 plus the element's offset in the Case
     // payload; a storage helper's remainder Fields in declaration order and its storage Field's size, ownStorage's also OwnedRemainder's
-    // capacity. False after a record.
-    private bool ResultParts(int item, ArrayHelperKind kind, out int? payload, out RemainderFields fields)
+    // capacity. Null after a record.
+    private DescriptorParts? ResultParts(int item, ArrayHelperKind kind)
     {
-        (payload, fields) = (null, default);
         if (kind is not (ArrayHelperKind.Pop or ArrayHelperKind.BorrowStorage or ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnFixedStorage))
         {
-            return true;
+            return new DescriptorParts(null, default);
         }
 
         var entry = this.set.Items[item];
@@ -107,18 +106,17 @@ internal sealed partial class ModuleCodegen
             this.Layout.Of(inner).Value is not { } part)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // The collector laid out the call's result (K 4.8).
-            return false;
+            return null;
         }
 
         var offsets = record.Layout.FieldOffsets.Span;
         if (kind == ArrayHelperKind.Pop)
         {
-            payload = offsets[1] + part.Layout.FieldOffsets.Span[0];
-            return true;
+            return new DescriptorParts(offsets[1] + part.Layout.FieldOffsets.Span[0], default);
         }
 
-        fields = new(offsets[0], offsets[1], offsets[2], kind == ArrayHelperKind.OwnStorage ? offsets[3] : 0, part.Layout.Size);
-        return true;
+        return new DescriptorParts(
+            null, new(offsets[0], offsets[1], offsets[2], kind == ArrayHelperKind.OwnStorage ? offsets[3] : 0, part.Layout.Size));
     }
 
     // The element a LegacyRow or Array DropGlue item's helper stores, its collection's first component (an Array's, a UniqSlice's or a fixed
@@ -133,4 +131,8 @@ internal sealed partial class ModuleCodegen
         this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site);
         return null;
     }
+
+    // The parts of a helper's descriptor its function's result gives (ResultParts), as ArrayHelper holds them: Pop's Option payload offset
+    // and a storage helper's remainder Fields.
+    private readonly record struct DescriptorParts(int? OptionPayload, RemainderFields Fields);
 }

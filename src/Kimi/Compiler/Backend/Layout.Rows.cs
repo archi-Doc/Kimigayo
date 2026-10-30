@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The static rows of Layout (IMPL 21.1.3; plan P7a): scalars, Unit, string, Never, borrows and raw pointers, object and function handles,
 // and until R8 the Slice, Array and Dictionary handle words, each one shared record, which placement (Layout.Placement.cs) reads for a
-// Type that is not placed and the old scalar-value gate reads through Row until G8; and an enum's tag (Tag), which placement places.
+// Type that is not placed and code generation reads through Row (the old scalar-value gate too, until the old Emission goes at R6-gen;
+// DECISIONS R5-M148); and an enum's tag (Tag), which placement places.
 internal sealed partial class Layout
 {
     private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";
@@ -33,7 +34,9 @@ internal sealed partial class Layout
     /// before its payload at Field 1, which placement places and code generation reads and writes.</summary>
     internal static ValueLowering Tag => Primitives[BoundType.I32];
 
-    /// <summary>Gets IMPL 21.1.3's static row of a Type, which the old scalar-value gate reads until G8.</summary>
+    /// <summary>Gets IMPL 21.1.3's static row of a Type, which code generation reads (and the old scalar-value gate until R6-gen). Of never
+    /// asks it for an abstract Type (Layout.cs' Inputs; DECISIONS R5-M155); any other kind without a row lies outside Layout's input
+    /// contract in every compilation, so the default arms stay a throw, the closed-kind fault.</summary>
     /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, handle or sequence Type.</param>
     /// <returns>The row's shared record; a Type without a row is an internal error.</returns>
     internal static ValueLowering Row(BoundType type) => type.Kind switch
@@ -51,6 +54,14 @@ internal sealed partial class Layout
         BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary => HandleOf(type).Words,
         _ => throw Outside(type),
     };
+
+    /// <summary>Gets whether a Type is laid out without its component (X34; DECISIONS R5-M149): a borrow, a raw pointer, an object or
+    /// function handle or a sequence handle, whose referent, element or entries lie outside its own storage, the boundary of a root's
+    /// storage that LayoutNeeds' readers apply.</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>Whether its row stores a pointer to its component rather than the component.</returns>
+    internal static bool Indirect(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.Slice or BoundTypeKind.Array or
+        BoundTypeKind.Dictionary || type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner };
 
     /// <summary>Gets the Field of a sequence handle's record that holds its length (SPEC 4.7.3, IMPL 21.1.3): its handle row's length word.</summary>
     /// <param name="sequence">A Slice, Array or Dictionary Type.</param>

@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -52,53 +51,6 @@ public class AggregateResultEmissionTest
     }
 
     [Fact]
-    public void DeferredReplicasShareResultStorageWithSeparateLifetimes()
-    {
-        var c = MinimalEmissionTest.Analyze(Deferred);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        Assert.True(body.SlotResults.Count > 1);
-        var place = Assert.Single(body.SlotResults.Select(x => x.Place).Distinct());
-        Assert.Single(module.GetFunction(0).Slots, x => x.Place == place);
-        Assert.Equal(body.SlotResults.Count, body.SlotResults.Select(x => x.Declare).Distinct().Count());
-        Assert.DoesNotContain(place, module.GetFunction(0).LiveFlags);
-        Assert.All(body.SlotResults, x => Assert.Equal(-1, body.Operations[x.Join].Place));
-    }
-
-    [Fact]
-    public void LoopResultRemainsUninitializedOnTheBackedge()
-    {
-        var c = MinimalEmissionTest.Analyze("var i = 0\nlet pair = loop\n    i += 1\n    if i < 3 => continue\n    exit (\"a\", 1)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        Assert.IsType<LoopKoto>(body.Operations[result.Declare + 1].Source);
-        Assert.Equal(PlaceState.None, body.GetInputState(result.Declare + 1, result.Place));
-        Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Declare && x.Place == result.Place);
-        Assert.Empty(module.GetFunction(0).LiveFlags);
-    }
-
-    [Fact]
-    public void ReplacementPublishesInitializationAfterTransfer()
-    {
-        var c = MinimalEmissionTest.Analyze(Self);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        var body = c.Ownership.Bodies[0];
-        foreach (var write in body.ResultWrites)
-        {
-            Assert.Contains(function.Instructions, x => x.Operation == write.Operation && x.Opcode == EmissionOpcode.TransferAggregate);
-        }
-
-        var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.DestroyAggregate && x.Continuation >= 0);
-        Assert.True(index >= 0);
-        Assert.Equal(EmissionOpcode.TransferAggregate, function.Instructions[index + 1].Opcode);
-        Assert.Equal(Assert.Single(body.SlotResults).Place, function.Instructions[index + 1].Constant);
-        Assert.Equal(EmissionOpcode.StoreLiveFlag, function.Instructions[index + 2].Opcode);
-        Assert.Equal(1, function.Instructions[index + 2].Constant);
-    }
-
-    [Fact]
     public void SnapshotKeepsItsValueAcrossDeferredReplacement()
     {
         const string Source = "var pair = (\"old\", 1)\nlet saved = label work: do\n    defer => pair = (\"new\", 2)\n    exit to work pair@move";
@@ -119,73 +71,8 @@ public class AggregateResultEmissionTest
     public void NonterminatingCleanupHasNoArrivalOrSubsequentDestruction()
     {
         const string Source = "let pair = label work: do\n    defer => loop => ()\n    exit to work (\"secured\", 2)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var result = Assert.Single(c.Ownership.Bodies[0].SlotResults);
-        Assert.Equal(0, result.Count);
-        Assert.False(c.Ownership.Bodies[0].IsReachable(result.Join));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.DestroyAggregate);
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
-    }
-
-    [Theory]
-    [InlineData("plan")]
-    [InlineData("write")]
-    [InlineData("arrival")]
-    [InlineData("duplicate")]
-    [InlineData("declaration")]
-    [InlineData("branch")]
-    [InlineData("type")]
-    [InlineData("dominance")]
-    public void MalformedPlansPublishNoIrAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let pair = if true => (\"a\", 1) else => (\"b\", 2)", codegen: CompilerCodegen.Legacy);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        switch (defect)
-        {
-            case "plan": body.SlotResults.Clear(); break;
-            case "write": body.ResultWrites.RemoveAt(0); break;
-            case "arrival": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = -1 }; break;
-            case "duplicate": body.ResultArrivals[1] = body.ResultArrivals[0]; break;
-            case "declaration": body.SlotResults[0] = result with { Declare = result.Join }; break;
-            case "branch": body.OperationStorage[result.Join] = body.OperationStorage[result.Join] with { Place = result.Place }; break;
-            case "dominance": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = body.ResultArrivals[1].Write }; break;
-            case "type":
-                var write = body.ResultWrites[0].Operation;
-                body.OperationStorage[write] = body.OperationStorage[write] with { Input = body.PlaceStorage.FindIndex(x => ReferenceEquals(x.Type, BoundType.Boolean)) };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ADeferredConsumerCannotReadASecuredUndeliveredResult(bool text)
-    {
-        var source = "var original = (\"old\", 1)\nvar target = (\"init\", 1)\nlet saved = label work: do\n    defer => target = (\"cleanup\", 1)\n    exit to work original@move";
-        if (text)
-        {
-            source = source.Replace("(\"old\", 1)", "\"old\"").Replace("(\"init\", 1)", "\"init\"").Replace("(\"cleanup\", 1)", "\"cleanup\"");
-        }
-
-        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        var deferred = Assert.Single(body.DeferredPlans, x => body.IsReachable(x.Entry));
-        var write = body.OperationStorage.FindIndex(deferred.Entry, deferred.End - deferred.Entry, x => x.Kind == OwnershipOperationKind.Write);
-        Assert.True(write >= 0);
-        body.OperationStorage[write] = body.OperationStorage[write] with { Input = result.Place };
-        Assert.False(c.WriteIr(TextWriter.Null, out error));
-        Assert.Contains("normal delivery", error);
     }
 
     [Trait("Purpose", "Allocation")]

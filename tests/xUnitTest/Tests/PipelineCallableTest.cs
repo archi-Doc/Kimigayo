@@ -39,49 +39,6 @@ public class PipelineCallableTest
         => ScalarEmissionTest.EmitFixture("PipelineCallableInput", Source, string.Empty);
 
     [Theory]
-    [InlineData("dispatch")]
-    [InlineData("success")]
-    [InlineData("initializer")]
-    public void RejectsCorruptMatchPlans(string mutation)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt match plan is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(
-            "func present(items: Slice<i32>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n" +
-            "        match cursor@uniq.next()@move\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\n" +
-            "let values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "present");
-        var match = Assert.Single(body.Matches);
-        if (mutation == "dispatch")
-        {
-            var dispatch = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.MatchDispatch);
-            body.OperationSteps[dispatch] = -1;
-        }
-        else if (mutation == "success")
-        {
-            var test = body.MatchArms[match.ArmStart].Test;
-            var edge = body.EdgeHeads[test];
-            while (body.Edges[edge].Kind != OwnershipEdgeKind.True)
-            {
-                edge = body.Edges[edge].Next;
-            }
-
-            body.EdgeStorage[edge] = body.Edges[edge] with { To = body.MatchArms[match.ArmStart + 1].BodyEntry };
-        }
-        else
-        {
-            var init = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-            body.OperationStorage[init] = body.OperationStorage[init] with { Kind = OwnershipOperationKind.Write };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-    }
-
-    [Theory]
     [InlineData("(value: ref/Item)", "(value: uniq/Item)")]
     [InlineData("(value: ref/Item)", "(value: ref/Item during static)")]
     public void RejectsStrongerInputContract(string original, string replacement)

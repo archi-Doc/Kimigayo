@@ -135,7 +135,7 @@ internal sealed partial class MirBuilder
                     this.Clean(this.registrations[this.pending[i]]);
                 }
 
-                this.body.Terminate(this.current, MirTerminator.Goto(next, this.body.Locals[0].Source));
+                this.body.Terminate(this.current, MirTerminator.Goto(next, this.entry));
                 (next, this.current) = (node, current);
                 this.pending.RemoveRange(mark, this.pending.Count - mark);
             }

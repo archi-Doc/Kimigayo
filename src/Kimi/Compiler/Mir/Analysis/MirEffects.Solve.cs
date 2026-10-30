@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -12,8 +13,8 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
-    private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The Types one evaluation's destruction walks met.
     private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
+    private readonly Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths).
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
     private int[] atomCounts = [];
@@ -33,6 +34,10 @@ internal sealed partial class MirEffects
 
     /// <summary>Gets the node evaluations of the last <see cref="Run"/>, linear in the program's calls (V16).</summary>
     internal int Evaluations { get; private set; }
+
+    // The current evaluation's classes: what it found, with Deep where its destruction walks met a part past the bound whose Type they
+    // never entered within it (MirDepths: a slot left Past).
+    private byte Found => (byte)(this.found | (this.glued.ContainsValue(MirDepths.Past) ? Deep : 0));
 
     /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3) and judges each <c>confined</c> obligation:
     /// per view of its target an environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the
@@ -93,17 +98,24 @@ internal sealed partial class MirEffects
         this.Obligations(report);
     }
 
-    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71).
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer (Outcome): decided (an
+    // Environment or Unknown effect) fails it; a Limit is the located Unsupported_Kd and Deep the depth limit (R4-M153).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
-        if ((found & (Environment | Unknown)) != 0)
+        var outcome = Outcome(found);
+        if (outcome.IsDecided)
         {
             report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
-        else if ((found & Limit) != 0)
+        else if (outcome.IsLimit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
             report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+        }
+        else if (outcome.IsDeep)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
+            report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -116,14 +128,15 @@ internal sealed partial class MirEffects
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
         this.glued.Clear();
         this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
-        if (this.found == this.classes[node] && this.scratchCount == this.atomCounts[node])
+        var found = this.Found;
+        if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
             return false; // The summary only grows, so equal counts are equal sets.
         }
 
         MirDataflow.Grow(ref this.atoms, this.atomCount + this.scratchCount);
         this.scratch.AsSpan(0, this.scratchCount).CopyTo(this.atoms.AsSpan(this.atomCount));
-        (this.classes[node], this.atomStarts[node], this.atomCounts[node]) = (this.found, this.atomCount, this.scratchCount);
+        (this.classes[node], this.atomStarts[node], this.atomCounts[node]) = (found, this.atomCount, this.scratchCount);
         this.atomCount += this.scratchCount;
         return true;
     }
@@ -368,7 +381,7 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
-                Verdict(report, row, this.found, ulong.MaxValue);
+                Verdict(report, row, this.Found, ulong.MaxValue);
             }
             else if (row.Definition is not { } target)
             {
@@ -404,14 +417,14 @@ internal sealed partial class MirEffects
                 this.Enter(body, null, implementation);
             }
 
-            Verdict(report, row, this.found, view);
+            Verdict(report, row, this.Found, view);
         }
     }
 
-    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
+    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow (Deep).
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
-        public bool First(BoundType type) => owner.glued.Add(type);
+        public bool First(BoundType type, int depth) => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _), depth);
 
         public bool Visit(BoundType type, int depth)
         {
@@ -419,9 +432,9 @@ internal sealed partial class MirEffects
             return false;
         }
 
-        public bool Deep()
+        public bool Deep(BoundType type)
         {
-            owner.found |= Limit;
+            MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _));
             return false;
         }
     }

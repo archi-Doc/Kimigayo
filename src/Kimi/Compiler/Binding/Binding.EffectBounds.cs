@@ -326,8 +326,7 @@ public sealed partial class Binding
                 this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable, requireClosed: false));
             }
 
-            if (callable is { Kind: BoundTypeKind.Closure } && receiver == SemanticsKind.Owner &&
-                callable.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
+            if (receiver == SemanticsKind.Owner && BoundClosure.Of(callable) is { Receiver: not SemanticsKind.Owner })
             {
                 this.Destruction(callable, implementation.Declaration);
             }
@@ -714,8 +713,7 @@ public sealed partial class Binding
                 this.stepUse = use;
                 this.Function(symbol, binding.FunctionItemContext(type, requireClosed: false));
                 this.stepUse = null;
-                if (type.Kind == BoundTypeKind.Closure && call.ReceiverKind == SemanticsKind.Owner &&
-                    type.Symbol.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
+                if (call.ReceiverKind == SemanticsKind.Owner && BoundClosure.Of(type) is { Receiver: not SemanticsKind.Owner })
                 {
                     this.Destruction(type, use);
                 }
@@ -1183,7 +1181,7 @@ public sealed partial class Binding
             {
                 if (!HasPath(body, node, part))
                 {
-                    this.Destruction(PartType(type, part - first) is { } stored ? this.Type(stored) : null, use);
+                    this.Destruction(SelectedType(type, part - first) is { } stored ? this.Type(stored) : null, use);
                 }
             }
 
@@ -1221,7 +1219,8 @@ public sealed partial class Binding
                 return false;
             }
 
-            static BoundType? PartType(BoundType type, int selector) => type.Kind switch
+            // The Type of the part `selector` selects in a layer: a fixed array's element, a Tuple's component or a Field.
+            static BoundType? SelectedType(BoundType type, int selector) => type.Kind switch
             {
                 BoundTypeKind.FixedArray => type.Components[0],
                 BoundTypeKind.Tuple => type.Components[selector],

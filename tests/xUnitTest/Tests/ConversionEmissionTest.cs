@@ -35,25 +35,6 @@ public class ConversionEmissionTest
         var high = BigInteger.Min(sourceMax, targetMax).ToString(CultureInfo.InvariantCulture);
         var header = $"func convert(x: {source}) -> {target} => x@{target}\n";
         var program = header + $"if convert({low}) == {low} and convert({high}) == {high} => Console.writeLine(\"ok\")";
-        var c = MinimalEmissionTest.Analyze(program);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var conversions = Enumerable.Range(0, module.FunctionCount).SelectMany(i => module.GetFunction(i).Instructions).Where(x => x.Opcode == EmissionOpcode.Convert).ToArray();
-        var checkedRange = sourceMin < targetMin || sourceMax > targetMax;
-        var sourceWidth = ScalarTypes.Width(BoundType.Primitives[source], 64);
-        var targetWidth = ScalarTypes.Width(BoundType.Primitives[target], 64);
-        if (sourceWidth == targetWidth && !checkedRange)
-        {
-            Assert.Empty(conversions);
-        }
-        else
-        {
-            var conversion = Assert.Single(conversions);
-            Assert.Equal(checkedRange ? ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None, conversion.Check);
-            Assert.Equal(sourceMin < targetMin ? "slt" : null, conversion.LowerPredicate);
-            Assert.Equal(sourceMax > targetMax ? source[0] == 'i' ? "sgt" : "ugt" : null, conversion.UpperPredicate);
-            Assert.Equal(sourceWidth == targetWidth ? null : sourceWidth > targetWidth ? "trunc" : source[0] == 'i' ? "sext" : "zext", conversion.ScalarOperator);
-        }
-
         ScalarEmissionTest.EmitFixture($"ConversionPair{source}{target}", program, "ok\n");
         var column = header.IndexOf("x@", StringComparison.Ordinal) + 1;
         if (sourceMin < targetMin)
@@ -125,17 +106,6 @@ public class ConversionEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // IMPL 21.3.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
-    // exceeds the destination on one side keeps that side's check only.
-    [Fact]
-    public void ContainedRangesOmitTheCheck()
-    {
-        var c = MinimalEmissionTest.Analyze("var a: u8 = 1\nvar b: i8 = -1\nvar w: Wrapping<i16> = 1\nlet c = a@u32\nlet d = b@i64\nlet e = a@i16\nlet f = b@u32\nlet g = w@i16\nlet h = a@i8\nlet i = f@i8");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var conversions = module.GetFunction(0).Instructions.Where(x => x.Opcode == EmissionOpcode.Convert).Select(x => $"{x.ScalarOperator ?? "-"}:{x.Check}:{x.LowerPredicate ?? "-"}:{x.UpperPredicate ?? "-"}");
-        Assert.Equal("zext:None:-:- sext:None:-:- zext:None:-:- sext:Conversion:slt:- -:Conversion:-:ugt trunc:Conversion:-:ugt", string.Join(" ", conversions));
-    }
-
     [Fact]
     public void UnresolvedConversionTargetReportsItsCause()
     {
@@ -146,27 +116,6 @@ public class ConversionEmissionTest
         Assert.Equal("UnresolvedBinding_Kd", issue.Code.ToString());
         Assert.Equal("ref", issue.Node.ToString());
         Assert.False(c.WriteIr(TextWriter.Null, out _));
-    }
-
-    [Fact]
-    public void SameWidthChecksKeepPhiPredecessorsAndDoNotInventValues()
-    {
-        var c = MinimalEmissionTest.Analyze(Consumers);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        for (var i = 0; i < module.FunctionCount; i++)
-        {
-            var f = module.GetFunction(i);
-            foreach (var conversion in f.Instructions.Where(x => x.Opcode == EmissionOpcode.Convert))
-            {
-                Assert.Null(conversion.ScalarOperator);
-                Assert.DoesNotContain(f.Operands, x => x.Kind == EmissionOperandKind.Value && x.Value == conversion.Operation);
-            }
-        }
-
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        Assert.Contains("icmp slt i32", writer.ToString());
-        Assert.DoesNotContain(" = add i32", writer.ToString());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -211,52 +160,11 @@ public class ConversionEmissionTest
         Assert.Equal(0, allocated);
     }
 
-    [Theory]
-    [InlineData("input")]
-    [InlineData("count")]
-    [InlineData("source-type")]
-    [InlineData("result-type")]
-    [InlineData("unary")]
-    [InlineData("classification")]
-    public void MalformedConversionPlansNeverWriteIr(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("let flag = true\nlet x: u32 = 1\nlet y = x@i32", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
-        var value = body.Values[id];
-        switch (mutation)
-        {
-            case "input": body.ValueOperands[value.Start] = -1; break;
-            case "count": body.Values[id] = value with { Count = 0 }; break;
-            case "source-type":
-                body.ValueOperands[value.Start] = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 1);
-                break;
-            case "result-type":
-                var place = body.Operations[id].Place;
-                body.PlaceStorage[place] = body.Places[place] with { Type = BoundType.Primitives["u32"] };
-                break;
-            case "unary": body.Values[id] = value with { Kind = OwnershipValueKind.Unary }; break;
-            case "classification": ((ConversionKoto)body.Operations[id].Source).SetConversion(ConversionBinding.Literal); break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
     // A conversion of an operand that never completes has no value (its MIR: tests/mir/values.kimi `neverConverted`) and no instruction.
     [Fact]
     public void NoncompletingOperandsHaveNoConversionValueOrInstruction()
     {
         const string Source = "func stop() -> Never => loop => ()\nstop()@u8";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        for (var i = 0; i < module.FunctionCount; i++)
-        {
-            Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);
-        }
-
         ScalarEmissionTest.EmitFixture("ConversionNever", Source, string.Empty, observationMilliseconds: 500);
     }
 

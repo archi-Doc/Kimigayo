@@ -9,10 +9,11 @@ namespace Kimi.Compiler;
 /// <summary>The scalar value-plan subset shared by ownership and emission, independent of storage layout.</summary>
 internal static class ScalarTypes
 {
+    /// <summary>Gets whether a Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a wrapping integer Core; no
+    /// layer is followed. The one definition the MIR builder's recorded values and MirValidator's testRecordValue row read.</summary>
+    /// <param name="type">The Type, or null.</param>
+    /// <returns>Whether it is a Scalar.</returns>
     internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || type is { IsFloatingPoint: true } || Width(type) != 0;
-
-    // Character storage uses i32, but does not grant integer arithmetic or conversions.
-    internal static bool IsCharacterValue(Int128 value) => value >= 0 && value <= 0x10FFFF && !(value >= 0xD800 && value <= 0xDFFF);
 
     // A wrapping integer Type answers every width and signedness query by its integer argument (SPEC 3.1.1).
     internal static int Width(BoundType? type, int pointerWidth = 64) => type?.Kind != BoundTypeKind.Primitive ? 0 : type.Underlying.Name switch

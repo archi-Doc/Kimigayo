@@ -537,7 +537,7 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            if (node is FunctionKoto { BoundClosure: { } plan } closure)
+            if (node is FunctionKoto { ClosureDefinition: { } plan } closure)
             {
                 binding.JudgeHelperCapture(closure, plan, this.helper);
             }

@@ -257,8 +257,8 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
-    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, not of its Never-typed target's, and a
-    // rejected node of Type Never keeps its Opaque value: each body validates.
+    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, and a rejected node of Type Never keeps
+    // its Opaque value: each body validates.
     [Theory]
     [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
     [InlineData("func f(b: (string, i32)) -> bool\n    return (return false) < b\n")]
@@ -271,10 +271,7 @@ public sealed partial class MirBuildTest
     [Fact]
     public void ATupleOperatorWithoutItsComparisonIsUnsupported()
     {
-        var deep = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
-        var c = Compile("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n" +
-            "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
-            $"func f(a: ref/({deep}, i32), b: ref/({deep}, i32)) -> bool => a == b\n");
+        var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
@@ -374,6 +371,24 @@ public sealed partial class MirBuildTest
         Assert.True(Precedes(body, literal, argument));
         Assert.False(Precedes(body, argument, literal));
         Assert.True(Precedes(body, argument, entries));
+    }
+
+    // SPEC 22.5.1 (DECISIONS R5-M144, R5-M145; PLAN G157 (32)): a failure of a Dictionary literal entry's insertion, its allocation included,
+    // reports the entry's key expression, as its duplicate key does: each entry's lookup, its literal's storage handle and its placement are
+    // located at its key (fail-before: the handle and the placement at its value).
+    [Fact]
+    public void ADictionaryLiteralsEntryInsertionIsLocatedAtItsKey()
+    {
+        var c = Compile("func key() -> i32 => 1\nfunc f() -> Dictionary<i32, i32> => [key(): 10, 2: 20]\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var steps = body.Blocks.ToArray().Select(static x => x.Terminator)
+            .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "dictionaryStorage" or "placeEntry")
+            .Select(x => x.Callee.Symbol!.Name + " " + c.SyntaxOf(x.Source.Syntax));
+        Assert.Equal(
+            ["findEntry key()", "dictionaryStorage key()", "placeEntry key()", "findEntry 2", "dictionaryStorage 2", "placeEntry 2"],
+            steps);
     }
 
     // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its

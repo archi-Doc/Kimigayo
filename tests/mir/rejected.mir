@@ -1,5 +1,5 @@
 fn init @12
-  _0: Grid<Never> return @12
+  _0: Grid<Never> return (Receiver) @12
   _1: () temp @13
   _2: () temp @13
   opaque 0 @9:
@@ -20,8 +20,8 @@ fn top-level#0 @14
       _0 = const () @15 s1
       return @15
 fn fill @16
-  _0: i32 return @16
-  _1: i32 arg a @16
+  _0: i32 return @18
+  _1: i32 arg a @17
   _2: () temp @20 s1
   _3: () temp @23 s1
   _4: () temp @26 s1
@@ -65,7 +65,7 @@ fn fill @16
       StorageDead(_6) @33 s1
       unreachable @19
 fn kind @34
-  _0: i32 return @34
+  _0: i32 return @35
   _1: char var c @37 s1
   _2: i32 temp (Result) @34
   s1: lexical in s0 @36
@@ -90,7 +90,7 @@ fn kind @34
       unreachable @36
 fn discarded @42
   _0: () return @42
-  _1: i32 arg a @42
+  _1: i32 arg a @43
   _2: () temp @45 s1
   _3: bool temp @46 s1
   _4: () temp @51 s2
@@ -137,7 +137,7 @@ fn discarded @42
       unreachable check bb1 @52 s1
 fn targetless @55
   _0: () return @55
-  _1: i32 arg a @55
+  _1: i32 arg a @56
   _2: Never temp @58 s1
   _3: Never temp @59 s1
   _4: i32 temp @61 s2
@@ -167,8 +167,8 @@ fn targetless @55
       StorageDead(_3) @59 s1
       unreachable check bb1 @59 s1
 fn helper @64
-  _0: i32 return @64
-  _1: i32 arg a @64
+  _0: i32 return @66
+  _1: i32 arg a @65
   bb0:
     * _0 = copy _1 @67
       return @67

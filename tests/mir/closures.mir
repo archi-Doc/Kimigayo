@@ -5,19 +5,19 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn inspect @4
-  _0: i32 return @4
-  _1: ref/string arg text @4
+  _0: i32 return @7
+  _1: ref/string arg text @5
   bb0:
     * _0 = const 1_i32 @8
       return @8
 fn makeText @9
-  _0: string return @9
+  _0: string return @10
   bb0:
     * _0 = const "t" @11
       return @11
 fn makeAdder @12
-  _0: (i32) -> i32 return @12
-  _1: i32 arg offset @12
+  _0: (i32) -> i32 return @14
+  _1: i32 arg offset @13
   _2: closure (i32) -> i32 temp @20 s1
   _3: (i32) -> i32 temp @20 s1
   _4: (i32) -> i32 temp (Result) @12
@@ -51,12 +51,12 @@ fn makeAdder @12
 closure @20
   _0: i32 return @20
   _1: ref/closure (i32) -> i32 arg @20
-  _2: i32 arg value @20
+  _2: i32 arg value @21
   bb0:
     * _0 = Add(copy _2, copy (*_1).0) @22
       return @22
 fn run @25
-  _0: i32 return @25
+  _0: i32 return @26
   _1: i32 var number @28 s1
   _2: string var text @32 s1
   _3: closure () -> i32 var viewer @36 s1
@@ -240,7 +240,7 @@ fn run @25
       StorageDead(_1) @28 s1
       unreachable @27
 closure @38
-  _0: i32 return @38
+  _0: i32 return @39
   _1: ref/closure () -> i32 arg @38
   bb0:
     * _0 = copy (*(*_1).0) @40
@@ -272,14 +272,14 @@ closure @62
       _0 = const () @63
       return @63
 closure @76
-  _0: i32 return @76
+  _0: i32 return @78
   _1: ref/closure (i32) -> i32 arg @76
-  _2: i32 arg v @76
+  _2: i32 arg v @77
   bb0:
     * _0 = Mul(copy _2, const 2_i32) @79
       return @79
 closure @84
-  _0: i32 return @84
+  _0: i32 return @85
   _1: ref/closure () -> i32 arg @84
   _2: closure () -> i32 var inner @87 s1
   _3: i32 temp @95 s1
@@ -316,7 +316,7 @@ closure @84
       StorageDead(_2) @87 s1
       unreachable @86
 closure @89
-  _0: i32 return @89
+  _0: i32 return @90
   _1: ref/closure () -> i32 arg @89
   bb0:
     * _0 = Add(copy (*_1).0, const 1_i32) @91

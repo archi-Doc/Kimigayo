@@ -33,6 +33,14 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "    public func put(a: i32, self: ref/Self) => ()\nstruct Gauge\n    public var level: i32 = 0\n        set(value: i32) -> ()\n" +
         "            storage = value\n    public init() => ()\nfunc f(x: i32, box: ref/Box)\n    var y: i32 = 0\n    var gauge = Gauge.init()\n";
 
+    // An unbuilt form of a valid program: a tuple operator over two values of Tuple, whose leaf's storage nests past Binding's bound, has
+    // no comparison (a Limit of TyCtxt.Comparison, DECISIONS R5-M75), so the MIR records one located Unsupported_Kd at the operator.
+    // Declarations declares the leaf's Type. Since PLAN G167 the other unbuilt form is the second limit past that bound, a default template
+    // the call's substitution cannot instantiate (MirBuilder.Defaults.cs, R4-M127); both are PD30's (e) row until R7.
+    internal static (string Declarations, string Tuple) Unbuilt { get; } = (
+        "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n",
+        "(" + string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80) + ", i32)");
+
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
     // case bound (plan 5.6.1), and every Closure it creates and every default template it calls has its body (plan 5.6.2; each

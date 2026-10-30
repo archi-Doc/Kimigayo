@@ -52,53 +52,6 @@ public class CompositeMatchTest
         Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified);
     }
 
-    [Theory]
-    [InlineData("position")]
-    [InlineData("arm")]
-    [InlineData("decomposition")]
-    [InlineData("acquisition")]
-    [InlineData("guard")]
-    [InlineData("parent")]
-    public void CorruptCompositePlansAreRejected(string defect)
-    {
-        const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nlet y = match x@move\n    .A((let n, true)) if n > 0 => n\n    .A(_) => 0\n    .B => -1";
-        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
-        switch (defect)
-        {
-            case "position":
-                body.Values[read] = body.Values[read] with { Constant = 0 };
-                break;
-            case "arm":
-                body.OperationSteps[read] = 1;
-                break;
-            case "decomposition":
-                body.DecompositionStorage[0] = body.Decompositions[0] with { PayloadStart = 0 };
-                break;
-            case "acquisition":
-                var acquire = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.AcquirePattern);
-                body.OperationStorage[acquire] = body.Operations[acquire] with { Acquisition = AcquisitionKind.Move };
-                break;
-            case "guard":
-                body.MatchArmStorage[0] = body.MatchArms[0] with { GuardValue = body.MatchArms[0].Test };
-                break;
-            case "parent":
-                var binding = body.Matches[0].Binding;
-                binding.PositionStorage[2] = binding.Positions[2] with { Parent = 2 };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmAnalysisPreserveNestedCandidates()
@@ -123,7 +76,8 @@ public class CompositeMatchTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
-        Assert.True(c.Emission.TryPrepare(out var module, out error), error);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => module.WriteIr(TextWriter.Null)));
+        var written = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.True(written);
     }
 }

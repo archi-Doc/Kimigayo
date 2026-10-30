@@ -86,11 +86,12 @@ public sealed partial class OriginRowsTest
         Assert.Equal(rows.Length == 0 ? [] : [rows], all);
     }
 
-    // Pinned until 2c-6 (DECISIONS R4-M108, R5-M63's finding A): a Closure result over call-local storage keeps Binding's record without a
-    // row.
+    // DECISIONS R4-M152 (R4-M126 P8): a Closure result over call-local storage is the fit of its returned value to the published call
+    // result, a body chain (the twin, R4-M108) whose row runs from the Borrow's finite Origin to the Closure's call result, fixed in its
+    // body. It had no row while CallLocalOrigin failed the Closure (R5-M63's finding A).
     [Fact]
-    public void AClosureResultOverCallLocalStorageHasNoRowUntil2c6()
-        => Assert.Empty(Recorded("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", [$"{Unsatisfied} x@ref"], "x@ref", main: false));
+    public void AClosureResultOverCallLocalStorageIsItsReturnedValuesRow()
+        => Assert.Equal(["Closure Fit Finite Fixed"], Recorded("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", [$"{Unsatisfied} x@ref"], "x@ref", main: false));
 
     // Pooled: a warm rebind of a program with recorded body chains, and the view's reads of their rows, allocate nothing.
     [Trait("Purpose", "Allocation")]

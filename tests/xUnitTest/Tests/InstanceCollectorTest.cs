@@ -16,14 +16,14 @@ namespace XunitTest;
 /// erased writer the witness they run in the instance, a comparison shim its leaf witnesses, a callee only the checks reach is in the checked
 /// set, a dropped value its Type's glue and a static access its initializer, the admission limits and Binding's storage bound are located
 /// records, the work grows linearly and collecting again allocates nothing.</summary>
-public sealed class InstanceCollectorTest
+public sealed partial class InstanceCollectorTest
 {
     // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
     private const string Outer = "func outer<T>(x: T) -> T\n    T is Copy\n";
     private const string CopyBox = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n";
 
     // The F3 reproducers' nested functions (X40): one level into a generic function, one there calling a selected specialization, two
-    // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct.
+    // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct; and in its getter and setter.
     private const string OneLevel = Outer + "    func middle(y: T) -> T => y\n    return middle(x)\n";
 
     private const string OneLevelSpecialized = "func describe<T>() -> i32 => 1\nspecialize func describe<i32>() -> i32 => 2\nfunc outer<T>(x: T) -> i32\n" +
@@ -36,6 +36,18 @@ public sealed class InstanceCollectorTest
     private const string InMethod = CopyBox + "    public func get(self: ref/Self) -> T\n        func inner(z: T) -> T => z\n        return inner(self.value)\n" +
         Outer + "    return Box<T>.init(x).get()\n";
 
+    private const string InGetter = CopyBox + "    public computed got: T\n        get() -> T\n            func inner(z: T) -> T => z\n" +
+        "            return inner(self.value)\n" + Outer + "    return Box<T>.init(x).got\n";
+
+    private const string InSetter = CopyBox + "    public computed put: T\n        get() -> T => self.value\n        set(value: T) -> ()\n" +
+        "            func inner(z: T) -> T => z\n            self.value = inner(value)\n" + Outer + "    var box = Box<T>.init(x)\n    box.put = x\n" +
+        "    return box.value\n";
+
+    // A Closure in a generic struct's getter and in its setter.
+    private const string AccessorClosures = CopyBox + "    public computed got: T\n        get() -> T\n            let f = func [] (y: T) -> T => y\n" +
+        "            return f(self.value)\n        set(value: T) -> ()\n            let g = func [] (y: T) -> T => y\n            self.value = g(value)\n" +
+        Outer + "    var box = Box<T>.init(x)\n    box.got = x\n    return box.got\n";
+
     private const string InSpecialization = CopyBox + "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n" +
         "        func inner(y: i32) -> i32 => y\n        return inner(2)\nfunc outer<T>(x: T) -> i32\n    T is Copy\n    return Box<T>.f(5)\n";
 
@@ -47,7 +59,6 @@ public sealed class InstanceCollectorTest
         "let p = pick<i32>\n";
 
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
-    private const string Init = "public init(n: i32, value: T)";
 
     // Generic functions that request an arithmetic shim: a requirement call, an operator, a function item's formation and call, and a
     // requirement call in a body instantiated per tag Type.
@@ -73,8 +84,8 @@ public sealed class InstanceCollectorTest
     private const string Again = "func again(value: (" + Big + ", u8)) => ()";
     private const string One = "func one(value: (" + Big + ", u8)) => pass(value@move)";
     private const string Two = "func two(value: (" + Big + ", u8)) => pass(value@move)";
-    private const string PassRecords = "OversizedLayout_Kd " + One + "|OversizedLayout_Kd value@move|OversizedLayout_Kd " + Two +
-        "|OversizedLayout_Kd value@move|OversizedLayout_Kd func pass<T>(value: T) => ()";
+    private const string PassRecords = "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd value@move|OversizedLayout_Kd " + Huge +
+        "|OversizedLayout_Kd value@move|OversizedLayout_Kd T";
 
     // A C-layout struct over a Type parameter, which a zero-sized argument makes store a zero-sized Field.
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
@@ -202,8 +213,12 @@ public sealed class InstanceCollectorTest
 
         """;
 
-    // A generic function nested in a closed function, which has no instance to carry.
+    // A generic function nested in a closed function, and in a closed struct's getter, which have no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
+
+    private const string InClosedGetter = "struct Fixed\n    public var value: i32\n    public init(value: i32) => self.value = value\n" +
+        "    public computed got: i32\n        get() -> i32\n            func pick<U>(x: U) -> U => x@move\n            return pick(self.value)\n" + Outer +
+        "    _ = Fixed.init(1).got\n    return x\n";
 
     // Closed functions, a generic one and a generic struct, a closure, calls only the checks reach, a computed property with both
     // accessors, mutually recursive defaults (template calls) and top-level statements that call them and the library.
@@ -227,23 +242,47 @@ public sealed class InstanceCollectorTest
         { InBlock, "inner", 0, "inner(x)" },
         { InMethod, "inner", 0, "inner(self.value)" },
         { InSpecialization, "inner", 0, "inner(2)" },
+        { InGetter, "inner", 0, "inner(self.value)" },
+        { InSetter, "inner", 0, "inner(value)" },
         { InClosed, "pick", 1, null },
+        { InClosedGetter, "pick", 1, null },
     };
 
     // DECISIONS BU-38 (PLAN G242; designs A and B, the review's combination C): programs whose instance (a local, a Type argument, a
     // requirement Item or a LegacyRow's collection), composed substitution (Self or a Type argument) or bodyless callee's parameter rests on
     // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
-    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd).
+    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd). DECISIONS
+    // R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in the clause and the Block form, which
+    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation). DECISIONS R5-M155 (PLAN G293): a local, a parameter (with a
+    // generic subject), an Array's element (its glue's) and a captured value typed by a qualified projection that names no Type after
+    // Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw, CheckFaulted_Kd); the capture rests on
+    // that error (PLAN G293's BU part; before: Binding's direct Unsupported_Kd at the entry).
     public static TheoryData<string, string, string, string> RejectedCases
     {
         get
         {
+            const string VirtualBase = "open struct Base<T>\n    T is Owned\n    public init() => ()\n";
+            const string Slot = "    public virtual func copy(self: objref/Self, value: ref/T) -> T";
+            const string Create = "func g() => Base<i32>.init()@obj\n";
             const string Inspect = "func inspect<T>(value: ref/T) => ()\n";
             const string Bad = "struct Bad\n    public var m: Missing\n";
             const string Box = "struct B<T>\n    public var v: T\n";
             const string Zero = "contract Zero\n    func zero() -> i32\nfunc call<T>() -> i32\n    T is Zero\n    return T.zero()\nstruct Bad\n    Self is Zero\n    public var m: Missing\n";
             const string Format = "    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n";
             const string Named = "contract Named\n    func name(self: ref/Self) -> i32\nfunc call<T>(x: ref/T) -> i32\n    T is Named\n    return x.name()\nstruct Bad\n    Self is Named\n";
+            const string HasItem = "contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n";
+            const string NoType = HasItem + "struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n";
+            const string BaseA = HasItem + "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
+            const string Inherited = "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd " +
+                "InvalidConstraint_Kd InvalidConstraint_Kd";
+            const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
+            const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
+            const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
+            const string SrcC = HasItem + "struct SrcC<T>\n    Self is HasItem when T is Copy\n        associate HasItem.Item is T\n";
+            const string Iter = "contract Iter<T>\n    associate Tag\n";
+            const string IterB = Iter + "struct IB\n    Self is Iter<i32>\n    associate Tag is bool\n";
+            const string IterG = HasItem + Iter + "struct SrcU\n    Self is HasItem\n    associate HasItem.Item is u8\nstruct IG<S>\n    S is HasItem\n" +
+                "    Self is Iter<S.(HasItem).Item>\n    associate Tag is bool\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -260,6 +299,68 @@ public sealed class InstanceCollectorTest
                 { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
+                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                {
+                    "closedProjection", HasItem + "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\nfunc g(h: HA<Src.Item>) => ()\n",
+                    "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty
+                },
+                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
+                {
+                    "closedRefuted", SrcC.Replace("Item is T", "Item is i32", StringComparison.Ordinal) + "func g(h: HA<SrcC<string>>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                {
+                    "closedPayload", HasItem + "enum EW<S>\n    S is HasItem\n    A(S.Item)\n    B\nfunc g(e: EW<i32>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                { "inherited", BaseA + "struct DerA : BaseA\n    var m: i32\nfunc g(b: HA<DerA>) => ()\n", Inherited, string.Empty },
+                {
+                    "inheritedTwice", BaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\nfunc g(b: HA<DerB>) => ()\n",
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd " +
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "inheritedGeneric", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n" +
+                    "struct DerG : BaseG<i32>\n    var m: i32\nfunc g(b: HA<DerG>) => ()\n", Inherited, string.Empty
+                },
+                {
+                    "sourcesDisagree", Holder + "contract Sub<A, B> : Holder<A>, Holder<B>\nopen struct BaseP<T, U>\n    Self is Sub<T, U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "pathsDisagree", Holder + "open struct BaseP<T, U>\n    Self is Holder<T>\n    Self is Holder<U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "refinedDisagree", HasItem + "contract HasMore: HasItem\n    associate Elem\n    associate HasItem.Item is Elem\nstruct Src\n" +
+                    "    Self is HasMore\n    associate HasMore.Elem is i32\nstruct WB<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is u8\n" +
+                    "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is i32\nfunc g(h: HA<WB<Src>>) => ()\n",
+                    "InvalidConstraint_Kd InvalidAssociatedType_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
+                    "InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "virtualBlock", "contract Marker\n" + VirtualBase + "    Self is Marker when T is Missing\n    " + Slot + " => value@follow\n" + Create,
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(x, y)" },
@@ -268,6 +369,16 @@ public sealed class InstanceCollectorTest
                 { "outerLimit", Box + $"func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<{b65}>()\n", string.Empty, "Unsupported_Kd inner<T>()" },
                 { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, "Unsupported_Kd Text.toString(b)" },
                 { "rowLimit", Box + $"func g(a: uniq/Array<{b65}>) => a.reserve(1)\n", string.Empty, "Unsupported_Kd a.reserve(1)" },
+                {
+                    "localProjection", IterB + "func g() -> ()\n    let t: IB.(Iter<u8>).Tag = true\n    return\n",
+                    "TypeMismatch_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                { "parameterProjection", IterG + "func g(t: IG<SrcU>.(Iter<i32>).Tag) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                { "elementProjection", IterB + "func g(a: Array<IB.(Iter<u8>).Tag>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                {
+                    "capturedProjection", IterB + "func g(t: IB.(Iter<u8>).Tag) -> ()\n    let c = func [t@move] () -> () => ()\n    return\n",
+                    "UnsatisfiedConstraint_Kd", string.Empty
+                },
             };
         }
     }
@@ -424,6 +535,42 @@ public sealed class InstanceCollectorTest
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, HeapBuffer's reserve through BufferWriter or
+    // a #LibraryImport function, is the BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a
+    // requirement call, and a requirement Item where it is formed and where it is called, whether or not the output calls the function
+    // (code generation runs a witness only as a body or shim item).
+    [Theory]
+    [InlineData("    match w.reserve(4)\n", "w.reserve(4)")]
+    [InlineData("    let reserve = W.reserve\n    match reserve(w, 4)\n", "W.reserve | reserve(w, 4)")]
+    [InlineData(null, "C.now()")]
+    public void ABodylessWitnessIsAGapAtTheCall(string? reserve, string sites)
+    {
+        var source = reserve is null
+            ? "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+                "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n"
+            : "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n" + reserve + "        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
+                "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n";
+        var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.All(set.Records, static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
+        Assert.Equal(sites, string.Join(" | ", set.Records.Select(x => c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // SPEC 23.1.2 (DECISIONS R5-M146, X2 review B1): the gap is the witness's own (TyCtxt.Bodyless: a compiler or foreign function), so an
+    // independent Binding error elsewhere leaves an import witness's record beside it.
+    [Fact]
+    public void ABodylessWitnessIsAGapBesideAnUnrelatedError()
+    {
+        var c = MirBuildTest.Compile(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n" +
+            "func broken() -> i32\n    let text: string = 1\n    return 0\npublic func main() -> () => ()\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "C.now()")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // DECISIONS BU-11 (PLAN G153 (2)): the storage bound is a property of each instance, whatever was prepared before it and in whatever
     // order its parts are walked. `h` places its Type argument 3 levels down, so Box^61 (i32 at level 64) is an instance and Box^62 is the
     // gap, alone and before or after the other; AB and BA store Box^57 in one Field and 4 levels deeper in the other, in either Field
@@ -535,10 +682,10 @@ public sealed class InstanceCollectorTest
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }
 
-    // DECISIONS BU-38 (R5's guard): the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row read Binding's
-    // completeness through TyCtxt.BindingComplete. A part Binding rejected exists only in an incomplete compilation, where Rejected is a
-    // dependent without a record; in a complete one, which no source reaches, it is InternalInvariant_Kd at the site. Prepared makes the
-    // instance and Limit is the storage-nesting gap in both.
+    // DECISIONS BU-38 (R5's guard), R5-M151: the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row map
+    // Rejected to a broken contract, which the collector's one record path keeps only where TyCtxt.BindingComplete holds. A part Binding
+    // rejected exists only in an incomplete compilation, where Rejected is a dependent without a record; in a complete one, which no source
+    // reaches, it is InternalInvariant_Kd at the site. Prepared makes the instance and Limit is the storage-nesting gap in both.
     [Theory]
     [InlineData(false, "Unsupported_Kd")]
     [InlineData(true, "InternalInvariant_Kd Unsupported_Kd")]
@@ -551,13 +698,43 @@ public sealed class InstanceCollectorTest
         var verdicts = new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit };
         Assert.Equal([true, false, false], verdicts.Select(x => collector.Made(x, site)));
         Assert.Equal(records, string.Join(' ', collector.Set.Records.Select(static x => x.Code)));
-        Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
+        Assert.Equal(DiagnosticCode.InternalInvariant_Kd, collector.RecordOf(Layout.Outcome.Rejected));
+    }
+
+    // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
+    // laid out with the Type its subject's conformance binds (W<Src>'s `e: S.Element` as i32), and a body reads the part as that Type, the
+    // one producer's: a Field read (`w.e`) and a Case payload read (`.A(let n)`) give an i32 local, and so does a subject inheriting its
+    // base's binding (`DerI : BaseI`, the valid twin of the inherited rejection). Before, the uncompleted projection
+    // reached Layout through AdtDef's view or a read's local (the collection threw "Layout has no row for the Type Element", sel's
+    // `check` CheckFaulted_Kd), and a payload read's `n + 1` was TypeMismatch_Kd.
+    [Theory]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n")]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let v = w.e\n")]
+    [InlineData("    let e: EM<Src> = .A(1)\n    let y = match e@move\n        .A(let n) => n + 1\n        .B => 0\n")]
+    [InlineData("    let w = W<DerI>.init(e: 1)\n    let v = w.e\n")]
+    public void AProjectionPartIsLaidOutAndReadCompleted(string body)
+    {
+        var (_, set) = Collect("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
+            "    S is HasElem\n    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\nenum EM<S>\n    S is HasElem\n" +
+            "    A(S.Element)\n    B\nopen struct BaseI\n    Self is HasElem\n    associate Element is i32\nstruct DerI : BaseI\n    var m: i32\n" +
+            "public func main() -> ()\n" + body + "    return\n");
+        Assert.Empty(set.Records);
+        Assert.NotEqual(0, set.Items.Length);
     }
 
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins.
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection finally names no
+    // Type is such a part, whatever its subject and reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3 (noType), also
+    // through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or two
+    // conformance paths disagreeing (sourcesDisagree, pathsDisagree; refinedDisagree, a direct and a refinement path binding u8 and i32
+    // for the receiver, unlike TyCtxtTest.ProvenPathsBindTheirCommonType's), a subject whose base clause gives it no conformance
+    // (noConformance*), a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`,
+    // `bool` without Addable, a Case payload) or whose conformance's condition is refuted (closedRefuted); before, Layout's "no row for the
+    // Type Item" ("Output"). A builtin output names its Type (closedOutputValid). The valid twins whose projection stays pending in a
+    // generic declaration's storage are MirBorrowsTest.APendingProjectionIsCompletedByTheInstanceAUseForms, at the MIR problem layer that
+    // observed them.
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
@@ -572,9 +749,10 @@ public sealed class InstanceCollectorTest
 
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
     // one level into a generic function carries it, so each instance of the enclosing function has its own item; a call two levels in,
-    // from a block, in a generic struct's method or in a specialization inside a generic struct does not, so the edge is the
-    // EnclosingInstance gap at the call until a representation of the enclosing chain carries it (DECISIONS R5-M43; then two items each).
-    // Every admitted representative closes its body.
+    // from a block, in a generic struct's method or accessor (SPEC 11.3: an accessor's body is its executing function's; before PLAN
+    // G157 (49), InternalInvariant_Kd at the getter's and the setter's call) or in a specialization inside a generic struct does not, so the
+    // edge is the EnclosingInstance gap at the call until a representation of the enclosing chain carries it (DECISIONS R5-M43; then two
+    // items each). Every admitted representative closes its body; a closed enclosing function or accessor has no instance to carry.
     [Theory]
     [MemberData(nameof(NestedCases))]
     public void NestedFunctionsNeedTheirEnclosingInstance(string declarations, string nested, int items, string? refused)
@@ -610,6 +788,24 @@ public sealed class InstanceCollectorTest
             ["Fn pick [i32]", "Fn apply [i32]", "Fn apply [bool]", "Fn make [i32]", "Fn pick [i32]", "Fn one [bool]", "Fn run [function item one<bool>]"],
             Targets(program, set, "Fn top"));
         Assert.Equal(["Fn one [bool]"], Targets(program, set, "Fn run [function item one<bool>]"));
+        Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
+    }
+
+    // SPEC 11.3, 6.1.3 (PLAN G157 (49)): a Closure in a generic struct's accessor is an instance of its body under the accessor's instance,
+    // as one in a function is: one per instance of the getter and of the setter, with no record (before: InternalInvariant_Kd where it is
+    // made and where it is called, since no context carried the accessor's instance).
+    [Fact]
+    public void ClosuresOfAccessorInstancesAreTheirBodies()
+    {
+        var c = MirBuildTest.Compile(AccessorClosures + "require outer(3) == 3 and outer(true) else => $abort(\"accessor\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        var closures = set.Items.ToArray().Select(x => Label(program, x)).Where(static x => x.StartsWith("Closure ", StringComparison.Ordinal));
+        Assert.Equal(
+            ["Closure got.Get [Box<bool>]", "Closure got.Get [Box<i32>]", "Closure got.Set [Box<bool>]", "Closure got.Set [Box<i32>]"],
+            closures.Order(StringComparer.Ordinal));
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
@@ -795,8 +991,8 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
-    // too: a literal's oversized or rejected value refuses the item at the literal (the records of its other uses are at the same sites);
-    // an i64 value admits it (the counterpart).
+    // too: a literal's oversized or rejected value refuses the item at the literal and at its entry's key, where the entry's insertion is
+    // (SPEC 22.5.1; DECISIONS R5-M144) (the records of its other uses are at the same sites); an i64 value admits it (the counterpart).
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd")]
     [InlineData("P<()>", "InvalidCLayout_Kd")]
@@ -806,7 +1002,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} [Key.init(1): v@move]",
+            : [$"{code} {value}", $"{code} v@move", $"{code} Key.init(1)", $"{code} [Key.init(1): v@move]",
                 $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
         Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
         Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
@@ -844,6 +1040,26 @@ public sealed class InstanceCollectorTest
         Assert.Empty(set.Records);
         Assert.Equal(["Fn format", "Fn format"], Calls(program, set, "Fn top").Where(static x => x == "Fn format"));
         Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
+    }
+
+    // K 4.5 rows 2, 12 and 13 (DECISIONS R5-M136): an intrinsic's Type argument is read only where its row reads one
+    // (IntrinsicRow.ReadsTypeArgument). Test.tempDirectory's function has no Type parameter and its row neither lays out nor targets one, so its
+    // Item's Value call and its adapter (an erasure to `() -> string`) have no target and no record (fail-before: an index outside the Item's
+    // substitution, a fault that ended the check).
+    [Fact]
+    public void AnIntrinsicsItemReadsATypeArgumentOnlyWhereItsRowDoes()
+    {
+        var c = MirBuildTest.Compile(
+            "#Test\nfunc t()\n    let make = Test.tempDirectory\n    Console.writeLine(make())\n    Console.writeLine(run(Test.tempDirectory))\n" +
+            "func run(make: () -> string) -> string => make()\n",
+            test: true);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Empty(set.Targets(adapter).ToArray());
     }
 
     // K 4.6 for tables (VirtualGenericDispatchTest's dependency programs): an override that creates an object of its own struct's instance
@@ -989,14 +1205,19 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.5 row 3, S2-S4 X14: a standard property witness's operations are items keyed by the Field, the erased Self and the operation, whose
-    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue.
+    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue. The key's
+    // signature (StorageSignature, the one statement the agreement and the shim's function read) is the requirement's in the instance:
+    // `set(self: uniq/Self, value: Array<i32>) -> ()` and `get(self: ref/Self) -> ref/Array<i32>` (SPEC 11.3.1) on Bag.
     [Fact]
     public void AStandardPropertyWitnessIsItsFieldsShim()
     {
         var c = MirBuildTest.Compile(HeldSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        Assert.Equal(["()", "uniq/Bag", "Array<i32>"], Signature(Item(program, set, "PropertyWitness Bag StorageSet")));
+        Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(set.Records);
         Assert.Equal(
             ["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
@@ -1004,6 +1225,13 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
+
+        // The result, then each parameter slot.
+        string[] Signature(int item)
+        {
+            var result = TyCtxt.Name(collector.StorageSignature(item, -1, out var count)!);
+            return [result, .. Enumerable.Range(0, count).Select(slot => TyCtxt.Name(collector.StorageSignature(item, slot, out _)!))];
+        }
     }
 
     // K 4.5 row 2, DECISIONS R5-M30, R5-M70: a call of a function without a body whose published row formats a value (Text.toString,
@@ -1374,23 +1602,20 @@ public sealed class InstanceCollectorTest
 
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
     // whose verdicts join the glue item's: a C-layout element storing a zero-sized Field is InvalidCLayout_Kd at each request of the glue,
-    // an empty local's declaration (also for an inferred instance, which Binding does not report), and a limit element the erased Type's one
-    // Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
+    // an empty local's declaration (written or inferred alike; Binding reports none, DECISIONS R4-M134 Q8), and a limit element the erased
+    // Type's one Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
     [Theory]
     [InlineData(
         "func use() -> ()\n    let a: Array<P<()>> = []\n    let b: Array<P<()>> = []\n    return\n",
-        2,
         "InvalidCLayout_Kd let b: Array<P<()>> = []|InvalidCLayout_Kd let a: Array<P<()>> = []")]
-    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(())\n", 0, "InvalidCLayout_Kd let a: Array<P<T>> = []")]
-    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", 0, "")]
+    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(())\n", "InvalidCLayout_Kd let a: Array<P<T>> = []")]
+    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", "")]
     [InlineData(
         "func use() -> ()\n    let a: Array<[2147483648 of u8]> = []\n    let b: Array<[2147483648 of u8]> = []\n    return\n",
-        0,
         "GenerationResourceLimit_Kd let b: Array<[2147483648 of u8]> = []")]
-    public void ACollectionsGlueLaysOutItsElements(string uses, int eager, string records)
+    public void ACollectionsGlueLaysOutItsElements(string uses, string records)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
@@ -1458,16 +1683,16 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
-    // use: a parameter (at its function, as MIR records no parameter syntax), a generic instance's intrinsic Type argument, a Closure local
+    // use: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
     // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
     [Theory]
-    [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "func f(value: [2147483648 of u8]) -> i32 => 1")]
-    [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "func f(value: [2147483648 of ()]) -> i32 => 1")]
+    [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "[2147483648 of u8]")]
+    [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "[2147483648 of ()]")]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<[2147483648 of u8]>()\nunsafe => Raw.release(p)\n", "Raw.allocate<T>(0)")]
     [InlineData(
         "func host(big: [1073741824 of i32]) -> i32\n    let f = func [big] () -> i32 => 1\n    let e: () -> i32 = f\n    return e()\n",
-        "func host(big: [1073741824 of i32]) -> i32|let f = func [big]() -> i32 => 1")]
+        "[1073741824 of i32]|let f = func [big]() -> i32 => 1")]
     [InlineData("struct A\n    let b: B\nstruct B\n    let a: A\nfunc f(a: A) -> i32 => 1\n", "")]
     [InlineData("let a: Option<Never> = .None\n", "")]
     public void ALayoutLimitIsARecordAtItsTypesFirstUse(string source, string subjects)
@@ -1480,9 +1705,10 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.ClosureErasure);
     }
 
-    // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37), and the old generator, whose pool takes Layout's
-    // verdict, agrees for a struct chain and a one-component Tuple chain, read down to the scalar leaf, at 64 and 65 levels; the height-64
-    // difference R5-M37 anticipated does not arise. The old generator is selected whatever the process's code generator (R5-M73).
+    // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37) for a struct chain and a one-component Tuple chain,
+    // read down to the scalar leaf, at 64 and 65 levels; the height-64 difference R5-M37 anticipated does not arise. Code generation, which
+    // reads Layout's verdicts, agrees: it generates the 64-level program check accepts, and check rejects the 65-level one before it
+    // (DECISIONS R5-M156; R5-M73's half on the old generator moved to MIR code generation at G4, R5-M160).
     [Theory]
     [InlineData("Struct", 64, false)]
     [InlineData("Struct", 65, true)]
@@ -1513,10 +1739,12 @@ public sealed class InstanceCollectorTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
-        Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, $"func f(value: {type}) -> i32 => value{leaf}")] : [], records);
-        var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
-        Assert.Equal(!limited, legacy.Validate(out var error));
-        Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
+        Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, type)] : [], records);
+        if (!limited)
+        {
+            var generated = MinimalEmissionTest.Analyze(source.ToString());
+            Assert.True(generated.Validate(out var error), error);
+        }
     }
 
     // K 4.7, IMPL 21.3.3, DECISIONS R5-M53: Binding refuses a closed 128-bit division, remainder (compound forms included) or float
@@ -1642,82 +1870,55 @@ public sealed class InstanceCollectorTest
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
     // depth, is InvalidCLayout_Kd at each such use (one record per subject): an inferred instance in a generic body (make(())) and at the
-    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), with the instance's constructor, a written parameter of an
-    // unused function, nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each valid twin has none.
-    // Binding reports exactly a written instance's eager InvalidCLayout_Kd, so an inferred one is Binding-clean. Subjects by their first line.
+    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), a written parameter of an unused function (at its Type
+    // occurrence), nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each valid twin has none. The
+    // instance's constructor is none: its construction receiver is storage the construction expression made (SPEC 6.3.2-6.3.4; DECISIONS
+    // BU-48, superseding R5-M55's "with the instance's constructor"). Binding reports no instance, written or inferred (DECISIONS R4-M134
+    // Q8). Subjects by their first line.
     [Theory]
-    [InlineData(
-        "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n",
-        0,
-        "let p = P<T>.init(1, value@move)|" + Init)]
-    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", 0, "")]
-    [InlineData("let q = P.init(1, ())\n", 0, "let q = P.init(1, ())|" + Init)]
-    [InlineData("let q = P.init(1, 2)\n", 0, "")]
-    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", 0, "let q = P.init(1, Q.init())|" + Init)]
-    [InlineData("struct Q\n    public var n: i32 = 1\n    public init() => ()\nlet q = P.init(1, Q.init())\n", 0, "")]
-    [InlineData("func f(p: P<()>) -> i32 => 1\n", 1, "func f(p: P<()>) -> i32 => 1")]
-    [InlineData("func f(p: P<i32>) -> i32 => 1\n", 0, "")]
-    [InlineData("let x: Option<P<()>> = .None\n", 1, "let x: Option<P<()>> = .None|.None")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", 0, "let x: Option<P<T>> = .None|.None")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", 0, "")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", 0, "")]
-    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, int eager, string subjects)
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n", "let p = P<T>.init(1, value@move)")]
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", "")]
+    [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())")]
+    [InlineData("let q = P.init(1, 2)\n", "")]
+    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "let q = P.init(1, Q.init())")]
+    [InlineData("struct Q\n    public var n: i32 = 1\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "")]
+    [InlineData("func f(p: P<()>) -> i32 => 1\n", "P<()>")]
+    [InlineData("func f(p: P<i32>) -> i32 => 1\n", "")]
+    [InlineData("let x: Option<P<()>> = .None\n", "let x: Option<P<()>> = .None|.None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", "let x: Option<P<T>> = .None|.None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", "")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", "")]
+    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, string subjects)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.Equal(Enumerable.Repeat(DiagnosticCode.InvalidCLayout_Kd, eager), c.Binding.Issues.Select(static x => x.Code));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var expected = subjects.Length == 0 ? [] : subjects.Split('|').Select(static x => (DiagnosticCode.InvalidCLayout_Kd, x)).ToArray();
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
     }
 
-    // DECISIONS R5-M55: a C-layout declaration Binding rejects for a direct zero-sized Field is rejected storage for Layout, derived from
-    // Binding's records (at the Field and the struct), so its by-value uses add no collector record.
-    [Fact]
-    public void ARejectedCLayoutDeclarationIsBindingsAlone()
-    {
-        var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct Q\n    public var n: i32 = 1\n    public var u: () = ()\n    public init() => ()\n" +
-            "func use(q: Q) -> i32 => q.n\nlet q = Q.init()\nlet n = use(q@move)\n");
-        Assert.Equal(
-            [(DiagnosticCode.InvalidTypeFormation_Kd, true), (DiagnosticCode.InvalidCLayout_Kd, false)],
-            c.Binding.Issues.Select(static x => (x.Code, x.Node is StructKoto)).OrderBy(static x => x.Code));
-        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
-    }
-
-    // DECISIONS R5-M55 (a declared overlap, removed at G2b): Binding still reports a written instance eagerly at the written Type, so under
-    // MIR code generation a written by-value use is also reported at the use; an inferred one only at its uses.
-    [Theory]
-    [InlineData("func f(p: P<()>) -> i32 => 1\n", 1, "func f(p: P<()>) -> i32 => 1")]
-    [InlineData("let q = P.init(1, ())\n", 0, "let q = P.init(1, ())")]
-    public void BindingsEagerReportOfAWrittenInstanceStaysBesideTheUse(string uses, int eager, string use)
-    {
-        var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
-        var records = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records;
-        Assert.Contains((DiagnosticCode.InvalidCLayout_Kd, use), records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
-    }
-
     // IMPL 21.1.1, SPEC 8.15.3, DECISIONS R5-M52: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at each
-    // use (one record per subject), not a Resource record: a parameter (at its function), two functions' parameters, a generic instance's
+    // use (one record per subject), not a Resource record: a parameter (at its Type occurrence), two functions' parameters, a generic instance's
     // parameter and each caller's uses, a generic instance's Raw.allocate Type argument, an erasure's target Function Type's inputs and
     // result (a Never source's, a body's beside its own result local, a compiler function Item's) and Raw.allocate's Type argument through
     // its Item, erased or called as a value (DECISIONS R5-M108); M, exactly at the bound, and a 2^31-byte array are one Resource record
     // each. Subjects by their first line, codes in record order.
     [Theory]
-    [InlineData(Over + "\n", "OversizedLayout_Kd " + Over)]
-    [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Over + "|OversizedLayout_Kd " + Again)]
+    [InlineData(Over + "\n", "OversizedLayout_Kd " + Huge)]
+    [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd " + Huge)]
     [InlineData("func pass<T>(value: T) => ()\n" + One + "\n" + Two + "\n", PassRecords)]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<(" + Big + ", u8)>()\nunsafe => Raw.release(p)\n", "OversizedLayout_Kd Raw.allocate<T>(0)")]
     [InlineData("func fail() -> Never => $abort(\"x\")\nfunc big() -> () -> " + Huge + " => fail\n", "OversizedLayout_Kd fail")]
     [InlineData(
         "func make() -> " + Huge + " => $abort(\"x\")\nfunc get() -> () -> " + Huge + " => make\n",
-        "OversizedLayout_Kd func make() -> " + Huge + " => $abort(\"x\")|OversizedLayout_Kd make")]
+        "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd make")] // The result's record at its result Type (settled (a)).
     [InlineData("func swap() -> (uniq/" + Huge + ", " + Huge + ") -> " + Huge + " => Kimi.Intrinsics.exchange\n", "OversizedLayout_Kd Kimi.Intrinsics.exchange")]
     [InlineData("func huge() -> (isize) -> raw/" + Huge + " => Raw.allocate\n", "OversizedLayout_Kd Raw.allocate")]
     [InlineData(
         "func huge() -> raw/" + Huge + "\n    let f = Raw.allocate<" + Huge + ">\n    return f(1)\n",
         "OversizedLayout_Kd Raw.allocate<" + Huge + ">|OversizedLayout_Kd f(1)")]
-    [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd func at(value: " + Big + ") => ()")]
-    [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd func at(value: [2 of [1073741824 of u8]]) => ()")]
+    [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd " + Big)]
+    [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd [2 of [1073741824 of u8]]")]
     public void ALayoutOverTheBoundIsARecordAtEachUse(string source, string records)
     {
         var c = MirBuildTest.Compile(source);
@@ -1736,7 +1937,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile("enum E\n    A(" + payload + ")\n    B(" + Huge + ")\nfunc h(e: E) => ()\n");
         Assert.Equal(payload == "i32", c.Binding.Result.IsComplete);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal("OversizedLayout_Kd func h(e: E) => ()", string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.Equal("OversizedLayout_Kd E", string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
     // SPEC 8.15.3, DECISIONS R5-M52: a Type formed only behind a borrow or a raw pointer, or by a struct nothing uses by value, is no use.
@@ -1758,7 +1959,7 @@ public sealed class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(CLayoutP + "func both(value: (P<()>, (" + Big + ", u8))) => ()\n");
         var records = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records;
-        var use = "func both(value: (P<()>, (" + Big + ", u8))) => ()";
+        var use = "(P<()>, (" + Big + ", u8))";
         Assert.Equal(
             [(DiagnosticCode.OversizedLayout_Kd, use), (DiagnosticCode.InvalidCLayout_Kd, use)],
             records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
@@ -1779,6 +1980,22 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "pick(1)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal));
+    }
+
+    // DECISIONS R5-M155 (PLAN G187's R5 half): in a complete compilation an abstract Type reaching Layout is a broken contract, a located
+    // InternalInvariant_Kd at its use, never a fault. Binding and the builder never give a closed body such a local, so the test forges one:
+    // main's `x` typed by probe's slot T.
+    [Fact]
+    public void AnAbstractLocalIsABrokenContractInACompleteCompilation()
+    {
+        var c = MirBuildTest.Compile("func probe<T>(value: T) => ()\npublic func main() -> ()\n    let x = 1\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var slot = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        main.AddLocal(main.Locals.ToArray().Single(static x => x.Name == "x") with { Type = slot });
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
     // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.
@@ -1872,8 +2089,6 @@ public sealed class InstanceCollectorTest
         string[] expected = name != "milestone/Milestone42" ? [] : [.. statics.Select(static x => "Unsupported_Kd " + x)];
 
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Mir;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Main.kimi", File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", name["milestone/".Length..] + ".kimi"))));
         c.Bind();
@@ -2098,7 +2313,7 @@ public sealed class InstanceCollectorTest
         var name = body.Key.Decl?.Declaration switch
         {
             null => "top",
-            FunctionKoto { IsAnonymous: true } closure => Enclosing(closure.Parent!).Name,
+            FunctionKoto { IsAnonymous: true } closure => Enclosing(closure.Parent!),
             FunctionKoto function => function.Name,
             _ => body.Key.Decl!.Name, // A static's initializer.
         };
@@ -2107,7 +2322,13 @@ public sealed class InstanceCollectorTest
             : string.Empty;
         return (body.Source.Module == 0 ? $"{body.Key.Kind} {name}" : $"library {body.Key.Kind} {name} in {body.Key.Decl!.Scope.Owner}") + instance;
 
-        static FunctionKoto Enclosing(Koto node) => node is FunctionKoto { IsAnonymous: false } named ? named : Enclosing(node.Parent!);
+        // The named function or accessor whose body holds a node (an accessor as its executing function is named, SPEC 11.3).
+        static string Enclosing(Koto node) => node switch
+        {
+            FunctionKoto { IsAnonymous: false } named => named.Name,
+            PropertyAccessorKoto accessor => ((PropertyKoto)accessor.Parent!).NameKoto.IdentifierName + "." + accessor.AccessorKind,
+            _ => Enclosing(node.Parent!),
+        };
     }
 
     // The parts the destruction walk's direct descents give: a destructor's struct and a handle are not descended (the destructor; a Sealed
@@ -2157,7 +2378,7 @@ public sealed class InstanceCollectorTest
     {
         private bool root;
 
-        public bool First(BoundType type)
+        public bool First(BoundType type, int depth)
         {
             if (!this.root)
             {
@@ -2170,6 +2391,6 @@ public sealed class InstanceCollectorTest
 
         public readonly bool Visit(BoundType type, int depth) => false;
 
-        public readonly bool Deep() => false;
+        public readonly bool Deep(BoundType type) => false;
     }
 }

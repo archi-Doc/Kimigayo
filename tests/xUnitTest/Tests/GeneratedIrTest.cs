@@ -46,17 +46,15 @@ public sealed class GeneratedIrTest
     private static readonly string[] Profile =
         ["uwtable(async)", "\"target-cpu\"=\"x86-64\"", "\"target-features\"=\"+sse2\"", "\"denormal-fp-math\"=\"ieee,ieee\""];
 
-    // The same requirement on the text of each generator: every definition's profile attributes (IMPL 21.4.1 and 21.2), the ABI of a
-    // Library's signatures (IMPL 21.3), a Never function that loops without a return (IMPL 21.3.1), an Application's constants in two's
+    // The requirement on the generated text, read without names: every definition's profile attributes (IMPL 21.4.1 and 21.2), the ABI
+    // of a Library's signatures (IMPL 21.3), a Never function that loops without a return (IMPL 21.3.1), an Application's constants in two's
     // complement at their width stored into slots of their Type (IMPL 21.1.3), its entry's startup call and __kimi_exit(0) (IMPL 21.4.2),
-    // and no termination claim, though every function, value and label is named differently.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void OneRequirementHoldsForBothGenerators(bool mir)
+    // and no termination claim. The old generator's row went with its selection at G4 (DECISIONS R5-M160).
+    [Fact]
+    public void OneRequirementHoldsForTheGeneratedText()
     {
-        var library = GeneratedIr.Parse(Generate(Definitions, OutputKind.Library, mir));
-        var ir = GeneratedIr.Parse(Generate(Program, OutputKind.Application, mir));
+        var library = GeneratedIr.Parse(Generate(Definitions, OutputKind.Library));
+        var ir = GeneratedIr.Parse(Generate(Program, OutputKind.Application));
         foreach (var module in new[] { library, ir })
         {
             Assert.All(module.Functions.Where(static x => x.Blocks.Count != 0), static x => Assert.All(Profile, y => Assert.Contains(y, x.Attributes)));
@@ -138,12 +136,10 @@ public sealed class GeneratedIrTest
         Assert.ThrowsAny<XunitException>(() => GeneratedIr.Parse("declare void @g()\ndefine internal void @a() {\nentry:\n  call void @g() #1\n  ret void\n}"));
     }
 
-    // The program's text for an output form under one generator, whatever the process's: the old one or MIR code generation (sel).
-    private static string Generate(string source, OutputKind output, bool mir)
+    // The program's text for an output form.
+    private static string Generate(string source, OutputKind output)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = mir ? CompilerPipeline.Mir : CompilerPipeline.Legacy;
-        c.Codegen = mir ? CompilerCodegen.Mir : CompilerCodegen.Legacy;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();

@@ -30,6 +30,27 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // q19: the fresh Origin `o` is fixed to x by the invariant first argument, so the second one does not fit.
     private const string Fresh = "func pair(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) -> () => ()\n\nfunc caller(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> ()\n    pair(p, q)\n";
 
+    // G277 (1)'s callees: a defaulted `w` whose Type is well formed only when `b outlives a`, as a function, a generic one, a method, a
+    // constructor, one whose `a` only the default and the result name, and one whose `a` an input also names.
+    private const string Defaulted = "w: Option<ref/(ref/i32 during b) during a> = .None";
+
+    private const string Put2 = "func put2(slot: uniq/(ref/i32 during a), v: ref/i32 during b, " + Defaulted + ")\n    slot@follow = v\n";
+
+    private const string GenericPut = "func g<T>(slot: uniq/(ref/i32 during a), x: T, w: Option<ref/T during a> = .None) => ()\n";
+
+    private const string MethodPut = "struct S\n    public init() => ()\n    public func put(self: ref/S, slot: uniq/(ref/i32 during a), v: ref/i32 during b, " +
+        Defaulted + ")\n        slot@follow = v\n";
+
+    private const string ConstructorPut = "struct H\n    public init(slot: uniq/(ref/i32 during a), v: ref/i32 during b, " + Defaulted + ")\n        slot@follow = v\n";
+
+    private const string ResultOnly = "func z2(v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
+
+    private const string SharedInput = "func z5(x: ref/i32 during a, v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
+
+    // A default copying an input's referent, stored by the callee (G277 (1)'s k1).
+    private const string Copying = "func put3(slot: uniq/(ref/i32 during a), v: ref/(ref/i32 during b) during c, w: ref/i32 during b = v@follow)\n" +
+        "    origin b outlives a\n    slot@follow = w\n";
+
     [Theory]
     [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null)]
     [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local")]
@@ -309,6 +330,53 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     {
         var source = Box + "func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n" + body + Main;
         Assert.Equal([code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    // SPEC 15.6.4 step 3, 7.2.3, 10.1.1 (DECISIONS BU-51): a slot that a default fills is an input too, so its instantiated Type's
+    // well-formedness bounds the call's solution and is judged at the call, every position. A Finite end at a fixed one is Unsatisfied, two
+    // fixed ends Unproven, a result the premise shortens fails its own fit at its destination, and local ends are a Loan conflict where
+    // the borrowed local is destroyed. Each was accepted before (PLAN G277 (1)).
+    [Theory]
+    [InlineData(Put2 + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    let sr = short@ref\n    put2(p, sr)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "put2(p, sr)", "wellFormed")]
+    [InlineData(Put2 + "func bad(p: uniq/(ref/i32 during q), sr: ref/i32 during r) -> i32\n    put2(p, sr)\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "put2(p, sr)", "wellFormed")]
+    [InlineData(GenericPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    g(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "g(p, short@ref)", "wellFormed")]
+    [InlineData(MethodPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let s = S.init()\n    let short = 2\n    s.put(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "s.put(p, short@ref)", "wellFormed")]
+    [InlineData(ConstructorPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    let h = H.init(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(p, short@ref)", "wellFormed")]
+    [InlineData(ResultOnly + "func bad(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return z2(short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z2(short@ref)", "wellFormed")]
+    [InlineData(SharedInput + "func bad(p: ref/i32 during q) -> ref/i32 during q\n    let short = 2\n    return z5(p, short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z5(p, short@ref)", "fit")]
+    [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let short = 2\n        put2(keep@uniq, short@ref)", null)]
+    public void ADefaultedInputsWellFormednessIsJudgedAtTheCall(string body, string code, string text, string? source)
+    {
+        var program = body + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(program).Diagnostics);
+        Assert.Equal((code, text), (error.Code, Text(program, error.Span)));
+        if (source is not null)
+        {
+            Assert.Equal(source, error.Reason![3].Value);
+        }
+    }
+
+    // The valid twins: inputs that make every default's Type well formed (an equal Origin, a clause, a longer local), an Origin that only
+    // defaults, or only a default and the result, name (a region of the call; r2ok and r2d were a false UnprovenConstraint_Kd before), a
+    // result the premise shortens read inside the body, a default copying an input's referent, and an omitted base clause's base call.
+    [Theory]
+    [InlineData(Put2 + "func ok(p: uniq/(ref/i32 during q), sr: ref/i32 during q) -> i32\n    put2(p, sr)\n    return 0\n")]
+    [InlineData(Put2 + "func ok(p: uniq/(ref/i32 during q), sr: ref/i32 during r) -> i32\n    origin r outlives q\n    put2(p, sr)\n    return 0\n")]
+    [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    let other = 3\n    var keep = long@ref\n    if true\n        put2(keep@uniq, other@ref)\n    return keep@follow\n")]
+    [InlineData(GenericPut + "func ok(p: uniq/(ref/i32 during q), r: ref/i32 during q) -> i32\n    g(p, r)\n    return 0\n")]
+    [InlineData(MethodPut + "func outer() -> i32\n    let s = S.init()\n    let long = 1\n    let other = 3\n    var keep = long@ref\n    if true\n        s.put(keep@uniq, other@ref)\n    return keep@follow\n")]
+    [InlineData(ConstructorPut + "func outer() -> i32\n    let long = 1\n    let other = 3\n    var keep = long@ref\n    if true\n        let h = H.init(keep@uniq, other@ref)\n    return keep@follow\n")]
+    [InlineData(ResultOnly + "func ok(p: ref/i32) -> ref/i32 during p\n    return z2(p)\n")]
+    [InlineData(ResultOnly + "func free() -> i32\n    let x = 1\n    let r = z2(x@ref)\n    return r@follow\n")]
+    [InlineData(ResultOnly + "func free() -> i32\n    let x = 1\n    let n = z2(x@ref)@follow\n    return n\n")]
+    [InlineData("func z0(" + Defaulted + ") => ()\nfunc free() -> i32\n    z0()\n    return 0\n")]
+    [InlineData(SharedInput + "func ok(p: ref/i32 during q) -> i32\n    let short = 2\n    let r = z5(p, short@ref)\n    return r@follow\n")]
+    [InlineData(Copying + "func outer() -> i32\n    var x = 1\n    let y = 2\n    var keep = y@ref\n    let inner = x@ref\n    put3(keep@uniq, inner@ref)\n    let n = keep@follow\n    x = 5\n    return n\n")]
+    [InlineData("public open struct B\n    public init(" + Defaulted + ") => ()\npublic struct D : B\n    public init(x: i32) => ()\nfunc use() -> i32\n    let d = D.init(1)\n    return 0\n")]
+    public void AWellFormedDefaultIsAccepted(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -208,10 +208,6 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the capture list; null distinguishes an omitted list.</summary>
     public CaptureKoto[]? Captures { get; private set; }
 
-    /// <summary>Gets the checked direct common-function conversion, when present.</summary>
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
-    public BoundClosure? BoundClosure => this.BindingState == BindingState.Resolved ? this.ClosureStorage : null;
-
     /// <summary>Gets the base constructor initializer.</summary>
     public InvocationKoto? BaseInitializer { get; private set; }
 
@@ -247,6 +243,17 @@ public sealed class FunctionKoto : DeclarationKoto
             this.SetBaseInitializer(this.implicitBaseInitializer);
         }
     }
+
+    /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1), R4-M152): its latest binding's plan once that binding bound the
+    /// inputs, the result and the environment, whatever the creation's outcome; null for a named function and until the signature is
+    /// bound. Every reader that needs the closure's definition (its signature, parts or body) reads it (BoundClosure's contract).</summary>
+    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
+    internal BoundClosure? ClosureDefinition => this.ClosureStorage is { Signature: not null } plan ? plan : null;
+
+    /// <summary>Gets the closure as created at this literal (DECISIONS R4-M152): its definition while the creation is Resolved, null
+    /// when the creation failed. Only a reader that asks whether the creation at this position succeeded reads it.</summary>
+    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
+    internal BoundClosure? ClosureAsCreated => this.BindingState == BindingState.Resolved ? this.ClosureDefinition : null;
 
     [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
     internal BoundClosure? ClosureStorage

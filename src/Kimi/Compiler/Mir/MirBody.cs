@@ -93,9 +93,16 @@ internal sealed class MirBody
     /// R4-M69).</summary>
     /// <param name="scope">A scope of the body.</param>
     /// <returns>The innermost Inlined scope enclosing it, or -1 when it lies in none.</returns>
-    internal int Inlining(int scope)
+    internal int Inlining(int scope) => this.Enclosing(scope, MirScopeKind.Inlined);
+
+    /// <summary>Gets the scope of a kind a scope lies in, itself included: an Inlined scope's copy (<see cref="Inlining"/>), a Deferred
+    /// scope's defer body (SPEC 16.1).</summary>
+    /// <param name="scope">A scope of the body.</param>
+    /// <param name="kind">The kind.</param>
+    /// <returns>The innermost scope of the kind enclosing it, or -1 when it lies in none.</returns>
+    internal int Enclosing(int scope, MirScopeKind kind)
     {
-        while (scope >= 0 && this.scopes[scope].Kind != MirScopeKind.Inlined)
+        while (scope >= 0 && this.scopes[scope].Kind != kind)
         {
             scope = this.scopes[scope].Outer;
         }

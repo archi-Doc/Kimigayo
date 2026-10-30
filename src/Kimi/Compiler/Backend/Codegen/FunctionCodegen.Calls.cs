@@ -10,9 +10,9 @@ namespace Kimi.Compiler.Backend;
 // once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call
 // too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
-// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin target its
-// shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130). Rows not written yet: a property witness (C3c), a requirement whose
-// witness has no body (PLAN G157 (10), K's: the collector publishes no target for a body-less compiler function).
+// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
+// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141). A requirement whose witness has
+// no MIR body is the collector's BodylessWitness gap at check, so no generated program has one (DECISIONS R5-M146).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -28,14 +28,14 @@ internal sealed partial class FunctionCodegen
 
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
     // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
-    // (FunctionCodegen.Intrinsics); the other rows are not written yet, each at the call.
+    // (FunctionCodegen.Intrinsics), a Value or Virtual callee by its own row.
     private void Call(in MirTerminator call)
     {
         var callee = call.Callee;
         switch (callee.Kind)
         {
             case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
-                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
+                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)), callee.Subst);
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -58,18 +58,14 @@ internal sealed partial class FunctionCodegen
     // whose signature is the call's, since compatibility inserts no conversion): what the target runs (Witness), a body item by its
     // signature (ModuleCodegen.Signature) with its operands in its body's order, a caller-location one given the call's location (Invoke); a
     // Fn callee calls the function it names whatever it implements (a direct base call, SPEC 6.4.4), a Requirement callee through the
-    // virtual slot its witness runs. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's
-    // witness has no body (R5-M67; a row not written yet, PLAN G157 (10)), and any other callee is a broken contract.
+    // virtual slot its witness runs. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), and any other
+    // callee is a broken contract: a requirement whose witness has no MIR body is the collector's BodylessWitness gap at check (R5-M146).
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (target < 0)
         {
-            if (call.Callee.Kind == MirCalleeKind.Requirement)
-            {
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            }
-            else if (this.module.Import(call.Callee.Symbol!) is { } import)
+            if (this.module.Import(call.Callee.Symbol!) is { } import)
             {
                 this.Invoke(call, import, new(call.Callee.Symbol, MirBodyKind.Fn));
             }
@@ -91,19 +87,16 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 8.6.3-8.6.4, 6.4.6 (K package 4.5 rows 1, 3 and 5): what a call of a function's or a requirement's target item runs, the one rule
     // of a Requirement call and of a function Item's call and adapter (FunctionCodegen.Closures' Runs): a body item its body (BodyRun); a
-    // Builtin item its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130); a property witness C3c's; any other item a broken
-    // contract. Null after a record at the source.
+    // shim item, Builtin or PropertyWitness, its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); any other
+    // item a broken contract. Null after a record at the source.
     private Run? Witness(int target, in SourceInfo source)
     {
         switch (this.collector.Set.Items[target].Key.Kind)
         {
             case MonoKind.Body:
                 return this.BodyRun(target); // Null after a record.
-            case MonoKind.Builtin:
+            case MonoKind.Builtin or MonoKind.PropertyWitness:
                 return this.module.Shim(target) is { } shim ? new Run(shim, null) : null; // Null after a record.
-            case MonoKind.PropertyWitness:
-                this.Report(DiagnosticCode.Unsupported_Kd, source); // C3c writes the property witnesses.
-                return null;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A call targets a body, a shim or a witness (K package 4.5).
                 return null;
@@ -225,8 +218,7 @@ internal sealed partial class FunctionCodegen
                 : this.Argument(this.body.Operands[index], this.copyOf[index], parameter.Kind, out this.arguments[i]);
             if (!found)
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-                return false;
+                return false; // A broken contract, recorded.
             }
         }
 
@@ -257,18 +249,19 @@ internal sealed partial class FunctionCodegen
     // its call's LegacyRow item's in the function's instance (Routine; DECISIONS R5-M121, R5-M124) or a formatting routine
     // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
     // site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's or a Dictionary's storage kernel
-    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays).
-    private void Legacy(in MirTerminator call, LegacyRow row, int target)
+    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays). The call's substitution is its direct call's or its Item's
+    // (SubstOfItem), whose Types a row's TypeArguments need names (LayoutNeeds; DECISIONS R5-M149).
+    private void Legacy(in MirTerminator call, LegacyRow row, int target, Subst? subst)
     {
         if (row.Updates)
         {
-            this.Update(call, row.Writer, target);
+            this.Update(call, row.Writer, target, subst!);
             return;
         }
 
         if (row.DictionaryKernel)
         {
-            this.DictionaryKernel(call, row.Writer);
+            this.DictionaryKernel(call, row.Writer, subst!);
             return;
         }
 

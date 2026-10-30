@@ -9,6 +9,18 @@ namespace Kimi.Compiler.Backend;
 // DECISIONS R5-M61, R5-M67, R5-M70) and the targets of the shim items.
 internal sealed partial class InstanceCollector
 {
+    /// <summary>Gets a Type of the signature a property-witness item's key fixes (<see cref="StorageSignature(BoundType, BindingSymbol?,
+    /// PropertyWitnessKind, int, out int)"/>), over its representative Self: the one its shim's function takes (C3c).</summary>
+    /// <param name="item">The PropertyWitness item.</param>
+    /// <param name="slot">The parameter slot, or -1 for the result.</param>
+    /// <param name="count">The number of parameter slots.</param>
+    /// <returns>The erased Type; null where the representative Self stores no such Field.</returns>
+    internal BoundType? StorageSignature(int item, int slot, out int count)
+    {
+        var entry = this.Set.Items[item];
+        return this.StorageSignature(entry.RepresentativeType!, entry.Key.Symbol, (PropertyWitnessKind)entry.Key.Variant, slot, out count);
+    }
+
     // K 4.5 rows 2, 3, 5, 6, 12 and 13: what a requirement runs in the item's instance, TyCtxt.Witness of it with the Contract reference its
     // call recorded and the call's closed substitution (X16): a requirement call's composed one, a compiler function's call on a Self or a
     // requirement Item's call. A Body's function item, the implementation its instance selects (SPEC 8.13.3; -1 without a body); a Builtin's
@@ -35,7 +47,7 @@ internal sealed partial class InstanceCollector
 
         if (refused is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
             return -1;
         }
 
@@ -49,6 +61,40 @@ internal sealed partial class InstanceCollector
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
+    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146): the target of a requirement call or of a requirement Item, where it is formed, called or
+    // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is
+    // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function (FixedBuffer's or HeapBuffer's reserve) or
+    // a #LibraryImport function is the BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding
+    // rejected is that error's dependent (no record); any other is a broken contract (Report). The other edges a requirement runs on (a
+    // compiler function's published row, Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the
+    // function itself.
+    private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
+    {
+        if (target.Kind != RequirementTargetKind.Body)
+        {
+            return this.Requirement(program, item, subject, requirement, target);
+        }
+
+        if (this.Selected(program, target.Target!, target.Subst, out var implementation) is { } body)
+        {
+            return this.Admit(item, subject, body, target.Subst);
+        }
+
+        DiagnosticCode? record = TyCtxt.Bodyless(implementation) switch
+        {
+            CompilerFunctionEffect.Dependent => null,
+            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => DiagnosticCode.InternalInvariant_Kd,
+            _ => Capability.Code(CapabilityGap.BodylessWitness),
+        };
+
+        if (record is { } code)
+        {
+            this.Report(code, subject);
+        }
+
+        return -1;
+    }
+
     // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
     // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (Below; an intrinsic's argument In
     // or Edge's Compose).
@@ -59,36 +105,53 @@ internal sealed partial class InstanceCollector
         return this.Requirement(program, item, subject, requirement, this.types.Witness(requirement, contract, call));
     }
 
-    // F 4.5: C3c writes a property-witness shim from its key alone, since Binding admits a standard witness only with a ref/Self getter or a
-    // uniq/Self setter, a result F or ref/F and a setter's input F (Binding.PropertyMatching.cs:102-117), F the Field's Type in Self; the
-    // requirement's signature in the call's instance (TyCtxt.Signature) is the key's, Type for Type up to Origins (Erase).
+    // F 4.5, X14: the signature a property-witness key fixes, the one statement of it, which K6's agreement (Agrees) and the shim's function
+    // (ModuleCodegen.Shim) read: Binding admits a standard witness only with a ref/Self getter or a uniq/Self setter, a result F or ref/F and
+    // a setter's input F (Binding.PropertyMatching.cs:102-117), F the Field's Type in Self (AdtDef.FindField), and SPEC 11.3.1 puts the
+    // receiver first: slot 0 the receiver, a Set's slot 1 its input, the result (-1) F (Copy), ref/F (Borrow) or Unit (Set); each erased.
+    // Null where Self stores no such Field.
+    private BoundType? StorageSignature(BoundType self, BindingSymbol? field, PropertyWitnessKind access, int slot, out int count)
+    {
+        var set = access == PropertyWitnessKind.StorageSet;
+        count = set ? 2 : 1;
+        if (!AdtDef.FindField(self, field, out var stored, out _))
+        {
+            return null;
+        }
+
+        var type = slot switch
+        {
+            0 => this.types.Reference(set ? SemanticsKind.Uniq : SemanticsKind.Ref, self),
+            1 when set => stored!,
+            -1 => access switch
+            {
+                PropertyWitnessKind.StorageCopy => stored!,
+                PropertyWitnessKind.StorageBorrow => this.types.Reference(SemanticsKind.Ref, stored!),
+                PropertyWitnessKind.StorageSet => BoundType.Unit,
+                _ => throw new InvalidOperationException($"A Storage witness has the operation {access}."),
+            },
+            _ => throw new InvalidOperationException($"A {access} witness has no slot {slot}."),
+        };
+        return this.types.Erase(type);
+    }
+
+    // F 4.5: C3c writes a property-witness shim from its key alone (StorageSignature), so the requirement's signature in the call's instance
+    // (TyCtxt.Signature) must be the key's, Type for Type up to Origins (Erase).
     private bool Agrees(BindingSymbol requirement, in RequirementTarget target)
     {
         var subst = target.Subst!;
-        var self = subst.Self!;
-        if (!AdtDef.FindField(self, target.Target, out var field, out _))
-        {
-            return false;
-        }
-
-        var set = target.Access == PropertyWitnessKind.StorageSet;
-        var receiver = this.types.Reference(set ? SemanticsKind.Uniq : SemanticsKind.Ref, self);
-        var result = target.Access switch
-        {
-            PropertyWitnessKind.StorageCopy => field!,
-            PropertyWitnessKind.StorageBorrow => this.types.Reference(SemanticsKind.Ref, field!),
-            PropertyWitnessKind.StorageSet => BoundType.Unit,
-            _ => throw new InvalidOperationException($"A Storage witness has the operation {target.Access}."),
-        };
-        var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), result) && count == (set ? 2 : 1);
+        var field = target.Target;
+        var access = target.Access;
+        var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
+            count == slots;
         for (var slot = 0; agrees && slot < count; slot++)
         {
-            agrees = Same(TyCtxt.Signature(requirement, subst, slot, out _), slot == requirement.ReceiverIndex ? receiver : field!);
+            agrees = Same(TyCtxt.Signature(requirement, subst, slot, out _), this.StorageSignature(subst.Self!, field, access, slot, out _));
         }
 
         return agrees;
 
-        bool Same(BoundType? declared, BoundType expected) => declared is not null && ReferenceEquals(this.types.Erase(declared), this.types.Erase(expected));
+        bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
     // K 4.3: a shim's targets, at its default site: a comparison shim's are its leaf witnesses (SPEC 13.4) by TyCtxt.Comparison of its
@@ -116,7 +179,7 @@ internal sealed partial class InstanceCollector
         switch (key.Symbol!.CompilerFunction)
         {
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
-                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false));
+                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false), pastStorage: false);
                 return;
             case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
@@ -127,8 +190,10 @@ internal sealed partial class InstanceCollector
 
     // F 4.6: a comparison tree's targets in order: a Witness leaf's Body under its substitution, a Composite's parts', none for a Builtin. A
     // Requirement or None leaf, which a closed Self's comparison has not, is a broken contract, and no tree, a Self whose storage does not
-    // complete, the storage-nesting gap, at the shim's site.
-    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node)
+    // complete, the storage-nesting gap, at the shim's site. K 4.8 (DECISIONS R5-M149): the shim's Self is laid out at its admission, its
+    // storage; below a node whose Type is laid out without its component (Layout.Indirect: a reference layer), the next node with a layout
+    // need (LayoutNeeds: a compared Tuple's parts) is past that storage, a use at the shim's site, after which its Type is the storage again.
+    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node, bool pastStorage)
     {
         DiagnosticCode? refused = node?.Kind switch
         {
@@ -140,7 +205,7 @@ internal sealed partial class InstanceCollector
 
         if (refused is { } code)
         {
-            this.Set.Report(code, site);
+            this.Report(code, site);
             return;
         }
 
@@ -149,9 +214,15 @@ internal sealed partial class InstanceCollector
             this.Target(item, this.Implementation(program, item, site, node.Target!, node.Subst));
         }
 
+        var needed = pastStorage && LayoutNeeds.Of(node) != LayoutNeed.None;
+        if (needed)
+        {
+            _ = this.LaysOut(site, LayoutNeeds.TypeOf(node));
+        }
+
         foreach (var part in node.Parts)
         {
-            this.Leaves(program, item, site, part);
+            this.Leaves(program, item, site, part, Layout.Indirect(node.Type) || (pastStorage && !needed));
         }
     }
 }

@@ -115,65 +115,12 @@ public class IntegerEmissionTest
         Assert.Contains("store i32 97", ir);
     }
 
-    [Theory]
-    [InlineData("i8", 128L)]
-    [InlineData("u8", 200L)] // Valid mathematical u8, but not the canonical signed-extended payload (-56).
-    [InlineData("u8", 300L)]
-    [InlineData("i16", -32769L)]
-    [InlineData("u16", 65536L)]
-    [InlineData("i32", 2147483648L)]
-    [InlineData("u32", 4294967296L)]
-    public void NoncanonicalConstantPlansAreRejectedBeforeLlvmCanTruncate(string type, long bits)
-    {
-        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
-        body.Values[id] = body.Values[id] with { Constant = bits };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Fact]
     public void MixedAbiUsesNarrowSsaAndCanonicalConstants()
     {
         var ir = ScalarEmissionTest.EmitFixture("IntegerAbiStructure", Mixed, "ok\n");
         Assert.Contains("i8 -128, i8 -56, i16 -32768, i16 -1, i64 -1, i64 -1)", ir);
-        Assert.DoesNotContain("signext", ir);
-        Assert.DoesNotContain("zeroext", ir);
-        var c = MinimalEmissionTest.Analyze(Mixed);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);
-        Assert.Empty(function.Slots);
-    }
-
-    [Fact]
-    public void ShiftConversionFollowsCheckAndPrecedesThePhiPredecessorEnd()
-    {
-        var c = MinimalEmissionTest.Analyze("var x: u8 = 1\nvar n: u64 = 7\nlet y = if true => x << n else => x >> n");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var f = module.GetFunction(0);
-        var shifts = f.Instructions.Where(x => x.Check == ArithmeticCheckKind.Shift).ToArray();
-        Assert.Equal(2, shifts.Length);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
-        foreach (var shift in shifts)
-        {
-            Assert.Contains($"%invalid{shift.Operation} = icmp uge i64 ", ir);
-            Assert.Contains($"b{shift.Place}:\n  %shift{shift.Operation} = trunc i64 ", ir);
-            Assert.Contains($"%v{shift.Operation} = {shift.ScalarOperator} i8 ", ir);
-        }
-
-        var inputs = f.GetOperands(Assert.Single(f.Instructions, x => x.Opcode == EmissionOpcode.Phi));
-        for (var i = 0; i < inputs.Length; i += 2)
-        {
-            var value = inputs[i].Value;
-            Assert.Equal(Assert.Single(shifts, x => x.Operation == value).Place, inputs[i + 1].Value);
-        }
+        GeneratedIr.Parse(ir).Single("internal i64 (i8, i8, i16, i16, i64, i64)");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -189,43 +136,6 @@ public class IntegerEmissionTest
         });
         Assert.True(valid);
         Assert.Equal(0, allocated);
-    }
-
-    [Fact]
-    public void SameLlvmWidthDoesNotPermitMixedLanguageTypesInPhi()
-    {
-        var c = MinimalEmissionTest.Analyze("let u: u8 = 1\nlet y: i8 = if true => 1 else => 2", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
-        var unsigned = Enumerable.Range(0, body.Values.Count).First(i => body.Values[i].Kind == OwnershipValueKind.Constant && body.Places[body.Operations[i].Place].Type == BoundType.Primitives["u8"]);
-        var index = body.Values[phi].Start;
-        body.PhiInputs[index] = body.PhiInputs[index] with { Value = unsigned };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
-    [Fact]
-    public void PointerWidthMustMatchTheEmissionProfile()
-    {
-        var c = MinimalEmissionTest.Analyze("let n: usize = 1", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var property = typeof(Compilation).GetProperty(nameof(Compilation.IrTarget))!;
-        var original = c.IrTarget;
-        try
-        {
-            property.SetValue(c, original with { PointerWidth = 32 });
-            using var writer = new StringWriter();
-            Assert.False(c.WriteIr(writer, out _));
-            Assert.Empty(writer.ToString());
-        }
-        finally
-        {
-            property.SetValue(c, original);
-        }
-
-        Assert.True(c.Validate(out error), error);
     }
 
     private static void Abort(string name, string source, string reason, int line, int column)

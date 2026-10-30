@@ -70,25 +70,16 @@ public sealed partial class Binding
 
             try
             {
-                if (this.BuiltinArithmeticOutput(result, scope) is { } numericOutput)
+                if (result.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(result, scope) is { Type: { } specified } outcome)
                 {
-                    return numericOutput;
-                }
+                    // A container substitution can expose another associated projection (Wrapper<S>.Element -> S.Element). Normalize
+                    // that identity too; the active query above still guards recursive specifications.
+                    if (outcome.Subject is not { } subject)
+                    {
+                        return specified;
+                    }
 
-                if (result.Kind == BoundTypeKind.AssociatedProjection && this.FixedArrayIteratorType(result) is { } fixedIterator)
-                {
-                    return fixedIterator;
-                }
-
-                if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver &&
-                    this.ResolveAssociated(receiver, result.Symbol!, scope, result.Components.Count == 2 ? result.Components[1] : null) is { } fixedType)
-                {
-                    fixedType = this.SubstituteStoredOrigins(fixedType, result.Symbol!.Declaration, (BoundOrigin[])result.OriginArguments);
-                    // A container substitution can expose another associated projection
-                    // (Wrapper<S>.Element -> S.Element). Normalize that identity too;
-                    // the active query above still guards recursive specifications.
-                    return this.StoredType(fixedType, receiver) is { } stored
-                        ? this.ContractType(stored, scope, self) : result;
+                    return this.StoredType(specified, subject) is { } stored ? this.ContractType(stored, scope, self) : result;
                 }
 
                 for (var current = scope; current is not null; current = current.Parent)

@@ -187,7 +187,7 @@ public sealed partial class Binding
         // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
-        this.ResetCallContexts();
+        this.functionItemContexts.Clear();
         this.types.ResetViews();
     }
 
@@ -415,8 +415,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.cLayoutInstances.Clear();
-        this.storagePrepared = false;
         this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
@@ -443,7 +441,6 @@ public sealed partial class Binding
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
         this.ValidateInlineLayouts();
-        this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();
@@ -988,19 +985,15 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            // API and constraint validation can invalidate a target or Type after call selection; a target whose declaration
-            // failed leaves the call resting on that failure (SPEC 23.1.2).
-            if (node is InvocationKoto { BoundCall: { } call })
+            // API and constraint validation can invalidate a target or Type after call selection; a node whose own selection calls a
+            // declaration that failed (CallPlan.Called: a call's target, a Property use's accessors) rests on that failure (SPEC 23.1.2).
+            if (this.InvalidCalledDeclaration(node) is { } invalidTarget && node.BindingFailure == BindingFailure.None)
             {
-                if (node.BindingFailure == BindingFailure.None &&
-                    this.InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
-                {
-                    this.CompleteDependent(node, invalidTarget);
-                }
-                else
-                {
-                    this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
-                }
+                this.CompleteDependent(node, invalidTarget);
+            }
+            else if (node is InvocationKoto { BoundCall: { } call })
+            {
+                this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
@@ -1057,7 +1050,6 @@ public sealed partial class Binding
                     BindingFailure.UnsafeFunctionValue => DiagnosticCode.UnsafeFunctionValue_Kd,
                     BindingFailure.UnavailableReservedImport => DiagnosticCode.UnavailableReservedImport_Kd,
                     BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
-                    BindingFailure.InvalidCLayout => DiagnosticCode.InvalidCLayout_Kd,
                     BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.QualificationRequired => DiagnosticCode.QualificationRequired_Kd,

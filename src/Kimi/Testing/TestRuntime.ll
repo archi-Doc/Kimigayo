@@ -12,6 +12,9 @@ declare dllimport i32 @SetHandleInformation(ptr, i32, i32)
 @__kimi_test_phase = internal global i32 1
 @__kimi_test_temp_name = private constant [15 x i8] c"KIMI_TEST_TEMP\00"
 @__kimi_test_temp_value = internal global %kimi.string zeroinitializer
+; Compared values held until the next observation numbers their failure: kind, width and bits per side, and a mask of the held sides.
+@__kimi_test_held = internal global [2 x { i16, i16, i128 }] zeroinitializer, align 16
+@__kimi_test_held_mask = internal global i32 0
 
 define internal void @__kimi_test_temp(ptr %result) #0 {
 entry:
@@ -201,9 +204,7 @@ entry:
   %inactive = icmp eq ptr %active, null
   br i1 %inactive, label %invalid, label %check
 check:
-  br i1 %condition, label %pass, label %failure
-pass:
-  ret i64 0
+  br i1 %condition, label %done, label %failure
 failure:
   %previous = load i64, ptr @__kimi_test_count
   %overflow = icmp eq i64 %previous, -1
@@ -218,19 +219,70 @@ latch:
   %keep = and i1 %within, %room
   %first = icmp eq i64 %issue, 1
   %send = or i1 %keep, %first
-  br i1 %send, label %report, label %omit
+  br i1 %send, label %report, label %done
 report:
   call void @__kimi_test_frame(i16 2, i64 %issue, i32 %site, ptr null, i32 0)
   %remaining = sub i64 %bytes, 32
   %budget = select i1 %room, i64 %remaining, i64 0
   store i64 %budget, ptr @__kimi_test_bytes
   %retained = select i1 %keep, i64 %issue, i64 0
-  ret i64 %retained
-omit:
-  ret i64 0
+  br label %done
+done:
+  %result = phi i64 [0, %check], [0, %latch], [%retained, %report]
+  call void @__kimi_test_send_held(i64 %result)
+  ret i64 %result
 invalid:
   call void @ExitProcess(i32 125)
   unreachable
+}
+
+; Holds a compared value of a side (0 left, 1 right) until the next observation (__kimi_test_send_held).
+define internal void @__kimi_test_value(i32 %which, i16 %kind, i16 %width, i128 %bits) #0 {
+entry:
+  %slot = getelementptr [2 x { i16, i16, i128 }], ptr @__kimi_test_held, i32 0, i32 %which
+  %a = insertvalue { i16, i16, i128 } zeroinitializer, i16 %kind, 0
+  %b = insertvalue { i16, i16, i128 } %a, i16 %width, 1
+  %c = insertvalue { i16, i16, i128 } %b, i128 %bits, 2
+  store { i16, i16, i128 } %c, ptr %slot, align 16
+  %bit = shl i32 1, %which
+  %mask = load i32, ptr @__kimi_test_held_mask
+  %held = or i32 %mask, %bit
+  store i32 %held, ptr @__kimi_test_held_mask
+  ret void
+}
+
+; Sends the held values of a retained failure after its record, then holds none.
+define internal void @__kimi_test_send_held(i64 %issue) #0 {
+entry:
+  %mask = load i32, ptr @__kimi_test_held_mask
+  store i32 0, ptr @__kimi_test_held_mask
+  %none = icmp eq i64 %issue, 0
+  br i1 %none, label %exit, label %left
+left:
+  %leftBit = and i32 %mask, 1
+  %hasLeft = icmp ne i32 %leftBit, 0
+  br i1 %hasLeft, label %sendLeft, label %right
+sendLeft:
+  %lv = load { i16, i16, i128 }, ptr @__kimi_test_held, align 16
+  %lk = extractvalue { i16, i16, i128 } %lv, 0
+  %lw = extractvalue { i16, i16, i128 } %lv, 1
+  %lb = extractvalue { i16, i16, i128 } %lv, 2
+  call void @__kimi_test_scalar(i64 %issue, i32 0, i16 %lk, i16 %lw, i128 %lb)
+  br label %right
+right:
+  %rightBit = and i32 %mask, 2
+  %hasRight = icmp ne i32 %rightBit, 0
+  br i1 %hasRight, label %sendRight, label %exit
+sendRight:
+  %rp = getelementptr [2 x { i16, i16, i128 }], ptr @__kimi_test_held, i32 0, i32 1
+  %rv = load { i16, i16, i128 }, ptr %rp, align 16
+  %rk = extractvalue { i16, i16, i128 } %rv, 0
+  %rw = extractvalue { i16, i16, i128 } %rv, 1
+  %rb = extractvalue { i16, i16, i128 } %rv, 2
+  call void @__kimi_test_scalar(i64 %issue, i32 1, i16 %rk, i16 %rw, i128 %rb)
+  br label %exit
+exit:
+  ret void
 }
 
 define internal void @__kimi_test_message(i64 %issue, ptr %text) #0 {

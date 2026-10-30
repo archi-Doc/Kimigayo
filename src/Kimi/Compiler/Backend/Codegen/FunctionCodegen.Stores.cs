@@ -18,22 +18,11 @@ internal sealed partial class FunctionCodegen
     private static bool InMemory(BoundType type, ValueLowering lowering) => Abi.HasResultSlot(type, lowering) && !ReferenceEquals(lowering, RuntimeAbi.String);
 
     // The address of an Assign's Place, located after its rvalue (SPEC 13.7.1), or false: a local without storage, whose value is none
-    // (I2), or a Place whose row is not written yet, recorded at the statement.
+    // (I2), or after a broken contract's record (Address).
     private bool Destination(in MirStatement statement, out Value address)
     {
         address = default;
-        if (this.Unstored(statement.Place))
-        {
-            return false;
-        }
-
-        if (this.Address(statement.Place, out address))
-        {
-            return true;
-        }
-
-        this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-        return false;
+        return !this.Unstored(statement.Place) && this.Address(statement.Place, out address);
     }
 
     // An Assign's value put into its Place once the Place is located; nothing for a zero-sized Place.
@@ -72,7 +61,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // An operand's value, read before its Place is located (SPEC 13.7.1; Operand): none for a string constant, which has nothing to
-    // evaluate (Put writes it whole). False for an operand form not covered yet, which the caller records.
+    // evaluate (Put writes it whole). False after a broken contract's record (Operand).
     private bool Evaluate(in MirOperand operand, out Value value)
     {
         value = default;
@@ -93,8 +82,8 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // An operand of nonzero size evaluated (Evaluate), then put at an address in its Type's representation (above). False for an operand
-    // form not covered yet, which the caller records.
+    // An operand of nonzero size evaluated (Evaluate), then put at an address in its Type's representation (above). False after a broken
+    // contract's record (Evaluate).
     private bool Put(Value address, BoundType type, ValueLowering lowering, in MirOperand operand)
     {
         if (!this.Evaluate(operand, out var value))
@@ -115,7 +104,9 @@ internal sealed partial class FunctionCodegen
     // bytes (TextBytes), the Static release kind, so never released.
     private void Text(Value address, string text)
     {
-        var (output, lowering, bytes) = (this.output, RuntimeAbi.String, this.TextBytes(text));
+        var output = this.output;
+        var lowering = RuntimeAbi.String;
+        var bytes = this.TextBytes(text);
         output.Write("  store ");
         output.Write(lowering.Layout.StorageType);
         output.Write(" { ptr ");
@@ -141,7 +132,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Place's value in its representation (I4): loaded in its storage representation, or its address when the value is in memory; none
-    // for a zero-sized one; false for a Place whose row is not written yet.
+    // for a zero-sized one; false after a broken contract's record (Address).
     private bool Read(MirPlace place, out Value value)
     {
         value = default;

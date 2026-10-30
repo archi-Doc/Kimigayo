@@ -442,7 +442,7 @@ public sealed partial class Binding
         for (var i = 0; i < payload.Length; i++)
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
-            var stored = this.StoredType(payload[i].BoundType!, result)!;
+            var stored = this.PartTypeIn(payload[i], result, scope)!;
             var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
             var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);

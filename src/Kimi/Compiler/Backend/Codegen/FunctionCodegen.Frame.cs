@@ -33,9 +33,18 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < locals.Length; i++)
         {
-            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type || this.module.Layout.Of(type).Value is not { } value)
+            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type)
             {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source); // The collector laid out every local of an admitted item.
+                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source);
+                return null;
+            }
+
+            if (this.module.Layout.Of(type).Value is not { } value)
+            {
+                // The collector laid out every local of an admitted item but a constructor's construction receiver, which its callers lay out
+                // (DECISIONS BU-48), and a constructor whose receiver has no layout is not Generated (InstanceCollector.Generates; DECISIONS
+                // R5-M149), so this is a broken contract.
+                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source);
                 return null;
             }
 
@@ -129,9 +138,11 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
     }
 
-    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation.
+    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation; the
+    // block's window closed before it (FunctionCodegen.Phases).
     private void Return()
     {
+        this.Close();
         if (this.abi.ResultSlot || this.slots[0].Home == Home.None)
         {
             this.output.Write("  ret void\n");

@@ -18,6 +18,10 @@ public sealed partial class OriginRowsTest
 
     private const string Pick = "func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
 
+    // A default whose Type is well formed only when `b outlives a` (PLAN G277 (1)).
+    private const string Put2 = "func put2(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Option<ref/(ref/i32 during b) during a> = .None)\n" +
+        "    slot@follow = v\n";
+
     // Pick in a group, for callers a top-level function does not reach (a group's or struct's member).
     private const string Util = "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
 
@@ -140,7 +144,8 @@ public sealed partial class OriginRowsTest
 
     // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
     // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
-    // a module's top-level statements, a user loop's parentless `$for.iterator` Use.
+    // a module's top-level statements, a user loop's parentless `$for.iterator` Use, a default's well-formedness at its call in the calling
+    // body (DECISIONS BU-51).
     [Theory]
     [InlineData(EnvStoreConsuming, "x@ref", "Closure")]
     [InlineData(EnvStore, "func [x, target]() => store(target, value: x@ref)", "Fn:g")]
@@ -151,6 +156,7 @@ public sealed partial class OriginRowsTest
     [InlineData(FieldInit, "3@ref", "Layer:S")]
     [InlineData(Pick + "let v = pick(3@ref, 4@ref)\n", "3@ref", "TopLevel")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "$for.iterator", "Fn:total")]
+    [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", "put2(keep@uniq, short@ref)", "Fn:outer")]
     public void ARowIsTheBodyBindingFormsItIn(string source, string site, string expected)
     {
         var c = CompilationTestHelper.Parse(source + (source.Contains("\nlet v", StringComparison.Ordinal) ? string.Empty : Main), "Program.kimi");

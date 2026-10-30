@@ -22,10 +22,8 @@ public enum StartupKind : byte
 }
 
 /// <summary>A startup selection for the latest final Bind; this does not certify ownership or emission. <c>Symbol</c> is the explicit
-/// <c>main</c>; an Implicit selection's body is the generated function, <c>MirDefKey(null, Fn, 0)</c> (DECISIONS R5-M25).
-/// <c>Function</c> goes at G7 with its last reader, LlvmEmitter.</summary>
-public readonly record struct StartupResult(
-    OutputKind OutputKind, StartupKind Kind, BindingSymbol? Symbol, FunctionKoto? Function, SourceDocument? Source, bool IsComplete);
+/// <c>main</c>; an Implicit selection's body is the generated function, <c>MirDefKey(null, Fn, 0)</c> (DECISIONS R5-M25).</summary>
+public readonly record struct StartupResult(OutputKind OutputKind, StartupKind Kind, BindingSymbol? Symbol, SourceDocument? Source, bool IsComplete);
 
 public sealed partial class Binding
 {
@@ -90,7 +88,6 @@ public sealed partial class Binding
 
         var hasRuntime = this.startupItems.Count != 0;
         var kind = StartupKind.None;
-        FunctionKoto? function = null;
         if (outputKind == OutputKind.Library)
         {
             if (hasRuntime)
@@ -109,12 +106,10 @@ public sealed partial class Binding
         else if (hasRuntime)
         {
             kind = StartupKind.Implicit;
-            function = this.compilation.Kotonoha.GeneratedFunction;
         }
         else
         {
             kind = StartupKind.Explicit;
-            function = main;
             source = main!.CodeContext.SourceDocument;
         }
 
@@ -125,8 +120,7 @@ public sealed partial class Binding
         }
 
         var symbol = kind == StartupKind.Explicit ? main!.BoundSymbol : null;
-        return this.Startup = new(
-            outputKind, complete ? kind : StartupKind.None, complete ? symbol : null, complete ? function : null, complete ? source : null, complete);
+        return this.Startup = new(outputKind, complete ? kind : StartupKind.None, complete ? symbol : null, complete ? source : null, complete);
     }
 
     /// <summary>Publishes startup diagnostics only when the caller commits to an output kind.</summary>

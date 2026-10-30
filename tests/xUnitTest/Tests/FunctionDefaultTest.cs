@@ -97,30 +97,6 @@ public class FunctionDefaultTest
     public void ErasedFunctionDefaultsExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture(Prefix + name, source + "\nConsole.writeLine(\"done\")", "done\n");
 
-    // SPEC 7.2.3: generation validates a default closure's entry against the argument that its call prepared for that
-    // parameter; another prepared argument of the same Type is not that slot.
-    [Fact]
-    public void ACaptureOfAnotherPreparedArgumentFailsGeneration()
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func run(k: i32, j: i32, action: (i32) -> i32 = func [k] (x) => x + k) -> i32 => action(j)\nrequire run(1, 2) == 3 else => $abort(\"k\")",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && o.Source is FunctionKoto { IsAnonymous: true }));
-        var capture = body.OperationStorage.FindIndex(static x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && x.Source is FunctionKoto { IsAnonymous: true });
-        var call = body.OperationStorage.FindIndex(static x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.DefaultArguments.IsEmpty: false });
-
-        // The call acquires k, then j, then the default. The entry is redirected, with its SSA input, to j's prepared value.
-        Assert.Equal(body.Operations[call - 3].Place, body.Operations[capture].Place);
-        var other = body.Operations[call - 2].Place;
-        var produced = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == other);
-        body.OperationStorage[capture] = body.Operations[capture] with { Place = other };
-        body.ValueOperands[body.Values[capture].Start] = produced;
-        Assert.False(c.Validate(out _));
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     // Each omission creates and releases its own environment, and only the selected arm allocates.
     [Trait("Purpose", "Allocation")]
     [Theory]

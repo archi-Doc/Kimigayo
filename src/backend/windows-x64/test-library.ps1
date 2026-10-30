@@ -21,11 +21,27 @@ function Invoke-Tool([string] $Name, [string[]] $Arguments) {
     & $tools[$Name] @Arguments
     if ($LASTEXITCODE -ne 0) { throw "Library verification failed: $Name" }
 }
+# Library sources emitted through the CLI, so their IR is MIR code generation's on the pipeline this process selects (KIMI_PIPELINE).
+$sources = [ordered]@{
+    Empty = ''
+    Main = 'public func main(value: i32) -> i32 => value + 1'
+    MainAbort = 'public func main() => $abort("must not execute")'
+    Functions = "public group Api`n    public func answer() -> i32 => 42`n    public func text() -> string => `"library`""
+    Generic = "public group Api`n    public func keep<T>(value: T) -> T => value@move"
+    Cleanup = "public struct Value`n    public let value: i32`n    public init(value: i32) => self.value = value`n    drop => Console.writeLine(`"drop`")"
+}
 $checks = [Collections.Generic.List[object]]::new()
 $status = 'FAIL'
 try {
-    $fixtures = @(Get-ChildItem -LiteralPath (Join-Path $repo 'temp/library-fixtures') -Filter '*.ll')
-    if ($fixtures.Count -eq 0) { throw 'Run LibraryEmissionTest to generate current fixtures first' }
+    $fixtures = foreach ($name in $sources.Keys) {
+        $directory = Join-Path $work "sources/$name"
+        $null = New-Item -ItemType Directory -Path $directory
+        'OutputKind="Library" Targets={"x86_64-pc-windows-msvc"} LlvmBin="absent toolchain"' | Set-Content -LiteralPath "$directory/$name.kimiproj" -Encoding utf8
+        [IO.File]::WriteAllText("$directory/Library.kimi", $sources[$name], [Text.UTF8Encoding]::new($false))
+        & dotnet $compiler emit "$directory/$name.kimiproj" 1> "$directory/emit.stdout" 2> "$directory/emit.stderr"
+        if ($LASTEXITCODE -ne 0) { throw "Library emit failed: $name" }
+        Get-Item -LiteralPath "$directory/bin/x86_64-pc-windows-msvc/$name.ll"
+    }
     foreach ($fixture in $fixtures) {
         foreach ($level in @('O0', 'O2')) {
             $ir = $fixture.FullName
@@ -55,14 +71,18 @@ try {
     if ($manifest.outputKind -cne 'Library' -or $null -ne $manifest.entry -or $null -ne $manifest.subsystem) { throw 'Incorrect Library inspection manifest' }
     if ($manifest.irSha256 -cne (Get-FileHash -LiteralPath (Join-Path (Split-Path $manifestPath) $manifest.irFile)).Hash.ToLowerInvariant()) { throw 'Library IR hash mismatch' }
     & dotnet $compiler build $project 1> (Join-Path $work 'build.stdout') 2> (Join-Path $work 'build.stderr')
-    if ($LASTEXITCODE -ne 1) { throw 'Library inspection must not become a native Application' }
+    # IMPL 20.3.2: a Library build succeeds on its product checks, publishes only a checked record and runs no native tool.
+    if ($LASTEXITCODE -ne 0) { throw 'Library build failed' }
+    $record = Get-Content -LiteralPath (Join-Path (Split-Path $manifestPath) 'Library.link.build.json') -Raw | ConvertFrom-Json
+    if ($record.status -cne 'checked' -or $record.outputKind -cne 'Library') { throw 'Library build must publish only a checked record' }
     & dotnet $compiler run $project 1> (Join-Path $work 'run.stdout') 2> (Join-Path $work 'run.stderr')
     if ($LASTEXITCODE -ne 1) { throw 'Library inspection must not become runnable' }
     if (@(Get-ChildItem -LiteralPath $projectDirectory -Recurse -Filter '*.exe').Count -ne 0) { throw 'Library command published an executable' }
     $status = 'PASS'
 }
 finally {
-    @{ status = $status; configuration = $Configuration; compilerSha256 = (Get-FileHash -LiteralPath $compiler).Hash; tools = $identities; checks = $checks } |
+    $selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE' | ForEach-Object { "$($_.Name)=$($_.Value)" })
+    @{ status = $status; configuration = $Configuration; compilerSha256 = (Get-FileHash -LiteralPath $compiler).Hash; selectors = $selectors; tools = $identities; checks = $checks } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $work 'result.json') -Encoding utf8
 }
 Write-Output "Passed $($checks.Count) Library LLVM/object checks and emit/build/run boundaries: $work"

@@ -64,62 +64,12 @@ public class LengthStorageEmissionTest
     }
 
     [Fact]
-    public void MonomorphizesOneBodyPerLengthAndElementType()
-    {
-        // SPEC 21.3.1: one concrete body per closed substitution; the repeated keep<2, i32> reuses its body.
-        var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>([1, 2])\nlet b = keep<0, i32>([])\nlet c = keep<1, string>([\"x\"])\nlet d = keep<2, i32>([3, 4])");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
-    }
-
-    [Fact]
     public void LengthMetadataStillRequiresInitializedStorage()
     {
         var c = MinimalEmissionTest.Analyze("func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [2 of i32]\ncount(a@ref)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
         Assert.False(c.WriteIr(TextWriter.Null, out _));
-    }
-
-    [Theory]
-    [InlineData("receiver")]
-    [InlineData("kind")]
-    [InlineData("index")]
-    [InlineData("producer")]
-    public void RejectsMalformedMetadataPlansAndRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt length-metadata plan is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(
-            "func count(a: ref/[2 of i32], b: ref/[2 of i32]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\n" +
-            "count(a@ref, a@ref)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "count");
-        var index = body.Sequences.Count - 1;
-        var sequence = body.Sequences[index];
-        if (defect == "producer")
-        {
-            var value = body.Values[sequence.Operation];
-            var other = body.Values[body.Sequences[0].Operation];
-            body.ValueOperands[value.Start] = body.ValueOperands[other.Start];
-        }
-        else
-        {
-            body.Sequences[index] = defect switch
-            {
-                "receiver" => sequence with { Receiver = 0 },
-                "kind" => sequence with { Kind = SequenceOperation.Read },
-                _ => sequence with { Index = 0 },
-            };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]

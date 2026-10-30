@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
-// Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
+// Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // (MirProgram.Drops), TyCtxt's obligations and callee facts.
 // Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
+// UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
 // per view (Keys, Field).
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
@@ -37,6 +37,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// (R4-M10).</summary>
     internal const byte Derived = 8;
 
+    /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
+    /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
+    internal const byte Deep = 16;
+
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
     private const byte Shared = 1 + (int)SemanticsKind.Ref; // (a published row's Callable input is called through a shared borrow),
@@ -54,6 +58,17 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private int edgeCount;
     private byte found; // The classes the current evaluation or local walk found.
     private ulong version; // The program version whose body views Local records (MirProgram.Version; 0: none).
+
+    /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
+    /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
+    /// rule record by it.</summary>
+    /// <param name="classes">Classes of a summary or a site.</param>
+    /// <returns>The classes' outcome.</returns>
+    internal static MirOutcome Outcome(byte classes)
+    {
+        var decided = (classes & (Environment | Unknown)) != 0 ? MirOutcome.Decided : MirOutcome.None;
+        return decided.Join((classes & Limit) != 0 ? MirOutcome.Limit : MirOutcome.None).Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
+    }
 
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
     /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its

@@ -227,6 +227,25 @@ internal sealed class OriginPremiseClosure
         this.firstIncoming[shorter] = this.edgeCount++;
     }
 
+    /// <summary>Whether an edge of <paramref name="rule"/> states `longer >= shorter` in every Semantics case: the catalog's rule
+    /// relates the two directly.</summary>
+    /// <param name="longer">The longer node.</param>
+    /// <param name="shorter">The shorter node.</param>
+    /// <param name="rule">The catalog rule.</param>
+    /// <returns>Whether such an edge exists.</returns>
+    internal bool States(int longer, int shorter, OriginPremiseRule rule)
+    {
+        for (var edge = this.firstIncoming[shorter]; edge >= 0; edge = this.edgeNext[edge])
+        {
+            if (this.edgeLonger[edge] == longer && this.edgeRule[edge] == rule && this.edgeCondition[edge] == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Whether `longer >= shorter` is entailed: whether the closure from <paramref name="shorter"/> reaches it.</summary>
     /// <param name="longer">The longer node.</param>
     /// <param name="shorter">The target node.</param>

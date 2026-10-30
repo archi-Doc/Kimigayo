@@ -94,71 +94,12 @@ public class ElementEmissionTest
         Assert.Equal(("TypeMismatch_Kd", source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
-    [Theory]
-    [InlineData("loan")]
-    [InlineData("root")]
-    [InlineData("index")]
-    [InlineData("output")]
-    [InlineData("parent")]
-    [InlineData("active")]
-    [InlineData("source")]
-    public void MalformedPlansFailBeforeWritingAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet n = a[0]", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        body.Projections[0] = defect switch
-        {
-            "loan" => plan with { Loan = -1 },
-            "root" => plan with { Root = -1 },
-            "index" => plan with { Index = -1 },
-            "output" => plan with { Output = -1 },
-            "parent" => plan with { Parent = 0 },
-            _ => plan,
-        };
-        if (defect == "active")
-        {
-            body.LoanInputs[plan.Operation] = -1;
-        }
-        else if (defect == "source")
-        {
-            body.OperationStorage[plan.Index] = body.Operations[plan.Index] with { Source = body.Operations[plan.Operation].Source };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    // Intermediate projections copy nothing; each read copies its final element once (its MIR: tests/mir/places.kimi `nestedProjections`).
-    [Fact]
-    public void IntermediateProjectionsDoNotCopyAndTheFinalAggregateCopiesOnce()
-    {
-        const string Source = "let a = (((42, true), 3), \"held\")\nlet b = a.0.0\nlet n = a.0.0.0";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var instructions = module.GetFunction(0).Instructions;
-        Assert.Single(instructions, x => x.Opcode == EmissionOpcode.TransferAggregate && x.OperandCount == 1);
-        Assert.Single(instructions, x => x.Opcode == EmissionOpcode.LoadElement);
-        Assert.Equal(5, instructions.Count(x => x.Opcode == EmissionOpcode.ElementAddress));
-    }
-
     [Fact]
     public void TemporaryReceiverIsDestroyedAfterCopyBeforeConditionBranch()
     {
         const string Source = "func make() -> (string, i32) => (\"held\", 42)\nif make().1 == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementLifetime", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementLifetime", ir, "ok\n", "held=1;ok=1", order: [0, 1]);
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var instructions = module.GetFunction(0).Instructions;
-        var load = instructions.FindIndex(x => x.Opcode == EmissionOpcode.LoadElement);
-        var cleanup = instructions.FindIndex(x => x.Opcode == EmissionOpcode.DestroyAggregate);
-        var branch = instructions.FindIndex(x => x.Opcode == EmissionOpcode.ConditionalBranch);
-        Assert.True(load >= 0 && cleanup > load && branch > cleanup);
     }
 
     [Fact]
