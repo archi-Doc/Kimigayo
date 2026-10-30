@@ -276,13 +276,17 @@ rules that result from them.
     ・"GO"が得られたら、分割した作業を開始する。」
     The owner approved it with the R4 planning session's additions (「Record revised version」).
   - Rule: as WORKFLOW states. The additions:
-    - working time is logged per agent and summed per phase over rounds, without heavy runs and waits;
+    - working time is logged by each agent and summed per phase over agents and rounds, without heavy runs and waits;
     - the stopping steps, with the findings carried over;
-    - the shape of a split unit;
+    - the shape of a split unit, and no unit that makes an invalid program valid merging before the unit that
+      rejects it again;
     - sizing before a unit starts;
-    - every session's agents are covered, and reviews are not.
-  - Amends Q11 by one non-convergence signal: a unit that the limit stops for the same problem a third time, after two
-    splits. Q11's other signals and the review counts stand.
+    - every session's agents and the planning session's own design work are covered, and reviews are not.
+  - Amends Q11 in two places. Both keep its counts from resetting across a split.
+    - A split unit inherits the blocking findings its split plan names, so a later finding that repeats an inherited
+      cause shares a cause with it.
+    - A unit that the limit stops after its work has already been split twice under the limit does not converge.
+    Q11's other signals stand.
   - Reason: large units took long and did not converge. G216 (a) went through five proposal revisions, three
     implementation reviews and a redesign review round, and G264's option (A) lost its premise only at the SPEC draft's
     review. Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time, so one hour fits a small unit.

@@ -48,23 +48,27 @@ in [AGENTS](../../AGENTS.md) (Implementation Design); checks are in [VERIFICATIO
 A unit's design phase and its implementation phase each stop when the agents' working time on that phase passes one
 hour (DECISIONS Q12).
 
+- **Who.** The limit applies to every agent that a planning session gives design or implementation work, a Full
+  change's test author and candidates included, and to design work a planning session does itself (Design step 3).
+  Reviews follow [Repeated reviews](#repeated-reviews) instead.
 - **Working time.**
-  - Each agent logs its working intervals (start and end) in the unit's state file. The state file is the notes file in
-    which the agent keeps the unit's head, progress and next step.
-  - The planning session sums the logs of every agent and every round of the phase. Fix rounds add to the sum.
+  - Each agent logs its working intervals (start and end) in its state file. The state file is the notes file in which
+    the agent keeps its progress and next step. Each of a Full change's candidates keeps its own.
+  - Before each step, the agent adds up the phase's logged time: its own, and that of earlier agents and rounds of the
+    same work. It stops at the limit. The planning session checks the sums.
   - Not counted:
     - heavy runs as DECISIONS R4-M119 defines them, and waiting for one;
-    - another session's announced merge window, including a quiet slot in which the agents are held;
+    - waiting while another session's announced merge window holds the agents;
     - waiting for the owner;
-    - usage-limit stops;
-    - the planning session's own work.
+    - usage-limit stops.
   - In a Full change, the test author and each candidate have their own hour per phase. A candidate that reaches its
-    limit ends as [Full changes](#full-changes) step 3 provides: it reports the rows it cannot pass.
+    limit ends as [Full changes](#full-changes) step 3 provides, and the choice proceeds. A test author that reaches
+    its limit stops the change as below.
 - **Stopping.** At the limit the agent:
   - finishes the running command and starts no new build or test;
-  - commits its work as WIP on its own unit branch, if the tree builds. That branch merges into neither dev nor main.
+  - keeps its work on a `held/…` branch, as a WIP commit if the tree builds;
   - removes its heavy-run registration;
-  - records in its state file what is done, the findings (causes, counterexamples, probes), why the unit grew, the
+  - records in its state file what is done, the findings (causes, counterexamples, probes), why the work grew, the
     open issues and the next steps;
   - reports to the planning session.
 - **Carry-over.** Unfinished design text and code may be discarded; the findings carry over. PLAN records the stop as an
@@ -73,17 +77,15 @@ hour (DECISIONS Q12).
   - Each unit is classified anew ([Change classes](#change-classes)) and sized so that each of its phases fits within
     one hour.
   - Each unit has one owning component and stated completion conditions. A behavior change has tests that fail before
-    it and pass after it. A behavior-preserving restructuring shows unchanged results (VERIFICATION) and comes first.
-  - A unit that would make an invalid program valid, or a valid program invalid, until a later unit lands merges into dev
-    only together with that later unit.
-  - The plan names the earlier blocking findings each unit inherits. A review of that unit that repeats an inherited
-    finding's cause counts as sharing a cause ([Repeated reviews](#repeated-reviews)).
+    it and pass after it. A behavior-preserving restructuring shows unchanged results
+    ([VERIFICATION](VERIFICATION.md#behavior-preserving-commits)) and comes first.
+  - If a unit would make an invalid program valid until a later unit lands, the two merge into dev together.
+  - The plan names the earlier blocking findings that each unit inherits. A blocking finding of a later review that
+    repeats an inherited finding's cause shares a cause with it ([Repeated reviews](#repeated-reviews)).
 - **Approval.** The planning session reports the stop and the split plan to the owner
   ([Owner decisions](#owner-decisions)), and starts the split units only on the owner's GO.
 - **Sizing first.** Before a unit starts, the planning session sizes it and splits it if it is not expected to fit. This
-  is an ordinary planning decision.
-- **Scope.** The limit applies to the designers, test authors, implementers and candidates of every planning session.
-  Reviews follow [Repeated reviews](#repeated-reviews) instead.
+  is an ordinary planning decision, and such a split is not one of the splits that Repeated reviews counts.
 
 ## Full changes
 
@@ -150,8 +152,9 @@ becomes an author of the design or the implementation.
   diff review after a failed completion check are implementation reviews.
 - A unit does not converge when two reviews' blocking findings share a cause or when its third design review or third
   implementation review does not ACCEPT; a Full change also when no candidate qualifies at the choice or the choosing
-  sessions disagree; and any unit when the [working-time limit](#working-time-limit) stops it for the same problem a
-  third time, after two splits. The planning session then suspends the unit and asks the owner how to proceed
+  sessions disagree; and any unit when the [working-time limit](#working-time-limit) stops it after its work has
+  already been split twice under that limit. The planning session then suspends the unit and asks the owner how to
+  proceed
   ([Owner decisions](#owner-decisions)). Any change stays on a `held/…` branch with its evidence and merges into neither
   dev nor main, and the unit resumes only on the owner's answer.
 - A review count is never a reason to ACCEPT a change with a blocking defect.
