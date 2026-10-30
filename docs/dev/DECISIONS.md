@@ -5790,6 +5790,35 @@ and migration obligations remain in force; no numeric cap changes are authorized
     warm 0 B.
   - Open: `Encloses` costs O(distinct (Type, W) of the Place's Type) per use; a per-Place memo, as `ownAt` has, would make it per
     distinct Place (design review 1's N4).
+- **R4-M159 A Closure Type's Origin arguments carry its maker's images (G273, F1's representation)** (2026-10-31; R4's
+  design-first candidate of the Full change, `r4-notes\g273-df\design.md`, structure check passed with C1: the D5 gate unchanged)
+  SPEC 3.2.1, 7.7.3, 15.3.4, 15.3.5, 15.6.4, 15.8.2, 5.7.
+  - Representation (a new meaning of an existing slot): a Closure definition's Type (`Binding.ClosureType`) lists as its Origin
+    arguments each atom of another, enclosing Closure that its call signature names (receiver, environment binding, call result,
+    input; any Origin position, raw layers and nested arguments included), in first-occurrence order. A Closure naming none, every
+    flat Closure, keeps an argument-free Type. Every walk that images a Type's Origins images them with its environment: the maker's
+    call (P9's images, the input substitution), P8's publication, instantiation, erasure (static for codegen).
+  - Readers: `ClosureSignature` is the call signature as the value reads it, its definition's under the closure context with each
+    definition argument replaced by the Type's (one `PerCallImages` row of the one substitution); every caller-world reader takes it
+    (value calls, argument-kind inference, Callable proofs, conversions, diagnostics). `ClosureDefinitionSignature` is the
+    definition's, which a value call declares (`CallPlan.DeclaredSignature`), so retention keeps reading the definition's world and
+    its memo. An argument's variance is its occurrences' composition in the definition's signature (SPEC 15.3.5), read through the
+    one accessor `OriginArgumentVariance` that replaced nine inline schema reads (a behavior-preserving commit first); invariance
+    would Refute P8's own fit (`env0 : ρ`), covariance would shorten an Origin a parameter promises (w1's `uniq/(raw/i32 during x)`).
+  - Removes: F1's located `Unsupported_Kd` (R4-M152) on every reachable form: it stays only for an atom no image reached (a value
+    that reaches a non-enclosing call without its maker's call; no form known), and now walks raw layers (R4-M152's first open item;
+    BU-24's raw-role sites: `Binding.ClosureInstances.cs` 1 to 3, `Binding.ValueCalls.cs` 0 to 1). R4-M152's interim limit's cause
+    (images reach the Callable proof); the q rows keep PLAN G326's class.
+  - Default pipeline (C1, R4-M126 (vi)): the gate is unchanged. The old Analysis reports its own located `Unsupported_Kd` for a
+    Closure Type with Origin arguments (`SupportsType`), so every invalid G273 row stays rejected there (D1) and the valid ones are `Unsupported_Kd`
+    (D2); dev's default accepted five of them: a16_raw_input, a18_raw_input_store, a21_raw_in_ref_store, i6_maker_body,
+    i7_mid_in_outer (reduction regressions under K5, removed at R6-check with the old Analysis).
+  - Rejected: O1 solve the images from the environment (meets normalize; a signature-only atom has no position: a fallback); O3
+    images in `Subst` or a closure context (codegen-visible, R4-M152); O4 the definition over its own Origin parameters (every
+    definition-world reader changes); a gate row for F1's calls (widens the owner's D5 exception).
+  - Open: a Closure returned from a named function's call may keep the function's per-call atoms in its signature (design §3.1; no
+    reproducer).
+  - Numbering: R4-M159 was reserved for G273 by the planning session.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
