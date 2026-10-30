@@ -594,6 +594,11 @@ public sealed partial class Binding
     private BoundOrigin SubstituteStoredOrigin(
         BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, ReadOnlySpan<BoundType?> types = default)
     {
+        if (images.Enclosing(origin) is { } enclosing)
+        {
+            return enclosing;
+        }
+
         if (origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, binder) && images.Reserved(origin.Slot) is { } reserved)
         {
             return reserved;
@@ -708,15 +713,35 @@ public sealed partial class Binding
     // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152): its inputs, in parameter-slot
     // order, and at a value call of a Closure its two reserved atoms', the call receiver ρ (the receiver acquisition's Origin) and the
     // call result (the call's Unbound atom, R4-M118), each built only where the result names its atom; a missing image keeps its atom.
-    private readonly ref struct PerCallImages(ReadOnlySpan<BoundOrigin> inputs, BoundOrigin? receiver, BoundOrigin? result)
+    private readonly ref struct PerCallImages(
+        ReadOnlySpan<BoundOrigin> inputs, BoundOrigin? receiver, BoundOrigin? result, ReadOnlySpan<BoundOrigin> atoms = default, ReadOnlySpan<BoundOrigin> enclosing = default)
     {
+        private readonly ReadOnlySpan<BoundOrigin> atoms = atoms;
+
+        private readonly ReadOnlySpan<BoundOrigin> enclosing = enclosing;
+
         internal ReadOnlySpan<BoundOrigin> Inputs { get; } = inputs;
 
-        internal bool IsEmpty => this.Inputs.IsEmpty && receiver is null && result is null;
+        internal bool IsEmpty => this.Inputs.IsEmpty && receiver is null && result is null && this.atoms.IsEmpty;
 
         public static implicit operator PerCallImages(ReadOnlySpan<BoundOrigin> inputs) => new(inputs, null, null);
 
         public static implicit operator PerCallImages(Span<BoundOrigin> inputs) => new(inputs, null, null);
+
+        // The image a Closure Type's Origin argument gives an enclosing anonymous function's atom its definition names (DECISIONS
+        // R4-M159), null for any other atom.
+        internal BoundOrigin? Enclosing(BoundOrigin atom)
+        {
+            for (var i = 0; i < this.atoms.Length; i++)
+            {
+                if (ReferenceEquals(this.atoms[i], atom))
+                {
+                    return this.enclosing[i];
+                }
+            }
+
+            return null;
+        }
 
         // The image of the binder's reserved atom at a Projection slot, null for any other slot.
         internal BoundOrigin? Reserved(int slot) => slot switch

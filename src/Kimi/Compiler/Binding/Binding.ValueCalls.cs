@@ -586,7 +586,8 @@ public sealed partial class Binding
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
-            var declaredSignature = signature;
+            var callee = call.Method.BoundType!;
+            var declaredSignature = this.ClosureContract(callee.Kind == BoundTypeKind.Semantics ? callee.Components[0] : callee) ?? signature;
             signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
             return Complete(call, result);
