@@ -37,7 +37,7 @@ public class PropertyBindingTest
     private const string UnresolvedHolder = UnresolvedField + "        set(value: Missing<S>) -> ()\n            storage = value@move\n" + UnresolvedRest;
     private const string UnresolvedStandard = UnresolvedField + UnresolvedRest;
 
-    // An `x: i32` Field beside a custom accessor of another Type, and its twin (AnUpdateFitsItsResultToItsPublishedDestination).
+    // An `x: i32` Field beside a custom accessor of another Type, and its twin (AUseOfAWronglyTypedAccessorRestsOnItsDeclaration).
     private const string ClosedField = "struct HW\n    public var x: i32\n";
     private const string ClosedInit = "    public init(x: i32) => self.x = x\n";
     private const string WrongGetter = ClosedField + "        get() -> i64\n            return 1\n" + ClosedInit;
@@ -47,11 +47,20 @@ public class PropertyBindingTest
     private const string WrongSetter = ClosedField + "        set(value: i64) -> ()\n            storage = 1\n" + ClosedInit;
     private const string RightGetter = ClosedField + "        get() -> i32\n            return storage\n" + ClosedInit;
 
+    // A group Property beside a custom `get` of another Type, and a bare update inside its group.
+    private const string WrongCountGetter = "group Config\n    public var count: i32 = 0\n        get() -> i64\n            return 1\n";
+    private const string BareCountUpdate = WrongCountGetter + "    public func bump() -> ()\n        count += 1\n        return\n";
+
     // A custom `get` of an Addable Type beside the standard `set`, so `+=` takes the user arithmetic path (TryArithmetic).
-    private const string AddableWrongGetter = "struct Counter\n    Self is Addable<Counter>\n    associate Output is Counter\n    public let value: i32\n" +
+    private const string Counter = "struct Counter\n    Self is Addable<Counter>\n    associate Output is Counter\n    public let value: i32\n" +
         "    public init(value: i32) => self.value = value\n" +
-        "    public func added(self: ref/Self, right: ref/Counter) -> Counter => Counter.init(self.value + right.value)\n    drop => ()\n" +
-        ClosedField + "        get() -> Counter\n            return Counter.init(1)\n" + ClosedInit;
+        "    public func added(self: ref/Self, right: ref/Counter) -> Counter => Counter.init(self.value + right.value)\n    drop => ()\n";
+
+    private const string AddableWrongGetter = Counter + ClosedField + "        get() -> Counter\n            return Counter.init(1)\n" + ClosedInit;
+
+    // Computed Properties whose `set` takes another Type than the `get` result (AnUpdateFitsItsResultToItsPublishedDestination).
+    private const string ComputedLevel = "struct HG\n    public computed level: i32\n        get() -> i32 => 1\n        set(value: i64) -> () => ()\n";
+    private const string ComputedCounter = Counter + "struct HC\n    public computed c: Counter\n        get() -> Counter => Counter.init(1)\n        set(value: i64) -> () => ()\n";
 
     [Theory]
     [InlineData("let", false)]
@@ -385,26 +394,64 @@ public class PropertyBindingTest
         Assert.Empty(c.Problems);
     }
 
-    // SPEC 13.7.1, 11.1 (PLAN G296): each update fits its result to the destination Type BindPropertyUpdate publishes, so beside a custom
-    // `get` of another Type than the Field's, `+=` is a labelled TypeMismatch_Kd at the update after the declaration's, as `|=` and `++`
-    // are (before, `+=` was never fitted and mir and sel recorded InternalInvariant_Kd; `|=` and `++` were unlabelled at `h.x`); so is
-    // an update beside a custom `set` of another input Type, and a user arithmetic `+=` beside an Addable `get` (TryArithmetic; before,
-    // no record at the update, and InternalInvariant_Kd on mir and sel). Twins: a generic Field, and a `get` of the Field's Type, which
-    // is valid.
+    // SPEC 13.7.1 (PLAN G296): each update fits its result to the destination Type BindPropertyUpdate publishes, so beside a computed
+    // `set` of another input Type, `+=`, `|=`, `++` and a user arithmetic `+=` (TryArithmetic) are each a labelled TypeMismatch_Kd at the
+    // update. Twin: a custom `get` of the Field's Type, which is valid. Updates beside a wrongly typed custom accessor rest on its
+    // declaration (AUseOfAWronglyTypedAccessorRestsOnItsDeclaration).
     [Theory]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += 4")]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x |= 4")]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x++", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x++")]
-    [InlineData(GenericWrongGetter, "var h = HW<i32>.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += 4")]
-    [InlineData(AddableWrongGetter, "var h = HW.init(x: 3)\n    h.x += Counter.init(2)", "TypeMismatch_Kd get() -> Counter;TypeMismatch_Kd h.x += Counter.init(2)")]
-    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd h.x |= 4")]
-    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    --h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd --h.x")]
+    [InlineData(ComputedLevel, "var h = HG.init()\n    h.level += 4", "TypeMismatch_Kd h.level += 4")]
+    [InlineData(ComputedLevel, "var h = HG.init()\n    h.level |= 4", "TypeMismatch_Kd h.level |= 4")]
+    [InlineData(ComputedLevel, "var h = HG.init()\n    h.level++", "TypeMismatch_Kd h.level++")]
+    [InlineData(ComputedCounter, "var h = HC.init()\n    h.c += Counter.init(2)", "TypeMismatch_Kd h.c += Counter.init(2)")]
     [InlineData(RightGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++", "")]
     public void AnUpdateFitsItsResultToItsPublishedDestination(string holder, string use, string records)
     {
         var c = MinimalEmissionTest.Analyze(holder + $"public func main() -> ()\n    {use}\n    return\n");
         Assert.Equal(records.Length == 0 ? [] : records.Split(';'), c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+    }
+
+    // SPEC 11.3, 11.4, 23.1.2 (PLAN G296): a use of an accessor whose Type is not its Property's takes no Type and rests on the
+    // declaration's TypeMismatch_Kd, so updates (`+=`, `|=`, `++`, `--`, a user arithmetic `+=`, a generic Field, a qualified and a bare
+    // group form), a read and a write through it add no record (before, a TypeMismatch_Kd at each, G295's Unsupported_Kd at the bare
+    // form, and InternalInvariant_Kd beside a missing operand). Independent twins keep theirs: a missing operand, a string operand (its
+    // prohibition survives the missing counterpart), a read through the standard `get` beside a failed `set` and a write through the
+    // standard `set` beside a failed `get`. The valid twin: a `get` of the Field's Type.
+    [Theory]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x++", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(GenericWrongGetter, "var h = HW<i32>.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(AddableWrongGetter, "var h = HW.init(x: 3)\n    h.x += Counter.init(2)", "TypeMismatch_Kd get() -> Counter")]
+    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd set(value: i64) -> ()")]
+    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    --h.x", "TypeMismatch_Kd set(value: i64) -> ()")]
+    [InlineData(WrongCountGetter, "Config.count += 1", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(BareCountUpdate, "Config.bump()", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let v: i32 = h.x", "TypeMismatch_Kd get() -> i64")]
+    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    let n: i32 = 4\n    h.x = n", "TypeMismatch_Kd set(value: i64) -> ()")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += missing", "TypeMismatch_Kd get() -> i64;UnresolvedBinding_Kd missing")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;NonNumericOperand_Kd h.x += \"a\"")]
+    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd let v: bool = h.x")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x = true")]
+    [InlineData(RightGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++\n    let v: i32 = h.x", "")]
+    public void AUseOfAWronglyTypedAccessorRestsOnItsDeclaration(string holder, string use, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(holder + $"public func main() -> ()\n    {use}\n    return\n");
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(records.Length == 0 ? [] : records.Split(';'), c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
+    }
+
+    // A warm rebind of uses resting on a wrongly typed accessor's declaration reuses the prerequisite storage.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void UsesRestingOnAWronglyTypedAccessorRebindWithoutAllocating()
+    {
+        var c = MinimalEmissionTest.Analyze(WrongGetter + "public func main() -> ()\n    var h = HW.init(x: 3)\n    h.x += 4\n    h.x++\n    let v: i32 = h.x\n    return\n");
+        var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(0, allocated);
     }
 
     // SPEC 23.1.2 (PLAN G296): an update beside a custom `set` whose standard side has no Type (a rejected instance, an unresolved Field

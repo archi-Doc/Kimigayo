@@ -239,6 +239,14 @@ public sealed partial class Binding
                 receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
             }
 
+            // SPEC 23.1.2: after the use's own checks, a use of an accessor whose Type its declaration rejected takes no Type and rests
+            // on that declaration, as a call of a failed declaration does, so what reads the use adds no record.
+            if (AccessorTypeMismatch(accessor))
+            {
+                this.CompleteDependent(node, accessor.Declaration!);
+                return false;
+            }
+
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
                 call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
                 (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
