@@ -43,6 +43,41 @@ in [AGENTS](../../AGENTS.md) (Implementation Design); checks are in [VERIFICATIO
   incremental builds and selected tests only.
 - An implementer who finds the design wrong stops and reports to the planning session.
 
+## Working-time limit
+
+A unit's design work and its implementation work each stop when the agent's working time on them exceeds one hour
+(DECISIONS Q12).
+
+- **Counting.**
+  - Working time is summed per unit over all its rounds and agents; fix rounds do not reset it.
+  - It excludes heavy runs and the wait for one (a full Session, a full mir ledger, native or milestone sweeps), another
+    session's merge window or HOLD, waiting for the owner, and usage-limit stops.
+  - The agent records its start time in its state file and checks the elapsed time at each step.
+- **Stopping.**
+  - The agent finishes the running command and starts no new build or test.
+  - It pushes a WIP commit if the tree builds, and removes any heavy-run registration.
+  - It records what is done, the findings (causes, counterexamples, probes), why the unit grew, the open issues and the
+    next steps.
+  - Unfinished design text and code may be discarded; the findings carry over.
+- **Re-planning.** From the record, the planning session writes a plan of small, verifiable units. Each one:
+  - is expected to finish within one hour;
+  - has one owning component;
+  - has tests that fail before it and pass after it;
+  - has stated completion conditions.
+
+  A behavior-preserving restructuring comes first. No unit that weakens soundness lands alone, for example a premise
+  removed before its call-side proof.
+- **Approval.**
+  - The planning session reports the stop and the plan to the owner, and starts the split units only on the owner's GO
+    or an explicit equivalent. A relayed answer recorded verbatim in a pushed commit counts.
+  - Independent units continue meanwhile.
+- **Repetition.**
+  - A split unit that exceeds the limit again is split by the same steps.
+  - A unit split twice for the same problem that still does not fit does not converge (Owner decisions).
+- **Sizing first.** The planning session sizes each unit before it starts, and splits one not expected to fit in one
+  hour.
+- **Scope.** The limit applies to every agent of every planning session. Reviews follow Repeated reviews instead.
+
 ## Full changes
 
 A Full change is decided by results: the same tests judge two candidates written independently, and the planning
@@ -120,7 +155,9 @@ At any point, suspend the unit and ask the owner on finding:
 - a contradiction in the specification;
 - a significant measured slowdown of compilation or generated code;
 - a way to make the specification simpler and cleaner by unifying concepts;
-- a unit that does not converge ([Repeated reviews](#repeated-reviews)).
+- a unit that does not converge ([Repeated reviews](#repeated-reviews), [Working-time limit](#working-time-limit));
+- a unit stopped by the working-time limit, with its split plan for the owner's GO
+  ([Working-time limit](#working-time-limit)).
 
 The report names the SPEC sections, the measurements or evidence (for a unit that does not converge, each review's
 findings or each candidate's results and the cause analysis one level higher), and the options (a representation, a

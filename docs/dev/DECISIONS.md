@@ -266,6 +266,29 @@ rules that result from them.
     a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
     CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
     and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
+- **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
+  "Working-time limit" and "Owner decisions").
+  - Adopted: the owner's draft, verbatim, 「設計作業や実装作業において、エージェントの実働時間が1時間を超えたら、作業を中断する。
+    作業内容、課題、今後の予定を記録する。記録を元に、作業を小さく検証可能な単位に分けた、具体的な作業計画を作成する。オーナーに作業
+    中断を報告し、作業計画の承認を得る。"GO"が得られたら、分割した作業を開始する。」, with the R4 planning session's additions,
+    which the owner approved (「Record revised version」).
+  - Rule: as WORKFLOW states. The additions are:
+    - working time per unit, summed over rounds, without heavy runs and waits;
+    - how to stop;
+    - findings carry over;
+    - the shape of a split unit;
+    - independent units continue while waiting for GO;
+    - a unit split twice for one problem does not converge;
+    - sizing before a unit starts;
+    - every session's agents are covered, reviews are not.
+  - Reason: large units took long and did not converge.
+    - G216 (a) went through five proposal revisions, three implementation reviews and a redesign review round.
+    - G264's option (A) lost its premise only at the SPEC draft's review.
+    - Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time.
+  - Rejected:
+    - elapsed time, because other sessions' builds and heavy runs load the machine;
+    - a clock reset per fix round, because it lets repeated rounds escape the limit.
+  - Q11 stands. The limit adds a stop before reviews accumulate; it does not replace their counts.
 
 ## Code rules (2026-10-12)
 
