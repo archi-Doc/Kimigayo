@@ -66,41 +66,6 @@ public class AggregateEmissionTest
         Assert.Equal(0, allocated);
     }
 
-    [Theory]
-    [InlineData("count")]
-    [InlineData("declaration")]
-    [InlineData("placement")]
-    [InlineData("completion")]
-    [InlineData("flag")]
-    public void InvalidAggregatePlansDoNotWriteIr(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value@move\nvalue = (\"b\", 2)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var construction = body.ConstructionStorage[0];
-        if (mutation == "count")
-        {
-            body.ConstructionStorage[0] = construction with { PayloadCount = 0 };
-        }
-        else if (mutation == "flag")
-        {
-            var index = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == 1);
-            Assert.True(index >= 0);
-            body.OperationStorage[index] = body.OperationStorage[index] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else
-        {
-            var kind = mutation == "declaration" ? OwnershipOperationKind.Declare : mutation == "placement" ? OwnershipOperationKind.PayloadPlacement : OwnershipOperationKind.CompleteConstruction;
-            var index = body.OperationStorage.FindIndex(x => x.Kind == kind && (kind == OwnershipOperationKind.CompleteConstruction ? x.Place == construction.Place : x.Place == construction.PayloadStart));
-            Assert.True(index >= 0);
-            body.OperationStorage[index] = body.OperationStorage[index] with { Kind = OwnershipOperationKind.Produce };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
     [Fact]
     public void TupleLayoutKeepsLogicalOrderAndStableAlignmentSorting()
     {

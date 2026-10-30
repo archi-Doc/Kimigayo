@@ -90,32 +90,4 @@ public class SequenceEmissionTest
             Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         }
     }
-
-    [Theory]
-    [InlineData("receiver")]
-    [InlineData("kind")]
-    [InlineData("projection")]
-    [InlineData("index")]
-    public void MalformedSequencePlansFailAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "let a: [2 of i32] = [1, 2]\nlet b: [2 of i32] = [3, 4]\nlet s = a[..]\nfor i in s.indices => s[i]",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var index = body.Sequences.FindIndex(x => x.Kind == (defect == "index" ? SequenceOperation.Read : SequenceOperation.Slice));
-        var plan = body.Sequences[index];
-        body.Sequences[index] = defect switch
-        {
-            "receiver" => plan with { Receiver = body.Places.Single(x => x.Source is Kimi.Compiler.Parsing.FieldKoto { NameKoto.IdentifierName: "b" }).Id },
-            "kind" => plan with { Kind = SequenceOperation.Length },
-            "projection" => plan with { Projection = 12345 },
-            _ => plan with { Index = -1 },
-        };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
 }

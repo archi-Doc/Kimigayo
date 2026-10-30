@@ -116,12 +116,9 @@ public class ClosureResultOriginTest
     [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) -> i32\n    let inner = func [x] () => x\n    return inner()@follow\ninspect(outer(local@ref)@ref)", "")]
     public void AReturnedClosuresCallOverItsMakersAtomsIsUnsupported(string source, string calls)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var records = ContextualCaptureTest.PublishedRecords(source, pipeline);
-            Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
-            Assert.Equal(calls.Split('|', StringSplitOptions.RemoveEmptyEntries), records.Select(x => source.Substring(x.Span.Start, x.Span.Length)));
-        }
+        var records = ContextualCaptureTest.PublishedRecords(source);
+        Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
+        Assert.Equal(calls.Split('|', StringSplitOptions.RemoveEmptyEntries), records.Select(x => source.Substring(x.Span.Start, x.Span.Length)));
     }
 
     // SPEC 15.8.2, 23.1.2 (DECISIONS R4-M152 P8, R5-M63): a returned Closure literal that P8 fails, a maker's expression body at any
@@ -144,12 +141,9 @@ public class ClosureResultOriginTest
     [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "outer(3)()")]
     public void AFailedReturnedLiteralKeepsItsDefinition(string source, string literal, string call)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var records = ContextualCaptureTest.PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
-                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
-            Assert.Equal([$"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}", $"{nameof(DiagnosticCode.Unsupported_Kd)} {call}"], records);
-        }
+        var records = ContextualCaptureTest.PublishedRecords(source).OrderBy(static x => x.Span.Start)
+            .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
+        Assert.Equal([$"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}", $"{nameof(DiagnosticCode.Unsupported_Kd)} {call}"], records);
     }
 
     // Pins of a returned Closure's records (DECISIONS R4-M152): a valid nested maker's returned Closure, whose signature names the
@@ -173,10 +167,7 @@ public class ClosureResultOriginTest
         "UnprovenOriginRelation_Kd a()")]
     public void AReturnedClosureKeepsItsInterimRecord(string source, string records)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Equal(records, Records(source, pipeline));
-        }
+        Assert.Equal(records, Records(source));
     }
 
     // SPEC 7.7.4, 8.11, 23.1.2 (DECISIONS R4-M152, R5-M63 (1)): a use that reaches a returned literal P8 failed through its Type reads the
@@ -210,10 +201,7 @@ public class ClosureResultOriginTest
     {
         var expected = $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}" +
             (owned is null ? string.Empty : $"; {nameof(DiagnosticCode.UnprovenConstraint_Kd)} {owned}");
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Equal(expected, Records(source, pipeline));
-        }
+        Assert.Equal(expected, Records(source));
 
         var c = VerifiedSpecExampleTest.Bind(source);
         c.Analyze();
@@ -231,10 +219,7 @@ public class ClosureResultOriginTest
     [InlineData(NestedUniq + "        let k = func [n@uniq] () => ()\n        k()\n" + NestedCall, "InvalidAssignment_Kd c")]
     public void ANestedClosureWhoseCreationFailedStillClassifiesItsMaker(string source, string records)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Equal(records, Records(source, pipeline));
-        }
+        Assert.Equal(records, Records(source));
     }
 
     // SPEC 15.8.2, 13.5.6 (DECISIONS R4-M152): a Closure literal's own temporary is its ClosureValueSlot atom, the receiver Origin ρ of a
@@ -306,7 +291,7 @@ public class ClosureResultOriginTest
     }
 
     // A program's published records in source order, each as its code and its span's text.
-    private static string Records(string source, CompilerPipeline pipeline)
-        => string.Join("; ", ContextualCaptureTest.PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
+    private static string Records(string source)
+        => string.Join("; ", ContextualCaptureTest.PublishedRecords(source).OrderBy(static x => x.Span.Start)
             .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}"));
 }

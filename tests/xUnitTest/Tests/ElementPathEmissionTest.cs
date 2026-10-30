@@ -105,45 +105,6 @@ public class ElementPathEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    [Theory]
-    [InlineData("selector")]
-    [InlineData("path")]
-    [InlineData("depth")]
-    [InlineData("parent")]
-    [InlineData("operation")]
-    [InlineData("copy")]
-    [InlineData("store")]
-    [InlineData("location")]
-    public void CorruptedPathPlansFailBeforeOutputAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\na[0] += a[1]", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        // SPEC 13.7.2: the RHS read a[1] is located first, then the updated element a[0].
-        var plan = body.Projections[0];
-        var update = body.Projections[1];
-        switch (defect)
-        {
-            case "selector": body.Projections[0] = plan with { Selector = 0 }; break;
-            case "path": body.Projections[0] = plan with { Path = int.MaxValue }; break;
-            case "depth": body.Projections[0] = plan with { PathDepth = int.MaxValue }; break;
-            case "parent": body.Projections[0] = plan with { Parent = 1 }; break;
-            case "operation": body.OperationStorage[plan.Operation] = body.Operations[plan.Operation] with { Projection = 1 }; break;
-            case "copy": body.OperationStorage[plan.Output] = body.Operations[plan.Output] with { Projection = 1 }; break;
-            case "store": body.OperationStorage[update.Write] = body.Operations[update.Write] with { Projection = 0 }; break;
-            case "location":
-                var location = body.ComparisonLoans[plan.Loan].Read;
-                body.OperationStorage[location] = body.Operations[location] with { Kind = OwnershipOperationKind.Read };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPathAnalysisAndEmissionAllocateNothing()

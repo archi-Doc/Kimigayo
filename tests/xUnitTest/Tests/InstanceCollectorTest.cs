@@ -1706,9 +1706,9 @@ public sealed partial class InstanceCollectorTest
     }
 
     // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37) for a struct chain and a one-component Tuple chain,
-    // read down to the scalar leaf, at 64 and 65 levels; the height-64 difference R5-M37 anticipated does not arise. The old generator,
-    // whose pool takes Layout's verdict, agrees: it generates the 64-level program check accepts, on a compilation pinned to it until G4
-    // (R5-M73, R5-M152 S7), and check rejects the 65-level one before it (DECISIONS R5-M156).
+    // read down to the scalar leaf, at 64 and 65 levels; the height-64 difference R5-M37 anticipated does not arise. Code generation, which
+    // reads Layout's verdicts, agrees: it generates the 64-level program check accepts, and check rejects the 65-level one before it
+    // (DECISIONS R5-M156; R5-M73's half on the old generator moved to MIR code generation at G4, R5-M160).
     [Theory]
     [InlineData("Struct", 64, false)]
     [InlineData("Struct", 65, true)]
@@ -1742,8 +1742,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, type)] : [], records);
         if (!limited)
         {
-            var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
-            Assert.True(legacy.Validate(out var error), error);
+            var generated = MinimalEmissionTest.Analyze(source.ToString());
+            Assert.True(generated.Validate(out var error), error);
         }
     }
 
@@ -2089,7 +2089,6 @@ public sealed partial class InstanceCollectorTest
         string[] expected = name != "milestone/Milestone42" ? [] : [.. statics.Select(static x => "Unsupported_Kd " + x)];
 
         var c = Compilation.CreateForTest();
-        c.Codegen = CompilerCodegen.Mir;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Main.kimi", File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", name["milestone/".Length..] + ".kimi"))));
         c.Bind();

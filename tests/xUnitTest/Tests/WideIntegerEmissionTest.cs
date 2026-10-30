@@ -124,35 +124,6 @@ public class WideIntegerEmissionTest
         Assert.False(c.Validate(out _));
     }
 
-    [Theory]
-    [InlineData("i128")]
-    [InlineData("u128")]
-    public void CorruptHighConstantBitsAreRejected(string type)
-    {
-        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
-        body.Values[id] = body.Values[id] with { Constant = ((Int128)1 << 64) + 1 };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
-    }
-
-    [Fact]
-    public void CorruptParameterHighBitsCannotAliasAValidIndex()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(x: i128) -> i128 => x\nf(1)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Parameter);
-        Assert.True(id >= 0);
-        body.Values[id] = body.Values[id] with { Constant = (Int128)1 << 64 };
-        Assert.False(c.Validate(out _));
-    }
-
     [Fact]
     public void SerializationRebuildsBothHalvesOfWideValues()
     {
@@ -167,19 +138,6 @@ public class WideIntegerEmissionTest
         Assert.True(restored.WriteIr(roundTrip, out error), error);
         Assert.Equal(original.ToString(), roundTrip.ToString());
         ScalarEmissionTest.WriteFixture("WideRoundTrip", roundTrip.ToString(), "ok\n");
-    }
-
-    [Fact]
-    public void CorruptWideDivisionCannotBypassProfileValidation()
-    {
-        var c = MinimalEmissionTest.Analyze("var x: i128 = 1\nlet y = x + 1", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Binary);
-        body.Values[id] = body.Values[id] with { Operator = KotoKind.Slash };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 
     [Trait("Purpose", "Allocation")]

@@ -92,7 +92,7 @@ public class ElementParameterMoveEmissionTest
     [InlineData("duplicate")]
     public void ConditionalPathFlagsRequireParameterInitialization(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Conditional, codegen: CompilerCodegen.Legacy);
+        var c = MinimalEmissionTest.Analyze(Conditional);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
         var function = module.GetFunction(1);
@@ -120,34 +120,6 @@ public class ElementParameterMoveEmissionTest
         }
 
         Assert.False(BodyLowering.ValidatePathFlags(body, function, new int[body.Operations.Count]));
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData("kind")]
-    [InlineData("receipt")]
-    [InlineData("source")]
-    [InlineData("acquisition")]
-    public void InvalidParameterPlansPublishNoIrAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Conditional, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var projection = Assert.Single(body.Projections);
-        var root = projection.Root;
-        var receipt = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == root);
-        switch (defect)
-        {
-            case "kind": body.PlaceStorage[root] = body.Places[root] with { Kind = OwnershipPlaceKind.Temporary }; break;
-            case "receipt": body.OperationStorage[receipt] = body.Operations[receipt] with { Kind = OwnershipOperationKind.Declare }; break;
-            case "source": body.OperationStorage[receipt] = body.Operations[receipt] with { Source = body.Operations[projection.Operation].Source }; break;
-            case "acquisition": body.OperationStorage[projection.Output] = body.Operations[projection.Output] with { Acquisition = AcquisitionKind.None }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 

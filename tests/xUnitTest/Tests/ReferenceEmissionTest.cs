@@ -136,7 +136,7 @@ public class ReferenceEmissionTest
 
     // IMPL 21.3.1 (AbiRecords; DECISIONS R5-M145 under R5-M12): a shared borrow of a string is passed as its address, noundef nonnull align 8
     // dereferenceable(24) and never noalias, at the callee's parameters and at its call alike, and the callee is not readonly; the string is
-    // neither copied nor destroyed by the borrow, which the native audit's single destruction shows under either generator.
+    // neither copied nor destroyed by the borrow, which the native audit's single destruction shows.
     [Fact]
     public void BorrowedValuesNeedNoPhysicalCopyOrStorage()
     {
@@ -174,44 +174,6 @@ public class ReferenceEmissionTest
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, emissionBytes);
-    }
-
-    [Theory]
-    [InlineData("missing_loan")]
-    [InlineData("early_end")]
-    [InlineData("exclusive")]
-    [InlineData("source")]
-    [InlineData("no_result_contract")]
-    [InlineData("missing_result")]
-    [InlineData("dependent_result")]
-    [InlineData("end_position")]
-    [InlineData("reference_value")]
-    public void InvalidPlansNeverPublishIr(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Same + "let a = \"a\"\nsame(a, a)", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var loan = body.ComparisonLoans[0];
-        var call = body.CallLoans[0];
-        var entry = body.Operations.Select((operation, index) => (operation, index)).First(x => x.operation.Kind == OwnershipOperationKind.CallEntry).index;
-        switch (defect)
-        {
-            case "missing_loan": body.ComparisonLoans.Clear(); break;
-            case "early_end": body.LoanInputs[call.Call] = -1; break;
-            case "exclusive": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { LoanMode = LoanRequirement.Uniq }; break;
-            case "source": body.OperationStorage[loan.Read] = body.Operations[loan.Read] with { Place = body.Operations[loan.Read].Input }; break;
-            case "no_result_contract": body.CallLoans.Clear(); break;
-            case "missing_result": body.CallLoans[0] = call with { Result = -1, End = -1 }; break;
-            case "dependent_result": body.CallLoans[0] = call with { ResultRequirement = LoanRequirement.Ref }; break;
-            case "end_position": body.CallLoans[0] = call with { End = call.Result }; break;
-            case "reference_value": body.ValueOperands[body.Values[entry].Start] = -1; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]

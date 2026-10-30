@@ -7,7 +7,7 @@ using Xunit;
 namespace XunitTest;
 
 // The statics of MIR code generation (R5 C7b; SPEC 22.4.3, 22.4.4, 22.5.1, 22.5.2; DECISIONS R5-M106): a StaticInit item's slot, state and
-// ensure function, an access's state test, the fold of a constant StaticInit, and statics natively under both generators.
+// ensure function, an access's state test, the fold of a constant StaticInit, and statics natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library's statics: first-access i32, bool and i128 ones; constant ones, legacy's folded set (a signed literal, a bool, a

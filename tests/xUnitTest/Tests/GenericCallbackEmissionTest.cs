@@ -81,41 +81,6 @@ public class GenericCallbackEmissionTest
         Assert.Equal(AbiParameterKind.LocationLength, valueCall.Callee.Parameters[^1].Kind);
     }
 
-    [Theory]
-    [InlineData("loan")]
-    [InlineData("argument")]
-    [InlineData("receiver")]
-    public void RejectsCorruptValueCallAndReanalysisRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt value call is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(
-            "func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "invoke");
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        if (defect == "loan")
-        {
-            body.ComparisonLoans[0] = body.ComparisonLoans[0] with { Place = 0 };
-        }
-        else if (defect == "receiver")
-        {
-            body.OperationStorage[call] = body.Operations[call] with { Input = 0 };
-        }
-        else
-        {
-            var entry = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.CallEntry);
-            body.OperationStorage[entry] = body.Operations[entry] with { Place = 0 };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Fact]
     public void AClosureHeaderThatContradictsAnotherArgumentIsInapplicable()
     {

@@ -33,7 +33,7 @@ public sealed partial class FunctionCodegenTest
         "func erased() -> (i32) -> arc/i32 => Kimi.Intrinsics.makeArc\nfunc cloner() -> (ref/(rc/i32)) -> rc/i32 => Kimi.Intrinsics.clone\n";
 
     // SPEC 13.6 (DECISIONS R5-M110): objects made by each handle and by a factory Item, read through handles and borrows, cloned, upcast
-    // as borrows and tested, natively under both generators; the program ends in an Abort, so it destroys no handle (C6b's glue).
+    // as borrows and tested, natively; the program ends in an Abort, so it destroys no handle (C6b's glue).
     private const string ObjectRows =
         "struct Cell\n    public let value: i32\n    public init(value: i32) => self.value = value\n" +
         "open struct Base\n    public let legs: i32 = 4\n    protected init() => ()\nstruct Leaf : Base\n    public let id: i32 = 5\n" +
@@ -55,7 +55,7 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 16.3.3 (DECISIONS R5-M112): ObjectRows' forms destroyed at their scopes' ends, in reverse order: a clone's release keeps its
     // object, an arc's last release and a Plain payload's free, a base view destroying its derived object; one allocation per object (each
-    // payload and its 16-byte header), each freed once, natively under both generators.
+    // payload and its 16-byte header), each freed once, natively.
     private const string ObjectRelease =
         "struct Cell\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"cell\")\n" +
         "struct Plain\n    public let value: i32 = 9\nopen struct Base\n    public let legs: i32 = 4\n    protected init() => ()\n" +

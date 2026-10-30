@@ -50,10 +50,9 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("VirtualGenericDispatchFactory", Source, string.Empty);
     }
 
-    // A finite descriptor cycle reuses its instances. The growing key's refusal is GrowingDescriptorKeysAreResourceDiagnosed (K13c); this
-    // name drops "AndRejectGrowingKeys" when the method leaves the codegen pending ledger, whose row names it until then.
+    // A finite descriptor cycle reuses its instances. The growing key's refusal is GrowingDescriptorKeysAreResourceDiagnosed (K13c).
     [Fact]
-    public void DescriptorDependenciesReuseFiniteCyclesAndRejectGrowingKeys()
+    public void DescriptorDependenciesReuseFiniteCycles()
         => ScalarEmissionTest.EmitFixture("VirtualGenericDispatchCycle", DependencyProgram("i32"), string.Empty);
 
     // A growing descriptor key is a Resource record. Check, then generation, as a build runs them: check reports it at the creation (K13c,

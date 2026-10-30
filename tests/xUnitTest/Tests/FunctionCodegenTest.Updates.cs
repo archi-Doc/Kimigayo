@@ -8,8 +8,7 @@ namespace XunitTest;
 
 // The whole-value updates and the fixed-array storage kernel of MIR code generation (R5 C8b; SPEC 7.7.4, 15.7, 15.7.1-15.7.3, 16.3.2,
 // 22.2, 22.5.1; DECISIONS R5-M116): replace's glue before the new value, exchange's old value kept before the new one, swap through a held
-// value, an Item's Value call writing its direct call's row, and borrowStorage's remainder over a fixed array; natively under both
-// generators.
+// value, an Item's Value call writing its direct call's row, and borrowStorage's remainder over a fixed array; natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library updating an i32, a 32-byte struct in memory, a drop-needing struct, a zero-sized drop-needing one, a bool, a string (also
@@ -43,7 +42,7 @@ public sealed partial class FunctionCodegenTest
         "func erasedReplace() -> (uniq/Res, Res) -> () => Kimi.Intrinsics.replace\n" +
         "func erasedSwap() -> (uniq/Big, uniq/Big) -> () => Kimi.Intrinsics.swap\n";
 
-    // SPEC 15.7 (DECISIONS R5-M116): updates natively under both generators: drop order around replace, exchange's old value, swap of
+    // SPEC 15.7 (DECISIONS R5-M116): updates natively: drop order around replace, exchange's old value, swap of
     // scalars, strings and structs in memory, an Item's Value call and a fixed-array loop.
     public static TheoryData<string, string, string> UpdatePrograms => new()
     {

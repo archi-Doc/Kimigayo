@@ -26,24 +26,6 @@ public class ProjectedBorrowEmissionTest
         ScalarEmissionTest.EmitFixture("ProjectedBorrowGeneric" + name, source, string.Empty);
     }
 
-    // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-    // the corrupt projected address is rejected on the ordinary body that owns it.
-    [Fact]
-    public void RejectsCorruptProjectedAddressAndReanalysisRecovers()
-    {
-        var source = Batch + "let values: [2 of i32] = [6, 7]\nlet b = Batch.init(values)\nlet r = b.view()\nlet n = r[1]";
-        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.SymbolOf()?.Name == "view");
-        var address = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
-        body.Values[address] = body.Values[address] with { Constant = 0 };
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Theory]
     [InlineData("var b = Batch.init(values)\nlet r = b.view()\nb = Batch.init(values)\nlet n = r[0]")]
     [InlineData("func escape() -> ref/[2 of i32]\n    let values: [2 of i32] = [6, 7]\n    let b = Batch.init(values)\n    return b.view()")]

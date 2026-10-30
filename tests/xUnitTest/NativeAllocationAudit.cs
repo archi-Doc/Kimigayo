@@ -185,7 +185,7 @@ internal static class NativeAllocationAudit
     }
 
     // SPEC 22.2 (DECISIONS R5-M145): whether a body the program reaches calls Storage.transferBytes, read from its MIR and the instances its
-    // startup reaches, the program analyzed under MIR code generation whatever the process's generators (FunctionCodegenTest's form).
+    // startup reaches, the program analyzed as FunctionCodegenTest's form analyzes it.
     private static bool TransfersBytes(string source)
     {
         var c = FunctionCodegenTest.GeneratedDefinitions(source).C;

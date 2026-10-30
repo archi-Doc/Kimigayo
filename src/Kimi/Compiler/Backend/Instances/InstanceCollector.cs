@@ -11,8 +11,8 @@
 // collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
-// Compilation.MirRecords publishes at check on every pipeline and under either code generator (K4b; DECISIONS BU-48, R5-M156); for code
-// generation (R5 C0b1) also an item's Types (TypeOf), the location of a record at a site of its body (Subject)
+// Compilation.MirRecords publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156); for code generation (R5 C0b1) also an
+// item's Types (TypeOf), the location of a record at a site of its body (Subject)
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.

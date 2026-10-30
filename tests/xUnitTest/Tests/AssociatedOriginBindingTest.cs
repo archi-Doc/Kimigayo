@@ -183,10 +183,7 @@ public class AssociatedOriginBindingTest
     public void AProjectionBaseIsCompletedByTheProjectionsPosition(string source, bool qualified)
     {
         _ = qualified;
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            Assert.Empty(ContextualCaptureTest.PublishedRecords(source, pipeline));
-        }
+        Assert.Empty(ContextualCaptureTest.PublishedRecords(source));
     }
 
     // SPEC 15.4.2, 15.3.2: a Field, payload or local without an initializer must state the base's slot (`(S{o}).Item` with a clause, or
