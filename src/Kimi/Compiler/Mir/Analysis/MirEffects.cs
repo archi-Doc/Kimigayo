@@ -4,7 +4,8 @@
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// (MirProgram.Drops), TyCtxt's obligations and callee facts.
+// (MirProgram.Drops), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
+// DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).
 // Output: IncompatibleContractImplementation_Kd,
 // UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
 // per view (Keys, Field).
@@ -234,8 +235,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
-    // operators, what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf the requirement under the caller's
-    // premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf nothing; a None leaf is the collector's record.
+    // operators (the validator checked it composes), what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf
+    // the requirement under the caller's premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf and a
+    // Composite's own node nothing. A None leaf, no answer (a broken contract the collector records as InternalInvariant_Kd at the item,
+    // a dependent in an incomplete Binding), is what Require gives a Type nothing resolves for: the Limit, never a silent empty summary.
     private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
     {
         if (!this.compared.Add(node))
@@ -248,13 +251,21 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.Compared(program, body, contract, part);
         }
 
-        if (node.Kind == ComparisonKind.Witness)
+        switch (node.Kind)
         {
-            this.Function(program, new(MirCalleeKind.Fn, node.Target, node.Subst));
-        }
-        else if (node.Kind == ComparisonKind.Requirement)
-        {
-            this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
+            case ComparisonKind.Composite or ComparisonKind.Builtin:
+                break;
+            case ComparisonKind.Witness:
+                this.Function(program, new(MirCalleeKind.Fn, node.Target, node.Subst));
+                break;
+            case ComparisonKind.Requirement:
+                this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
+                break;
+            case ComparisonKind.None:
+                this.found |= Limit;
+                break;
+            default:
+                throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
         }
     }
 

@@ -33,6 +33,15 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // G308 E1: the DAG Tuple t4 of depth 4 over the pair t1, compared with itself.
     private const string Dag4 = "        let t2 = (t1, t1)\n        let t3 = (t2, t2)\n        let t4 = (t3, t3)\n        _ = t4 == t4\n";
 
+    // G308 review (R4's N5): Dag4 under an ordering, whose 16 leaves share one compare.
+    private const string Dag4Less = "        let t2 = (t1, t1)\n        let t3 = (t2, t2)\n        let t4 = (t3, t3)\n        _ = t4 < t4\n";
+
+    // An ordered struct whose compare reads an environment (Ranked) and a pure one (Level).
+    private const string Ordered = "struct Ranked\n    Self is Comparable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+        "    public func compare(self: ref/Self, other: ref/Self) -> i32\n        _ = State.value\n        return 0\n" +
+        "struct Level\n    Self is Comparable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+        "    public func compare(self: ref/Self, other: ref/Self) -> i32 => 0\n";
+
     // G308 E2: a generic comparison of a DAG Tuple of depth 3 over its leaf T, under Fixed.
     private const string DeepSame = "    public func deep<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        let x = ((a, a), (a, a))\n" +
         "        let y = ((b, b), (b, b))\n        return (x, x) == (y, y)\n";
@@ -450,13 +459,15 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // G308 E1: a DAG Type of depth 4, whose 16 leaves share one witness: Compared's environment read fails, Key's pure equals does not.
     [InlineData("        let first = Compared.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4, Failed)]
     [InlineData("        let first = Key.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4, "")]
+    [InlineData("        let first = Ranked.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4Less, Failed)]
+    [InlineData("        let first = Level.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4Less, "")]
     // G308 E2: a generic body comparing a DAG Self over its leaf T, Fixed's confined equals and Equatable's, which bounds no effect.
     [InlineData("        let key = Key.init()\n        _ = H.deep(key, key)\n", "")]
     [InlineData("        let key = Key.init()\n        _ = H.deepLoose(key, key)\n", Failed)]
     public void ACompositeComparisonRunsItsPartsWitnesses(string body, string expected)
         => Assert.Equal(
             Expected(expected),
-            Problems(Sink + Loud + Fixed + "group State\n    public var value: i32 = 0\nstruct Compared\n    Self is Equatable\n" +
+            Problems(Sink + Loud + Fixed + Ordered + "group State\n    public var value: i32 = 0\nstruct Compared\n    Self is Equatable\n" +
                 "    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n" +
                 "group H\n    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        return (a, 1) == (b, 1)\n" +
                 "    public func loose<T>(a: ref/T, b: ref/T) -> bool\n        T is Equatable\n        return (a, 1) == (b, 1)\n" +

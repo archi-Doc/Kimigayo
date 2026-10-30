@@ -10482,6 +10482,8 @@ structure is recorded here by the unit that first implements it.
     premise scope); Witness's Body Subst as the leaf's (its Origins are the requirement's own atoms, foreign to a synthesized call);
     `ComparisonProof` on the same rule (an acceptance proof under the caller's premises, which proves built-in Types through the
     constraint solver: another contract).
+  - Amended by R5-M166 (provisional, G308): A4 now reads `TyCtxt.Comparison` directly for a tuple operator's call (its distinct leaves),
+    while its `Require` on a composite Type keeps the legacy plan (`TyCtxt.Witnesses`) until A-12: A4 holds both resolvers until then.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19, planning session; plan K6, the K package's §4.3 and §4.5 row 3 with its
   witness results, package F §4.5, S2-S4 X14, X16, X28; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1; `MonoKind.Builtin`,
   `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11, `ExclusiveInheritedWitness` being KD10's and
@@ -13827,7 +13829,7 @@ structure is recorded here by the unit that first implements it.
     unit mapping.
 - **R5-M166 (provisional) One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
   Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
-  expansion and amends R5-M126; under R5-M68, R5-M70, R5-M126, R5-M127, R5-M143 and R5-M149)
+  expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
   - Cause: `TyCtxt.Comparison` memoizes one node per (Contract, Type, mode), so a Type sharing parts is a DAG, which R5-M75's builder,
     the collector's shim targets and the shim writer each walked per root-to-leaf path: exponential in the distinct Types (V16).
   - Rule: a tuple operator is ONE `Requirement` call of its Contract's own requirement on its Self (`TyCtxt.Synthesized`, Contract null)
@@ -13840,7 +13842,8 @@ structure is recorded here by the unit that first implements it.
     rule), represented by the target's substitution (R5-M126's Abi unchanged). `InstanceCollector.Comparison(item)` publishes its node;
     its targets are its direct parts': a composite part's item (every composite part, a ref layer's included), a Witness leaf's body,
     a Requirement leaf's witness on the instance part (a body or a Mapping item). Code generation writes one function per item calling
-    its parts' targets; a Builtin leaf by mode. A4 runs a comparison call's distinct leaves' witnesses (a visited set).
+    its parts' targets; a Builtin leaf by mode. A4 runs a comparison call's distinct leaves' witnesses (a visited set), a None leaf
+    the Limit. The validator checks a mode's requirement, its own Contract (Contract null) and that the Self's comparison composes.
   - Layout: each item is laid out at its admission; a comparison call also lays out, at its site, its Self and each Tuple past a
     reference layer (one record per requesting site, SPEC 23.1.2).
   - Rejected: a memo in the builder (Places differ per occurrence); one synthesized MIR body per node (a second mechanism, and the
