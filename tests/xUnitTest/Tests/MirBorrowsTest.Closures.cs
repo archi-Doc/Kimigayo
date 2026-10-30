@@ -561,12 +561,12 @@ public sealed partial class MirBorrowsTest
                     let inner = outer()
                 """));
 
-    // SPEC 15.8.2 (DECISIONS R4-M152, the owner's 「2c-5 F1: (c')」): the maker's calls of a returned Closure bind and carry its receiver's
-    // Loan, so the second Exclusive `outer()` conflicts while the first one's Closure lives (n1); the returned Closures' own calls are F1's
-    // located Unsupported_Kd in Binding (ClosureResultOriginTest).
+    // SPEC 15.8.2, 7.7.2 (DECISIONS R4-M152, R4-M123 F3; PLAN G273): the maker's calls of a returned Closure bind and carry its receiver's
+    // Loan, and the returned Closures' own calls bind with the maker call's images (ClosureResultOriginTest's G273 rows), so the second
+    // Exclusive `outer()` conflicts while the first one's Closure lives (n1).
     [Fact]
     public void AClosureReturnedFromAClosureCallKeepsItsMakersReceiverLoan()
-        => Assert.Equal(["n1: outer"], RejectedProblems("""
+        => Assert.Equal(["n1: outer"], Problems("""
             func n1()
                 var x: i32 = 1
                 let u = x@uniq
@@ -1025,6 +1025,18 @@ public sealed partial class MirBorrowsTest
         output.WriteLine($"N 8, 16, 32 at K 8: work {string.Join(", ", inN)}; K 8, 16, 32 at N 8: work {string.Join(", ", inK)}");
         Assert.True(Grows(inN, 5), $"work in N {string.Join(", ", inN)}");
         Assert.True(Grows(inK, 5), $"work in K {string.Join(", ", inK)}");
+    }
+
+    // V16 (PLAN G273; R4 notes g273\problem-draft.md §4.3, the scaling row): a chain of D + 1 makers, the innermost result naming the
+    // outermost maker's receiver, called D + 1 times: A5's work stays linear in D (N = D - 1 = 8, 16 and 32).
+    [Fact]
+    public void AMakerChainsWorkStaysLinearInItsDepth()
+    {
+        const string Shape = "func shape()\n    let n: i32 = 4\n    let mk = func [n] () => func [n@ref] () => «N:func [n] () => »n\n" +
+            "    let r = mk()()«N:()»\n    inspect(r)\n";
+        long[] work = [.. new[] { 8, 16, 32 }.Select(n => this.Measured(Prelude + Expand(Shape, n, 0)).Work)];
+        output.WriteLine($"N 8, 16, 32: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
 
     // V16 (DECISIONS R4-M148): A5 on a program version it checked before allocates nothing at Closure calls: the receiver's rows over the
