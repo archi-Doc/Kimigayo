@@ -18,8 +18,9 @@ namespace XunitTest;
 public partial class TypeDagScalingTest
 {
     // The forms: a generic holder of a Type argument, a holder of a raw-free written Tuple, one writing a raw layer beside a Type argument,
-    // BU's written twin with Loan-holding pointees, BU's reviewer's enum E3 (one interned payload for Cases written differently), and
-    // holders of many parts that store one Type argument.
+    // BU's written twin with Loan-holding pointees, R4's reviewer's twins (Q3: two written Tuples kept as one; SP: one written part kept
+    // alike by two instances, its `during self` layer reading each instance's Type argument) and enum E3 (one interned payload for Cases
+    // written differently), and holders of many parts that store one Type argument.
     private const string HoldingForms = """
         struct D<T>
             public var x: T
@@ -32,6 +33,13 @@ public partial class TypeDagScalingTest
         struct Q2<T> {s}
             public var r: ref/i32 during s
             public var x: ((raw/(ref/i32 during s) during s, raw/(ref/i32 during s) during s), T)
+        struct Q3 {s}
+            public var r: ref/i32 during s
+            public var x: ((raw/(ref/i32 during s) during s, i32), (raw/(ref/i32 during static) during static, i32))
+        struct SP<T>
+            internal var x: (raw/i32 during self, i32)
+            public init()
+                self.x = (null, 0)
         enum E3 {s}
             A(raw/(ref/i32 during s) during s, i32)
             B(raw/(ref/i32 during static) during static, i32)
@@ -104,6 +112,31 @@ public partial class TypeDagScalingTest
         var kept = c.Types.StoredParts(twin, out _)[1]!;
         Assert.Same(kept.Components[0], kept.Components[1]);
         Assert.Equal("True Through", Holding(c, twin, out _));
+    }
+
+    // R3, both written: Q3's part keeps one interned Tuple at [0] and [1], written differently (a ref-required slot, capped Shared; and
+    // `static`, past which the ref pointee gives the write fact), so each written Type is its own key.
+    [Fact]
+    public void OneKeptTupleWrittenTwiceIsKeyedByEachWrittenType()
+    {
+        var (c, p) = HoldingProbe();
+        var kept = c.Types.StoredParts(p["q3"], out _)[1]!;
+        Assert.Same(kept.Components[0], kept.Components[1]);
+        Assert.NotSame(TyCtxt.WrittenAt(p["q3"], 1, [0]), TyCtxt.WrittenAt(p["q3"], 1, [1]));
+        Assert.Equal("True Through", Holding(c, p["q3"], out _));
+    }
+
+    // The holder decides inside the written region (implementation review 1's N1): SP<i32> and SP<B> keep one interned part with one
+    // written Type, whose `during self` layer steps Own and admits the holding instance's Type argument, B an exclusive reference to a
+    // borrow, so the pair's guard is the write fact in either order of its parts.
+    [Fact]
+    public void AnInlinePartInsideTheWrittenRegionIsKeyedByItsHolder()
+    {
+        var (c, p) = HoldingProbe();
+        var (plain, lent) = (p["sp"], With(c, p["sp"], p["u"]));
+        Assert.Same(c.Types.StoredParts(plain, out _)[0], c.Types.StoredParts(lent, out _)[0]);
+        Assert.Equal("True Through", Holding(c, Tuple(c, plain, lent), out _));
+        Assert.Equal("True Through", Holding(c, Tuple(c, lent, plain), out _));
     }
 
     // R3b: E3's Cases A and B keep one interned payload at `E3 during static`, A's layer capped Shared, B's stepping Static past a ref
@@ -209,7 +242,8 @@ public partial class TypeDagScalingTest
         }
 
         text.Append("func probe(a: raw/i32, b: raw/i32 during static, x: uniq/i32, e: raw/i32 during x, d: D<i32>, w: Wrap<i32>, s: S, p: P<i32>, ")
-            .Append("q2: Q2<i32> during static, e3: E3 during static, all4: All4<i32>, all16: All16<i32>, all64: All64<i32>)\n    return\n")
+            .Append("q2: Q2<i32> during static, q3: Q3 during static, sp: SP<i32>, u: uniq/(ref/i32 during k) during k, e3: E3 during static, ")
+            .Append("all4: All4<i32>, all16: All16<i32>, all64: All64<i32>)\n    return\n")
             .Append("public func main() => ()\n");
         var c = MirBuildTest.Compile(text.ToString());
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
@@ -222,7 +256,7 @@ public partial class TypeDagScalingTest
     {
         seen = new();
         var holds = MirTypes.HoldsLoans(type, c.Types, seen, [], out var writes);
-        return $"{holds} {(holds ? writes : MirWrites.None) switch { MirWrites.Through => "Through", MirWrites.Limit => "Limit", MirWrites.Deep => "Deep", _ => "None" }}";
+        return $"{holds} {writes}"; // HoldsLoans gives None where the value holds no Loan.
     }
 
     private static bool IsPast(MirModeDepths modes) => modes[0] == MirDepths.Past || modes[1] == MirDepths.Past || modes[2] == MirDepths.Past;

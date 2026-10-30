@@ -3662,7 +3662,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151 and R4-M157) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
   PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
   where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
   first and second limits)
@@ -5276,8 +5276,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     were falsely Unknown); a per-call gate (N1).
   - Numbering: R4-M152 is free on dev and every remote branch (R4-M150 is G264's, R4-M151 BU-46's R4 side).
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
-  (2026-10-28; G272's design-first candidate, design 2 with the planning session's structure check and additions; class Full, Q11; the
-  owner's 「G272: (1)」 and 「G272 要件: (a)」)
+  (superseded in part by R4-M157: the holding walk's key) (2026-10-28; G272's design-first candidate, design 2 with the planning
+  session's structure check and additions; class Full, Q11; the owner's 「G272: (1)」 and 「G272 要件: (a)」)
   SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis limit a Resource diagnostic at the
   affected declaration, call or token. `MirTypes`' walks end a growing Type (SPEC 15.3.5) at the bound of 32 and answered there with a
   value they did not establish (the guard's write fact, a destruction that is a use), so each reader guessed: liveness kept the Loan of a
@@ -5739,9 +5739,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     answers None where Through); a per-position walk bounded by the declaration's text (a closed associated projection writes a 2^n
     DAG, BU's review 1); a width budget or a Resource record (refuses valid programs a linear walk decides).
   - Tests: TypeDagScalingTest's Holding rows (raw leaves below the region at T_30, the key set of `D<T_40>`, the Stored bit, the written
-    twin, E3, the past-bound and order rows, one Type stored by 64 instances, the projection chain; its raw-leaf rows at n = 30 are
-    Explicit until G309) and MirBorrowsTest's `TheAddressWalksVisitATypeDagOncePerWalk`; each fails first on dev (its exponential walk,
-    or the changed answers).
+    twins Q2 and Q3, the holder twin SP (`(SP<i32>, SP<B>)` in both orders, one written part whose `during self` layer reads each
+    instance's Type argument), E3, the past-bound and order rows, one Type stored by 64 instances, the projection chain; its raw-leaf
+    rows at n = 30 are Explicit until G309) and MirBorrowsTest's `TheAddressWalksVisitATypeDagOncePerWalk`; each fails first on dev
+    (its exponential walk, or the changed answers), and each key component has a row that fails without it.
   - Measured. Visits on the family (348 queries, n = 8 / 24): Holds 1,260 / 1,746 (tuple; dev 2,781 / 50.3 M) and 1,081 / 1,257 (raw
     leaves, 26 `RawStep` calls; dev 1,648 / 33.6 M, 8.4 M), Layering's `Inline` 117 / 277 (dev 1,731 / 83.9 M), `Encloses` 3 (dev 381 /
     25.2 M). Cost (the G258 host over the 122 census programs, A 4555482e8 = dev 3e614b427 with BU-58's (b), A' its byte copy, B A with
