@@ -1,0 +1,94 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi;
+using Xunit;
+
+namespace XunitTest;
+
+// PLAN G273's rows from implementation review 1 (R4's review-1.md B1, B2; BU's impl-review.md 1): a maker-returned Closure's Type carries
+// its makers' images as Origin arguments, and those arguments relate as SPEC 15.3.5 derives them, never more strictly. Each row states
+// the MIR side exactly and the default side D1 or D2 (AssertSides).
+public partial class ClosureResultOriginTest
+{
+    private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
+
+    private const string HpQ = "func h(p: ref/i32, q: ref/i32) -> ref/i32 during q\n";
+
+    private const string HpQi32 = "func h(p: ref/i32, q: ref/i32) -> i32\n";
+
+    private const string PoutlivesQ = "    origin p outlives q\n";
+
+    private const string Pick = "func pick<T>(a: T, b: T) -> T => a@move\n";
+
+    private const string HqS = "func h(q: ref/i32, s: ref/i32 during static) -> ref/i32 during ";
+
+    private const string QthenS = InputOuter + "    var c = outer(q)\n    c = outer(s)\n    return c()\n" + MainUnit;
+
+    private const string QthenP = InputOuter + "    var c = outer(q)\n    c = outer(p)\n    return c()\n" + MainUnit;
+
+    private const string PthenQ = InputOuter + "    var c = outer(p)\n    c = outer(q)\n";
+
+    private const string PickQP = InputOuter + "    let c = pick(outer(q), outer(p))\n    return c()\n" + MainUnit;
+
+    private const string Local = "    let local: i32 = 1\n" + InputOuter + "    var c = outer(p)\n    c = outer(local@ref)\n";
+
+    private const string StoreA = InputOuter + "    let a = outer(p)\n    var c = outer(q)\n    c = a\n";
+
+    private const string Literal = InputOuter + "    var c = outer(p)\n    c = outer(42@ref)\n";
+
+    private const string Two = Inspect + MainBody + "    var p: i32 = 1\n    var q: i32 = 2\n" + InputOuter + "    let arr = [outer(p@ref), outer(q@ref)]\n";
+
+    private const string V13 = Inspect + MainBody + "    var local: i32 = 1\n    var other: i32 = 2\n    let lr = local@ref\n";
+
+    private const string V13Maker = V13 + "    let outer = func (x: ref/i32) => func (v: ref/i32 during x) -> ref/i32 during x => v\n    let a = outer(lr)\n";
+
+    private const string V13Flat = V13 + "    let a = func (v: ref/i32 during lr) -> ref/i32 during lr => v\n";
+
+    // SPEC 15.3.5, 15.3.6, 15.6.1 (R4 B1, BU 1): a Closure Type's Origin argument takes the variance of its occurrences in the definition's
+    // signature, so an argument that only the inner environment and result name is covariant. A value of one image fits a holder of
+    // another where the first outlives it: reassigned through a `var` under a premise (v50, x3) or from `static` (v51), joined by a
+    // generic `pick` (v53), never called (y1, y4 with a local, y5 from a `let`, y7 with a temporary's borrow), and as two Array elements
+    // (v6); each valid form gets no Language record on the MIR side (dev's F1 Unsupported_Kd included) and D2 on the default. The invalid twins
+    // are the review's v50_nopremise_bad and the test author's one-change twins: the premise removed (x3, also y1 returning its value
+    // `during q`; v53), the result `during static` (v51), the value returned `during` a parameter its other image does not outlive (y4: a
+    // local's borrow, Refuted; y5: Unproven; y7: a temporary's borrow, Refuted, whose storage ends while `c` lives), and v6's first
+    // element's Place written while the Array lives (SPEC 15.6: the Array carries both captures' Loans). Each twin's records are its flat
+    // twin's on dev, with plain references in place of the Closures.
+    [Theory]
+    [InlineData("v50_premise_ok", HpQ + PoutlivesQ + QthenP, "")]
+    [InlineData("v50_nopremise_bad", HpQ + QthenP, Unproven + " return c()")]
+    [InlineData("v51_static_ok", HqS + "q\n" + QthenS, "")]
+    [InlineData("v51_static_bad", HqS + "static\n" + QthenS, Unproven + " return c()")]
+    [InlineData("v53_pick_premise_ok", Pick + HpQ + PoutlivesQ + PickQP, "")]
+    [InlineData("v53_pick_nopremise_bad", Pick + HpQ + PickQP, Unproven + " return c()")]
+    [InlineData("x3_two_params_ok", HpQ + PoutlivesQ + PthenQ + "    return c()\n" + MainUnit, "")]
+    [InlineData("x3_nopremise_bad", HpQ + PthenQ + "    return c()\n" + MainUnit, Unproven + " return c()")]
+    [InlineData("y1_params_nocall", HpQi32 + PthenQ + "    return 0\n" + MainUnit, "")]
+    [InlineData("y4_param_and_local", "func h(p: ref/i32) -> i32\n" + Local + "    return 0\n" + MainUnit, "")]
+    [InlineData("y4_ret_bad", "func h(p: ref/i32) -> ref/i32 during p\n" + Local + "    return c()\n" + MainUnit, Unsatisfied + " return c()")]
+    [InlineData("y5_store_into_param_var", HpQi32 + StoreA + "    return 0\n" + MainUnit, "")]
+    [InlineData("y5_ret_bad", HpQ + StoreA + "    return c()\n" + MainUnit, Unproven + " return c()")]
+    [InlineData("y7_static_and_param", "func h(p: ref/i32) -> i32\n" + Literal + "    return 0\n" + MainUnit, "")]
+    [InlineData(
+        "y7_ret_bad",
+        "func h(p: ref/i32) -> ref/i32 during p\n" + Literal + "    return c()\n" + MainUnit,
+        Conflict + " c = outer(42@ref); " + Unsatisfied + " return c()")]
+    [InlineData("v6_array", Two, "")]
+    [InlineData("v6_array_bad", Two + "    p = 3\n    inspect(arr[1]())\n", Conflict + " p = 3")]
+    public void AClosuresOriginArgumentTakesTheVarianceOfItsOccurrences(string form, string source, string mir)
+        => AssertSides(form, source, mir, null);
+
+    // SPEC 15.6, 15.6.4 (R4 B2): a Closure value whose Type's Origin argument a maker's input images, named only in the inner signature,
+    // holds no reference and carries no Loan, so writing the input's Place while it lives is valid (v13_param_kept_ok, D2 on the default,
+    // as its flat twin), and so is the write while the call's result lives (v13_param_bad_local, the review's name: the result retains only
+    // its argument `other@ref`, as dev accepts the flat twin). The invalid twin passes the input itself, which the result then carries.
+    [Theory]
+    [InlineData("v13_param_kept_ok", V13Maker + "    local = 5\n    let r = a(other@ref)\n    inspect(r)\n", "")]
+    [InlineData("v13_param_kept_ctl_ok", V13Flat + "    local = 5\n    let r = a(other@ref)\n    inspect(r)\n", "")]
+    [InlineData("v13_param_bad_local", V13Maker + "    let r = a(other@ref)\n    local = 5\n    inspect(r)\n", "")]
+    [InlineData("v13_param_ctl_bad_local", V13Flat + "    let r = a(other@ref)\n    local = 5\n    inspect(r)\n", "")]
+    [InlineData("v13_param_lr_bad", V13Maker + "    let r = a(lr)\n    local = 5\n    inspect(r)\n", Conflict + " local = 5")]
+    [InlineData("v13_param_lr_ctl_bad", V13Flat + "    let r = a(lr)\n    local = 5\n    inspect(r)\n", Conflict + " local = 5")]
+    public void AKeptClosureWhoseSignatureNamesItsMakersInputCarriesNoLoan(string form, string source, string mir)
+        => AssertSides(form, source, mir, null);
+}
