@@ -302,7 +302,7 @@ public sealed partial class Binding
             }
 
             var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
-            pendingBody |= bodyType is null && !this.Deferred(arm.Body);
+            pendingBody |= bodyType is null && !AwaitsCall(arm.Body, this.KindOf(arm.Body)) && !this.AwaitsPosition(arm.Body);
         }
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)

@@ -215,31 +215,9 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 3, 4.3, 10.5.1, 12.3: an unfitted literal reached without an expected Type waits, unbound, while its position's Type
-    // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). An anonymous
-    // function or a contextual Case that is a result of a call's control-flow argument, at a position its call completes (CallableTarget),
-    // waits for that call (SPEC 10.5.1: such an argument waits; DECISIONS BU-43), which records its kind there (P2) and completes it as
-    // it completes a waiting argument (TakeWaiting).
+    // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting).
     private bool WaitsForPosition(Koto node, BoundType? expected)
-    {
-        if (expected is not null || node.BindingState != BindingState.Unvisited)
-        {
-            return false;
-        }
-
-        if (IsUnfittedLiteral(node))
-        {
-            return this.DecidedLater(node);
-        }
-
-        var kind = ClassifyPart(node);
-        if (kind is not (PartKind.Function or PartKind.Case) || CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target))
-        {
-            return false;
-        }
-
-        this.RecordPart(node, kind);
-        return true;
-    }
+        => expected is null && node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) && this.DecidedLater(node);
 
     // The result target to which the position an expression supplies belongs, or null. The one walk passes the forms that deliver it
     // (DeliveredOperand) and the Tuple, array (a fill's included, DECISIONS BU-43) and dictionary literals it is a part of; `collecting`
