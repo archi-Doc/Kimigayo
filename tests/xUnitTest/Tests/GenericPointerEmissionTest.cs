@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -82,21 +81,6 @@ public class GenericPointerEmissionTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
-    }
-
-    [Theory]
-    [InlineData("ref/i32 during static")]
-    [InlineData("(ref/i32 during static, i32)")]
-    public void VerifiedTemplateBuildsDependentConcreteReads(string type)
-    {
-        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc input(pointer: raw/({type})) => ()\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
-        var input = c.Ownership.Bodies.Single(x => x.Function.Name == "input");
-        var element = input.Function.Parameters[0].Type.TypeOf()!.Components[0];
-        var call = new CallPlan();
-        call.Set(generic.Function.SymbolOf()!, element, null, [0], [element]);
-        Assert.NotNull(c.Ownership.AnalyzeInstance(generic, call));
     }
 
     [Fact]

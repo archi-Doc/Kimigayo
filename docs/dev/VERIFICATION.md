@@ -49,7 +49,7 @@ During edits, build the test project incrementally and run the relevant methods.
 
 ```powershell
 dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore -c Release
-dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.DeferredEmissionTest.RepeatedExpansionReusesLocalStorage -failSkips
+dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.FunctionCodegenTest.OnlyRuntimeReachedBlocksAreGenerated -failSkips
 ```
 
 Choose an existing method from the test source or runner discovery (`-list methods`). For fast functional feedback within a class, use `-class <class> -trait- Purpose=Allocation`. Direct runner selections of a moved allocation method use `<outer-class>+AllocationTests.<method>`.

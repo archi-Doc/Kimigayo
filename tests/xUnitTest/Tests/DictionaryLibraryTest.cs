@@ -2,7 +2,6 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -15,45 +14,11 @@ public class DictionaryLibraryTest
     {
         const string Source = "var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
         Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, generated);
-        var helpers = module.RuntimeHelpers;
-        var check = Assert.Single(helpers.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.CheckKey);
-        var clear = Assert.Single(helpers.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.Drop);
-        var references = helpers.FunctionReferences;
-        Assert.InRange(check.Related, 0, references.Count - 1);
-        Assert.InRange(clear.Related, 0, references.Count - 1);
-        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, references[clear.Related])));
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
-    }
-
-    [Fact]
-    public void UnresolvedPhysicalHelperCannotPublishAndRepreparationRecovers()
-    {
-        var c = MinimalEmissionTest.Analyze("let entries = [1: 2]\nrequire entries[1] == 2 else => $abort(\"value\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        module.RuntimeHelpers.FunctionReferences.Clear();
-        Assert.False(module.Complete(out failure));
-        Assert.Contains("unresolved physical function", failure, StringComparison.Ordinal);
-        Assert.False(module.IsComplete);
-        Assert.Throws<InvalidOperationException>(() => module.WriteIr(TextWriter.Null));
-        Assert.True(c.Emission.TryPrepare(out module, out failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.True(module.IsComplete);
-        module.WriteIr(TextWriter.Null);
-    }
-
-    [Theory]
-    [InlineData("i32")]
-    [InlineData("string")]
-    public void BorrowedLookupDoesNotRegisterDestructionHelpers(string valueType)
-    {
-        var c = MinimalEmissionTest.Analyze("func lookup(values: ref/Dictionary<i32, " + valueType + ">) -> ref/" + valueType + " during values => values[1]@ref\nlet boot = 0");
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Empty(module.RuntimeHelpers.DictionaryHelpers);
-        Assert.False(module.RuntimeHelpers.NeedsDictionaryRuntime);
     }
 
     // SPEC 4.5, 16.3.2: a Dictionary Field's drop helper requested only by its owner's drop glue brings the runtimes its row

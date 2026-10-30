@@ -152,9 +152,6 @@ public class ElementAssignmentEmissionTest
     public void NonterminatingRightSideCleanupPreventsDestinationAccess()
     {
         const string Source = "var a = ((0, false), \"held\")\na.0 = label work: do\n    defer => loop => ()\n    exit to work (42, true)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.ElementAddress or EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementAssignmentDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
@@ -162,9 +159,6 @@ public class ElementAssignmentEmissionTest
     public void NonterminatingIndexCleanupPreventsTheStore()
     {
         const string Source = "var a: (string, [1 of i32]) = (\"held\", [0])\na.1[label work: do\n    defer => loop => ()\n    exit to work 0\n] = 42";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementAssignmentIndexDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 

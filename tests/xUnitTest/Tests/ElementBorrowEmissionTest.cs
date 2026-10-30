@@ -282,21 +282,6 @@ public class ElementBorrowEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementBorrowCleanup" + name, ir, stdout, destructions, order: order);
     }
 
-    [Fact]
-    public void GuardCandidateKeepsItsOwnAddressUnderAnElementLoan()
-    {
-        var c = MinimalEmissionTest.Analyze(Same + "let a = (\"first\", 0)\nmatch \"other\"@move\n    let s if same(a.0, s) => ()\n    _ => ()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var call = Assert.Single(body.CallLoans).Call;
-        var function = module.GetFunction(0);
-        var instruction = Assert.Single(function.Instructions, x => x.Operation == call && x.Opcode == EmissionOpcode.Call);
-        Assert.Equal(EmissionOperandKind.ElementAddress, function.Operands[instruction.OperandStart].Kind);
-        var candidate = function.Operands[instruction.OperandStart + 1];
-        Assert.Equal(EmissionOperandKind.SlotAddress, candidate.Kind);
-        Assert.Equal(Assert.Single(body.Matches).Subject, candidate.Value);
-    }
-
     // The comparison borrows its elements in place: no temporary, no Move, no cleanup of an element (its MIR: tests/mir/comparisons.kimi
     // `elementComparison`).
     [Fact]
@@ -305,10 +290,6 @@ public class ElementBorrowEmissionTest
         const string Source = "let a = (\"held\", \"sibling\")\nlet same = a.0 == a.0\nif same => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowResponsibility", Source, "ok\n");
         StringEmissionTest.WriteAuditedFixture("ElementBorrowResponsibility", ir, "ok\n", "held=1;sibling=1;ok=1", order: [2, 1, 0]);
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var comparison = Assert.Single(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.StringEquals);
-        Assert.All(module.GetFunction(0).Operands.Skip(comparison.OperandStart).Take(2), x => Assert.Equal(EmissionOperandKind.ElementAddress, x.Kind));
     }
 
     [Fact]

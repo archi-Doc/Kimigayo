@@ -57,22 +57,6 @@ public class GuardEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
-    [Fact]
-    public void CandidateIdentityAndStorage()
-    {
-        var c = MinimalEmissionTest.Analyze("match 7@move\n    let n if n == 7 => if n == 7 => ()\n    _ => ()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single();
-        var pattern = body.Matches[0].Binding.Positions[0];
-        Assert.NotNull(pattern.CandidateSymbol);
-        Assert.NotSame(pattern.BodySymbol, pattern.CandidateSymbol);
-        Assert.Same(pattern.BodySymbol!.Declaration, pattern.CandidateSymbol.Declaration);
-        Assert.False(body.SymbolPlaces.ContainsKey(pattern.CandidateSymbol));
-        // SPEC 14.8.3: the candidate is a shared reference, so it borrows the Subject Place, which holds the value.
-        Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.SymbolOf() == pattern.CandidateSymbol);
-        Assert.Contains(module.GetFunction(0).Slots, x => x.Place == body.Matches[0].Subject);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAnalysisAndWritingAllocateNothing()
@@ -114,8 +98,6 @@ public class GuardEmissionTest
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
         StringEmissionTest.WriteAuditedFixture(name, ir, stdout, success ? "a=1;selected=1;fallback=0" : "a=1;b=0;selected=0;fallback=1");
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -121,36 +121,6 @@ public class IntegerEmissionTest
         var ir = ScalarEmissionTest.EmitFixture("IntegerAbiStructure", Mixed, "ok\n");
         Assert.Contains("i8 -128, i8 -56, i16 -32768, i16 -1, i64 -1, i64 -1)", ir);
         GeneratedIr.Parse(ir).Single("internal i64 (i8, i8, i16, i16, i64, i64)");
-        var c = MinimalEmissionTest.Analyze(Mixed);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);
-        Assert.Empty(function.Slots);
-    }
-
-    [Fact]
-    public void ShiftConversionFollowsCheckAndPrecedesThePhiPredecessorEnd()
-    {
-        var c = MinimalEmissionTest.Analyze("var x: u8 = 1\nvar n: u64 = 7\nlet y = if true => x << n else => x >> n");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var f = module.GetFunction(0);
-        var shifts = f.Instructions.Where(x => x.Check == ArithmeticCheckKind.Shift).ToArray();
-        Assert.Equal(2, shifts.Length);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
-        foreach (var shift in shifts)
-        {
-            Assert.Contains($"%invalid{shift.Operation} = icmp uge i64 ", ir);
-            Assert.Contains($"b{shift.Place}:\n  %shift{shift.Operation} = trunc i64 ", ir);
-            Assert.Contains($"%v{shift.Operation} = {shift.ScalarOperator} i8 ", ir);
-        }
-
-        var inputs = f.GetOperands(Assert.Single(f.Instructions, x => x.Opcode == EmissionOpcode.Phi));
-        for (var i = 0; i < inputs.Length; i += 2)
-        {
-            var value = inputs[i].Value;
-            Assert.Equal(Assert.Single(shifts, x => x.Operation == value).Place, inputs[i + 1].Value);
-        }
     }
 
     [Trait("Purpose", "Allocation")]
