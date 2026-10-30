@@ -13892,7 +13892,7 @@ structure is recorded here by the unit that first implements it.
     for tests (a second form of the entry).
   - Amends, each with its amendment line: R5-M18 (the owner's choice, implemented), R5-M64 (the adapters and the publication record) and
     R5-M162 (`ReportPublicationFailure`).
-- **R5-M166 (provisional) One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
+- **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
   Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
   expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
   - Cause: `TyCtxt.Comparison` memoizes one node per (Contract, Type, mode), so a Type sharing parts is a DAG, which R5-M75's builder,
@@ -13918,4 +13918,6 @@ structure is recorded here by the unit that first implements it.
     composite nesting (Tuples and reference layers) deeper than 128 less the admission chain's depth reaches `GenerationResourceLimit_Kd` at the comparison, as a constructor chain of
     that depth already does (probes: an 80-deep generic chain comparing a closed 50-deep nest; nested generic constructors 50 deep at
     the end of the same chain give it on the base too). Counting only recurring instantiation steps is a collector unit of its own.
-  - Open: the owner's question on K package 4.3's Builtin key (the mode, the template Type and instance), as R5-M127 did.
+  - Owner: the departure from K package 4.3's Builtin row (the comparison mode in `Variant`; an operator node with an abstract part
+    keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
+    「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.
