@@ -574,24 +574,27 @@ public sealed partial class Binding
     {
         if ((this.BuiltinArithmeticOutput(projection, scope) ?? this.FixedArrayIteratorType(projection)) is { } builtin)
         {
-            return new(builtin, null, false);
+            return new(builtin, null, false, null);
         }
 
         var subject = projection.Components[0];
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
-        if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } binding)
+        if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } resolved)
         {
-            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }); // A projection is itself abstract.
+            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }, null); // A projection is itself abstract.
         }
 
-        return new(this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments), subject, false);
+        var specified = this.SubstituteStoredOrigins(resolved.Binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments);
+        return new(specified, subject, false, resolved.Path);
     }
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
     // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose
-    // conditions the receiver meets must agree (PathsAgree), else none.
-    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool pending)
+    // conditions the receiver meets must agree (PathsAgree), else none. The path the binding comes from is returned with it: its Scope is the
+    // conformance scope (SPEC 8.8.2, D + P) the binding was formed in.
+    private (BoundType Binding, BoundConformancePath Path)? ResolveAssociated(
+        BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool pending)
     {
         pending = this.AssociatedEvidencePending;
         for (var current = scope; current is not null; current = current.Parent)
@@ -599,7 +602,7 @@ public sealed partial class Binding
             if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
                 this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
             {
-                return this.ResolveAssociated(path, selected, out pending);
+                return this.ResolveAssociated(path, selected, out pending) is { } found ? (found, path) : null;
             }
         }
 
@@ -610,8 +613,8 @@ public sealed partial class Binding
             return null;
         }
 
-        BoundType? available = null;
-        BoundType? unproven = null;
+        (BoundType Binding, BoundConformancePath Path)? available = null;
+        (BoundType Binding, BoundConformancePath Path)? unproven = null;
         var conflicting = false;
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
@@ -635,16 +638,16 @@ public sealed partial class Binding
 
             if (condition == ConstraintProof.Proven)
             {
-                if (available is not null && !this.PathsAgree(available, binding, receiver, scope))
+                if (available is { } agreed && !this.PathsAgree(agreed.Binding, binding, receiver, scope))
                 {
                     return null;
                 }
 
-                available = binding;
+                available = (binding, path);
             }
 
-            conflicting |= unproven is not null && !this.PathsAgree(unproven, binding, receiver, scope);
-            unproven = binding;
+            conflicting |= unproven is { } other && !this.PathsAgree(other.Binding, binding, receiver, scope);
+            unproven = (binding, path);
         }
 
         // Explicit header metadata may normalize a common binding before witnesses are ready.
@@ -714,8 +717,9 @@ public sealed partial class Binding
     }
 
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
-    // complete Type); else Pending (nothing decides it yet) or none.
-    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending);
+    // complete Type), and the conformance path it comes from (its Scope the binding's conformance scope); else Pending (nothing decides it
+    // yet) or none.
+    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path);
 
     private sealed class AssociatedBinding
     {
