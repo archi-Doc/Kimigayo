@@ -147,6 +147,8 @@ public sealed partial class Binding
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
             FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } => Awaiting.Callable,
+            _ when node.BindingState == BindingState.Unvisited && this.RecordedPart(KotoHelper.UnwrapParentheses(node)).Kind == PartKind.Case =>
+                Awaiting.Callable, // A Case result its call completes (P2).
             _ => node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) ? Awaiting.Literal : Awaiting.None,
         };
     }
@@ -213,12 +215,30 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 3, 4.3, 10.5.1, 12.3: an unfitted literal reached without an expected Type waits, unbound, while its position's Type
     // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). An anonymous
-    // function that is a result of a call's control-flow argument, at a position its call completes (CallableTarget), waits for that call
-    // (SPEC 10.5.1: such an argument waits; DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
+    // function or a contextual Case that is a result of a call's control-flow argument, at a position its call completes (CallableTarget),
+    // waits for that call (SPEC 10.5.1: such an argument waits; DECISIONS BU-43), which records its kind there (P2) and completes it as
+    // it completes a waiting argument (TakeWaiting).
     private bool WaitsForPosition(Koto node, BoundType? expected)
-        => expected is null && node.BindingState == BindingState.Unvisited &&
-            (IsUnfittedLiteral(node) ? this.DecidedLater(node) :
-                node is FunctionKoto { IsAnonymous: true } && CallableTarget(node) is { } target && this.UnderArgumentProbe(target));
+    {
+        if (expected is not null || node.BindingState != BindingState.Unvisited)
+        {
+            return false;
+        }
+
+        if (IsUnfittedLiteral(node))
+        {
+            return this.DecidedLater(node);
+        }
+
+        var kind = ClassifyPart(node);
+        if (kind is not (PartKind.Function or PartKind.Case) || CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target))
+        {
+            return false;
+        }
+
+        this.RecordPart(node, kind);
+        return true;
+    }
 
     // The result target to which the position an expression supplies belongs, or null. The one walk passes the forms that deliver it
     // (DeliveredOperand) and the Tuple, array (a fill's included, DECISIONS BU-43) and dictionary literals it is a part of; `collecting`
@@ -647,7 +667,8 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            FunctionKoto { IsAnonymous: true } closure => this.ClosureSignatureFits(closure, target) ? target : null, // One waiting for its call.
+            _ when this.KindOf(node) is PartKind.Function or PartKind.Case or PartKind.Reference => // One waiting for its call, fitted as
+                this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 

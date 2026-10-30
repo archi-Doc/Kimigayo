@@ -31,21 +31,19 @@ namespace Kimi.Compiler;
 //   whose candidate operations substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts
 //   of a call that completes none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded part (ArgumentPart: its kind and a Literal's default) is keyed by syntax identity (SourceRef) and lives for
-//   one pass; a producer records only a Join, a Call or a Literal control-flow part, ClassifyPart derives only Literal, Aggregate,
-//   Function, Reference, Case and Typed, and KindOf alone combines the two; a deferred part (WasDeferred, a recorded Call) stays so
+//   one pass; a producer records a Join, a Call, a Reference or a Literal control-flow part, and P2 ClassifyPart's own Function or
+//   Case for a result it makes wait; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone combines the two;
+//   a deferred part (WasDeferred, a recorded Call) stays so
 //   after its completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for
 //   the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 // - Prohibitions: a consumer reads a part's kind from KindOf and whether it awaits its call from AwaitsCall (but for the sites the
 //   temporary note lists), and tells only the forms of one kind apart to fit them; the call, element, Case-payload and value-call
 //   paths keep no evidence or fit dispatch of their own; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
-// - Temporary (G216 (a) Part 1; U1.2a moved the waiting and form tests of the call paths onto KindOf and AwaitsCall, and these remain
-//   until their units): U1.2b's producers remove PrepareArgument's anonymous-function and contextual-Case test (P1's rows), ClassifyPart's
-//   Reference by name resolution (P1 records it when it leaves a name unbound) and PositionKind's read of a part not Resolved (its
-//   BindingState: P2 records the sources the probe reaches); until U1.2c's P3 records it as Join, a waiting join (control flow whose
-//   literals have an unknown source beside them, or whose source call the probe deferred) is recorded as Call, which ClassifiedByCall
-//   may rewrite to Join, and PositionKind gives Call to a position with a part, other than a literal or an aggregate, not Resolved.
-//   U1.3 removes the waiting decisions HoldsWaitingFunction, BindMatch's pendingBody (with its read of Deferred) and
-//   WaitsForPosition's anonymous-function test. Position waiting (Deferred, AwaitsFor; SPEC 14.9.2, 4.3) decides whether a part
+// - Temporary (G216 (a) Part 1; these remain until their units): until U1.2c's P3 records it as Join, a waiting join (control flow
+//   whose literals have an unknown source beside them, or whose source call the probe deferred) is recorded as Call, which
+//   ClassifiedByCall may rewrite to Join. U1.3 removes the waiting decisions HoldsWaitingFunction's anonymous-function test (beside
+//   P2's recorded Case), BindMatch's pendingBody (with its read of Deferred) and WaitsForPosition's deferral of a Function or Case
+//   result. Position waiting (Deferred, AwaitsFor; SPEC 14.9.2, 4.3) decides whether a part
 //   waits for its position, not for its call, so it is not in this list.
 public sealed partial class Binding
 {
@@ -72,15 +70,14 @@ public sealed partial class Binding
         => kind == PartKind.Call ||
             (kind is PartKind.Join or PartKind.Case or PartKind.Reference or PartKind.Function && KotoHelper.UnwrapParentheses(part).BoundType is null);
 
-    // SPEC 10.5.1: the kind a part's form and name resolution give it: an unfitted literal, a Tuple or array literal or mixed range, an
-    // anonymous function, a function name left unbound (until P1 records it, U1.2b), a contextual Case, or Typed. A Join, a Call and a
-    // Literal control-flow part are their producers' records instead (KindOf).
+    // SPEC 10.5.1: the kind a part's form gives it: an unfitted literal, a Tuple or array literal or mixed range, an anonymous function, a
+    // contextual Case, or Typed. A Join, a Call, a Reference and a Literal control-flow part are their producers' records instead
+    // (RecordPart; KindOf combines the two).
     private static PartKind ClassifyPart(Koto part) => part switch
     {
         _ when IsUnfittedLiteral(part) => PartKind.Literal,
         _ when IsAggregateArgument(part) => PartKind.Aggregate,
         _ when KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } => PartKind.Function,
-        _ when IsWaitingFunctionReference(part) => PartKind.Reference,
         _ when NeedsEnumContext(part) => PartKind.Case,
         _ => PartKind.Typed,
     };
@@ -106,7 +103,8 @@ public sealed partial class Binding
         }
 
         var recorded = this.RecordedPart(KotoHelper.UnwrapParentheses(part)).Kind;
-        return recorded == PartKind.Typed || (recorded == PartKind.Call && part.BindingFailure != BindingFailure.None) ? kind : recorded;
+        return recorded == PartKind.Typed || (recorded is PartKind.Call or PartKind.Reference && part.BindingFailure != BindingFailure.None)
+            ? kind : recorded;
     }
 
     // Whether the argument probe deferred the part (a recorded Call): it stays so after its completion, so its Type is never evidence
@@ -123,6 +121,10 @@ public sealed partial class Binding
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
         => this.RecordedPart(KotoHelper.UnwrapParentheses(part)) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
+
+    // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 WaitsForPosition, P3 DeferNestedCall, P4
+    // ClassifiedByCall), keyed by syntax identity for this pass; DefaultLiteral adds a Literal's default later.
+    private void RecordPart(Koto part, PartKind kind) => this.argumentParts[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(kind, null);
 
     private ArgumentPart RecordedPart(Koto node)
         => node.SyntaxOwner is { } owner && this.argumentParts.TryGetValue(new(owner.Module, node.SyntaxId), out var part) ? part : default;
@@ -165,7 +167,7 @@ public sealed partial class Binding
 
         if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsWaitingFunction(join))
         {
-            this.argumentParts[SourceRef.Of(probe)] = new(PartKind.Join, null);
+            this.RecordPart(probe, PartKind.Join);
         }
 
         return true;
@@ -202,20 +204,49 @@ public sealed partial class Binding
                 this.BindIndependentArgument(node, scope); // Not yet bound in this pass: a Literal or waiting part.
             }
 
+            if (this.KindOf(node) == PartKind.Join)
+            {
+                this.CompleteJoinCases(flow, scope);
+            }
+
             return;
         }
 
+        var waitingCase = this.KindOf(node) == PartKind.Case;
         IReadOnlyList<Koto>? parts = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
             ArrayLiteralKoto array => array.Elements,
-            InvocationKoto nested when this.WasDeferred(nested) || this.KindOf(nested) == PartKind.Case => nested.ArgumentNodes,
+            InvocationKoto nested when waitingCase || this.WasDeferred(nested) => nested.ArgumentNodes,
             _ => null,
         };
         for (var i = 0; parts is not null && i < parts.Count; i++)
         {
-            this.CompleteUnselectedPart(parts[i], scope);
+            if (waitingCase && ClassifyPart(parts[i]) == PartKind.Typed && parts[i].BindingState == BindingState.Unvisited)
+            {
+                this.BindIndependentArgument(parts[i], scope); // A waiting Case's own payload, bound on its own.
+            }
+            else
+            {
+                this.CompleteUnselectedPart(parts[i], scope);
+            }
         }
+    }
+
+    // SPEC 23.1.2: each waiting Case result of a Join a call completes none of, completed on its own (its payloads bound alone).
+    private void CompleteJoinCases(Koto join, BindingScope scope)
+    {
+        var start = this.positionParts.Count;
+        this.AddResults(join);
+        for (var i = start; i < this.positionParts.Count; i++)
+        {
+            if (this.KindOf(this.positionParts[i]) == PartKind.Case)
+            {
+                this.CompleteUnselectedPart(this.positionParts[i], scope);
+            }
+        }
+
+        this.ClosePosition(start);
     }
 
     // SPEC 7.7.4, 10.5: a Closure or Function Item part completed at a common Function Type is converted to it; its signature, Shared
@@ -273,12 +304,18 @@ public sealed partial class Binding
     // a control-flow part, which then waits with it, and a function reference that needs S waits for the selected candidate's (10.5.3).
     private bool PrepareArgument(Koto part, BindingScope scope, BindingSymbol? group, bool callableContext)
     {
-        if (KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || NeedsEnumContext(part))
+        var kind = ClassifyPart(part);
+        if (kind is PartKind.Function or PartKind.Case)
         {
             return true; // SPEC 10.5.1, 6.5.2: it waits for a candidate's Type, as a contextual Case resolves only in its expected enum.
         }
 
-        if (this.KindOf(part) is PartKind.Aggregate or PartKind.Join)
+        if (this.KindOf(part) == PartKind.Join)
+        {
+            return !this.PartFailed(part); // Prepared once per pass, by its probe; the call rests on a failed one.
+        }
+
+        if (kind == PartKind.Aggregate)
         {
             return this.PrepareComposite(part, scope);
         }
@@ -290,7 +327,7 @@ public sealed partial class Binding
             // when every result source other than Never is a literal, since Never supplies nothing at any position; with an unknown
             // source beside its literals it needs an expectation or a default, so it waits. It is bound once its call selects a
             // candidate, as an anonymous function is. A recovered part is bound as any other.
-            this.argumentParts[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Unknown ? PartKind.Call : PartKind.Literal, null);
+            this.RecordPart(part, survey.Unknown ? PartKind.Call : PartKind.Literal);
             return true;
         }
 
@@ -307,9 +344,15 @@ public sealed partial class Binding
 
         // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence. A generic Callable contract
         // checks that Type without erasing it to a common Function handle.
-        return ((callableContext || this.TakesCallableContext(group)) &&
+        if ((callableContext || this.TakesCallableContext(group)) &&
             !IndependentFunctionItem(item, this.UnboundMemberReference(part), this.ReferenceDeclaringType(part)) &&
-            !this.ExplicitReferenceValue(part, item, scope)) || this.BindFunctionItem(part, item, scope) is not null;
+            !this.ExplicitReferenceValue(part, item, scope))
+        {
+            this.RecordPart(part, PartKind.Reference); // SPEC 10.5.3: it needs S, so it stays unbound until its call completes it.
+            return true;
+        }
+
+        return this.BindFunctionItem(part, item, scope) is not null;
     }
 
     // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of
@@ -352,10 +395,10 @@ public sealed partial class Binding
             return false;
         }
 
-        this.argumentParts[SourceRef.Of(call)] = new(PartKind.Call, null);
+        this.RecordPart(call, PartKind.Call);
         if (this.argumentProbe is { } probe && this.UnderArgumentProbe(call))
         {
-            this.argumentParts[SourceRef.Of(probe)] = new(PartKind.Call, null); // SPEC 14.9.2: so does its control-flow argument.
+            this.RecordPart(probe, PartKind.Call); // SPEC 14.9.2: so does its control-flow argument.
         }
 
         return true;

@@ -103,9 +103,13 @@ public sealed partial class Binding
             {
                 literal = true;
             }
-            else if (!this.IsAggregatePart(part) && part.BindingState != BindingState.Resolved)
+            else if (!this.IsAggregatePart(part) && AwaitsCall(part, this.KindOf(part)))
             {
                 return PartKind.Call;
+            }
+            else if (!this.IsAggregatePart(part) && this.PartFailed(part))
+            {
+                return PartKind.Typed; // A failed part gives no Type.
             }
         }
 
