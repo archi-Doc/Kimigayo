@@ -141,8 +141,11 @@ public partial class OriginRelationDiagnosticTest
 
     // Joins (d3 §4): the sources of an `if` or `match` argument or initializer form one value, judged once. jt1_ok, mj4 and cv4 (whose `t`
     // gives the relation by its signature's well-formedness) are valid; jt1 errs at the argument and mj4_n at its annotation only. A `match`
-    // argument whose sources are contextual Cases waits for its call as an `if` one does (R4-M155, B5's join rule): mj1 errs at the
-    // argument as jt1 does and mj1_ok is valid (both were dev's located Unsupported_Kd with the call's dependent record).
+    // argument whose results are deferred nested constructions (`Option.None`, its T open, recorded Waiting and Deferred by the probe)
+    // awaits its call by those records (WaitsByKind; R4-M155, B5's join rule) as jt1's `if` join does: mj1 errs at the argument as jt1
+    // does and mj1_ok is valid, SPEC's verdicts, which d3 (478321095: "mj1/mj1_ok pin dev's Unsupported_Kd") placed behind dev's located
+    // limit, BindMatch's Unsupported_Kd for an arm body unbound and not Deferred (`pendingBody`, Binding.Patterns.cs), now not reached
+    // (the planning session, 2026-10-30: a limit lifted, mj1's error kept as the Proof-class relation at the argument).
     [Theory]
     [InlineData("jt1_ok", JoinHead + WithPremise + InnerPair + "    return inner((if c => Option.None else => Option.None, 1), q)\n", "")]
     [InlineData("jt1", JoinHead + InnerPair + "    return inner((if c => Option.None else => Option.None, 1), q)\n", "UnprovenOriginRelation_Kd (if c => Option.None else => Option.None, 1)")]

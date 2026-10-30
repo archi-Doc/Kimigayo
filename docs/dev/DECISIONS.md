@@ -5728,8 +5728,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     operand; the old analysis's `again UniqItems` gap (AbstractCallReachTest) and OriginRowsTest's `$for.iterator` and RepeatedSet `k`
     rows also rest on it. Revision 3 (the planning session's condition (2)) tried to take these operands once in `SolveLate` instead of
     the evidence walk; over the substituted, the formed or both patterns the set differs (OriginRowsTest's `$for.iterator` and `k`, the
-    `again UniqItems` gap), so the walk keeps them; the measured merge step was not this work (cost below). Removal condition: the legacy
-    Emission's retirement, or a later owner-approved fix of FitsValue. Pinned by
+    `again UniqItems` gap), so the walk keeps them (accepted by the planning session for this round); the measured merge step was not
+    this work (cost below). The walk is the unit's remaining avoidable cost (one formed-pattern visit per typed argument of every
+    evaluated candidate). Removal condition: the legacy Emission's retirement, when the walk's operands go anyway, or a later
+    owner-approved fix of FitsValue. Pinned by
     UniqSliceTest's two programs on the default pipeline (`AssignmentEvaluatesRightReceiverAndKeyExactlyOnce`,
     `ViewsPreserveOrdinaryElementAndAcquisitionRules`' TemporaryWrite).
   - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
@@ -5791,8 +5793,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     whose kind by the one classifier is Waiting (an anonymous function, a function reference, a contextual Case) waits for that call
     (`WaitsByKind`) and its kind is recorded; the join is classified by the recorded kinds (`HoldsWaitingSource`, which replaces BU-43's
     `HoldsWaitingFunction`) and completed at the selected parameter Type. `g(if c => .None else => .Some(1))`, its `Option.None` form and
-    `k(if c => one else => two)` hold on value calls and on named calls (their named twins failed on dev); a `match` argument of
-    contextual Cases follows (mj1 errs as jt1 does, mj1_ok holds; both were dev's located Unsupported_Kd).
+    `k(if c => one else => two)` hold on value calls and on named calls (their named twins failed on dev). A part the probe deferred
+    awaits by its record too, so a `match` argument whose results are deferred nested constructions (`Option.None`, its T open) waits
+    for its call as jt1's `if` join does: mj1 errs at the argument as jt1 does and mj1_ok is valid, SPEC's verdicts, which d3 (478321095,
+    "mj1/mj1_ok pin dev's Unsupported_Kd") placed behind dev's located limit, BindMatch's Unsupported_Kd for an arm body that is unbound
+    and not Deferred (`pendingBody`, Binding.Patterns.cs), now not reached (the planning session, 2026-10-30: a limit lifted, mj1's
+    error kept as the Proof-class relation at the argument).
   - Record classes (SPEC 23.1.2): an instantiated Type's well-formedness at a call, an input's as a result's, is an ownership
     obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
