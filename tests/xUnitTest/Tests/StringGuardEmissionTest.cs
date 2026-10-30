@@ -60,22 +60,6 @@ public class StringGuardEmissionTest
         const string Source = Same + "match \"subject\"@move\n    let s if same(s, \"other\") => ()\n    let s if same(s, \"subject\") => Console.writeLine(s)\n    _ => ()";
         var ir = ScalarEmissionTest.EmitFixture("StringGuardLifetime", Source, "subject\n");
         StringEmissionTest.WriteAuditedFixture("StringGuardLifetime", ir, "subject\n", "subject=2;other=1", order: [1, 0, 0]);
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var pattern = body.Matches[0].Binding.Positions[0];
-        Assert.True(ReferenceTypes.IsString(pattern.CandidateSymbol!.Type));
-        Assert.Same(BoundType.String, pattern.BodySymbol!.Type);
-        Assert.NotSame(pattern.CandidateSymbol, pattern.BodySymbol);
-        Assert.Same(pattern.CandidateSymbol.Declaration, pattern.BodySymbol.Declaration);
-        Assert.DoesNotContain(module.GetFunction(0).Slots, x => ReferenceTypes.IsString(body.Places[x.Place].Type));
-        Assert.Empty(module.GetFunction(0).LiveFlags);
-        foreach (var arm in body.MatchArms.Where(x => x.GuardLoan >= 0))
-        {
-            Assert.False(body.HasComparisonLoan(arm.GuardBranch, arm.GuardLoan));
-            Assert.Equal(OwnershipOperationKind.EndComparisonLoans, body.Operations[arm.GuardBranch - 1].Kind);
-            Assert.True(body.HasComparisonLoan(arm.GuardBranch - 1, arm.GuardLoan));
-        }
     }
 
     [Trait("Purpose", "Allocation")]

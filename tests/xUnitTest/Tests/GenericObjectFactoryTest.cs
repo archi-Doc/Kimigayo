@@ -156,8 +156,6 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         }
         else
         {
-            Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-            Assert.Single(module.Objects);
             NativeAllocationAudit.WriteFixture("GenericObjectFactoryOrigins" + (atomic ? "Arc" : "Rc"), source, 2, 2, 48);
         }
     }

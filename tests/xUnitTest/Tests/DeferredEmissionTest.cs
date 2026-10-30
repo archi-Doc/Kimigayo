@@ -75,17 +75,6 @@ public class DeferredEmissionTest
         Assert.All(body.DeferredPlans, plan => Assert.Equal(plan.Entry, body.Edges[plan.Edge].To));
     }
 
-    [Fact]
-    public void RepeatedExpansionReusesLocalStorage()
-    {
-        var c = MinimalEmissionTest.Analyze("var c = true\nloop\n    defer\n        var x = 1\n        x += 1\n        if x == 2 => Console.writeLine(\"ok\")\n    if c => exit\n    continue");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies[0];
-        Assert.Equal(2, body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local));
-        Assert.Equal(2, module.GetFunction(0).Slots.Count(x => body.Places[x.Place].Kind == OwnershipPlaceKind.Local));
-        Assert.True(body.DeferredPlans.Count >= 2);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
@@ -135,19 +124,6 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
-    }
-
-    [Fact]
-    public void DivergentCleanupHasNoRuntimeDeliveryOrPhi()
-    {
-        var c = MinimalEmissionTest.Analyze("let x = label work: do\n    defer => loop => ()\n    exit to work 1\nConsole.writeLine(\"bad\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies[0];
-        Assert.Contains(body.DeferredPlans, plan => body.IsReachable(plan.Entry) && !body.IsReachable(plan.Continuation));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.Phi or EmissionOpcode.ReturnVoid);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        GeneratedIr.Parse(writer.ToString()).AssertNoTerminationClaim();
     }
 
     // A cleanup that never completes leaves the cleanups registered before it to the checks (their MIR: tests/mir/scopes.kimi

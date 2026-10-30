@@ -76,7 +76,8 @@ public class CompositeMatchTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
-        Assert.True(c.Emission.TryPrepare(out var module, out error), error);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => module.WriteIr(TextWriter.Null)));
+        var written = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.True(written);
     }
 }

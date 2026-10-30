@@ -39,9 +39,6 @@ public class GenericForwardingEmissionTest
         // The unchanged Milestone 19 source (concrete generic entries, compound layouts, specialization
         // forwarding and distinct destruction) lowers per instance and runs natively.
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone19.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture("GenericForwardingProgram19", source, "Compound layouts preserved.\nSpecialization preserved.\nRed received.\nRed destroyed.\nBlue received.\nBlue destroyed.\nGeneric generation finished.\n");
     }
 

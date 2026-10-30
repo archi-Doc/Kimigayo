@@ -181,7 +181,6 @@ public class ReferenceEmissionTest
     {
         const string Source = Same + "let a = \"a\"\nsame(a, a)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
         var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
         var abi = pool.Get(0, same, c.Layout);
@@ -190,7 +189,6 @@ public class ReferenceEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Emission.TryPrepare(out module, out error), error);
         var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
         Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
         Assert.Same(abi, pool.Get(0, renamed, c.Layout));

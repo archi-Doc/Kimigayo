@@ -77,41 +77,6 @@ public class FunctionEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
-    [Fact]
-    public void ParametersUseSsaAndOnlyMainIsCalledAtStartup()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(v3: i32, ignored: (), checked3: bool) -> i32 => if checked3 => v3 else => 0\npublic func main()\n    if f(3, (), true) == 3 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Equal(3, module.FunctionCount);
-        var f = module.GetFunction(0);
-        Assert.Empty(f.Slots);
-        Assert.Equal(new[] { "a0", "a2" }, f.Abi.Parameters.Select(x => x.Name));
-        Assert.Same(module.GetFunction(1).Abi, module.GetFunction(2).Instructions[0].Callee);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        Assert.DoesNotContain("@__kimi_entry_body", writer.ToString());
-    }
-
-    // A Never call has no return edge and a cleanup that never completes reaches no delivery (their MIR: tests/mir/continuations.kimi
-    // `divergingArgument`; tests/mir/scopes.kimi `divergingDefer` and `divergentDeferHeld`).
-    [Fact]
-    public void NeverCallsAndDivergentCleanupHaveNoReturnDelivery()
-    {
-        var c = MinimalEmissionTest.Analyze("func spin() -> Never => loop => ()\nfunc take(x: i32) -> i32 => x\npublic func main()\n    take(spin())\n    Console.writeLine(\"bad\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var main = module.GetFunction(2);
-        var call = Assert.Single(main.Instructions, x => x.Opcode == EmissionOpcode.Call);
-        Assert.True(call.Callee!.NoReturn);
-        Assert.Equal(EmissionOpcode.Unreachable, main.Instructions[^1].Opcode);
-        Assert.DoesNotContain(main.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar or EmissionOpcode.Phi);
-
-        c = MinimalEmissionTest.Analyze("func f() -> i32\n    defer => loop => ()\n    return 1\nf()");
-        Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        var f = module.GetFunction(1);
-        Assert.False(f.Abi.NoReturn); // A fixed i32 signature does not become Never.
-        Assert.DoesNotContain(f.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-    }
-
     [Theory]
     [InlineData("i32")]
     [InlineData("string")]

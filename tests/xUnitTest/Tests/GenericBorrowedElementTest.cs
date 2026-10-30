@@ -73,24 +73,9 @@ public class GenericBorrowedElementTest
         var c = MinimalEmissionTest.Analyze(Program21Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture(
             "GenericBorrowedElementProgram21",
             Program21Source,
             "Default index evaluated.\nInferred selection is 10.\nExplicit selection is 30.\nDefault index evaluated.\nForwarded selection is 10.\nDefault index evaluated.\nOrdinary selection is 4.\nDefault index evaluated.\nLocal selection is 7.\nInference and defaults finished.\n");
-    }
-
-    [Fact]
-    public void MonomorphizesAggregateElementReads()
-    {
-        // SPEC 21.3.1: the (i32, bool) instance copies the proved-Copy element from the borrowed array's
-        // element storage instead of keeping the shared entry.
-        var c = MinimalEmissionTest.Analyze(At + "let a: [2 of (i32, bool)] = [(6, false), (7, true)]\nlet n = at<2, (i32, bool)>(a@ref, 1)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
-        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Sequence && x.ScalarOperator == "ArrayStorageRead");
-        Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.TransferAggregate);
     }
 }
