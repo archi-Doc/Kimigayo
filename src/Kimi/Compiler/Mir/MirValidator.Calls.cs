@@ -30,8 +30,8 @@ internal sealed partial class MirValidator
             => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || ScalarTypes.Supports(type);
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
-        // Comparable's) through its own Contract (Contract null) on a composite Self (ComparisonTypes) whose comparison under source operators
-        // TyCtxt.Comparison composes (not a Limit), the node A4 and the collector read.
+        // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
+        // as a Composite node (not a Limit, not a leaf), the node A4, the collector and code generation read.
         private readonly bool Compares(in MirCallee callee)
         {
             var contract = (ComparisonMode)callee.Arg switch
@@ -42,8 +42,8 @@ internal sealed partial class MirValidator
                 _ => (KimiDeclarationId?)null,
             };
 
-            return contract is not null && callee is { Contract: null, Subst.Self: { } self } && ComparisonTypes.IsComposite(self) &&
-                types.Comparison(TyCtxt.Contract(callee.Symbol!), self, operators: true) is not null;
+            return contract is not null && callee is { Contract: null, Subst.Self: { } self } &&
+                types.Comparison(TyCtxt.Contract(callee.Symbol!), self, operators: true) is { Kind: ComparisonKind.Composite };
         }
 
         // False when the arguments are out of range.
