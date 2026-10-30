@@ -41,7 +41,7 @@ public sealed partial class FunctionCodegenTest
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
 
     // SPEC 13.4, 5.1 (DECISIONS R5-M143): raw pointers compared through a ref layer in both orders and an i32 compared through one, each
-    // answer checked by the division, run under MIR code generation in every run (the old generator refuses the raw forms, GenerationFailed_Kd).
+    // answer checked by the division.
     private const string LayeredComparisons =
         "func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\nfunc differ(p: raw/i32, q: ref/raw/i32) -> bool => p != q\n" +
         "func near(a: ref/i32, b: i32) -> bool => a == b\nfunc far(a: i32, b: ref/i32) -> bool => a != b\n" +
@@ -1184,7 +1184,7 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.2 (DECISIONS R5-M92, R5-M145): DictionaryStorage's byte copy and nullable Alloc call the runtime routines both generators define
+    // SPEC 22.2 (DECISIONS R5-M92, R5-M145): DictionaryStorage's byte copy and nullable Alloc call the runtime routines the module defines
     // where a body calls them, the copy with its destination, source and count.
     [Fact]
     public void TheStorageBytePrimitivesAreTheirRows()

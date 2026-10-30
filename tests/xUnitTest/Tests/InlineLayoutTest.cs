@@ -140,8 +140,7 @@ public class InlineLayoutTest
     public async Task AnInferredCLayoutInstanceReportsALaterFieldsResourceLimit()
     {
         // SPEC 8.15.3 (DECISIONS R4-M134 Q8): the inferred instance's zero-sized Field is InvalidCLayout_Kd at check on every pipeline (the
-        // checked set's layout obligations), before either generator sees the later Field's resource limit (GenerationFailed_Kd before
-        // R5-M29, GenerationResourceLimit_Kd under the old generator until the checked set was judged at check).
+        // checked set's layout obligations), before code generation could see the later Field's resource limit.
         var directory = Path.Combine(Path.GetTempPath(), "kimi-inline-layout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try

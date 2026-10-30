@@ -47,10 +47,9 @@ script rejects.
   coefficient of variation; per B run, its ratio to the mean of the A runs before and after it, summarized the same way.
 - `Benchmark --compiler-pipeline` ([CompilerPipeline.md](CompilerPipeline.md)) of A and B then alternates A, B, ..., A for
   `PipelineRuns` + 1 runs of A. Every report must have the first one's schema, stage names and input hashes. Its generic shape
-  at 32, 64 and 128 item Types is the generic-heavy input, and emission lowering plus IR writing is the collect-plus-codegen
-  stage at 1×, 2× and 4×: lowering collects the generic instances, re-analyses each (`AnalyzeInstance`) and lowers it. Under
-  MIR code generation, collection is timed in stage 3 (`BuildMir`), so its two stages are code generation alone; CompilerPipeline.md gives
-  the comparison that adds stage 3's collection share. Per
+  at 32, 64 and 128 item Types is the generic-heavy input at 1×, 2× and 4×. Collection is timed in stage 3 (`BuildMir`), so
+  emission lowering plus IR writing is code generation alone; CompilerPipeline.md gives the comparison that adds stage 3's
+  collection share. Per
   input, each run gives the median of its samples for that stage and for the whole compilation; their spread across runs and
   the B/A ratios over them are the matched-run variation. Allocated bytes are each run's mean.
 

@@ -9,7 +9,7 @@ using Xunit.Sdk;
 namespace XunitTest;
 
 /// <summary>The pipeline-neutral reading of generated LLVM text (R5 E15, <see cref="GeneratedIr"/>): a requirement written with it names no
-/// value, label, generated function or generator helper, so it holds for both generators wherever both are correct.</summary>
+/// value, label, generated function or generator helper, so it holds for any correct code generation.</summary>
 public sealed class GeneratedIrTest
 {
     // Both generators cover these forms (R5 C0b1): scalar, string-borrow, zero-sized, tuple and Never signatures, a Library's roots (an

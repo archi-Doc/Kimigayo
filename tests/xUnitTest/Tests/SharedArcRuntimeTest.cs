@@ -32,7 +32,7 @@ public class SharedArcRuntimeTest
     }
 
     // SHARED_OBJECT_RUNTIME (DECISIONS R5-M112, R5-M145): every arc release in the module, the runtime's dynamic one and the Sealed payload's
-    // direct one (both generators write ObjectRuntime's one text), keeps the required ordering; the Sealed one is found by its release
+    // direct one (ObjectRuntime's one text), keeps the required ordering; the Sealed one is found by its release
     // exchange, not by a generator's name for it (R5-M12).
     [Fact]
     public void GeneratedTransitionsKeepTheRequiredOrderingAndSuccessConditions()
