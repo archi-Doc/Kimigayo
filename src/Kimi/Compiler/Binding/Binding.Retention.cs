@@ -41,8 +41,8 @@ public sealed partial class Binding
     private readonly HashSet<BoundOrigin> retentionInstantiated = new(ReferenceEqualityComparer.Instance);
 
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where a raw input's own value may be held, each a raw input
-    // with a carrier (null: any abstract part of the outputs), by the premises (rule 2: RawReach) or by an erased callable the call may run
-    // (rule 3: ErasedFills; the computation's own erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
+    // with a carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the
+    // computation's own erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
     private readonly List<(int Input, BoundType? Part)> retentionFills = new();
 
     // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types

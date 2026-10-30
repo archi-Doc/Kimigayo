@@ -232,27 +232,10 @@ public sealed partial class Binding
         return holds;
     }
 
-    // SPEC 15.6.4's abstract-Type sentence, rule 2 (DECISIONS BU-66, R4-M154): the premises make a carrier one that can hold a raw input's
-    // own value where the closure from the node of the input's own layer Origin reaches the carrier's node, as an abstract part holds a
-    // value whose Origin reaches it (a carrier stored below a layer of that Origin, R2; an unstated layer has none and reaches nothing),
-    // into retentionFills.
-    private void RawReach(OriginPremiseEnvironment environment)
-    {
-        foreach (var (input, pointer) in this.retentionRawInputs)
-        {
-            var layer = OwnedOrigin(pointer) is { Kind: not OriginKind.Unstated } origin ? this.PremiseNode(environment, origin) : -1;
-            foreach (var (carrier, node) in this.retentionCarriers)
-            {
-                if (layer >= 0 && this.Closure(environment, layer).Contains(node))
-                {
-                    this.retentionFills.Add((input, carrier));
-                }
-            }
-        }
-    }
-
-    // Whether an abstract part can hold a raw input's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): a fill of the
-    // input (retentionFills) at any part or at a carrier that, Origins erased, is the part or occurs in it (an associated projection's base).
+    // Whether an abstract part can hold a raw input's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
+    // callable the call may run may retain it there (rule 3), a fill of the input (retentionFills) at any part or at a carrier that,
+    // Origins erased, is the part or occurs in it (an associated projection's base); no premise makes an abstract part storage that can
+    // hold it (rule 2's one test, Storages: a carrier's closure reaches only the relations of those callables).
     private bool HoldsRaw(BoundType part, int input)
     {
         foreach (var (filled, at) in this.retentionFills)
