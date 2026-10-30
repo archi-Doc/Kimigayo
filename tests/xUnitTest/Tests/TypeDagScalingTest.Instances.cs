@@ -12,8 +12,8 @@ namespace XunitTest;
 /// distinct parts. The MIR builder is not run: its own walks over these shapes are open (PLAN).</summary>
 public partial class TypeDagScalingTest
 {
-    // The chain through Tuples, fixed arrays and enum payloads, and with raw leaves: the declarations' inline layouts (VisitInlineLayout,
-    // CompleteProjections); a member path to the last instance and a generic callee at it (CheckTypeConstraints, ProveTypeLengths, the
+    // The chain through Tuples, fixed arrays and enum payloads, and with raw leaves: the declarations' inline layouts (their summaries,
+    // DECISIONS BU-65, and CompleteProjections); a member path to the last instance and a generic callee at it (CheckTypeConstraints, ProveTypeLengths, the
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
     // capturing it (HasUnsubstitutedInput).
     [Theory]
@@ -43,6 +43,27 @@ public partial class TypeDagScalingTest
         }
 
         Assert.Equal(form == "enum" ? "g f" : "g f, k h, copies cp", string.Join(", ", calls));
+    }
+
+    // PLAN G310 (DECISIONS BU-65): the chain closed by Dn storing D1<T> puts every declaration on one inline cycle, each reported once;
+    // each declaration's walk visits its own written storage and the summaries it reads, and the component settles in a bounded number
+    // of rounds, so 40 declarations whose instances hold 2^39-leaf Tuple trees stay linear.
+    [Theory]
+    [InlineData("tuple", 40)]
+    [InlineData("array", 40)]
+    public void AnInlineCycleThroughAChainIsLinearInDistinctParts(string form, int size)
+    {
+        var argument = form == "array" ? "([2 of T], [2 of T])" : "(T, T)";
+        var text = new System.Text.StringBuilder();
+        for (var i = 1; i < size; i++)
+        {
+            text.Append($"struct D{i}<T>\n    public var x: D{i + 1}<{argument}>\n");
+        }
+
+        text.Append($"struct D{size}<T>\n    public var x: T\n    public var back: D1<T>\npublic func main() => ()\n");
+        var c = MirBuildTest.Compile(text.ToString());
+        var diagnosed = c.Binding.Issues.Where(static x => x.Code == Kimi.DiagnosticCode.InvalidInlineLayout_Kd).Select(static x => ((DeclarationContainerKoto)x.Node).Name);
+        Assert.Equal(Enumerable.Range(1, size).Select(static i => $"D{i}").Order(StringComparer.Ordinal), diagnosed.Order(StringComparer.Ordinal));
     }
 
     // D1 to Dn (structs, or enums whose Case A holds the part), each storing the next at its Type argument doubled (a Tuple, or a Tuple of

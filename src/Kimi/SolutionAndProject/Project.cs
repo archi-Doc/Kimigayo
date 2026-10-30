@@ -269,7 +269,7 @@ public partial class Project
 
         if (failure is not null)
         {
-            compilation.Emission.ReportFailure(failure); // A publication failure (GenerationFailed_Kd until G9b); generation records its own.
+            compilation.ReportPublicationFailure(failure); // A publication failure (GenerationFailed_Kd until G9b); generation records its own.
         }
 
         this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);

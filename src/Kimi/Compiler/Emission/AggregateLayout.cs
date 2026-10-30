@@ -72,9 +72,6 @@ internal sealed class AggregateLayoutPool
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
     internal Func<BoundType, string?>? CollectionDrop { get; set; }
 
-    /// <summary>Gets or sets the reservation of a concrete generic destructor entry, before its body is lowered.</summary>
-    internal Func<BoundType, string?>? InstantiateDestructor { get; set; }
-
     /// <summary>Gets or sets the current semantic proof of a complete Sealed object target.</summary>
     internal Func<BoundType, bool>? IsSealedObjectTarget { get; set; }
 
@@ -321,8 +318,7 @@ internal sealed class AggregateLayoutPool
         var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
         var body = AdtDef.Destructor(type);
         var destructor = body is not null ? this.destructors.GetValueOrDefault(body, -1) : -1;
-        var genericDestructor = body is not null && GenericStoragePlan.IsGeneric(body) ? this.InstantiateDestructor?.Invoke(type) : null;
-        if (destructor < 0 && genericDestructor is null && body is not null)
+        if (destructor < 0 && body is not null)
         {
             return this.resolved[type] = null; // An unprepared destructor must never become trivial cleanup.
         }
@@ -362,7 +358,7 @@ internal sealed class AggregateLayoutPool
             }
 
             // PLAN G33: the compiler never destroys an InlineStorage; its owner destroys the contents it still holds.
-            var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true;
+            var destroy = destructor >= 0 || baseLayout?.NeedsDestruction == true;
             for (var i = 0; i < fieldCount; i++)
             {
                 destroy |= ReferenceEquals(this.fields[start + i], RuntimeAbi.String) || this.children[start + i]?.NeedsDestruction == true;
@@ -371,7 +367,7 @@ internal sealed class AggregateLayoutPool
             destroy &= (!array || count != 0) && !(structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage);
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.ObjectHandle is not null || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
+                if (candidate.FunctionHandle || candidate.ObjectHandle is not null || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
                 {
                     continue;
                 }
@@ -395,7 +391,7 @@ internal sealed class AggregateLayoutPool
                 return null;
             }
 
-            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, GenericDestructor: genericDestructor);
+            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout);
             this.pool.Add(result);
             this.resolved[type] = result;
             return result;

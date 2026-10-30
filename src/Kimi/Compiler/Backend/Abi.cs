@@ -17,8 +17,7 @@
 // Invariants: Of is a function of its inputs; Matches(Of(x), x) holds and allocates nothing.
 // Must not gate (the old pool keeps FunctionAbiPool.Supports until R6-gen) or map a Layout outcome other than Ok, flags under C or a C
 // parameter without an argument representation (broken contracts, which throw),
-// read syntax, Origins, HIR, MIR or the old Emission's scalar-value gate (WindowsLowering), name a function, port PreparedSlot (the
-// old default evaluators' kind), keep state or use LINQ.
+// read syntax, Origins, HIR, MIR or the old Emission's scalar-value gate (WindowsLowering), name a function, keep state or use LINQ.
 
 using System.Globalization;
 

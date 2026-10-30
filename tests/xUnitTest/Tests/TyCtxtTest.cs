@@ -1061,8 +1061,7 @@ public sealed class TyCtxtTest
     // SPEC 6.1.3, 8.13, 8.15.1: the body of every MIR key symbol is instantiated exactly when the symbol or a declaration enclosing it has a
     // Type, Semantics or length slot, even an unused one; an Origin slot does not count. A named function nested two levels or in a block of a
     // generic function, or in a generic struct's method, is instantiated as one level is; a specialization declares no slot (SPEC 8.13.1), so a
-    // top-level one is closed and one in a generic struct, with what it nests, is generic in the struct's slot. The old generator's view
-    // counts the latter as closed (DECISIONS R5-M34, until G7).
+    // top-level one is closed and one in a generic struct, with what it nests, is generic in the struct's slot (DECISIONS R5-M34).
     [Fact]
     public void InstantiatesFollowsTheEnclosingSlots()
     {
@@ -1078,9 +1077,6 @@ public sealed class TyCtxtTest
         var keys = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null && x.Source.Module == 0).Select(static x => x.Key).ToArray();
         var actual = keys.Select(x => $"{x.Kind} {Label(x.Decl!.Declaration)} {c.Types.Instantiates(x.Decl!)}");
         Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
-        var legacy = keys.Where(x => c.Types.InstantiatesInLegacy(x.Decl!) != c.Types.Instantiates(x.Decl!))
-            .Select(x => $"{x.Kind} {Label(x.Decl!.Declaration)}");
-        Assert.Equal(["Closure specialize f", "Fn nested", "Fn specialize f"], legacy.Order(StringComparer.Ordinal));
 
         // A closure is labeled by the function enclosing it.
         static string Label(Koto declaration) => declaration switch
