@@ -274,7 +274,7 @@ public sealed partial class Binding
 
         // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one at
         // its parts' common Type, which the join's step 2 forms (value reads included), in the early pass; a Literal one by its first
-        // literal's default in the late pass; an Aggregate one by its child positions; a Join one and one Never in every source none.
+        // literal's default in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none.
         private bool InferParts(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;

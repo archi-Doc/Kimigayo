@@ -9,34 +9,42 @@ namespace Kimi.Compiler;
 //   argument, a written boundary of a mixed range and a payload of a Case construction, as one closed PartKind. Literal: an unfitted
 //   literal (SPEC 12.3), or control flow whose result sources other than Never are all such, at least one (SPEC 14.9.1). Aggregate: a
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part whose join supplies no
-//   candidate and has Tuple or array results (ClassifiedByCall), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a function reference that needs S. Case: a
-//   contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or construction the argument probe deferred;
-//   until U1.2's classifier records it as Join, also control flow whose literals have an unknown source beside them or whose source
-//   call the probe deferred (G216 (a) Part 1; removal condition: U1.2). Function, Reference, Case and Call await their call
-//   (AwaitsCall) until the selected candidate completes them. Typed: every other part.
+//   candidate and has Tuple or array results or results that hold an anonymous function (ClassifiedByCall; DECISIONS BU-43), whose
+//   results are classified position by position (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a
+//   function reference that needs S. Case: a contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or
+//   construction the argument probe deferred. Function, Reference, Case and Call are SPEC 10.5.1's waiting parts (AwaitsCall): they
+//   await their call until the selected candidate completes them. Typed: every other part.
 // - Inputs: the part's syntax and binding state; ControlFlow's survey of a control-flow part's result sources (SurveyResult); the
 //   argument probe (BindIndependentArgument), which reaches the result sources of a control-flow part (UnderArgumentProbe) and under
 //   which each part that is not an Aggregate or Join is bound: a nested call that only an outer expectation could type defers
 //   (DeferNestedCall) and its kind is recorded, and a function name stays unbound (AtArgumentPosition); arithmetic operands have their
 //   own probe (SPEC 13.3.4) and share the Literal control-flow predicate (ResultSurvey.AllLiteral).
-// - Outputs: KindOf and AwaitsCall; the preparation of a call's arguments and of each part (PrepareArgument, PrepareComposite); the fit walk, a
-//   part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments, elements, Case
-//   payloads and value calls, and the erasure of a callable completed there (ErasePart); SolveSelected, the selected candidate of a call
-//   whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its checks run once more
-//   (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments, and CompleteArguments, its arguments completed at its
-//   operations; the waiting-binds-F rule (TakeWaiting, Binding.ArgumentKinds.Waiting.cs), the one walk to the waiting callables at an F
-//   that the call's queries and the completions share; SlotSolution (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of
+// - Outputs: KindOf and AwaitsCall; the preparation of a call's arguments and of each part (PrepareArgument, PrepareComposite); the
+//   fit walk, a part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments,
+//   elements, Case payloads and value calls, and the erasure of a callable completed there (ErasePart); SolveSelected, the selected
+//   candidate of a call whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its
+//   checks run once more (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments, and CompleteArguments, its
+//   arguments completed at its operations; the waiting-binds-F rule (TakeWaiting, Binding.ArgumentKinds.Waiting.cs), the one walk to
+//   the waiting callables at an F that the call's queries and the completions share; SlotSolution (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of
 //   one candidate or one Case construction, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
 //   Binding.ArgumentKinds.Evidence.cs) and applies the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations
 //   substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts of a call that completes
 //   none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded part (ArgumentPart: its kind and a Literal's default) is keyed by syntax identity (SourceRef) and lives for
-//   one pass; a deferred part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a
-//   Literal is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
-// - Prohibitions: a consumer reads a part's kind from KindOf and whether it awaits its call from AwaitsCall, and tells only the forms
-//   of one kind apart to fit them; the call, element, Case-payload and value-call paths keep no evidence or fit dispatch of their
-//   own; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
+//   one pass; Call is the only waiting kind recorded, so a part recorded as waiting is a deferred one, which stays waiting after its
+//   completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal is evidence only through the default
+//   recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
+// - Prohibitions: a consumer reads a part's kind from KindOf and whether it awaits its call from AwaitsCall (but for the sites the
+//   temporary note lists), and tells only the forms of one kind apart to fit them; the call, element, Case-payload and value-call
+//   paths keep no evidence or fit dispatch of their own; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
+// - Temporary (G216 (a) Part 1; U1.1 moved the readers of the old kinds onto PartKind and AwaitsCall, and these remain until their
+//   units): until U1.2's classifier records it as Join, a waiting join (control flow whose literals have an unknown source beside
+//   them, or whose source call the probe deferred) is recorded as Call, and PositionKind gives Call to a position with a part not
+//   Resolved (its BindingState). Form tests U1.2's classifier removes: IsWaitingCallable in TryArithmetic, SelectArithmetic,
+//   TryCandidateCore, ComparableCallableSlots, FailUnboundSlots and TakeWaiting; TryCandidateCore's contextual-callable tests;
+//   PrepareArgument's anonymous-function and contextual-Case test; InferCallableSignatures' and InferPosition's anonymous-function
+//   tests. Waiting decisions U1.3 removes: HoldsWaitingFunction, BindMatch's pendingBody, and ResultPropagation's own deferral tests
+//   (WaitsForPosition's anonymous-function test, Deferred).
 public sealed partial class Binding
 {
     private readonly Dictionary<SourceRef, ArgumentPart> argumentParts = new();
@@ -55,7 +63,8 @@ public sealed partial class Binding
         Call,
     }
 
-    // SPEC 10.5.1: whether a part of the kind awaits its call's selected candidate, which completes it.
+    // SPEC 10.5.1: whether a part of the kind is waiting (the SPEC word, which CompleteWaiting, TakeWaiting and IsWaitingPart keep): it
+    // awaits its call's selected candidate, which completes it.
     private static bool AwaitsCall(PartKind kind) => kind is PartKind.Function or PartKind.Reference or PartKind.Case or PartKind.Call;
 
     private static bool IsAggregateArgument(Koto source)
@@ -86,14 +95,9 @@ public sealed partial class Binding
             return PartKind.Join;
         }
 
-        if (KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true, BoundType: null })
+        if (IsWaitingCallable(part))
         {
-            return PartKind.Function;
-        }
-
-        if (IsWaitingFunctionReference(part))
-        {
-            return PartKind.Reference;
+            return IsWaitingFunctionReference(part) ? PartKind.Reference : PartKind.Function;
         }
 
         if (NeedsEnumContext(part) && KotoHelper.UnwrapParentheses(part).BoundType is null)
