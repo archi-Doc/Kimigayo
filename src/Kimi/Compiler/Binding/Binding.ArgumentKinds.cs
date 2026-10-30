@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // - Responsibility: the kind of every argument part: a call argument and, recursively, an element of a Tuple or array literal
 //   argument, a written boundary of a mixed range and a payload of a Case construction, as one closed PartKind. Literal: an unfitted
 //   literal (SPEC 12.3), or control flow whose result sources other than Never are all such, at least one (SPEC 14.9.1). Aggregate: a
-//   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part whose join supplies no
+//   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes: one whose
+//   literals have an unknown source beside them (P1) or whose source call the probe deferred (P3), and one whose join supplies no
 //   candidate and has Tuple or array results or results that hold an anonymous function (ClassifiedByCall; DECISIONS BU-43), whose
 //   results are classified position by position (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a
 //   function reference that needs S. Case: a contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or
@@ -39,9 +40,8 @@ namespace Kimi.Compiler;
 // - Prohibitions: a consumer reads a part's kind from KindOf and whether it awaits its call from AwaitsCall (but for the sites the
 //   temporary note lists), and tells only the forms of one kind apart to fit them; the call, element, Case-payload and value-call
 //   paths keep no evidence or fit dispatch of their own; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
-// - Temporary (G216 (a) Part 1; these remain until their units): until U1.2c's P3 records it as Join, a waiting join (control flow
-//   whose literals have an unknown source beside them, or whose source call the probe deferred) is recorded as Call, which
-//   ClassifiedByCall may rewrite to Join. U1.3 removes the waiting decisions HoldsWaitingFunction's anonymous-function test (beside
+// - Temporary (G216 (a) Part 1; these remain until their units): U1.3 removes the waiting decisions HoldsWaitingFunction's
+//   anonymous-function test (beside
 //   P2's recorded Case), BindMatch's pendingBody (with its read of Deferred) and WaitsForPosition's deferral of a Function or Case
 //   result. Position waiting (Deferred, AwaitsFor; SPEC 14.9.2, 4.3) decides whether a part
 //   waits for its position, not for its call, so it is not in this list.
@@ -327,7 +327,7 @@ public sealed partial class Binding
             // when every result source other than Never is a literal, since Never supplies nothing at any position; with an unknown
             // source beside its literals it needs an expectation or a default, so it waits. It is bound once its call selects a
             // candidate, as an anonymous function is. A recovered part is bound as any other.
-            this.RecordPart(part, survey.Unknown ? PartKind.Call : PartKind.Literal);
+            this.RecordPart(part, survey.Unknown ? PartKind.Join : PartKind.Literal);
             return true;
         }
 
@@ -398,7 +398,7 @@ public sealed partial class Binding
         this.RecordPart(call, PartKind.Call);
         if (this.argumentProbe is { } probe && this.UnderArgumentProbe(call))
         {
-            this.RecordPart(probe, PartKind.Call); // SPEC 14.9.2: so does its control-flow argument.
+            this.RecordPart(probe, ReferenceEquals(probe, call) ? PartKind.Call : PartKind.Join); // SPEC 14.9.2: its join waits with it.
         }
 
         return true;

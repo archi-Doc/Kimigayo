@@ -651,7 +651,8 @@ public sealed partial class Binding
             return target; // SPEC 3.8: a Never expression fits; the literal around it takes its position's Type.
         }
 
-        if (!this.AwaitsPosition(node) && !this.Deferred(node))
+        var kind = this.KindOf(node);
+        if (kind != PartKind.Call && !this.AwaitsPosition(node) && !this.Deferred(node))
         {
             return this.LateAdaptation(node, target); // A bound part; one holding what its call completed is formed from its parts below.
         }
@@ -667,8 +668,9 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            _ when this.KindOf(node) is PartKind.Function or PartKind.Case or PartKind.Reference => // One waiting for its call, fitted as
+            _ when kind is PartKind.Function or PartKind.Case or PartKind.Reference => // One waiting for its call, fitted as an argument
                 this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
+            _ when kind == PartKind.Call => target, // A deferred call, which its own call completes at this position's Type.
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 
