@@ -221,9 +221,12 @@ public sealed partial class Binding
             return FamilyCase(type, selected) is { } child ? this.CaseType(child, cases) : type;
         }
 
+        // DECISIONS BU-60: the Type instance a closure's context holds takes the cases with the Closure Type.
+        var context = TyCtxt.HeldType(type) is { } held && this.CaseType(held, cases) is var image && !ReferenceEquals(image, held)
+            ? this.HeldContext(type.Symbol!, image) : type.ClosureContext;
         if (type.Components.Count == 0)
         {
-            return type;
+            return this.WithContext(type, context);
         }
 
         var scratch = this.RentTypes(type.Components.Count);
@@ -241,9 +244,8 @@ public sealed partial class Binding
                 return this.Form(applied, scratch[0], type.Origin);
             }
 
-            return changed
-                ? this.types.Rebuild(type, scratch.AsSpan(0, type.Components.Count), type.Origin, (BoundOrigin[])type.OriginArguments)
-                : type;
+            return this.WithContext(
+                changed ? this.types.Rebuild(type, scratch.AsSpan(0, type.Components.Count), type.Origin, (BoundOrigin[])type.OriginArguments) : type, context);
         }
         finally
         {

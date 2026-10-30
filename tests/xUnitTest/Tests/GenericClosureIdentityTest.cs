@@ -10,6 +10,90 @@ public class GenericClosureIdentityTest
 {
     private const string Identity = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n    return action(value)\n";
 
+    // A Contract whose static requirement tells A (1) from B (2), and a struct whose stored Field initializer's Closure returns T's tag.
+    private static readonly string[] Tagged =
+    [
+        "contract Tag", "    func tag() -> isize", "struct A", "    Self is Tag", "    public init() => ()", "    public func tag() -> isize => 1",
+        "struct B", "    Self is Tag", "    public init() => ()", "    public func tag() -> isize => 2",
+    ];
+
+    private static readonly string[] TaggedBox = [.. Tagged, "struct Box<T>", "    T is Tag", "    public var n = func [] () -> isize => T.tag()", "    public init() => ()"];
+
+    // The form and its program lines.
+    public static TheoryData<string, string[]> HeldCases => new()
+    {
+        {
+            "WrapSelf",
+            [
+                .. Tagged, "struct W<X>", "    X is Tag", "    Self is Tag", "    public init() => ()", "    public func tag() -> isize => X.tag() + 100",
+                "struct Box<T>", "    T is Tag", "    public var n = func [] () -> isize => T.tag()", "    public init() => ()",
+                "    public func m(self: ref/Self, other: Box<W<T>>) -> isize", "        let g = other.n", "        return g()",
+                "require Box<A>.init().m(Box<W<A>>.init()) == 101 else => $abort(\"wrapself\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Cross",
+            [
+                .. TaggedBox, "    public func cross(self: ref/Self, other: Box<B>) -> isize", "        let g = other.n", "        let e: () -> isize = other.n",
+                "        return g() * 10 + e()", "require Box<A>.init().cross(Box<B>.init()) == 22 else => $abort(\"cross\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Generic",
+            [
+                .. TaggedBox, "func through<U>(box: Box<U>) -> isize", "    U is Tag", "    let g = box.n", "    let e: () -> isize = box.n", "    return g() * 10 + e()",
+                "require through(Box<A>.init()) == 11 and through(Box<B>.init()) == 22 else => $abort(\"through\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Nested",
+            [
+                .. Tagged, "struct Outer<T>", "    T is Tag", "    public init() => ()", "    public func pick(self: ref/Self, i: Outer<T>.Inner<B>) -> isize",
+                "        let g = i.m", "        return g()", "    public struct Inner<U>", "        U is Tag",
+                "        public var m = func [] () -> isize => T.tag() * 10 + U.tag()", "        public init() => ()",
+                "        public func read(self: ref/Self, other: Outer<T>.Inner<B>) -> isize", "            let g = other.m", "            return g()",
+                "require Outer<A>.Inner<A>.init().read(Outer<A>.Inner<B>.init()) == 12 else => $abort(\"inner\")",
+                "require Outer<B>.init().pick(Outer<B>.Inner<B>.init()) == 22 else => $abort(\"outer\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Inherited",
+            [
+                .. Tagged, "open struct Base<T>", "    T is Tag", "    public var n = func [] () -> isize => T.tag()", "    public init() => ()",
+                "struct Derived<V> : Base<V>", "    V is Tag", "    public init() : base() => ()",
+                "    public func cross(self: ref/Self, other: Derived<B>, own: Derived<V>) -> isize", "        let g = other.n", "        let h = own.n",
+                "        return g() * 10 + h()", "func viaFn<W>(d: Derived<W>) -> isize", "    W is Tag", "    let g = d.n", "    return g()",
+                "let d = Derived<A>.init()", "require d.n() == 1 and viaFn(Derived<B>.init()) == 2 else => $abort(\"top\")",
+                "require Derived<A>.init().cross(Derived<B>.init(), Derived<A>.init()) == 21 else => $abort(\"cross\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Projection",
+            [
+                .. TaggedBox, "contract HasItem", "    associate Item", "struct SrcA", "    Self is HasItem", "    associate HasItem.Item is A", "    public init() => ()",
+                "func viaWrap<S>(s: S) -> isize", "    S is HasItem", "    S.(HasItem).Item is Tag", "    let e: () -> isize = Box<S.Item>.init().n",
+                "    let f: () -> isize = Box<A>.init().n", "    let b = Box<S.Item>.init()", "    let g = b.n", "    return e() * 100 + f() * 10 + g()",
+                "require viaWrap(SrcA.init()) == 111 else => $abort(\"projection\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Signature",
+            [
+                "struct Box<T>", "    T is Copy", "    public var f = func [] (x: T) -> T => x", "    public init() => ()",
+                "func through<T>(box: Box<T>, x: T) -> T", "    T is Copy", "    return box.f(x)", "let a = Box<i32>.init()",
+                "require a.f(7) == 7 and through(Box<i64>.init(), 9000000002) == 9000000002 else => $abort(\"signature\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
+            "Forwarded",
+            [
+                "struct Box<T>", "    public var n = func [] () -> u16 => 5", "    public init() => ()", "func inner<W>(box: ref/Box<W>) -> isize", "    return 1",
+                "func outer<U>(box: ref/Box<U>) -> isize", "    return inner(box)", "let a = Box<i32>.init()",
+                "require outer(a@ref) == 1 and a.n() == 5 else => $abort(\"forwarded\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+    };
+
     [Fact]
     public void EmptyEnvironmentsKeepLengthOnlyAbiSubstitutions()
     {
@@ -72,6 +156,17 @@ public class GenericClosureIdentityTest
         // R5-M104).
         NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, 0, 0, 0, output);
     }
+
+    // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60, PLAN G300): a Closure in a generic struct's Field initializer holds its Type's instance, wherever
+    // it is read: through another instance in a member (Box<W<T>> in Box<T>'s, Box<B> in Box<A>'s, stored locally or erased), through
+    // a generic function's Box<U>, a nested Type's Outer<T>.Inner<B> in Outer's and Inner's members, a derived Type's base Field, a
+    // projection's Box<S.Item> beside Box<A>, at the top level with a signature naming T, and in a function its holder's generic caller
+    // passes on. Each run observes T, so another instance's body would abort (before: the EnclosingInstance gap, wrong code or
+    // CheckFaulted_Kd under the first designs).
+    [Theory]
+    [MemberData(nameof(HeldCases))]
+    public void AFieldInitializersClosureRunsInItsTypesInstance(string name, string[] lines)
+        => ScalarEmissionTest.EmitFixture("GenericClosureHeld" + name, string.Join('\n', lines) + "\n", "ok\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]

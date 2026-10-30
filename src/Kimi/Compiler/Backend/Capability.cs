@@ -6,7 +6,7 @@
 // per instance.
 // Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
 // a nested function called without its enclosing instance (until PLAN G149; a Field initializer's Closure or a function declared in it
-// until TyCtxt.EnclosingFunction gives it its declaring Type, DECISIONS R5-M157), and of a requirement call whose inherited witness cannot
+// until TyCtxt.EnclosingDeclaration gives it its declaring Type, DECISIONS R5-M157), and of a requirement call whose inherited witness cannot
 // preserve its receiver (OCC-X, DECISIONS R5-M67), and of a requirement call or Item whose witness has no MIR body (DECISIONS R5-M146);
 // the declaration row of a static whose storage P42 has not brought, a generic
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
@@ -31,7 +31,7 @@ internal enum CapabilityGap : byte
     // A function nested in a body (a block of a generic function, a function nested in one, a method or a specialization of a generic
     // container) called by a substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC
     // 8.13.3; DECISIONS R5-M40, R5-M43); and a Closure in a generic container's Field initializer, or a function declared in it, whose
-    // substitution binds none of the container's slots (DECISIONS R5-M157), until TyCtxt.EnclosingFunction gives every nested definition
+    // substitution binds none of the container's slots (DECISIONS R5-M157), until TyCtxt.EnclosingDeclaration gives every nested definition
     // the declaration whose instance it holds, a Field initializer's its declaring Type (BU's fact, PLAN G300).
     [Transitional("R7", Reason = "G149: the enclosing-instance chain in a call's Subst (PD27 list, R5-M146); G300: BU's Binding rule ends R5-M157's interim.")]
     EnclosingInstance,

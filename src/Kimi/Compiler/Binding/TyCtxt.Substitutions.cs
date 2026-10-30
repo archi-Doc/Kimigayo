@@ -36,6 +36,11 @@ internal sealed partial class TyCtxt
     // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and R4-M118's OriginFinding.
     internal bool BindingComplete => binding.Result.IsComplete;
 
+    // DECISIONS BU-60: the Type instance a Closure Type's context holds (HeldContext); null for a context a function's instance made, and
+    // for none.
+    internal static BoundType? HeldType(BoundType closure)
+        => closure.ClosureContext is { Declaring: { } held } context && ReferenceEquals(context.Target, closure.Symbol) ? held : null;
+
     // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
     // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.
     internal bool Readable(BoundType type, Binding.StorageOutcome storage) => binding.Readable(type, storage);
@@ -53,11 +58,17 @@ internal sealed partial class TyCtxt
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
-    // the function enclosing it (EnclosingFunction), else in its own. The closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63,
-    // R4-M152).
+    // the declaration whose instance it holds (EnclosingDeclaration), else in its own. The closure is the Type's definition (BoundClosure.Of;
+    // DECISIONS R5-M63, R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
         => closure is { Symbol: { Declaration: FunctionKoto { ClosureDefinition: not null } } symbol }
-            ? closure.ClosureContext ?? this.Identity((this.EnclosingFunction(symbol) ?? symbol).Declaration) : null;
+            ? closure.ClosureContext ?? this.Identity((this.EnclosingDeclaration(symbol) ?? symbol).Declaration) : null;
+
+    // DECISIONS BU-60: the context of a closure a Type's instance holds (a Field initializer's): that instance, which has no Origin position
+    // (Binding.HeldContext stages one that has), as the declaring Type of a substitution whose target is the closure itself; open
+    // while the instance is, a part of the Closure Type that each walk rewriting a binder's slots, projections, identities or Semantics
+    // cases rewrites (HeldType).
+    internal Subst HeldContext(BindingSymbol closure, BoundType held) => this.Intern(closure, null, held, [], [], [], []);
 
     // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call

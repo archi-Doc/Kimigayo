@@ -402,9 +402,21 @@ public sealed partial class Binding
             return projected;
         }
 
+        // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.
+        var context = type.ClosureContext;
+        if (TyCtxt.HeldType(type) is { } held)
+        {
+            if (this.SubstitutePart(held, binder, arguments, lengths, query) is not { } image)
+            {
+                return null;
+            }
+
+            context = ReferenceEquals(image, held) ? context : this.HeldContext(type.Symbol!, image);
+        }
+
         if (type.Components.Count == 0 && type.LengthArguments.Length == 0 && !type.CarriesOrigin)
         {
-            return type;
+            return this.WithContext(type, context);
         }
 
         var scratch = this.RentTypes(type.Components.Count);
@@ -429,7 +441,7 @@ public sealed partial class Binding
                 }
             }
 
-            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression);
+            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.ClosureContext);
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];
@@ -505,7 +517,7 @@ public sealed partial class Binding
 
             changed |= origins is not null;
             return changed
-                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, origins is null ? (BoundOrigin[])type.OriginArguments : origins.AsSpan(0, type.OriginArguments.Count), expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length))
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, origins is null ? (BoundOrigin[])type.OriginArguments : origins.AsSpan(0, type.OriginArguments.Count), expression, context, itemLengths.AsSpan(0, type.LengthArguments.Length))
                 : type;
         }
         finally

@@ -8725,6 +8725,38 @@ resumed by R4-M86 (2026-10-20).
     object) stops changing, which need not end: in a cycle of Pending reads each copying the next one's limit, the limits rotate under
     either sweep order (a four-cycle does under alternation).
 
+- **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
+  its Type's instance, by substitution, staged where that instance has an Origin position** (2026-10-30; PLAN G300, unit bu77; design
+  `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g300\design.md` rounds 1-3 and the owner's round 4, 「すべて推奨どおり」; R5's collector
+  review ACCEPT) SPEC 6.1.3, 6.3.3. Meets R5-M157's removal condition in part.
+  - View: `TyCtxt.EnclosingDeclaration` (renamed from EnclosingFunction, with R5's consent for the collector's one call and comments)
+    gives the declaration whose instance the code at a scope holds: a named function, an accessor's executing function (bu60), and for
+    code in a container outside every body (a Field's or static's initializer) the container. A member or top-level declaration holds
+    none. bu63's base calls and ObjectViews read it unchanged (a Type matches neither of their patterns).
+  - Representation: the Closure Type's existing ClosureContext holds `TyCtxt.HeldContext(c, I)`, a substitution whose target is the closure
+    and whose declaring Type is the instance I; BoundType counts I's parameters, pair layers and abstract parts (`TyCtxt.HeldType`).
+  - One producer, `Binding.HeldContext`: I is D's identity substituted by the reader's environment Type (StoredType), substitution alone,
+    never a storage query (KeptType runs inside storage walks). `KeptType` closes a stored part's Closures under its owner (a new
+    `ContainsClosure` summary gates it); `StorageInstance` closes the rest under the instance's declaring Type. A Closure stays without a
+    context only where the reader is D's identity. A group has none.
+  - SubstituteTypeCore, ContractTypeCore, SubstituteIdentity and CaseType rewrite I with the Closure Type, so a projection keeps one key.
+  - Staged gate: an instance whose erased form has an Origin position (a borrow, Slice, handle or raw layer, or an Origin argument, static
+    included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance) gets the closure's own identity as its context. The
+    collector reports it as the EnclosingInstance gap at each site, through CarriesInstance's first branch, exactly where dev does.
+  - Rejected: (b-i), the read's Origins in the Closure Type's Origin arguments. A Type's Origin arguments are its symbol's declared ones
+    (the old analysis's SupportsType, Aliases, BoundContracts, MemberLookup, ResultSurvey, AggregateLayout and 13 `Schema.Origins[i]`
+    reads assume it). (b-ii), opening I's Origin positions per use in ClosureSignature: it threads a use through ClosureSignature's 8 sites
+    and TryCallable's 16 callers and instantiates D's Origin premises per use, a separate design step (PLAN G300). Reader Origins kept
+    in I (round 2): two reads of one instance differ only in I's Origins and the modulo-Origins relations reject them.
+  - N6: Box<ref/i32> and Box<ref/i64> share one Closure Type and one ClosureErasure key (the closure's identity), sound only while the gap
+    stands, until per-use opening. N5: a group static's Closure call keeps one collector record where dev had two (Binding's
+    Unsupported_Kd at the access stays); its fix is R5's collector change.
+  - Tests: InstanceCollectorTest's R5-M157 rows flipped (one item per instance, a function in an initializer R5-M43's gap at its call),
+    a read through another instance, and `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records);
+    TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and `AFieldInitializersClosureHoldsItsOwnersInstance`;
+    GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another instance, erased, a generic function, a nested Type, a base
+    Field, a projection, a signature naming T, a forwarded holder), each observing T.
+
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (2026-10-30; PLAN G206 (7),
   unit bu71, Major; designs rounds 0–2 under `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g206-7\`, joint design review 3, BU's and
@@ -13310,6 +13342,9 @@ structure is recorded here by the unit that first implements it.
     erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
     a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
     closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
+  - Amended by BU-60 (bu77): the removal condition is partly met. Owners whose erased instance has an Origin position remain the
+    EnclosingInstance gap, as do group statics, until G300's per-use opening; they reach CarriesInstance's first branch, so the else
+    branch's deletion stays R5's.
 - **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
   §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
   - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and
