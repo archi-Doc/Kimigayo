@@ -1150,7 +1150,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   every 2026-10-13 checkpoint, the O5 trigger); the MIR plan continues and R4's remaining scope is replanned. R4-M25's caps
   apply again; R4-M30 and the other R4 decisions stand. Removed with the units, for the replan: the validator's signature
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
-- **R4-M34** (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
+- **R4-M34** (superseded in part by R4-M158: the backward clause) (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
   step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause; its backward ring
   superseded by R4-M65) MIR dataflow, forward and
   backward. `IMirFlow.Join(target, incoming)` is the transfer's join and says whether the state grew: A1 keeps union (`MirDataflow.Union`),
@@ -5763,6 +5763,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
     warm 0 B.
   - Open: `Encloses` costs O(distinct (Type, W) of the Place's Type) per use; a per-Place memo, as `ownAt` has, would make it per
     distinct Place (design review 1's N4).
+- **R4-M158 G305, the backward dataflow is the forward one's transpose: a value used on a Never form's assumed continuation is live
+  before the form** (2026-10-30; the R4 planning session's design `r4-notes\g305\design.md` Option 1; Major; the owner, asked whether
+  R4-M34's backward clause may be superseded and the two MirDataflowTest expectations changed, answered 「Okです」 (2026-10-30,
+  verbatim)) SPEC 14.10.3, 15.6, 15.6.7 (PLAN G305).
+  - Cause: `us[take(x@move)] = x@ref`, `take` of Type Never, was accepted on every pipeline. The MIR is right: the Never call's
+    CheckTarget starts the assumed continuation, which uses the secured `x@ref` (SPEC 13.7.1 step 1). A5's holder liveness
+    (`MirDataflow.Backward`) let a P1 chain join only its runtime successors, so a use on the continuation kept nothing live at the
+    Move, and let a P2 chain join every successor, so a use after a P1 join kept a Loan live on a continuation flowing into the join
+    (`if c` { `take("t")`; `consume(x@move)` }; `use(r)`: a MIR-only false error). The backward edges were not the forward ones
+    reversed.
+  - Rule: one edge rule, `MirDataflow.Flows`: a state flows from chain h along edge i into head s where s is P2, or h is P1 and i a
+    runtime edge (SPEC 14.10.3: an assumed continuation continues from its Never form's state, where every check applies; an item with
+    a real incoming path uses only real paths). `Forward`'s phase solve and `Backward`'s `Unwind` both read it; the phase solve keeps
+    its frozen-P1 shortcut. Every Never form of 14.10.3 shares it (a Never call, `$abort`, a transfer, `loop` without exit, a diverging
+    operand), and so does every check that reads holder liveness: Loan conflicts and reservations (`k.bump(lose(k@move))`:
+    `CallReservationConflict_Kd`). Destruction observation is unchanged (a Drop only the checks reach observes nothing, R4-M24).
+  - Supersedes R4-M34's backward clause ("a P1 chain's runtime successors only and a P2 chain's every successor"). Its reason, "uses on
+    continuations never merge into runtime paths", holds for P1 heads, not for a P2 continuation, which by SPEC 14.10.3 continues from
+    its P1 predecessor's state.
+  - Rejected: joining every successor in both phases (false errors where a transfer's continuation flows into a P1 join, and keeps the
+    false error above); a builder use of the secured operands before each diverging terminator (a clause per form, missing uses in
+    later statements, the two directions still disagreeing); a forward set of invalidated Loans checked at the use on the continuation
+    (a second conflict mechanism for one rule).
+  - Tests (each changed expectation SPEC-required and owner-approved): `MirDataflowTest`'s reference rule is the transpose;
+    `CheckOnlyUsesKeepNothingLiveOnRuntimePaths` became `ValuesStayLiveIntoACheckOnlyContinuation` (x read after a `return` is live at
+    the entry; x read after a conditional `return` is live in no block only the checks reach); `MirBorrowsTest`'s
+    `ALoanStaysLiveIntoANeverFormsContinuation` (errors at the locations of their reachable twins; valid counterparts).
+  - Old path: such forms without an unreachable local use stay accepted until R6-check (STATUS, Unreachable code).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
