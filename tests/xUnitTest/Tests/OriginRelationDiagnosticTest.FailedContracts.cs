@@ -16,6 +16,10 @@ public partial class OriginRelationDiagnosticTest
     private const string PairReturn = "func g<s/T>(a: ref/i32, b: ref/i32, c: ref/i32, x: s/T during b) -> s/T during a\n    s is owner or ref\n" +
         "    T is Copy\n";
 
+    // The same with an input whose pair layer makes `d` outlive `e` only in the borrow cases (the re-review's form).
+    private const string PairCondition = "func g<s/T>(a: ref/i32, d: ref/i32, e: ref/i32, y: ref/(s/T during d) during e, x: s/T during d) -> s/T during a\n" +
+        "    s is owner or ref\n    T is Copy\n";
+
     /// <summary>Gets each form with a failed contract and its Origin records, with its repair or valid twin (or null) and the twin's.</summary>
     public static TheoryData<string, string[], string?, string[]> FailedContracts => new()
     {
@@ -354,6 +358,10 @@ public partial class OriginRelationDiagnosticTest
             PairReturn + "    origin c == zz\n    return x\n", [Unproven + "x"], PairReturn + "    origin c == a\n    return x\n",
             [Unproven + "x"]
         },
+
+        // The record's Condition decides: `d >= e` holds only in the borrow cases (y's pair layer), where the repair `e == a` proves the
+        // record, so it is derived; in every case it would not be.
+        { PairCondition + "    origin e == zz\n    return x\n", [], PairCondition + "    origin e == a\n    return x\n", [] },
     };
 
     [Theory]
