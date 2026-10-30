@@ -22,6 +22,14 @@ public class InlineLayoutTest
     [InlineData("enum E\n    Empty\n    Again(E)\nlet x = E.Empty", "E")]
     [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty", "E")]
     [InlineData("enum A\n    Empty\n    Again(B)\nenum B\n    Again(A)\nlet x = A.Empty", "A,B")]
+
+    // DECISIONS BU-55: a Tuple is visited once per container frame only when its visit closed no cycle, so these keep dev's verdicts. R's
+    // walk meets C<i32> while C<u8> is on the stack and closes nothing; C's own walk meets the same Tuple and closes C's cycle.
+    [InlineData("struct R\n    let r: C<u8>\nstruct C<T>\n    let t: (C<i32>, u8)\n", "C")]
+
+    // The second M of A's Tuple, met after M's cycle was recorded, marks M finite, so R2's own walk skips M and R2 is not reported (with
+    // `p: M` it is): the verdict depends on duplicated parts and declaration order, an open defect (PLAN G310, BU-55), pinned at dev's.
+    [InlineData("struct A\n    let p: (M, M)\nstruct R2<T>\n    let m: M\nstruct M\n    let r: R2<i32>\n", "M")]
     public void SelfContainingDeclarationsAreDiagnosed(string source, string cyclic)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -53,7 +61,7 @@ public class InlineLayoutTest
         }
 
         source.Append("func f(s: S70) -> i32 => 1\nConsole.writeLine(\"deep\")\n");
-        MinimalEmissionTest.AssertGenerationResourceLimit(source.ToString(), "depth limit of 64 levels");
+        MinimalEmissionTest.AssertGenerationResourceLimit(source.ToString(), "S70");
     }
 
     [Fact]
@@ -61,8 +69,8 @@ public class InlineLayoutTest
     {
         // DECISIONS R5-M37 (a declared change of P7c): the old pool resolves each Type once per body, so t65's one-component Tuple,
         // 65 levels high, reused t64's resolution and was generated, while a fresh resolution reports the depth limit; Layout's
-        // placement height now decides it whatever the order. MIR code generation reports it at check once per erased Type, at t65 to t70,
-        // the locals whose Types are more than 64 levels high (K13b, DECISIONS R5-M44); the old generator's one record names the limit.
+        // placement height now decides it whatever the order. Check reports it once per erased Type, at t65 to t70, the locals whose Types
+        // are more than 64 levels high (K13b, DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
         var source = new StringBuilder("func f() -> i32\n    let t0 = 1\n");
         for (var i = 1; i <= 70; i++)
         {
@@ -79,9 +87,9 @@ public class InlineLayoutTest
             project.AddSource("main.kimi", source.ToString());
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
-            var records = Regex.Matches(console.Text, @"GenerationResourceLimit_Kd\n(?: --> (?<fact>\S+)|\nNote: (?<fact>[^\n]+))").Select(static x => x.Groups["fact"].Value);
+            var records = Regex.Matches(console.Text, @"GenerationResourceLimit_Kd\n --> (?<fact>\S+)").Select(static x => x.Groups["fact"].Value);
             var located = string.Join(' ', Enumerable.Range(67, 6).Select(static x => $"main.kimi:{x}:5"));
-            Assert.Equal(Codegen.Expect(located, "Inline layout exceeds the generation depth limit of 64 levels.", CodegenDeviations.CheckedSetAtCheck), string.Join(' ', records));
+            Assert.Equal(located, string.Join(' ', records));
         }
         finally
         {
@@ -94,7 +102,7 @@ public class InlineLayoutTest
     [InlineData("[1073741824 of i32]")]
     [InlineData("(bool, [2147483647 of u8])")]
     public void FiniteLayoutsBeyondTheInternalSizeOrCountBoundAreResourceLimits(string type)
-        => MinimalEmissionTest.AssertGenerationResourceLimit($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")", "2147483647");
+        => MinimalEmissionTest.AssertGenerationResourceLimit($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")", type);
 
     [Fact]
     public async Task AnInferredCLayoutInstanceReportsALaterFieldsResourceLimit()
@@ -122,5 +130,5 @@ public class InlineLayoutTest
 
     [Fact]
     public void EnumTagAndAlignmentCountTowardsTheSizeLimit()
-        => MinimalEmissionTest.AssertGenerationResourceLimit("enum Big\n    A([2147483647 of u8])\n    B\nfunc inspect(value: Big) -> i32 => 1\nConsole.writeLine(\"finite\")", "2147483647");
+        => MinimalEmissionTest.AssertGenerationResourceLimit("enum Big\n    A([2147483647 of u8])\n    B\nfunc inspect(value: Big) -> i32 => 1\nConsole.writeLine(\"finite\")", "Big");
 }

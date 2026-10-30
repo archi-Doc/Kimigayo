@@ -37,7 +37,13 @@ internal static class TestRuntime
     /// unsigned integer or a char, 4 a floating-point number.</summary>
     /// <param name="type">The scalar's Type.</param>
     /// <returns>The kind.</returns>
-    internal static int ValueKind(BoundType type) => ReferenceEquals(type, BoundType.Boolean) ? 1 : type.IsFloatingPoint ? 4 : ScalarTypes.Signed(type) ? 2 : 3;
+    internal static int ValueKind(BoundType type) => type switch
+    {
+        _ when ReferenceEquals(type, BoundType.Boolean) => 1,
+        { IsFloatingPoint: true } => 4,
+        _ when ScalarTypes.Signed(type) => 2,
+        _ => 3,
+    };
 
     /// <summary>Writes the entry of a test build (IMPL 21.4.2): the artifact's and the cases' identities and <c>__kimi_start</c>, which runs
     /// the case the runner selects between its begin and completion frames, each case's call written by <paramref name="call"/>.</summary>

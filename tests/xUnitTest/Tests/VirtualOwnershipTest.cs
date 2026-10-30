@@ -73,12 +73,14 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.Equal(conflict, mir.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
+    // A conditional slot that nothing references generates nothing: the module writes only the startup body and no virtual table.
     [Fact]
     public void UnreferencedConditionalSlotsNeedNoGeneratedBody()
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    Self is Marker when T is Copy\n        public virtual func read(self: objref/Self) -> i32 => 1\n()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), failure);
-        Assert.Empty(module.Objects);
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(ir, @"define internal \S+ @__kimi_f\d+\("));
+        Assert.DoesNotContain("@__kimi_object_virtuals", ir, StringComparison.Ordinal);
         Assert.Empty(TestDiagnostics.Of(c));
     }
 

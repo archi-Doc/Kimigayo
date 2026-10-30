@@ -102,7 +102,7 @@ internal sealed partial class FunctionCodegen
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { } row)
         {
-            this.Legacy(call, row, target);
+            this.Legacy(call, row, target, this.typeContext.SubstOfItem(item));
             return;
         }
 

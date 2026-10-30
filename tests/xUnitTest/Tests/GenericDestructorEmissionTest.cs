@@ -186,33 +186,11 @@ public class GenericDestructorEmissionTest
         }));
     }
 
-    // The old generator's own substitution-set limit, on a compilation pinned to it, which goes by G4 at the latest (DECISIONS R5-M85).
-    [Fact]
-    public void DestructorSubstitutionsRespectTheGenerationLimit()
-    {
-        var limit = GenericStoragePlan.SubstitutionSetLimit;
-        GenericStoragePlan.SubstitutionSetLimit = 2;
-        try
-        {
-            var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    drop => ()\nfunc a(value: Box<i8>) => ()\nfunc b(value: Box<i16>) => ()\nfunc c(value: Box<i32>) => ()\npublic func main() => ()", codegen: CompilerCodegen.Legacy);
-            using var output = new StringWriter();
-            Assert.False(c.WriteIr(output, out var error));
-            Assert.Empty(output.ToString());
-            Assert.True(c.Emission.FailureIsResourceLimit, error);
-            GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-        }
-        finally
-        {
-            GenericStoragePlan.SubstitutionSetLimit = limit;
-        }
-    }
-
     [Theory]
     [InlineData("raw/T")]
     [InlineData("(T, T)")]
     public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
-        => MinimalEmissionTest.AssertGenerationResourceLimit($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()", "grows");
+        => MinimalEmissionTest.AssertGenerationResourceLimit($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()", $"let next = Grow<{argument}>.init()");
 
     // SPEC 16.3.1: no Field of drop's self is Moved out, so each Move is Binding's record, in a generic body too.
     [Fact]

@@ -28,65 +28,66 @@ internal sealed partial class FunctionCodegen
     // unsigned integer entries, where their operators (equality, char's order, not) check nothing. Floating point follows IEEE 754 and
     // checks nothing (SPEC 13.3.1); its comparisons are ordered but for !=, so a NaN operand makes != true and the others false, and +0.0
     // == -0.0 (SPEC 13.4); it has no remainder, bitwise or shift operator. A raw pointer has == and != on its address and p + n and p - n,
-    // a displacement by n * stride(T) (Displacement, Displace), unchecked; Binding admits no other pointer operator (DECISIONS R5-M92). A
+    // a displacement by n * stride(T) (LayoutNeeds' Element row, the one statement of which operator displaces, DECISIONS R5-M149; Displace),
+    // unchecked; Binding admits no other pointer operator (DECISIONS R5-M92). A
     // string has the comparisons only (SPEC 13.3.2, 13.4): the predicate on its row's Routine's i32 against 0 (SPEC 13.4.1), the equality
     // routine for == and != and the ordering routine for the others, which compare UTF-8 bytes lexicographically (DECISIONS R5-M118).
     // Reflexive: the result on equal operands, a comparison of Unit's one value.
     private static readonly Row[] Rows = Complete(
     [
         new(
-            [new("sadd", Check.Overflow, 0), new("uadd", Check.Overflow, 0), new("add", Check.None, 0), new("add", Check.None, 0), new("fadd", Check.None, 0),
-                new("gep", Check.None, 1), default]), // Add
+            [new("sadd", Check.Overflow), new("uadd", Check.Overflow), new("add", Check.None), new("add", Check.None), new("fadd", Check.None),
+                new("gep", Check.None), default]), // Add
         new(
-            [new("ssub", Check.Overflow, 0), new("usub", Check.Overflow, 0), new("sub", Check.None, 0), new("sub", Check.None, 0), new("fsub", Check.None, 0),
-                new("gep", Check.None, -1), default]), // Sub
+            [new("ssub", Check.Overflow), new("usub", Check.Overflow), new("sub", Check.None), new("sub", Check.None), new("fsub", Check.None),
+                new("gep", Check.None), default]), // Sub
         new(
-            [new("smul", Check.Overflow, 0), new("umul", Check.Overflow, 0), new("mul", Check.None, 0), new("mul", Check.None, 0), new("fmul", Check.None, 0),
+            [new("smul", Check.Overflow), new("umul", Check.Overflow), new("mul", Check.None), new("mul", Check.None), new("fmul", Check.None),
                 default, default]), // Mul
         new(
-            [new("sdiv", Check.SignedQuotient, 0), new("udiv", Check.Zero, 0), new("sdiv", Check.WrappingQuotient, 0), new("udiv", Check.Zero, 0),
-                new("fdiv", Check.None, 0), default, default]), // Div
-        new([new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), default, default, default]), // Rem
-        new([new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), default, default, default]), // Shl
+            [new("sdiv", Check.SignedQuotient), new("udiv", Check.Zero), new("sdiv", Check.WrappingQuotient), new("udiv", Check.Zero),
+                new("fdiv", Check.None), default, default]), // Div
+        new([new("srem", Check.Zero), new("urem", Check.Zero), new("srem", Check.Zero), new("urem", Check.Zero), default, default, default]), // Rem
+        new([new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), default, default, default]), // Shl
         new(
-            [new("ashr", Check.Shift, 0), new("lshr", Check.Shift, 0), new("ashr", Check.Shift, 0), new("lshr", Check.Shift, 0), default, default,
+            [new("ashr", Check.Shift), new("lshr", Check.Shift), new("ashr", Check.Shift), new("lshr", Check.Shift), default, default,
                 default]), // Shr
-        new([new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), default, default, default]), // BitAnd
-        new([new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), default, default, default]), // BitOr
-        new([new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), default, default, default]), // BitXor
+        new([new("and", Check.None), new("and", Check.None), new("and", Check.None), new("and", Check.None), default, default, default]), // BitAnd
+        new([new("or", Check.None), new("or", Check.None), new("or", Check.None), new("or", Check.None), default, default, default]), // BitOr
+        new([new("xor", Check.None), new("xor", Check.None), new("xor", Check.None), new("xor", Check.None), default, default, default]), // BitXor
         new(
-            [new("eq", Check.None, 0), new("eq", Check.None, 0), new("eq", Check.None, 0), new("eq", Check.None, 0), new("oeq", Check.None, 0),
-                new("eq", Check.None, 0), new("eq", Check.None, 0)],
+            [new("eq", Check.None), new("eq", Check.None), new("eq", Check.None), new("eq", Check.None), new("oeq", Check.None),
+                new("eq", Check.None), new("eq", Check.None)],
             Reflexive: true,
             Routine: LegacyRuntimeHelpers.StringEqual), // Eq
         new(
-            [new("ne", Check.None, 0), new("ne", Check.None, 0), new("ne", Check.None, 0), new("ne", Check.None, 0), new("une", Check.None, 0),
-                new("ne", Check.None, 0), new("ne", Check.None, 0)],
+            [new("ne", Check.None), new("ne", Check.None), new("ne", Check.None), new("ne", Check.None), new("une", Check.None),
+                new("ne", Check.None), new("ne", Check.None)],
             Routine: LegacyRuntimeHelpers.StringEqual), // Ne
         new(
-            [new("slt", Check.None, 0), new("ult", Check.None, 0), new("slt", Check.None, 0), new("ult", Check.None, 0), new("olt", Check.None, 0),
-                default, new("slt", Check.None, 0)],
+            [new("slt", Check.None), new("ult", Check.None), new("slt", Check.None), new("ult", Check.None), new("olt", Check.None),
+                default, new("slt", Check.None)],
             Routine: LegacyRuntimeHelpers.StringCompare), // Lt
         new(
-            [new("sle", Check.None, 0), new("ule", Check.None, 0), new("sle", Check.None, 0), new("ule", Check.None, 0), new("ole", Check.None, 0),
-                default, new("sle", Check.None, 0)],
+            [new("sle", Check.None), new("ule", Check.None), new("sle", Check.None), new("ule", Check.None), new("ole", Check.None),
+                default, new("sle", Check.None)],
             Reflexive: true,
             Routine: LegacyRuntimeHelpers.StringCompare), // Le
         new(
-            [new("sgt", Check.None, 0), new("ugt", Check.None, 0), new("sgt", Check.None, 0), new("ugt", Check.None, 0), new("ogt", Check.None, 0),
-                default, new("sgt", Check.None, 0)],
+            [new("sgt", Check.None), new("ugt", Check.None), new("sgt", Check.None), new("ugt", Check.None), new("ogt", Check.None),
+                default, new("sgt", Check.None)],
             Routine: LegacyRuntimeHelpers.StringCompare), // Gt
         new(
-            [new("sge", Check.None, 0), new("uge", Check.None, 0), new("sge", Check.None, 0), new("uge", Check.None, 0), new("oge", Check.None, 0),
-                default, new("sge", Check.None, 0)],
+            [new("sge", Check.None), new("uge", Check.None), new("sge", Check.None), new("uge", Check.None), new("oge", Check.None),
+                default, new("sge", Check.None)],
             Reflexive: true,
             Routine: LegacyRuntimeHelpers.StringCompare), // Ge
         new(
-            [new("ssub", Check.Overflow, 0, Left: "0"), new("usub", Check.Overflow, 0, Left: "0"), new("sub", Check.None, 0, Left: "0"),
-                new("sub", Check.None, 0, Left: "0"), new("fneg", Check.None, 0), default, default]), // Neg
+            [new("ssub", Check.Overflow, Left: "0"), new("usub", Check.Overflow, Left: "0"), new("sub", Check.None, Left: "0"),
+                new("sub", Check.None, Left: "0"), new("fneg", Check.None), default, default]), // Neg
         new(
-            [new("xor", Check.None, 0, Right: "-1"), new("xor", Check.None, 0, Right: "-1"), new("xor", Check.None, 0, Right: "-1"),
-                new("xor", Check.None, 0, Right: "-1"), default, default, default]), // Not
+            [new("xor", Check.None, Right: "-1"), new("xor", Check.None, Right: "-1"), new("xor", Check.None, Right: "-1"),
+                new("xor", Check.None, Right: "-1"), default, default, default]), // Not
     ]);
 
     // SPEC 13.3.1's checks, each one LlvmScalarText writer.
@@ -110,7 +111,7 @@ internal sealed partial class FunctionCodegen
     // Type's, bool's and char's the unsigned integer's, a raw pointer's, a string's; -1 for a Type with no operator.
     private static int Column(BoundType type)
     {
-        type = Terminal(type, out _, out _)!;
+        type = Terminal.Of(type).Type!;
         if (type.Semantics == SemanticsKind.Raw)
         {
             return 5;
@@ -176,9 +177,9 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded.
         }
 
-        if (column >= 0 && Rows[row].Entries[column].Displacement is not 0 and var sign)
+        if (rvalue.Kind == MirRvalueKind.BinaryOp && LayoutNeeds.Of((MirBinaryOp)rvalue.Op, left.Type) == LayoutNeed.Element)
         {
-            this.Displace(statement, left, right, sign); // A raw pointer, never zero-sized; its entry is its own unchecked one.
+            this.Displace(statement, left, right); // A raw pointer, never zero-sized; its entry is its own unchecked one.
             return;
         }
 
@@ -267,14 +268,17 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 5.3: p + n and p - n displace a raw pointer by n * stride(T) bytes, T's stride in the item's instance, unchecked (overflow is
-    // undefined behavior); a zero stride keeps the pointer, null included. The bytes go through the place writer's Offset.
-    private void Displace(in MirStatement statement, in Computed pointer, in Computed count, int sign)
+    // SPEC 5.3: p + n and p - n displace a raw pointer by n * stride(T) bytes, T's stride in the item's instance (the operator's Element need,
+    // Needed), unchecked (overflow is undefined behavior); a zero stride keeps the pointer, null included. The bytes go through the place
+    // writer's Offset.
+    private void Displace(in MirStatement statement, in Computed pointer, in Computed count)
     {
-        if (pointer.Type.Components is not [var pointee] || this.Laid(pointee) is not { } element)
+        if (this.Needed(statement.Rvalue) is not { } element)
         {
             return; // A broken contract, recorded.
         }
+
+        var sign = (MirBinaryOp)statement.Rvalue.Op == MirBinaryOp.Sub ? -1 : 1;
 
         var result = pointer.Value;
         if (element.Layout.Stride != 0)
@@ -308,16 +312,16 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        if (this.Referent(operand, value, default, out var terminal, out var references) is not { } place)
+        if (this.Referent(operand, value, default, out var terminal) is not { } place)
         {
             return true; // A broken contract, recorded.
         }
 
-        if ((references == 0 ? this.LoweringOf(operand) : this.Laid(terminal)) is { } lowering)
+        if ((terminal.References == 0 ? this.LoweringOf(operand) : this.Laid(terminal.Type)) is { } lowering)
         {
-            var read = references == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
+            var read = terminal.References == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
             var constant = operand.Kind == MirOperandKind.Const;
-            computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal!, lowering);
+            computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal.Type!, lowering);
         }
 
         return true;
@@ -326,9 +330,9 @@ internal sealed partial class FunctionCodegen
     // An operand of an operator: its value, closed terminal Type and that Type's representation.
     private readonly record struct Computed(Value Value, BoundType Type, ValueLowering? Lowering);
 
-    // An entry of the table: the LLVM operator (null: none, an operator Binding admits on no operand of the column's Types), the check, a
-    // unary operator's fixed operand and a raw pointer displacement's sign.
-    private readonly record struct Entry(string? Operator, Check Check, sbyte Displacement, string? Left = null, string? Right = null);
+    // An entry of the table: the LLVM operator (null: none, an operator Binding admits on no operand of the column's Types), the check and a
+    // unary operator's fixed operand.
+    private readonly record struct Entry(string? Operator, Check Check, string? Left = null, string? Right = null);
 
     // A row of the table: the entries by column, the result on equal operands and a comparison's string routine (the string column's).
     private readonly record struct Row(Entry[] Entries, bool Reflexive = false, FunctionAbi? Routine = null);

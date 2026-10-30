@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -136,69 +135,6 @@ public class MatchEmissionTest
     }
 
     [Theory]
-    [InlineData("subject")]
-    [InlineData("test_input")]
-    [InlineData("arm_edge")]
-    [InlineData("acquisition")]
-    [InlineData("arrival")]
-    public void MalformedPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "let result = match \"a\"@move\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var match = body.Matches[0];
-        var test = body.MatchArms[0].Test;
-        if (defect == "subject")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-            body.OperationStorage[id] = body.Operations[id] with { Input = match.Subject };
-        }
-        else if (defect == "test_input")
-        {
-            body.OperationStorage[test] = body.Operations[test] with { Input = match.Subject };
-        }
-        else if (defect == "arm_edge")
-        {
-            var id = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.MatchArm);
-            body.EdgeStorage[id] = body.Edges[id] with { To = body.MatchArms[1].Test };
-        }
-        else if (defect == "acquisition")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.AcquirePattern);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else
-        {
-            var arrival = body.ResultArrivals[0];
-            body.ResultArrivals[0] = arrival with { Write = test };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Fact]
-    public void SubjectAliasesAcquiredStorageAndFinalArmHasNoTest()
-    {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch echo(\"a\")@move\n    \"\" => ()\n    let text => Console.writeLine(text)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count > 0);
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.SlotAddresses.Count == body.Places.Count);
-        var initial = body.Operations.Single(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-        Assert.Equal(function.SlotAddresses[initial.Input], function.SlotAddresses[initial.Place]);
-        Assert.DoesNotContain(function.Slots, x => x.Place == initial.Place);
-        var initialId = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.InitializeSubject);
-        Assert.DoesNotContain(function.Instructions, x => x.Operation == initialId && x.Opcode == EmissionOpcode.MoveString);
-        Assert.Single(function.Instructions, x => x.Opcode == EmissionOpcode.StringPattern);
-        Assert.Empty(function.LiveFlags);
-    }
-
-    [Theory]
     [InlineData("func f()\n    match (return)\n        _ => 1.0 + 2.0\nf()")]
     public void NoncompletingSubjectsStillCheckFloatingArms(string source)
     {
@@ -232,44 +168,5 @@ public class MatchEmissionTest
         const string Source = "let result = match \"subject\"@move\n    _\n        let local = \"local\"\n        defer => Console.writeLine(\"cleanup\")\n        yield \"result\"\nConsole.writeLine(result)";
         var ir = ScalarEmissionTest.EmitFixture("MatchCleanupOrder", Source, "cleanup\nresult\n");
         StringEmissionTest.WriteAuditedFixture("MatchCleanupOrder", ir, "cleanup\nresult\n", "subject=1;local=1;cleanup=1;result=1", order: [2, 1, 0, 3]);
-    }
-
-    [Fact]
-    public void CoveredArmKeepsDiagnosticsButContributesNoStorageOrFlags()
-    {
-        const string Source = "match 0@move\n    _ => ()\n    0\n        var text = \"a\"\n        if true => Console.writeLine(text)\n        text = \"b\"";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        Assert.Empty(function.LiveFlags);
-        Assert.Empty(function.Slots);
-        Assert.DoesNotContain(function.Instructions, x => x.Opcode is EmissionOpcode.StoreStaticString or EmissionOpcode.MoveString or EmissionOpcode.Phi);
-    }
-
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("wrong_source")]
-    [InlineData("binding")]
-    public void ScalarSnapshotPlansAreValidated(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "let unrelated = 123\nlet result = match 7@move\n    let n => n\nif result == 7 => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.OperationStorage.FindIndex(x => x.Kind == (defect == "binding" ? OwnershipOperationKind.AcquirePattern : OwnershipOperationKind.InitializeSubject));
-        if (defect == "wrong_source")
-        {
-            var unrelated = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 123);
-            body.ValueOperands[body.Values[id].Start] = unrelated;
-        }
-        else
-        {
-            body.Values[id] = default;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 }

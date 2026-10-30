@@ -111,45 +111,6 @@ public class DivisionEmissionTest
         Assert.Contains(body.Instructions, static x => x.Shape.StartsWith("urem i32 ", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void ChecksHaveOneSuccessLabelAndDivisionIsOnlyInThatBlock()
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 21\nvar d = 2\nlet y = if true => x / d else => x % d\nx /= y");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var function = module.GetFunction(0);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
-        var divisions = function.Instructions.Where(x => x.Check is ArithmeticCheckKind.Division or ArithmeticCheckKind.DivisionZero).ToArray();
-        Assert.Equal(3, divisions.Length);
-        Assert.Equal(2, divisions.Count(x => x.Check == ArithmeticCheckKind.Division));
-        foreach (var instruction in divisions)
-        {
-            Assert.True(instruction.Constant >= 0);
-            var quotient = instruction.Check == ArithmeticCheckKind.Division;
-            Assert.Equal(quotient ? "sdiv" : "srem", instruction.ScalarOperator);
-            Assert.Contains($"br i1 {(quotient ? "%invalid" : "%zero")}{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
-            // The instruction lies in the success block, after the -1 substitution of a dynamic remainder divisor (SPEC 13.3.1).
-            var block = ir.IndexOf($"b{instruction.Place}:\n", StringComparison.Ordinal);
-            var division = ir.IndexOf($"\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", block, StringComparison.Ordinal);
-            var next = ir.IndexOf("\nb", block + 1, StringComparison.Ordinal);
-            Assert.True(block >= 0 && division > block && (next < 0 || next > division));
-            Assert.Contains(quotient ? $"call void @__kimi_abort(i32 %v{instruction.Place}," : $"call void @__kimi_abort(i32 {AbortReasons.IntegerDivisionZero},", ir);
-        }
-
-        var phi = Assert.Single(function.Instructions, x => x.Opcode == EmissionOpcode.Phi);
-        var inputs = function.GetOperands(phi);
-        for (var i = 0; i < inputs.Length; i += 2)
-        {
-            var producer = inputs[i].Value;
-            Assert.Equal(Assert.Single(divisions, x => x.Operation == producer).Place, inputs[i + 1].Value);
-        }
-
-        Assert.All(function.Slots, x => Assert.Equal(OwnershipPlaceKind.Local, c.Ownership.Bodies[0].Places[x.Place].Kind));
-        Assert.DoesNotContain(" exact ", ir);
-        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
-    }
-
     [Theory]
     [InlineData("let x = " + MinimalEmissionTest.FloatExpression)]
     [InlineData("var x = " + MinimalEmissionTest.FloatExpression)]
@@ -159,30 +120,6 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MismatchedDivisionPlansFailBeforeWriting(bool wrongKind)
-    {
-        var c = MinimalEmissionTest.Analyze("let b = true\nvar x = 7\nlet y = x / 2", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Operator == KotoKind.Slash);
-        if (wrongKind)
-        {
-            body.Values[id] = body.Values[id] with { Kind = OwnershipValueKind.Unary, Count = 1 };
-        }
-        else
-        {
-            var boolean = Enumerable.Range(0, body.Values.Count).First(i => body.Values[i].Kind == OwnershipValueKind.Constant && body.Places[body.Operations[i].Place].Type == BoundType.Boolean);
-            body.ValueOperands[body.Values[id].Start + 1] = boolean;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 
     [Fact]

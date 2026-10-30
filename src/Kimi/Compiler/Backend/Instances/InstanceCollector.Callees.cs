@@ -66,12 +66,18 @@ internal sealed partial class InstanceCollector
     // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); one whose
     // legacy row writes its call in its instance (LegacyRow.InInstance: the Array operations and storage kinds, placeEntry), its LegacyRow
     // item (K 4.5 row 2; DECISIONS R5-M121, R5-M124, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an
-    // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), which is a
-    // by-value use where the row says so, as at the intrinsic's call (K 4.8, IntrinsicRows.LaysOutType; DECISIONS R5-M108), read only for a
+    // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), read only for a
     // row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a
-    // foreign function, an intrinsic whose row reads no Type argument).
+    // foreign function, an intrinsic whose row reads no Type argument). A legacy or intrinsic row whose need is TypeArguments (a whole-value
+    // update, a Dictionary kernel, IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS
+    // R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
+        if (subst is not null && LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Need: LayoutNeed.TypeArguments })
+        {
+            this.LaysOutArguments(item, subject, subst);
+        }
+
         if (this.types.Published(function) is { Runs: { } requirement, On: var on })
         {
             return this.Below(subject, function, subst, on) is { } below ? this.Runs(program, item, subject, requirement, below) : -1;
@@ -93,6 +99,11 @@ internal sealed partial class InstanceCollector
             return -1; // A foreign function, or an intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).
         }
 
+        if (row.Need == LayoutNeed.TypeArguments)
+        {
+            this.LaysOutArguments(item, subject, subst!);
+        }
+
         return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
     }
 
@@ -107,7 +118,7 @@ internal sealed partial class InstanceCollector
             return this.Admit(item, site, body, subst);
         }
 
-        this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        this.Report(DiagnosticCode.InternalInvariant_Kd, site);
         return -1;
     }
 }

@@ -47,10 +47,10 @@ public sealed partial class Binding
         return call;
     }
 
-    // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it: each closure its binder encloses (through anonymous
-    // functions) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36). One call is one query of the
-    // closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure signature's own
-    // instantiation begins its own query.
+    // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it: each closure whose enclosing function is its binder
+    // (TyCtxt.EnclosingFunction) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36). One call is one
+    // query of the closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure
+    // signature's own instantiation begins its own query.
     private BoundType? CloseClosureTypes(BoundType type, Subst instance) => this.ClosePart(type, instance, this.closedParts.Begin(this.storageVersion));
 
     private BoundType? ClosePart(BoundType type, Subst instance, uint query)
@@ -87,24 +87,16 @@ public sealed partial class Binding
             }
 
             Subst? context = null;
-            if (BoundClosure.Of(type) is { } closure && type.Symbol is { Declaration: FunctionKoto function } symbol && this.types.Instantiates(symbol))
+            if (BoundClosure.Of(type) is { } closure && type.Symbol is { } symbol && this.types.Instantiates(symbol) &&
+                ReferenceEquals(this.types.EnclosingFunction(symbol), instance.Target))
             {
-                var enclosing = function.BoundSymbol!.Scope.Function;
-                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, instance.Binder))
+                // The closure's result in the instance is the failure check.
+                if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
                 {
-                    enclosing = enclosing.BoundSymbol?.Scope.Function;
+                    return null;
                 }
 
-                if (enclosing is not null && ReferenceEquals(enclosing, instance.Binder))
-                {
-                    // The closure's result in the instance is the failure check.
-                    if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
-                    {
-                        return null;
-                    }
-
-                    context = instance;
-                }
+                context = instance;
             }
 
             return changed || context is not null

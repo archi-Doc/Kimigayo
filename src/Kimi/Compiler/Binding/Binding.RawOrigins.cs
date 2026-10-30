@@ -37,6 +37,7 @@ public sealed partial class Binding
 {
     // The member borrows a step or a retention walk is reading (RawMembers), in stack order: each reader truncates to where it started.
     private readonly List<RawMember> rawMembers = new();
+    private readonly TypeMemo<BoundType?> erasedParts = new(); // WithoutRawOrigins' results.
 
     // SPEC 5.4, 5.7: whether a conversion stating `claimed` is a fit: the premises prove that its operand's Origin, none for an
     // unstated pointer or an address, outlives the claimed one.
@@ -46,31 +47,10 @@ public sealed partial class Binding
     // A Type with every raw layer's Origin dropped: AdtDef's view of an instance's stored Types (Instance; design-final §15; DECISIONS
     // BU-41), and the D5 exception (the owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis and Emission compare Types by
     // reference, so they read each Type through this view at their Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed
-    // with them at R6-check.
+    // with them at R6-check. A part's result depends on the part alone, so each distinct part is erased once per call (DECISIONS BU-19,
+    // BU-58).
     internal BoundType? WithoutRawOrigins(BoundType? type)
-    {
-        if (type is null || !type.CarriesRawOrigin)
-        {
-            return type;
-        }
-
-        var components = this.RentTypes(type.Components.Count);
-        try
-        {
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                components[i] = this.WithoutRawOrigins(type.Components[i])!;
-            }
-
-            var parts = components.AsSpan(0, type.Components.Count);
-            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
-                ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
-        }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-        }
-    }
+        => type is null || !type.CarriesRawOrigin ? type : this.ErasedParts(type, this.erasedParts.Begin(this.storageVersion));
 
     // SPEC 15.2.3, 5.7: a layer's member of OwnedOrigins: its Origin, or its raw Origin other than `self`.
     private static BoundOrigin? OwnedOrigin(BoundType type) => type.Origin ?? (type.RawOrigin is { Kind: not OriginKind.Holder } raw ? raw : null);
@@ -108,6 +88,44 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // A component's result (WithoutRawOrigins), each distinct one carrying a raw Origin, so with components, erased once per query.
+    private BoundType ErasedPart(BoundType part, uint query)
+    {
+        if (!part.CarriesRawOrigin)
+        {
+            return part;
+        }
+
+        if (!this.erasedParts.TryGet(part, query, out var result))
+        {
+            result = this.ErasedParts(part, query);
+            this.erasedParts.Set(part, query, result);
+        }
+
+        return result!;
+    }
+
+    // A part carrying a raw Origin, its components erased first (WithoutRawOrigins).
+    private BoundType ErasedParts(BoundType type, uint query)
+    {
+        var components = this.RentTypes(type.Components.Count);
+        try
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.ErasedPart(type.Components[i], query);
+            }
+
+            var parts = components.AsSpan(0, type.Components.Count);
+            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
+                ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
     }
 
     // SPEC 5.6, 5.7 (D14): the raw Origin the argument of a callee's Within parameter (KimiLibraryCatalog.Within) states before its fit to

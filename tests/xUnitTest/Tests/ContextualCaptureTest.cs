@@ -116,14 +116,11 @@ public class ContextualCaptureTest
     public void AClosureInADropBodyNeverCapturesTheHelperBorrow(string body, string at)
     {
         var source = Destructor + body;
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var errors = PublishedRecords(source, pipeline);
-            var error = Assert.Single(errors);
-            Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
-            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-            Assert.Contains("helper borrow", error.Note, StringComparison.Ordinal);
-        }
+        var errors = PublishedRecords(source);
+        var error = Assert.Single(errors);
+        Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
+        Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+        Assert.Contains("helper borrow", error.Note, StringComparison.Ordinal);
     }
 
     // SPEC 16.3.1, 7.7.2: the helper borrow passed to helpers, used by a defer, held in a local aggregate (stored means beyond the body),
@@ -192,12 +189,9 @@ public class ContextualCaptureTest
     [InlineData("        let g = func [f] () => f()\n        g()\n")]
     public void ALaterUseOfARejectedClosureAddsNoRecord(string uses)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var error = Assert.Single(PublishedRecords(Rejected + uses, pipeline));
-            Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
-            Assert.StartsWith("w] ()", (Rejected + uses)[error.Span.Start..], StringComparison.Ordinal);
-        }
+        var error = Assert.Single(PublishedRecords(Rejected + uses));
+        Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
+        Assert.StartsWith("w] ()", (Rejected + uses)[error.Span.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.6.5, 16.3.1: a var captured before a later value brings the helper borrow into its region (OQ2: judged on Origins, without
@@ -214,13 +208,10 @@ public class ContextualCaptureTest
     public void AVarCapturedBeforeTheHelperBorrowReachesItFailsAtThatValue(string body, string at)
     {
         var source = Destructor + body;
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var error = Assert.Single(PublishedRecords(source, pipeline));
-            Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
-            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-            Assert.Contains("which a Closure captures", error.Note, StringComparison.Ordinal);
-        }
+        var error = Assert.Single(PublishedRecords(source));
+        Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
+        Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+        Assert.Contains("which a Closure captures", error.Note, StringComparison.Ordinal);
 
         var c = MinimalEmissionTest.Analyze(source);
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsAnonymous), static x => Assert.NotNull(x.ClosureOf()));
@@ -239,12 +230,9 @@ public class ContextualCaptureTest
     public void AClosureWhoseCreationFailedHasItsCapturesJudged(string body, string records)
     {
         var source = Destructor + body;
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var found = PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
-                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
-            Assert.Equal(records, string.Join("; ", found));
-        }
+        var found = PublishedRecords(source).OrderBy(static x => x.Span.Start)
+            .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
+        Assert.Equal(records, string.Join("; ", found));
     }
 
     // One failure per node: a Closure argument rejected at its capture is not judged again at its erasure to a common Function Type,
@@ -279,11 +267,11 @@ public class ContextualCaptureTest
         Assert.Equal(failure is null ? [] : [(Enum.Parse<BindingFailure>(failure), at!)], c.Binding.Issues.Select(static x => (x.Node.FailureOf(), x.Node.ToString())));
     }
 
-    // The Binding and analysis records a pipeline publishes for a program, which records no internal fault.
-    internal static TestDiagnostic[] PublishedRecords(string source, CompilerPipeline pipeline)
+    // The Binding and analysis records a program publishes, which records no internal fault; every pipeline publishes the same (DECISIONS
+    // R5-M156), so one compilation of the process's pipeline judges them (PLAN G314).
+    internal static TestDiagnostic[] PublishedRecords(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = pipeline;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();

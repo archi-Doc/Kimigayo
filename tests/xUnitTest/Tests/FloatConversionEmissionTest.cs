@@ -38,13 +38,6 @@ public class FloatConversionEmissionTest
     public void IdentityPreservesNonfiniteValuesAndHasNoConversionInstruction(string type)
     {
         var source = $"func id(x: {type}) -> {type} => x@{type}\nvar z: {type} = 0.0\nvar one: {type} = 1.0\nlet nan = id(z / z)\nlet zero = id(-0.0)\nlet inf = id(one / z)\nif nan != nan and 1.0 / zero < 0.0 and inf > 1.0 => Console.writeLine(\"ok\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        for (var i = 0; i < module.FunctionCount; i++)
-        {
-            Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);
-        }
-
         ScalarEmissionTest.EmitFixture("FloatConvertIdentity" + type, source, "ok\n");
     }
 
@@ -73,34 +66,6 @@ public class FloatConversionEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Unsupported);
         Assert.False(c.Validate(out _));
-    }
-
-    [Theory]
-    [InlineData("binding")]
-    [InlineData("target")]
-    public void CorruptWideningPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var x: f32 = 1.25\nlet y = x@f64", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
-        var operation = body.Operations[id];
-        if (defect == "binding")
-        {
-            Assert.IsType<ConversionKoto>(operation.Source).SetConversion(ConversionBinding.Integer);
-        }
-        else
-        {
-            body.PlaceStorage[operation.Place] = body.Places[operation.Place] with { Type = BoundType.Primitives["u64"] };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
     }
 
     [Fact]

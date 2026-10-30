@@ -7,12 +7,13 @@ namespace Kimi.Compiler.Mir;
 // A5's accesses at a location (A3 5's access, E13 (1)): the accesses of borrowed roots that the location's uses make, each classified by
 // what it does (KindOf, MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
 // (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
-// also read by MirBorrows.OwnSteps' MayDepart, Dropping and Destruction by MirBorrows.Liveness and MirBorrows.Activations, and Destruction
-// by MirBorrows.Calls' referent stores.
+// also read by MirBorrows.OwnSteps' MayDepart, Dropping by MirBorrows.Holders (drop slots), Dropping and Destruction by MirBorrows.Liveness
+// and MirBorrows.Activations, and Destruction by MirBorrows.Calls' referent stores.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
-    private readonly Dictionary<BoundType, MirObservation> destructions = new(ReferenceEqualityComparer.Instance); // Destruction's, by case Type.
+    private readonly Dictionary<BoundType, byte> entered = new(ReferenceEqualityComparer.Instance); // Observation's scratch.
+    private readonly Dictionary<BoundType, MirOutcome> destructions = new(ReferenceEqualityComparer.Instance); // Destruction's, by case Type.
     private (BindingSymbol? Definition, ulong Version) destructionsOf; // The definition and program version the destructions are for.
     private Access[] accesses = [];
     private int accessCount;
@@ -64,9 +65,10 @@ internal sealed partial class MirBorrows
         return this.Destruction(cases.Type(this.body.TypeOf(place)!), out _);
     }
 
-    // How destroying a value of a case Type accesses it (MirTypes.Observation): observing, unclassified past the walk's bound, or shallowly,
-    // and whether it observes only through an abstract part not proven Copy (unproven); once per case Type for the body's definition and
-    // the program version (Observation reads the definition's Copy and Sealed proofs).
+    // How destroying a value of a case Type accesses it, read off the walks' answer (MirTypes.Observation): observing where decided or Limit,
+    // unclassified where Deep (past the walk's bound), else shallowly, and whether it observes only through an abstract part not proven
+    // Copy (unproven: Limit); once per case Type for the body's definition and the program version (Observation reads the definition's Copy
+    // and Sealed proofs).
     private AccessKind Destruction(BoundType type, out bool unproven)
     {
         if (this.destructionsOf != (this.body.Key.Decl, this.program.Version))
@@ -78,16 +80,16 @@ internal sealed partial class MirBorrows
         ref var observation = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
         if (!known)
         {
-            observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.seen);
+            observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.entered);
         }
 
-        unproven = observation == MirObservation.Unproven;
-        return observation switch
+        unproven = observation.IsLimit;
+        if (observation.IsDeep)
         {
-            MirObservation.None => AccessKind.Destroy,
-            MirObservation.Deep => AccessKind.Unclassified,
-            _ => AccessKind.Observe,
-        };
+            return AccessKind.Unclassified;
+        }
+
+        return observation.IsNone ? AccessKind.Destroy : AccessKind.Observe;
     }
 
     // A Ref's access: a unique one borrows exclusively, the destroying reservation reads its target (A3 4's destroying(site)), another

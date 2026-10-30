@@ -49,7 +49,7 @@ During edits, build the test project incrementally and run the relevant methods.
 
 ```powershell
 dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore -c Release
-dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.DeferredEmissionTest.RepeatedExpansionReusesLocalStorage -failSkips
+dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.FunctionCodegenTest.OnlyRuntimeReachedBlocksAreGenerated -failSkips
 ```
 
 Choose an existing method from the test source or runner discovery (`-list methods`). For fast functional feedback within a class, use `-class <class> -trait- Purpose=Allocation`. Direct runner selections of a moved allocation method use `<outer-class>+AllocationTests.<method>`.
@@ -91,9 +91,9 @@ Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified f
 
 After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. The common checks join each nonempty group, as `Class.*` among methods, so they add to the selection rather than narrowing it. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail. After the run, every requested class and method must also match a test the run executed, read from its per-test results (`tests-*.xml`), even when the common checks or another selector execute tests: a selector fails when it matches only Explicit methods, which discovery lists and xUnit reports Not Run, or when the class/method intersection or the purpose filter leaves it no test.
 
-`-Pipeline mir` (R3–R5; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`. `-Codegen mir` (R5, removed with the selector at G4; default `legacy`) sets `KIMI_CODEGEN` the same way and records it as `codegen`; it selects MIR code generation, which needs `-Pipeline mir`, so any other pairing is rejected before building (R5 PD4). Under `-Codegen mir` the test steps also pass `-printMaxStringLength 0 -printMaxEnumerableLength 0`, so xUnit cuts no theory argument and each case has its own full name. A `-Codegen mir` run that wrote test results runs the `codegen pending` step (`scripts/codegen-pending.ps1`, DECISIONS R5-M66) after its tests, native steps and milestones, also after failed tests: it compares the run's failing cases, keyed by their full names from the result XML, and its failing native fixtures (`results.json`) with the pending ledger, the union of `tests/xUnitTest/TestData/codegen-pending/<group>.tsv` (one file per review group; rows `test<TAB><type>.<method><TAB><full name>` and `fixture<TAB><stem>.ll<TAB>1`), writes `codegen-pending.json` (each row pending, passing now, added, no longer executed, or outside the run's selection) and records its totals as `codegenPending` in `summary.json`. The step is the gate (R5 E11): it fails when an entry within the run's scope passes now, is no longer executed or was added, so the run passes only when its failing set equals the ledger; a malformed ledger, a case name the run executed twice or missing evidence fail it too, including a selected method of which the results record no case (a partial run; a sel Session discovers its methods for this). The test and native steps of a sel run leave their failing cases and fixtures to the gate: a test step fails when it executed nothing, a selector executed none or the results record a run error, and a native step when a selected fixture has no result or an incomplete/unknown status, so listed fixtures run without failing the run. `-UpdatePending` (sel only) then writes the ledger, after the input-stability step and only when the gate is the run's one failed step: rows that pass now or are no longer executed leave, and an added case or fixture is filed by DECISIONS R5-M73's rule (`Get-KimiCodegenGroup`); each file keeps ordinal order with LF ends, an unchanged file is not written and an emptied one is removed, and the step lists each changed file's added and removed rows. That run is not commit evidence: verify the written ledger again. Its regression is `./tests/scripts/CodegenPendingTest.ps1`.
+`-Pipeline mir` (R3–R6; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`. From R6-gen's G2 every pipeline publishes the same records (DECISIONS R5-M156), so `-Pipeline mir` adds only the difference ledger's observation and the identity mark, and the mir lane runs only as the ledger's run below (DECISIONS R5-M152, OI-3 (a)). MIR code generation is the one code generator: `-Codegen` and `KIMI_CODEGEN` went with the selector at R6-gen's G4 (DECISIONS R5-M160).
 
-During R5 (DECISIONS R5-M8; removed at R6-gen's unit G4), MIR code generation ("sel": `KIMI_PIPELINE=mir` with `KIMI_CODEGEN=mir`) gets its own checks. Every R5 working session ends with a sel Session beside the default one, `./scripts/verify.ps1 -Mode Session -Pipeline mir -Codegen mir -Fixtures <patterns>`; its test and native steps pass when their failing set equals the tracked pending ledger, which only shrinks. A unit that changes the failing set writes the ledger with `-UpdatePending` on its sel run, then verifies again. An incomplete native observation has no pending row: it fails the native step and gate and prevents ledger updates. Other load-dependent test failures also have no row. Milestone harnesses are not ledger rows, so a selected one that fails under sel fails the run. R4's and BU's MIR-builder merges run DECISIONS R5-M8's sel check (ask A-10) as `pwsh -Command "./scripts/verify.ps1 -Mode Session -Pipeline mir -Codegen mir -Name <label>"`, or as a sel Unit run of the affected classes (`-Class <classes> -Pipeline mir -Codegen mir`, where other classes' rows are out of scope). For them a red gate is the record of a rise or fall, not a block: the merge commit names each differing case with its state from `codegen-pending.json` and changes no ledger row, and R5's next `-UpdatePending` run writes the rows; their commit evidence remains the default run. No CI lane runs sel: full cross-pipeline sweeps run at R5 family group reviews, at X1 and at G3.
+R4's MIR-builder merges run the default checks and select the affected native families and O2 kernels (DECISIONS R5-M8, ask A-10).
 
 The MIR difference ledger (R4–R6, DECISIONS R4-M17) is recorded by the test assembly. `KIMI_MIR_DIFF=<directory>` makes its fixture `MirDifferenceLedger` compare every mir-pipeline compilation once per Binding pass and append raw rows and sources to that directory, which must be fresh (the aggregation reads every `raw-*.tsv` there), aggregated into `ledger.tsv` and `summary.md` (plan §8's metrics: the families landed on the MIR, the SPEC examples of `tests/diagnostics/spec-cases.json` checked there, and the open blocking rows, DECISIONS R4-M47) when the run ends; `KIMI_MIR_LEDGER=<directory>` with `MirDifferenceTest.RequestedLedger` aggregates a directory's raw rows again. The mir measurement of a unit runs the Functional suite under `KIMI_PIPELINE=mir` with `KIMI_MIR_DIFF` (tier 1 is `MirDifferenceTest.RequestedCorpus`, tier 2 the rest of the suite) and the `Purpose=Allocation` tests under mir without it, since the observer allocates; the Functional failure set must equal a mir run without the ledger. The ledger of a unit is kept under `artifacts/verify/mir-diff/<unit>/`.
 
@@ -125,11 +125,7 @@ before it, on the same inputs and configuration:
 - the generated IR: `./scripts/compare-fixtures.ps1 -Baseline <previous run> -Candidate <run>` reports the `.ll` files
   under `fixtures-<Configuration>`, their expectation sidecars and the native results identical (regression:
   `tests/scripts/FixtureComparisonTest.ps1`); fixture IR records no checkout path, so runs from any worktree compare
-  equal byte for byte. Between runs of different code generators (`summary.json`'s `codegen`) only, a fixture whose
-  runs carry the same `.deviation` sidecar, each run's `.stdout`, `.exit` and `.stderr` its side's (the old generator's
-  or MIR code generation's), deviates by a decided item: it is counted as deviating and only those three sidecars are
-  not differences; its `.ll` and native outcomes stay compared, and within one generator nothing deviates (R5, until G4;
-  DECISIONS R5-M85, R5-M106).
+  equal byte for byte.
 
 A difference means the commit changes behavior: split it, or treat it as a behavior change with its own tests. Do not
 compare `Kimi.dll` bytes instead: its informational version embeds the commit id (`0.1.1+<commit>`) and its PDB path
@@ -137,10 +133,9 @@ depends on the worktree, so the DLL changes between commits even when behavior d
 
 `-O2Metrics` also writes `o2-metrics.json`: instructions and blocks per `define` of each natively run fixture's optimized
 IR (`<work>/native*/<name>.O2.ll`, so both runs' `temp/verify` work directories must remain), totalled over the runtime
-helpers (the functions of the checkout's runtime template, which both generators write) and over the generated bodies;
-the fixtures measured in both runs ranked by candidate/baseline body instruction growth, and those without an O2 file in
-a run. The metrics are information, not part of the result; R5 measures MIR code generation against a legacy run with
-them (DECISIONS R5-M3).
+helpers (the functions of the checkout's runtime template) and over the generated bodies; the fixtures measured in both
+runs ranked by candidate/baseline body instruction growth, and those without an O2 file in a run. The metrics are
+information, not part of the result; R5 measured MIR code generation against a legacy run with them (DECISIONS R5-M3).
 
 ## Shared heavy runs and bases
 
@@ -148,7 +143,7 @@ Sessions working in parallel on one machine share its load and their full-suite 
 the main checkout's `artifacts/`, which is ignored and therefore separate in every worktree: a unit in `bin/worktrees/<name>`
 uses the main checkout's directories by absolute path.
 
-A heavy run is a full Session (default, `-Pipeline mir` or sel), a full `-TestPurpose Functional` run (also a ledger run
+A heavy run is a full Session (on any pipeline or code generator), a full `-TestPurpose Functional` run (also a ledger run
 with `KIMI_MIR_DIFF`), or a native fixture or milestone sweep; a Unit run of selected classes is not. At most three heavy
 runs execute at once across the sessions. Before starting one, list `artifacts/heavy-runs/*.run` and delete those older
 than four hours (stale); if three or more remain, do targeted work and check again later. Otherwise create
@@ -232,7 +227,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --inheritance-plans`, `--inheritance-lifecycle` | [Inheritance.md](../../src/Benchmark/Inheritance.md); lifecycle adds fresh/edited snapshots and retained ownership storage. |
 | `Benchmark --arithmetic-plans`, `benchmark-arithmetic.ps1` | [Arithmetic.md](../../src/Benchmark/Arithmetic.md) |
 | `Benchmark --hover` | [HOVER.md](HOVER.md#responsiveness-measurements) |
-| `Benchmark --compiler-pipeline`, `--compiler-pipeline-check`, `--analyze-cost` | [CompilerPipeline.md](../../src/Benchmark/CompilerPipeline.md); the check has no timing thresholds; save its output under `artifacts/verify/`. |
+| `Benchmark --compiler-pipeline`, `--compiler-pipeline-check`, `--analyze-cost`, `--collection-cost`, `--collection-cost-check` | [CompilerPipeline.md](../../src/Benchmark/CompilerPipeline.md); the checks have no timing thresholds; save their output under `artifacts/verify/`. |
 | `Benchmark --named-arguments` | [NamedArguments.md](../../src/Benchmark/NamedArguments.md#reproduce) |
 | `Benchmark --diagnostics` | No document; `DiagnosticMeasurements` writes its input projects under `temp/diagnostic-measurements/` and prints one JSON report to stdout: compiler and runtime versions, and per input the median and minimum microseconds and median bytes per operation. |
 | `benchmark-o2-corpus.ps1` | [O2Corpus.md](../../src/Benchmark/O2Corpus.md) |
@@ -249,11 +244,10 @@ observationMilliseconds argument. Zero or no sidecar expects completion. The sep
 running after sufficient observed CPU time is stopped and its output compared. If the deadline arrives first, its
 status is incomplete, even for empty expected output. The measurements establish bounded execution evidence, never
 a proof of nontermination. Regenerate old .timeout fixtures; their elapsed-time oracle is no longer used.
-Incomplete status remains visible in results.json, codegen-pending.json and the Verify summary: it fails verification,
-cannot become a pending codegen defect and blocks ledger updates. Only historical fixture comparison accepts old ok
-records; it rejects incomplete results.
+Incomplete status remains visible in results.json and the Verify summary: it fails verification. Only historical fixture
+comparison accepts old ok records; it rejects incomplete results.
 
 Native selection and its input hashes include only `.ll` files, even with a broad pattern such as `*`.
 Sidecar expectation files never become compiler inputs; a pattern matching only sidecars fails as an empty selection.
 
-After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1` with the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, invalid UTF-8, evidence failure, pending-ledger rejection and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. No incomplete result may update the pending ledger. Logs, including intentional failure cases, remain in `artifacts/verify/`.
+After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1` with the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, invalid UTF-8, evidence failure and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. Logs, including intentional failure cases, remain in `artifacts/verify/`.

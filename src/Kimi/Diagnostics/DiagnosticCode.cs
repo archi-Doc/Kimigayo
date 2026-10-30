@@ -237,6 +237,7 @@ public enum DiagnosticCode
     UnprovenOriginContract_Kd,
     InterpolationNestingLimit_Kd,
     DefaultExpansionLimit_Kd,
+    OwnershipDepthLimit_Kd,
 
     Count, // Last sentinel
 }

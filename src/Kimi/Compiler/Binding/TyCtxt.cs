@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns constructed Type interning and pure Type operations, and the lifetime of TyCtxt's views (ResetViews); substitutions are
+// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
+// of TyCtxt's views (ResetViews); substitutions are
 // TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the DictionaryStorage symbol view the instance collector reads (F2c, until
 // R8) TyCtxt.DictionaryStorage.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
@@ -24,6 +25,11 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];
+
+    // SPEC 3.1.2 (DECISIONS R4-M154, r2.2): the stored content of a built-in Core Type, whose layout is hidden, the one fact such a Type
+    // publishes to retention's walks (Binding.HeldParts, read for the positions and the sources alike): a `string`'s value holds its text's
+    // bytes, elements of Type `u8`, by value, as a fixed array holds its elements; every other Core holds none (null). Never "holds any".
+    internal static BoundType? CoreContent(BoundType type) => ReferenceEquals(type, BoundType.String) ? BoundType.Primitives["u8"] : null;
 
     // SPEC 3.4.3, 13.5.5: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
     // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the

@@ -6,7 +6,9 @@ namespace Kimi.Compiler;
 // 2): the authority such a layer's Origin can keep (RawStep, which A5 and MirTypes.Holding read), the borrows it belongs to (RawMembers)
 // and whether a declaration states it without an Origin (RawStated), with the stored parts through which a walk reaches the instance
 // storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs,
-// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); and whether a Type states Unstated (StatesUnstated), which only a kept
+// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); the Type a declaration writes at a stored part's inline positions
+// (WrittenAt, DECISIONS BU-58), for A5's walks over them; what a `during self` layer admits past its pointee (SelfAdmitted,
+// Binding's one reading forwarded, which MirTypes.Holding reads); and whether a Type states Unstated (StatesUnstated), which only a kept
 // part does (MirValidator's Local row).
 internal sealed partial class TyCtxt
 {
@@ -17,30 +19,51 @@ internal sealed partial class TyCtxt
     // for one stating an Origin. A read of the layer Type; total; allocates nothing.
     internal static bool RawStated(BoundType layer) => layer.RawOrigin?.Kind == OriginKind.Unstated;
 
-    // DECISIONS BU-46: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does (MirValidator's
-    // Local row: a MIR local's Type states none). Only a Type carrying a raw Origin is walked, by index; allocates nothing.
-    internal static bool StatesUnstated(BoundType type)
+    // DECISIONS BU-46, BU-58: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does
+    // (MirValidator's Local row: a MIR local's Type states none). Only a part carrying a raw Origin is walked, each distinct one once per
+    // call (`seen`, the caller's scratch, cleared first: the answer is the part's alone), by index; allocates nothing when warm.
+    internal static bool StatesUnstated(BoundType type, HashSet<BoundType> seen)
     {
         if (!type.CarriesRawOrigin)
         {
             return false;
         }
 
-        if (RawStated(type))
-        {
-            return true;
-        }
+        seen.Clear();
+        return Unstated(type, seen);
 
-        for (var i = 0; i < type.Components.Count; i++)
+        static bool Unstated(BoundType type, HashSet<BoundType> seen)
         {
-            if (StatesUnstated(type.Components[i]))
+            if (RawStated(type))
             {
                 return true;
             }
-        }
 
-        return false;
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                var part = type.Components[i];
+                if (part.CarriesRawOrigin && seen.Add(part) && Unstated(part, seen))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
+
+    // DECISIONS BU-58: the Type the declaration of an instance's part writes at inline positions (as for RawStep), Binding's one reading
+    // (Binding.WrittenAt), while it is a Tuple, a fixed array or a raw layer (at a raw layer, exactly the layer RawStep's cap reads); null
+    // at or past any other Type, where no declaration writes the part, and at an enum's []. Monotone from a part's first positions (a
+    // struct's [], a Case's [i]). The facts at and below a stored inline node are a function of its kept Type, this and the instance;
+    // where this is null, every raw layer below steps StepOf of its kept layer (Unstated, Static or Exclusive, never Shared or Own) and
+    // RawMembers appends nothing. Reads the declaration only, O(|positions|), total; allocates nothing.
+    internal static BoundType? WrittenAt(BoundType instance, int part, ReadOnlySpan<int> positions) => Binding.WrittenAt(instance, part, positions, out _);
+
+    // SPEC 5.7 Calls (the owner's Q2 (a)): what a `during self` layer of a stored part admits past it besides its pointee, Binding's one
+    // reading (Binding.SelfAdmitted): the holding instance's Type arguments by their actual Types, or the write fact where it has an Origin
+    // argument (true).
+    internal static bool SelfAdmitted(BoundType holder, out IReadOnlyList<BoundType> arguments) => Binding.SelfAdmitted(holder, out arguments);
 
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,

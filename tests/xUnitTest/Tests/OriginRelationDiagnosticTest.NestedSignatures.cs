@@ -97,19 +97,15 @@ public partial class OriginRelationDiagnosticTest
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
-    // The G216 (a) acceptance check: the program parses without a record, and on both pipelines its Error records are exactly `records`
-    // (each `Code text`, ordinal order, "; " between them; empty for a valid program), one of them labelled `label` when it is given.
+    // The G216 (a) acceptance check: the program parses without a record, and its Error records are exactly `records` (each `Code text`,
+    // ordinal order, "; " between them; empty for a valid program), one of them labelled `label` when it is given.
     internal static void AssertRecords(string form, string body, string records, string? label)
     {
         var source = body + Main;
         CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
-        var found = new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir }.Select(pipeline =>
-        {
-            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-            var shown = string.Join("; ", errors.Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").Order(StringComparer.Ordinal));
-            return (Pipeline: pipeline, Shown: shown, Labelled: label is null || errors.Any(x => x.Label == label), Labels: string.Join("; ", errors.Select(static x => x.Label)));
-        }).ToArray();
-        var report = string.Join(", ", found.Select(static x => $"{x.Pipeline} [{x.Shown}] (labels: {x.Labels})"));
-        Assert.True(found.All(x => x.Shown == records && x.Labelled), $"{form}: expected [{records}]{(label is null ? string.Empty : $" labelled '{label}'")}, found {report}");
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        var shown = string.Join("; ", errors.Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").Order(StringComparer.Ordinal));
+        var labelled = label is null || errors.Any(x => x.Label == label);
+        Assert.True(shown == records && labelled, $"{form}: expected [{records}]{(label is null ? string.Empty : $" labelled '{label}'")}, found [{shown}] (labels: {string.Join("; ", errors.Select(static x => x.Label))})");
     }
 }

@@ -422,11 +422,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // SPEC 15.6, 15.6.4 (A3's transit, 25a, 25b, 29c): a value a location stores into a holder live after it is checked with its access,
     // so storing what borrows the destination into it is an error, unless the destination is dead; a write through a reference stores
-    // into the holders its Loans name (P10).
+    // into the holders its Loans name (P10). `pin`'s result is `ref/i32 during slot`, which can hold neither its argument's own value nor
+    // a borrow formed through it (`**slot` lies past a second shared layer, SPEC 15.6.3), so it keeps only what a read through the
+    // argument carries, never the argument's Loan, and selfStore and partStore store nothing borrowing their destination (the owner's
+    // 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154; dev kept the Loan by the result's Origin).
     [Fact]
     public void AStoredValueIsCheckedInTransit()
         => Assert.Equal(
-            ["selfStore: x = pin(x@ref)", "partStore: s.r = pin(s.r@ref)", "throughStore: x = 3"],
+            ["throughStore: x = 3"],
             Problems("""
                 func selfStore(y: ref/i32)
                     var x = y
@@ -1957,8 +1960,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // R4-M36, R4-M51, A3 5: a Drop whose Type's destruction walk passes its depth bound and a call whose contract Binding does not
     // instantiate (CallRetention.Limit: storage nested past its depth bound, as a growing recursive Type's) are not classified:
-    // Unsupported_Kd there, and no Loan problem; a body without a Loan, which no conflict can depend on, reports neither. The parameter's
-    // Drop is located at its parameter (DECISIONS BU-48's locations, settled (a): a parameter's record at its Type occurrence, R4-M90 D6's rule extended).
+    // OwnershipDepthLimit_Kd there (the owner's 「G272: (1)」, R4-M153), and no Loan problem; a body without a Loan, which no conflict can
+    // depend on, reports neither. The parameter's Drop is located at its parameter (DECISIONS BU-48's locations, settled (a): a parameter's
+    // record at its Type occurrence, R4-M90 D6's rule extended).
     [Fact]
     public void AnUnclassifiedDestructionOrCallIsUnsupported()
     {
@@ -1967,7 +1971,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             "func unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n");
         var program = Analyze(c);
         Assert.Equal(
-            ["Unsupported_Kd Nest<ref/i32 during a>", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"], // The parameter's at its Type (BU-48 (a)).
+            ["OwnershipDepthLimit_Kd Nest<ref/i32 during a>", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"], // The parameter's at its Type (BU-48 (a)).
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
@@ -2215,7 +2219,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // A3 6.4, R4-M3a: a problem's facts are its Loan's or guard candidate's anchor and its witness: the holder's next use in its chain (for
-    // an activation from its call on; none in a later chain), or the store that carries the Loan; and an activation's reservation.
+    // an activation from its call on; none in a later chain), or the store that carries the Loan (TheWarningCarriesItsFacts's `Store b`); and an
+    // activation's reservation. selfStore is valid (AStoredValueIsCheckedInTransit; DECISIONS R4-M154).
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -2245,8 +2250,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var problems = program.Problems.All.ToArray();
         Assert.Equal(
             [
-                "x = 2: Anchor x@ref, Use inspect(r)", "x = pin(x@ref): Anchor x@ref, Store x = pin(x@ref)",
-                "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq", "let d: Anchor let d",
+                "x = 2: Anchor x@ref, Use inspect(r)", "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq",
+                "let d: Anchor let d",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code)).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
@@ -2423,6 +2428,20 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
+    // Design §8 (DECISIONS R4-M154): the Loan stratum's second pass over a program allocates nothing, whichever role its two swapped Loan
+    // arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7 regrew 32 Loans before). The standard window
+    // (AllocationMeasurement) warms up before it measures, which absorbs a second-pass regrow, so this pass is measured on its own.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void TheLoanStratumsSecondPassAllocatesNothing()
+    {
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone7");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        _ = stratum.Run(program);
+        Assert.Equal(0, stratum.Run(program));
+    }
+
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
     // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
     // nothing.
@@ -2568,25 +2587,34 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal MirBorrows Borrows { get; }
 
-        internal void Run(MirProgram program)
+        // Each run returns what the Loan stratum's runs allocated on the thread (the Origin stratum's Judge apart).
+        internal long Run(MirProgram program)
         {
+            long allocated = 0;
             foreach (var body in program.Bodies)
             {
-                this.Run(program, body);
+                allocated += this.Run(program, body);
             }
+
+            return allocated;
         }
 
-        internal void Run(MirProgram program, MirBody body)
+        internal long Run(MirProgram program, MirBody body)
         {
             this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
             this.origins.Judge(body, MirCases.Count(body), program.Problems);
+            long allocated = 0;
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 this.cases.Select(body, view);
+                var before = GC.GetAllocatedBytesForCurrentThread();
                 this.Borrows.Run(program, body, view);
+                allocated += GC.GetAllocatedBytesForCurrentThread() - before;
             }
+
+            return allocated;
         }
 
         // A4 over a program version it has not solved: each body's views' local facts, then the summaries and keys.

@@ -45,7 +45,7 @@ public sealed partial class Binding
     // Whether a transfer operation writes `output` there: a 4.9 operation's row is its complete published effect (SPEC 4.9.6), which
     // writes its result and its receiver's element storage (ReceiverStorage), never through another argument (`append`'s added
     // `raw/(raw/u8)`), and `exchange` writes its result and its target, never through `with` (15.7); rule A forms no row at another output.
-    private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output) => output == Retention.Result || transfer switch
+    private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output) => output == CallRetention.ResultOutput || transfer switch
     {
         Transfer.Elements => ReceiverStorage(callee!, output),
         Transfer.Exchange => output == ExchangeTarget,
@@ -55,7 +55,7 @@ public sealed partial class Binding
     // Whether `output` is the store at the callee's receiver (an input's writable storage, never the result), the one receiver predicate
     // TransferWrites, TransferKept and ReferentStores read: a 4.9 operation's receiver's element storage, and for any operation of SPEC 4.6
     // to 4.9 with a borrowed receiver the storage that receiver refers to (4.9.6). A member without a receiver (construction: its
-    // ReceiverIndex is -1, which is Retention.Result) has none, so the receiver narrowing never reaches its result (SPEC 4.9.6, 15.6.4).
+    // ReceiverIndex is -1, which is CallRetention.ResultOutput) has none, so the receiver narrowing never reaches its result (SPEC 4.9.6, 15.6.4).
     private static bool ReceiverStorage(BindingSymbol callee, int output) => output >= 0 && output == callee.ReceiverIndex;
 
     // The declaring-identity key of a callee (the file's contract): `exchange`, a 4.9 operation, `swap` or a 4.6 to 4.8 operation; None
@@ -99,15 +99,15 @@ public sealed partial class Binding
     // What input i, other than `output`, keeps at `output`'s written unstated layer: its own value and its chain; under a transfer
     // operation a borrowed argument (BorrowReferent: not a raw pointer, a Slice or UniqSlice included) its chain only, `exchange`'s result
     // nothing but its target's chain, and a 4.9 operation's receiver storage (ReceiverStorage) nothing of an input that is not added.
-    private Kept TransferKept(Transfer transfer, BindingSymbol? callee, BoundType input, int i, int output)
+    private RetentionKind TransferKept(Transfer transfer, BindingSymbol? callee, BoundType input, int i, int output)
     {
-        if ((transfer == Transfer.Exchange && output == Retention.Result && i != ExchangeTarget) ||
+        if ((transfer == Transfer.Exchange && output == CallRetention.ResultOutput && i != ExchangeTarget) ||
             (transfer == Transfer.Elements && ReceiverStorage(callee!, output) && !KimiLibraryCatalog.Added(callee, i)))
         {
-            return Kept.None;
+            return RetentionKind.None;
         }
 
-        return transfer == Transfer.None || this.BorrowReferent(input, out _, out _) is null ? Kept.Value | Kept.Chain : Kept.Chain;
+        return transfer == Transfer.None || this.BorrowReferent(input, out _, out _) is null ? RetentionKind.Value | RetentionKind.Chain : RetentionKind.Chain;
     }
 
     // CallRetention.ReferentStores (SPEC 4.9.6; DECISIONS BU-42): under the identity key of an operation of SPEC 4.6 to 4.9 (`exchange` and
@@ -116,7 +116,7 @@ public sealed partial class Binding
     // array for none.
     private int[] ReferentStores(Transfer key, BindingSymbol? callee, ReadOnlySpan<BoundType> inputs)
     {
-        var receiver = callee?.ReceiverIndex ?? Retention.Result;
+        var receiver = callee?.ReceiverIndex ?? CallRetention.ResultOutput;
         return key is Transfer.Elements or Transfer.Values && ReceiverStorage(callee!, receiver) &&
             this.BorrowReferent(inputs[receiver], out _, out var exclusive) is not null && exclusive ? [receiver] : [];
     }

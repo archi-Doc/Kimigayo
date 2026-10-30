@@ -34,6 +34,7 @@ public class ElementAssignmentEmissionTest
         { "NestedTransfer", "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of [1 of i32]] = [[0]]\n    a[(return 42)][index()] = 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 1)] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferBoundary", "func f() -> i32\n    var a: [1 of i32] = [0]\n    let result = label work: loop\n        a[(return 1)] = (exit to work 42)\n    return result\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferField", "struct S\n    public var n: i32 = 0\n    public init() => ()\nfunc f() -> i32\n    var b: [1 of S] = [S.init()]\n    defer => if b[0].n != 0 => Console.writeLine(\"bad\")\n    b[(return 42)].n = 1\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "DeferredAggregate", "var a = ((0, false), \"held\")\nvar i = 0\nloop\n    defer => a.0 = if true => (42, true) else => (0, false)\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
         { "UnitEffects", "func unit()\n    Console.writeLine(\"ok\")\nvar a: [1 of ()] = [()]\na[0] = unit()" },
     };
@@ -151,9 +152,6 @@ public class ElementAssignmentEmissionTest
     public void NonterminatingRightSideCleanupPreventsDestinationAccess()
     {
         const string Source = "var a = ((0, false), \"held\")\na.0 = label work: do\n    defer => loop => ()\n    exit to work (42, true)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.ElementAddress or EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementAssignmentDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
@@ -161,49 +159,7 @@ public class ElementAssignmentEmissionTest
     public void NonterminatingIndexCleanupPreventsTheStore()
     {
         const string Source = "var a: (string, [1 of i32]) = (\"held\", [0])\na.1[label work: do\n    defer => loop => ()\n    exit to work 0\n] = 42";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementAssignmentIndexDivergent", Source, string.Empty, observationMilliseconds: 300);
-    }
-
-    [Theory]
-    [InlineData("write")]
-    [InlineData("loan")]
-    [InlineData("root")]
-    [InlineData("input")]
-    [InlineData("inputRange")]
-    [InlineData("parent")]
-    [InlineData("release")]
-    [InlineData("source")]
-    [InlineData("mutable")]
-    [InlineData("value")]
-    public void InvalidWritePlansAreRejectedAndReanalysisRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [0]\na[0] = 42", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        var write = body.Operations[plan.Write];
-        switch (defect)
-        {
-            case "write": body.Projections[0] = plan with { Write = -1 }; break;
-            case "loan": body.Projections[0] = plan with { Loan = -1 }; break;
-            case "root": body.Projections[0] = plan with { Root = -1 }; break;
-            case "input": body.OperationStorage[plan.Write] = write with { Input = plan.Root }; break;
-            case "inputRange": body.OperationStorage[plan.Write] = write with { Input = int.MaxValue }; break;
-            case "parent": body.Projections[0] = plan with { Parent = 0 }; break;
-            case "release": body.LoanStates[plan.Write - 1] = plan.Loan; break;
-            case "source": body.OperationStorage[plan.Write] = write with { Source = body.Operations[plan.Operation].Source }; break;
-            case "mutable": body.PlaceStorage[plan.Root] = body.Places[plan.Root] with { Mutable = false }; break;
-            case "value": body.Values[plan.Write] = default; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]

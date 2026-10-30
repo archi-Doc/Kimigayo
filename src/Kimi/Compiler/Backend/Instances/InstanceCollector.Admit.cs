@@ -36,28 +36,38 @@ internal sealed partial class InstanceCollector
     private static BoundType Designated(BoundType below)
         => below is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw, Components: [var pointee] } ? pointee : below;
 
+    // SPEC 6.1.3, 8.13.3 (DECISIONS R5-M43, R5-M157): whether the substitution of a definition generic in its context carries the instance
+    // it instantiates in: an enclosing function's that instantiates (Carries; a closed one has none to carry); without an enclosing function,
+    // its binder's own slots (their bindings closing the body is Instantiable's contract), a Self or a declaring Type. A binder declaring no
+    // slot of its own (its schema) whose substitution binds no Self and no declaring Type is a definition whose enclosing instance Binding
+    // does not publish: a Field initializer's Closure (TyCtxt.SubstOfClosure's identity) or a function declared in it (an accessor's
+    // definitions have their executing function). Removal condition of that branch: TyCtxt.EnclosingFunction gives every nested definition
+    // the declaration whose instance it holds, a Field initializer's its declaring Type (BU's fact).
+    private bool CarriesInstance(Subst subst, BindingSymbol definition)
+        => this.types.EnclosingFunction(definition) is { } enclosing
+            ? !this.types.Instantiates(enclosing) || Carries(subst, enclosing)
+            : subst.Self is not null || subst.Declaring is not null || subst.Target.Schema is { GenericSlots.Count: > 0 };
+
     // The item of a callee body requested at a site of an item's body (its located subject), admitted once per key (KD1): keyed by its
-    // definition and, when it instantiates, its erased substitution, represented by the substitution itself (KD3). A function nested in a
-    // body whose substitution does not carry the enclosing instance is a capability gap, and a new key's instance needs its local Types
-    // (Instantiable); one past a limit is GenerationResourceLimit_Kd; a representative that leaves its body open is a broken contract. -1
-    // when refused.
+    // definition and, when it instantiates, its erased substitution, represented by the substitution itself (KD3). A definition whose
+    // substitution does not carry the instance it instantiates in (CarriesInstance) is a capability gap, and a new key's instance needs its
+    // local Types (Instantiable); one past a limit is GenerationResourceLimit_Kd; a representative that leaves its body open is a broken
+    // contract. -1 when refused.
     private int Admit(int parent, SourceRef site, MirBody target, Subst? subst)
     {
         var set = this.Set;
         Subst? erased = null;
         if (target.Key.Decl is { } decl && this.types.Instantiates(decl) && (subst is null || (erased = this.types.Erase(subst)) is null))
         {
-            set.Report(DiagnosticCode.InternalInvariant_Kd, site); // An instance without its substitution.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site); // An instance without its substitution.
             return -1;
         }
 
-        // SPEC 6.1.3, 8.13.3: an instance of a definition nested in an instantiating function holds that function's instance; a substitution
-        // that does not carry it is the EnclosingInstance gap until a representation of the chain (DECISIONS R5-M43). A closed enclosing function has no
-        // instance to carry.
-        if (erased is not null && this.types.EnclosingFunction(target.Key.Decl!) is { } enclosing && this.types.Instantiates(enclosing) &&
-            !Carries(subst!, enclosing))
+        // SPEC 6.1.3, 8.13.3: an instance of a definition generic in its context holds the instance it instantiates in; a substitution that
+        // does not carry it is the EnclosingInstance gap until a representation of the chain (DECISIONS R5-M43, R5-M157).
+        if (erased is not null && !this.CarriesInstance(subst!, target.Key.Decl!))
         {
-            set.Report(Capability.Code(CapabilityGap.EnclosingInstance), site);
+            this.Report(Capability.Code(CapabilityGap.EnclosingInstance), site);
             return -1;
         }
 
@@ -77,7 +87,7 @@ internal sealed partial class InstanceCollector
         this.counts.TryGetValue(target.Key, out var count);
         if (depth > DepthLimit || count >= SetLimit || this.Grows(parent, target.Key))
         {
-            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -101,7 +111,7 @@ internal sealed partial class InstanceCollector
         var set = this.Set;
         if (type.ContainsParameter)
         {
-            set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
         }
 
@@ -119,7 +129,7 @@ internal sealed partial class InstanceCollector
         var depth = set.Items[parent].Depth + 1;
         if (depth > DepthLimit)
         {
-            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -151,7 +161,7 @@ internal sealed partial class InstanceCollector
         if ((instantiates && (subst is null || (erased = this.types.Erase(subst)) is null)) ||
             collection is not { ContainsParameter: false, Components.Count: > 0 })
         {
-            set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
         }
 
@@ -175,7 +185,7 @@ internal sealed partial class InstanceCollector
         var depth = set.Items[parent].Depth + 1;
         if (depth > DepthLimit)
         {
-            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -207,7 +217,7 @@ internal sealed partial class InstanceCollector
 
         if (open)
         {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return false;
         }
 
@@ -238,7 +248,7 @@ internal sealed partial class InstanceCollector
         var views = this.cases.Views(body, representative);
         if (BitOperations.PopCount(views) != 1)
         {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return 0;
         }
 

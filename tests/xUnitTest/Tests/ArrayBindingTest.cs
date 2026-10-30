@@ -126,8 +126,9 @@ public class ArrayBindingTest
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("call void @__kimi_array_init(ptr %", ir);
         Assert.Contains("call void @__kimi_array_free(ptr %", ir);
-        var free = ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal);
-        Assert.DoesNotContain("@HeapAlloc(", ir[free..ir.IndexOf("\n}\n", free, StringComparison.Ordinal)]);
+        var module = GeneratedIr.Parse(ir);
+        var calls = module.Function("__kimi_array_free").Instructions.Where(static x => x.Opcode == "call");
+        Assert.Equal([module.Function("__kimi_free")], calls.Select(static x => x.Callee));
     }
 
     // SPEC 4.9.3, 4.9.5: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.

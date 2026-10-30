@@ -11,7 +11,11 @@ public sealed partial class Binding
     // conforming Type's implementations, so receiver acquisition, key adaptation, reference results and generic instantiation
     // follow the ordinary rules; the index expression designates the referent of the reference the selected call returns (LentElement).
     private readonly Dictionary<(IndexKoto Source, bool Exclusive), InvocationKoto> indexerCalls = new();
-    private readonly HashSet<IndexKoto> exclusiveIndexers = new(ReferenceEqualityComparer.Instance);
+
+    // The UniqIndexable side of each user or view index expression, the fact indexUniq's binding and SharedIndexNote read: whether
+    // indexUniq is available here, and the receiver's UniqIndexable conformance the check selected by declaration or by the key (none
+    // for a parameter's fact or a view).
+    private readonly Dictionary<IndexKoto, UniqIndexing> uniqIndexing = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>Gets the synthesized <c>index</c> (shared) or <c>indexUniq</c> (exclusive) call of a user index expression, or null.</summary>
     /// <param name="node">The index expression.</param>
@@ -31,7 +35,7 @@ public sealed partial class Binding
     /// <param name="node">The index expression.</param>
     /// <returns>Whether indexUniq exists for the receiver.</returns>
     internal bool HasExclusiveIndexer(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.exclusiveIndexers.Contains(index);
+        => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
 
     // SPEC 8.4.3: whether the Contract, a bound reference or a declaration, is the declaration or refines it.
     private static bool RefinesDeclaration(BindingSymbol contract, Koto declaration)
@@ -58,6 +62,24 @@ public sealed partial class Binding
     private static BoundType? LentElement(InvocationKoto? call)
         => call?.BoundCall?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
 
+    // SPEC 4.7.1: the Type a key selects a conformance by, a borrowed key's referent (the key parameter is ref/Key); null for `null`
+    // or an unfitted number literal, which could fit several keys.
+    private static BoundType? KeyType(Koto keyNode)
+    {
+        var key = KotoHelper.UnwrapParentheses(keyNode);
+        if (key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null || key.BoundType is not { } type)
+        {
+            return null;
+        }
+
+        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            type = type.Components[0];
+        }
+
+        return type;
+    }
+
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {
         result = null;
@@ -70,14 +92,15 @@ public sealed partial class Binding
         // SPEC 4.7, 4.7.1: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
         // takes a Range key; for any other receiver a range reads as the slice that only the concrete sequences offer
         // (NotIndexable_Kd).
-        this.exclusiveIndexers.Remove(source);
+        this.uniqIndexing.Remove(source);
         if (core is null || this.Library.Indexable is not { } indexable ||
-            (source.Right is RangeKoto && core.Kind != BoundTypeKind.Dictionary && !this.TakesRangeKey(core, indexable)))
+            (source.Right is RangeKoto && core.Kind != BoundTypeKind.Dictionary && !this.TakesRangeKey(core, indexable, scope)))
         {
             return false;
         }
 
         bool exclusiveAvailable;
+        BoundConformance? uniq = null;
         if (core.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
             var conformance = this.ConformanceByDeclaration(owner, indexable, out var ambiguous);
@@ -91,18 +114,20 @@ public sealed partial class Binding
                 // SPEC 4.7.1: several Key conformances are distinct; the key's own Type selects one, and the call then selects
                 // that conformance's index by the same key. An unfitted literal key could fit several and stays ambiguous.
                 this.BindNode(source.Right, scope);
-                if (this.ConformanceForKey(owner, indexable, source.Right) is null)
+                if (this.ConformanceForKey(core, indexable, source.Right, scope) is null)
                 {
                     result = this.Fail(source, BindingFailure.Ambiguous);
                     return true;
                 }
 
-                exclusiveAvailable = this.Library.UniqIndexable is { } uniqByKey && this.ConformsHere(core, this.ConformanceForKey(owner, uniqByKey, source.Right), scope);
+                uniq = this.Library.UniqIndexable is { } uniqByKey ? this.ConformanceForKey(core, uniqByKey, source.Right, scope) : null;
             }
             else
             {
-                exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.ConformsHere(core, this.ConformanceByDeclaration(owner, uniqIndexable, out _), scope);
+                uniq = this.Library.UniqIndexable is { } uniqIndexable ? this.ConformanceByDeclaration(owner, uniqIndexable, out _) : null;
             }
+
+            exclusiveAvailable = this.ConformsHere(core, uniq, scope);
         }
         else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
         {
@@ -115,11 +140,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (exclusiveAvailable)
-        {
-            this.exclusiveIndexers.Add(source);
-        }
-
+        this.uniqIndexing[source] = new(exclusiveAvailable, uniq);
         var shared = this.BindIndexerCall(source, scope, false);
         if (LentElement(shared) is not { } element)
         {
@@ -129,7 +150,7 @@ public sealed partial class Binding
 
         // SPEC 4.7.1, 15.1.5: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
         // the receiver can be exclusively acquired; a use that needs it through another path is diagnosed by that path.
-        if (this.exclusiveIndexers.Contains(source) && ExclusivelyAcquirable(source.Left))
+        if (exclusiveAvailable && ExclusivelyAcquirable(source.Left))
         {
             this.BindIndexerCall(source, scope, true);
         }
@@ -138,8 +159,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // Whether a registered Indexable conformance of the receiver's declaration takes a Range or ClosedRange key.
-    private bool TakesRangeKey(BoundType core, BindingSymbol indexable)
+    // Whether a registered Indexable conformance of the receiver's declaration takes a Range or ClosedRange key for the receiver: its
+    // bound reference instantiated for `core` and normalized in `scope` (a key named through a projection, as NamesReference reads it).
+    private bool TakesRangeKey(BoundType core, BindingSymbol indexable, BindingScope scope)
     {
         if (core.Symbol is not { Declaration: StructKoto or EnumKoto } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
         {
@@ -148,7 +170,12 @@ public sealed partial class Binding
 
         for (var i = 0; i < identities.Count; i++)
         {
-            if (ReferenceEquals(identities[i].Contract.Declaration, indexable.Declaration) && identities[i].Contract.Type is { Components: [var key] } && IsRangeShape(key))
+            if (!ReferenceEquals(identities[i].Contract.Declaration, indexable.Declaration) || identities[i].Contract.Type is not { } formal)
+            {
+                continue;
+            }
+
+            if (this.StoredType(formal, core) is { } instance && this.ContractType(instance, scope) is { Components: [var key] } && IsRangeShape(key))
             {
                 return true;
             }
@@ -157,27 +184,21 @@ public sealed partial class Binding
         return false;
     }
 
-    // The one conformance of the owner to a bound reference of the Contract declaration that takes the key's Type, or null.
-    private BoundConformance? ConformanceForKey(BindingSymbol owner, BindingSymbol contract, Koto keyNode)
+    // SPEC 4.7.1, 8.6.1: the one conformance of the receiver's declaration to a bound reference of `contract` that names the key's
+    // reference (`contract` with the key's Type as its argument) for `core` in `scope` (NamesReference), or null for none or several.
+    private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
     {
-        var key = KotoHelper.UnwrapParentheses(keyNode);
-        if (key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null ||
-            key.BoundType is not { } type || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
         {
             return null;
-        }
-
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            type = type.Components[0]; // The key parameter is ref/Key; a borrowed key names its referent.
         }
 
         BoundConformance? found = null;
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Paths.Count != 0 &&
-                identity.Contract.Type is { Components: [var argument] } && ReferenceEquals(argument, type))
+            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Paths.Count != 0 && identity.Contract.Type is { } formal &&
+                this.NamesReference(formal, core, this.types.Rebuild(formal, [type], null, []), scope))
             {
                 if (found is not null)
                 {
@@ -254,4 +275,7 @@ public sealed partial class Binding
         this.nodes.Add(call);
         return this.BindCall(call, scope, null) is null ? null : call;
     }
+
+    // A user or view index expression's UniqIndexable fact (uniqIndexing).
+    private readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
 }

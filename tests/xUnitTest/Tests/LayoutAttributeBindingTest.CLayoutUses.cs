@@ -14,14 +14,13 @@ namespace XunitTest;
 // at the use that needs the layout), 23.1.2 (each independent failure is reported; grouping is implementation-defined), 23.2.2 (check reports
 // every Language error of the checked set, layouts included), 22.6 (a struct by value in an import, and ref/T over a Type that is not
 // C-exchangeable, are Unsupported) and DECISIONS R4-M134 Q8 (Binding's declaration checks are conservative Language errors). Each row names
-// its form and states every Error record of the program, on the default and the mir pipeline, as `Code use`: the use is a text occurring once
+// its form and states every Error record of the program at check, the same on every pipeline (DECISIONS R5-M156), as `Code use`: the use is a text occurring once
 // in the source (a local's declaration, the function whose parameter or result passes or returns the value, the call whose argument passes
 // it, a raw read's declaration, an import's declaration, a Constraint-free written Type), and a record is at that use when its primary span
 // starts within the text, so a parameter's record at the parameter (SPEC 8.15.3) or at its function (DECISIONS R5-M44) both pass. Each named
 // use takes exactly one record of its code (`Code+ use` one or more, where SPEC 23.1.2 lets one function's two obligations group) and no
 // other Error record exists, so the declaration side (the attribute, the Field, the struct, a written instance behind a borrow or raw pointer)
-// has none and no use is reported twice. The sel column is InstanceCollectorTest.CLayoutUses.cs over the same rows; the twins without the
-// unavailable layout keep their verdicts. A row that fails on dev fails by design (the commit message counts them per theory).
+// has none and no use is reported twice. The twins without the unavailable layout keep their verdicts. A row that fails on dev fails by design (the commit message counts them per theory).
 public partial class LayoutAttributeBindingTest
 {
     private const string GenericP = "#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\n";
@@ -227,6 +226,31 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
+    // A bodyless import's by-value parameter and result (the owner, 2026-10-29, 「みなす (推奨)」; DECISIONS R5-M150): SPEC 8.15.3 counts
+    // passing and returning a value by value, an import is nongeneric (22.6) and checked as a nongeneric body is, called or not; 22.6 makes a
+    // struct by value in an import Unsupported; 23.1.2 reports each independent failure. The rows expect both records. An import whose
+    // Attribute fails as a whole (an empty symbol name) is no import: Binding checks no signature, so its InvalidLibraryImport_Kd stands alone.
+    public static TheoryData<string, string, string> ImportRows
+    {
+        get
+        {
+            var rows = new TheoryData<string, string, string>();
+            foreach (var shape in Unavailable.Concat(Never))
+            {
+                var declaration = ImportHead + shape.Type + ") -> i32";
+                rows.Add($"{shape.Name}.import", Program(shape.Declaration, ImportHead + "X) -> i32\n", shape.Type), $"InvalidCLayout_Kd {declaration}|Unsupported_Kd {declaration}");
+                var result = ImportHead + "i32) -> " + shape.Type;
+                var returned = Program(shape.Declaration, ImportHead + "i32) -> X\n", shape.Type);
+                rows.Add($"{shape.Name}.importret", returned, $"InvalidCLayout_Kd {result}|Unsupported_Kd {result}");
+            }
+
+            var unnamed = ImportHead.Replace("\"VirtualAlloc\"", "\"\"", StringComparison.Ordinal) + "X) -> i32\n";
+            var unit = Array.Find(Unavailable, static x => x.Name == "unit").Declaration;
+            rows.Add("unit.importname", Program(unit, unnamed, "S"), "InvalidLibraryImport_Kd #LibraryImport(\"kernel32\", \"\")");
+            return rows;
+        }
+    }
+
     // Part (2) of the row, judged by Layout alone (DECISIONS BU-48): a Never Field. SPEC 6.7.1 names Never among the zero-sized Fields, so each by-value use of S or
     // P<Never> is InvalidCLayout_Kd beside the Never limit's Unsupported_Kd its twin keeps (23.1.2); the uses needing no layout stay
     // accepted; ref/X in an import is Unsupported_Kd alone.
@@ -253,99 +277,88 @@ public partial class LayoutAttributeBindingTest
     [Theory]
     [MemberData(nameof(AcceptedRows))]
     public void AnUnavailableCLayoutIsNoErrorUntilAUseNeedsIt(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
+        => AssertUses(form, source, records);
 
     [Theory]
     [MemberData(nameof(UseRows))]
     public void AByValueUseOfAnUnavailableCLayoutIsARecordAtTheUse(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
+        => AssertUses(form, source, records);
 
     [Theory]
     [MemberData(nameof(InferredRows))]
     public void AnInferredInstanceWithAnUnavailableCLayoutIsARecordAtEachUse(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
+        => AssertUses(form, source, records);
 
     [Theory]
     [MemberData(nameof(TwinRows))]
     public void TheTwinsWithoutTheUnavailableLayoutKeepTheirVerdicts(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
+        => AssertUses(form, source, records);
+
+    [Theory]
+    [MemberData(nameof(ImportRows))]
+    public void AByValueImportParameterIsAUse(string form, string source, string records)
+        => AssertUses(form, source, records);
 
     [Theory]
     [MemberData(nameof(NeverRows))]
     public void ANeverFieldMakesCLayoutUnavailable(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
+        => AssertUses(form, source, records);
 
-    /// <summary>Checks a program under each configuration and judges its Error records against the expected uses (see the file comment).</summary>
+    /// <summary>Checks a program and judges its Error records against the expected uses (see the file comment).</summary>
     /// <param name="form">The row's name.</param>
     /// <param name="source">The program.</param>
     /// <param name="records">The expected records as <c>Code use|Code use</c>; empty for an accepted program.</param>
-    /// <param name="sel">Whether to check under MIR code generation (sel) instead of the default and the mir pipeline.</param>
-    internal static void AssertUses(string form, string source, string records, bool sel)
+    internal static void AssertUses(string form, string source, string records)
     {
         var uses = records.Length == 0 ? [] : records.Split('|').Select(x => Use.Parse(x, source)).ToArray();
-        var failures = new List<string>();
-        foreach (var (pipeline, codegen) in Configurations(sel))
+        var c = Check(source);
+        var errors = Errors(c);
+        var counts = new int[uses.Length];
+        var stray = new List<TestDiagnostic>();
+        foreach (var error in errors)
         {
-            var c = Check(source, pipeline, codegen);
-            var errors = Errors(c);
-            var counts = new int[uses.Length];
-            var stray = new List<TestDiagnostic>();
-            foreach (var error in errors)
-            {
-                var at = -1;
-                for (var i = 0; i < uses.Length; i++)
-                {
-                    if (uses[i].Code == error.Code && error.Span.Length > 0 && uses[i].Start <= error.Span.Start && error.Span.Start < uses[i].End && (at < 0 || uses[i].End - uses[i].Start < uses[at].End - uses[at].Start))
-                    {
-                        at = i;
-                    }
-                }
-
-                if (at < 0)
-                {
-                    stray.Add(error);
-                }
-                else
-                {
-                    counts[at]++;
-                }
-            }
-
-            var problems = new List<string>();
+            var at = -1;
             for (var i = 0; i < uses.Length; i++)
             {
-                if (uses[i].Many ? counts[i] == 0 : counts[i] != 1)
+                if (uses[i].Code == error.Code && error.Span.Length > 0 && uses[i].Start <= error.Span.Start && error.Span.Start < uses[i].End && (at < 0 || uses[i].End - uses[i].Start < uses[at].End - uses[at].Start))
                 {
-                    problems.Add($"{counts[i]} at [{uses[i].Code} {uses[i].Text.Split('\n')[0]}]");
+                    at = i;
                 }
             }
 
-            problems.AddRange(stray.Select(static x => $"stray {Show(x)}"));
-            if (records.Length == 0 && !c.Binding.Result.IsComplete)
+            if (at < 0)
             {
-                problems.Add("Binding incomplete");
+                stray.Add(error);
             }
-
-            if (problems.Count > 0)
+            else
             {
-                failures.Add($"{Name(pipeline, codegen)}: {string.Join("; ", problems)}; observed [{string.Join("; ", errors.Select(Show))}]");
+                counts[at]++;
             }
         }
 
-        Assert.True(failures.Count == 0, $"{form}: expected [{records.Replace("\n", "\\n", StringComparison.Ordinal)}]\n{string.Join("\n", failures)}");
+        var problems = new List<string>();
+        for (var i = 0; i < uses.Length; i++)
+        {
+            if (uses[i].Many ? counts[i] == 0 : counts[i] != 1)
+            {
+                problems.Add($"{counts[i]} at [{uses[i].Code} {uses[i].Text.Split('\n')[0]}]");
+            }
+        }
+
+        problems.AddRange(stray.Select(static x => $"stray {Show(x)}"));
+        if (records.Length == 0 && !c.Binding.Result.IsComplete)
+        {
+            problems.Add("Binding incomplete");
+        }
+
+        Assert.True(
+            problems.Count == 0,
+            $"{form}: expected [{records.Replace("\n", "\\n", StringComparison.Ordinal)}]\n{string.Join("; ", problems)}; observed [{string.Join("; ", errors.Select(Show))}]");
     }
 
-    private static (CompilerPipeline Pipeline, CompilerCodegen Codegen)[] Configurations(bool sel)
-        => sel ? [(CompilerPipeline.Mir, CompilerCodegen.Mir)] : [(CompilerPipeline.Legacy, CompilerCodegen.Legacy), (CompilerPipeline.Mir, CompilerCodegen.Legacy)];
-
-    private static string Name(CompilerPipeline pipeline, CompilerCodegen codegen)
-        => codegen == CompilerCodegen.Mir ? "sel" : pipeline == CompilerPipeline.Mir ? "mir" : "default";
-
-    private static Compilation Check(string source, CompilerPipeline pipeline, CompilerCodegen codegen)
+    private static Compilation Check(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = pipeline;
-        c.Codegen = codegen;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();

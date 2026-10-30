@@ -30,8 +30,8 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
 
-        // Check, then generation, as a build runs them: MIR code generation reports the instance's operation at check (K13a).
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        // Check, then generation, as a build runs them: check reports the instance's operation (K13a), on every pipeline (DECISIONS R5-M156).
+        Assert.Equal("Unsupported_Kd " + (remainder ? "value % 2" : "value / 2"), MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
@@ -56,26 +56,6 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
-
-        // The old generator's refused instance, on a compilation pinned to it so that every run checks it, until G2 (DECISIONS R5-M85).
-        var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
-        using var oldWriter = new StringWriter();
-        Assert.False(old.WriteIr(oldWriter, out var failure));
-        Assert.Empty(oldWriter.ToString());
-        Assert.False(old.Emission.FailureIsResourceLimit);
-        Assert.Equal("i128", old.Emission.FailureInstance!.TypeArguments[0]!.Name);
-        var refused = old.Ownership.FailedInstance;
-        Assert.NotNull(refused);
-        var issue = Assert.Single(refused.IssueStorage);
-        Assert.Equal(OwnershipRequirement.Unsupported, issue.Failure);
-        Assert.True(old.Analysis.IsVerified);
-        Assert.Empty(old.Problems);
-        old.Emission.ReportFailure(failure);
-        Assert.False(old.Validate(out var repeated));
-        Assert.Same(refused, old.Ownership.FailedInstance);
-        Assert.Equal(failure, repeated);
-        old.Bind();
-        Assert.Null(old.Ownership.FailedInstance);
     }
 
     [Fact]
@@ -84,78 +64,20 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var source = WideDivision.Replace("10@i128", "10@i64", StringComparison.Ordinal) + "\nrequire result == 5 else => $abort(\"result\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Validate(out var failure), failure);
-        Assert.Null(c.Ownership.FailedInstance);
-        Assert.Null(c.Emission.FailureInstance);
         ScalarEmissionTest.EmitFixture("GenericGenerationDiagnosticValid", source, string.Empty);
-    }
-
-    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
-    // by G4 at the latest (DECISIONS R5-M85).
-    [Fact]
-    public void TypeAndLengthSlotsAppearOnceInDeclarationOrder()
-    {
-        var c = MinimalEmissionTest.Analyze("func pick<length N, T>(values: [N of i32], value: T) -> T => value@move\nlet result = pick([1, 2], (20, 22))", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var initial), initial);
-        var previous = OwnershipStorage.ByteLimit;
-        try
-        {
-            OwnershipStorage.ByteLimit = 8;
-            Assert.False(c.Validate(out var failure));
-            c.Emission.ReportFailure(failure);
-            var error = Assert.Single(TestDiagnostics.Of(c));
-            Assert.Contains("pick<2, (i32, i32)>", error.Note!, StringComparison.Ordinal);
-        }
-        finally
-        {
-            OwnershipStorage.ByteLimit = previous;
-        }
     }
 
     [Fact]
     public void IndependentUnsupportedOperationsRetainSeparateLocations()
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("    return value / 2", "    let first = value / 2\n    return value % 2", StringComparison.Ordinal));
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        Assert.Equal("Unsupported_Kd value / 2 | Unsupported_Kd value % 2", MinimalEmissionTest.Problems(c)); // At check (DECISIONS R5-M156).
         c.ReportAnalysis();
         Assert.False(c.Generate(TextWriter.Null));
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, x => Assert.Equal("Unsupported_Kd", x.Code));
         Assert.NotEqual(errors[0].Span, errors[1].Span);
-    }
-
-    // The old instance run's storage limit, pinned as above.
-    [Fact]
-    public void InstanceStorageLimitsKeepResourceFactsAndRecover()
-    {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nlet result = identity((20, 22))", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var initial), initial);
-        var previous = OwnershipStorage.ByteLimit;
-        try
-        {
-            OwnershipStorage.ByteLimit = 8;
-            Assert.False(c.Validate(out var failure));
-            Assert.True(c.Emission.FailureIsResourceLimit);
-            c.Emission.ReportFailure(failure);
-            var error = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission, rejected: true).Diagnostics);
-            Assert.Equal("OwnershipStorageLimit_Kd", error.Code);
-            Assert.Equal(DiagnosticCategory.Resource, error.Category);
-            Assert.Contains(error.Reason!, x => x.Name == "limitBytes" && x.Value == "8");
-            Assert.Contains("identity<(i32, i32)>", error.Note!, StringComparison.Ordinal);
-            Assert.Equal("instantiation", Assert.Single(error.Related!).Role);
-            Assert.True(c.Analysis.IsVerified);
-            Assert.Empty(c.Problems);
-        }
-        finally
-        {
-            OwnershipStorage.ByteLimit = previous;
-        }
-
-        Assert.True(c.Validate(out var recovered), recovered);
-        Assert.Null(c.Ownership.FailedInstance);
-        Assert.Null(c.Emission.FailureInstance);
-        Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.Empty(TestDiagnostics.Of(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -166,8 +88,6 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
-        Assert.Null(c.Ownership.FailedInstance);
-        Assert.Null(c.Emission.FailureInstance);
     }
 
     [Fact]

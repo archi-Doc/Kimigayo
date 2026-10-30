@@ -15,8 +15,11 @@ public sealed partial class MirBorrowsTest
 {
     // A3's listed loss P13, decided per part (DECISIONS R4-M147, which removed R4-M73's body hold): a generic loop over a local Array<T>,
     // then an append (g1), a shared loop over a local Array<uniq/(ref/i32)> (sharedOverExclusive, as its twin without next), and a
-    // Loan<…> holder's stores reached through the closure (closureRoute), err(ended)'s γ (guardP13), a later write through a reference
-    // (writeQ) and E5's seed (seedRoute) are valid, as rustc says: an iterator's and a Loan's Type argument has no address. An abstract
+    // Loan<…> holder's stores reached through the closure (closureRoute), err(ended)'s γ (guardP13) and a later write through a reference
+    // (writeQ) are valid, as rustc says: an iterator's and a Loan's Type argument has no address. E5's seed (seedRoute) errs at its
+    // read of `w`: `Loan.init(w@uniq)`'s instantiated signature admits a callee storing a reborrow through its argument's layers into the
+    // argument's own referent, whose two local regions may coincide (DECISIONS R4-M154, Revision 4), a self-row returning a route's Loan
+    // to its holder, SPEC's letter (R4-M147's no-loss class); rustc's acceptance is PLAN G148 (2)'s open question (GXS). An abstract
     // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs; a live iterator keeps the append's
     // activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
     // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
@@ -169,7 +172,7 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", "count: S", "cleanRoute: xs.append(b) CallActivationConflict_Kd", // count's at its parameter's Type (BU-48 (a)).
+                "dd3: t = 2", "count: S", "seedRoute: w@follow@follow@ref", "cleanRoute: xs.append(b) CallActivationConflict_Kd", // count's at its parameter's Type (BU-48 (a)).
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
@@ -552,7 +555,7 @@ public sealed partial class MirBorrowsTest
                 "nest: z = 5", "esrc: z = 5", "hsrc: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
-        var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        var old = MinimalEmissionTest.Analyze(source);
         var records = old.Problems.Select(x => (Function: Function(old.SyntaxOf(x.Subject)), x.Code)).ToArray();
         Assert.All(forms.Where(static x => x.Name != x.Twin), x => Assert.Equal(Of(x.Twin), Of(x.Name)));
 
@@ -639,8 +642,7 @@ public sealed partial class MirBorrowsTest
             public func main() -> () => ()
 
             """;
-        CompilerCodegen?[] codegens = [null, CompilerCodegen.Legacy]; // The process's, then the old path.
-        Assert.All(codegens, codegen => Assert.Empty(Records(MinimalEmissionTest.Analyze(Source, codegen: codegen))));
+        Assert.Empty(Records(MinimalEmissionTest.Analyze(Source)));
 
         // The analysis's records: the function and the code of each.
         static string[] Records(Compilation c) => [.. c.Problems.Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {x.Code}")];
@@ -653,7 +655,9 @@ public sealed partial class MirBorrowsTest
     // and a call through it (reachedByStep), and a layer whose Origin is a shared borrow (sharedSupplied, valid, the Limit's cost until
     // Binding publishes its members). A typed pointee decides the guard (nestedPointee errs; touched, valid as on dev), as does an exclusive
     // part beside the layer (mixed errs, no record). A raw layer outside an instance reads its pointee (R4-M120): tupleW is accepted, its
-    // typed twin errs (an open issue, PLAN G148).
+    // typed twin errs (an open issue, PLAN G148). Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its instantiated
+    // signature admits may store z's borrow into w or v through the instance's uniq or raw layers, whose local regions may coincide, so
+    // nestedPointee, mixed and tupleTyped also err at `z = 5`.
     [Fact]
     public void AStoreTheGuardLeavesUndecidedIsUnsupported()
     {
@@ -790,8 +794,8 @@ public sealed partial class MirBorrowsTest
             [
                 "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd", "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd",
                 "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
-                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: inspect(w)",
-                "mixed: inspect(v)", "tupleTyped: inspect(w)",
+                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: z = 5",
+                "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5", "tupleTyped: inspect(w)",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

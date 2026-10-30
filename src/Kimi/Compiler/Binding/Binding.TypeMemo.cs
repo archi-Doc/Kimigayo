@@ -14,7 +14,7 @@ public sealed partial class Binding
 {
     private readonly TypeMemo<BoundType?> substitutedParts = new(); // SubstituteType's images.
     private readonly TypeMemo<BoundType?> closedParts = new(); // CloseClosureTypes' images.
-    private readonly TypeMemo<bool> visitedParts = new(); // The parts an existence walk met (Binding.ConstraintOperands).
+    private readonly TypeMemo<bool> visitedParts = new(); // The parts an existence walk met (Binding.ConstraintOperands, DependentType, ProveTypeLengths).
 
     private sealed class TypeMemo<T>
     {

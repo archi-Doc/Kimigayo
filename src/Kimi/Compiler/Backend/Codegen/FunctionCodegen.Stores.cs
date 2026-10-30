@@ -104,7 +104,9 @@ internal sealed partial class FunctionCodegen
     // bytes (TextBytes), the Static release kind, so never released.
     private void Text(Value address, string text)
     {
-        var (output, lowering, bytes) = (this.output, RuntimeAbi.String, this.TextBytes(text));
+        var output = this.output;
+        var lowering = RuntimeAbi.String;
+        var bytes = this.TextBytes(text);
         output.Write("  store ");
         output.Write(lowering.Layout.StorageType);
         output.Write(" { ptr ");

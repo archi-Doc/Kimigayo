@@ -934,45 +934,6 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("position", false)]
-    [InlineData("constant", true)]
-    [InlineData("container", false)]
-    [InlineData("index", true)]
-    public void IncompletePointerProjectionPlansRejectBeforeWriting(string mutation, bool computed)
-    {
-        var place = computed ? "(*p).1[i]" : "(*p).1[1]";
-        var c = MinimalEmissionTest.Analyze(
-            $"func update(p: raw/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
-        var projection = body.Values.FindLastIndex(x => x.Kind == OwnershipValueKind.PointerProject);
-        var outer = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerProject);
-        Assert.True(projection > outer && outer >= 0);
-        if (mutation == "position")
-        {
-            body.Values[projection] = body.Values[projection] with { Constant = 2 };
-        }
-        else if (mutation == "constant")
-        {
-            body.Values[projection] = body.Values[projection] with { Constant = 0 };
-        }
-        else if (mutation == "container")
-        {
-            // The array element's container must be the array, not the enclosing Tuple.
-            body.ValueOperands[body.Values[projection].Start] = body.ValueOperands[body.Values[outer].Start];
-        }
-        else
-        {
-            body.ValueOperands[body.Values[projection].Start + 1] = body.ValueOperands[body.Values[projection].Start];
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
-    [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
     public void DependentPointerReadsPreserveTheirCompleteType(string type)
@@ -1032,7 +993,7 @@ public class ForeignEmissionTest
             name,
             ir,
             stdout,
-            Codegen.Expect("=0;first=1;second=1;third=1;compare=1;skip=0;done=1", "=0;first=1;second=1;third=1;compare=2;skip=0;done=1", CodegenDeviations.ConstantTemporaries));
+            "=0;first=1;second=1;third=1;compare=1;skip=0;done=1");
     }
 
     [Theory]
@@ -1086,7 +1047,7 @@ public class ForeignEmissionTest
             "ForeignPointerStringCompare",
             ir,
             "alpha\nbeta\nkept\ndone\n",
-            Codegen.Expect("=0;alpha=1;beta=1;kept=1;done=1", "=0;alpha=3;beta=2;kept=2;done=1", CodegenDeviations.ConstantTemporaries));
+            "=0;alpha=1;beta=1;kept=1;done=1");
     }
 
     [Fact]
@@ -1380,42 +1341,6 @@ public class ForeignEmissionTest
                 Console.writeLine("zero size ok")
             """;
         ScalarEmissionTest.EmitFixture("ForeignPointerZeroSize", source, "target\nvalue\ntarget\nzero size ok\n");
-    }
-
-    [Theory]
-    [InlineData("address")]
-    [InlineData("source")]
-    [InlineData("acquisition")]
-    [InlineData("operation")]
-    public void IncompletePointerAggregatePlansRejectBeforeWriting(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func update(p: raw/(i32, i64))\n    unsafe => *p = (1, 2)\npublic func main() => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
-        var store = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerStore);
-        Assert.True(store >= 0);
-        if (mutation == "address")
-        {
-            body.ValueOperands[body.Values[store].Start] = body.Values.Count;
-        }
-        else if (mutation == "acquisition")
-        {
-            body.OperationStorage[store] = body.Operations[store] with { Acquisition = AcquisitionKind.None };
-        }
-        else if (mutation == "operation")
-        {
-            body.OperationStorage[store] = body.Operations[store] with { Kind = OwnershipOperationKind.Produce };
-        }
-        else
-        {
-            body.Values[store] = body.Values[store] with { Constant = -1 };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 
     [Fact]

@@ -166,6 +166,11 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     /// <summary>Gets a value indicating whether the row is a Dictionary storage kernel (DECISIONS R5-M124): the one place that names them.</summary>
     internal bool DictionaryKernel => this.Writer is >= LegacyWriter.DictionaryLayout and <= LegacyWriter.ValueAt;
 
+    /// <summary>Gets the row's layout need (LayoutNeeds; DECISIONS R5-M149): a whole-value update's and a Dictionary kernel's call reads
+    /// its Type arguments' layouts (T's size; K's and V's entry layout); a row in its function's instance reads them through its LegacyRow
+    /// item, a type-driven item the collector lays out; every other row reads none.</summary>
+    internal LayoutNeed Need => this.Updates || this.DictionaryKernel ? LayoutNeed.TypeArguments : LayoutNeed.None;
+
     /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M121, R5-M124, R5-M128): an Array helper kind's row's, the
     /// Array runtime for a capacity routine, which is that runtime's, placeEntry's Place row's, or the formatting runtime for a formatting
     /// routine, the need every formatting row declares (FormattingRow; DECISIONS R5-M30).</summary>

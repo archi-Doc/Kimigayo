@@ -28,7 +28,11 @@ public class NativeAllocationAuditTest
     [InlineData("Control", "call ptr @HeapAlloc(")]
     [InlineData("TailNoalias", "tail call noalias ptr @HeapAlloc(")]
     public void EveryAllocationSpellingIsCounted(string name, string spelling)
-        => Audit(name, Append, 1, 16, transformIr: ir => ir.Replace("call ptr @HeapAlloc(", spelling, StringComparison.Ordinal));
+        => Audit(name, Append, 1, 16, transformIr: ir =>
+        {
+            Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal); // Every runtime allocation site, respelled.
+            return ir.Replace("call ptr @HeapAlloc(", spelling, StringComparison.Ordinal);
+        });
 
     // A count below or above its bound fails the run.
     [Theory]
@@ -113,9 +117,14 @@ public class NativeAllocationAuditTest
             transferred: transferred,
             transformIr: transformIr);
 
-    // Another spelling of the transfer routine's definition, as a different generator might write it.
+    // Another spelling of the transfer routine's definition, as a different generator might write it. A missing definition fails with a
+    // ContainsException, not the EqualException TransferRoutineWithoutItsAnchorFails expects through Unanchor.
     private static string Respell(string ir)
-        => ir.Replace("define internal void @__kimi_transfer_bytes(", "define internal void @\"__kimi_transfer_bytes\"(", StringComparison.Ordinal);
+    {
+        const string Definition = "define internal void @__kimi_transfer_bytes(";
+        Assert.Contains(Definition, ir, StringComparison.Ordinal);
+        return ir.Replace(Definition, "define internal void @\"__kimi_transfer_bytes\"(", StringComparison.Ordinal);
+    }
 
     // The respelled routine without its anchor: the copy is a memmove, as lowering MoveBytes by its contract would write it.
     private static string Unanchor(string ir)

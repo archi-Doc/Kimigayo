@@ -34,7 +34,8 @@ internal sealed partial class FunctionCodegen
     /// <returns>The order.</returns>
     internal static ArgumentOrder OrderOf(MirBodyKind kind) => kind switch
     {
-        MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions,
+        MirBodyKind.Fn or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions, // Keyed by its own declaration.
+        MirBodyKind.Getter or MirBodyKind.Setter => ArgumentOrder.Positions, // An accessor's, keyed by the function its calls target.
         MirBodyKind.DefaultTemplate => ArgumentOrder.Slots,
         MirBodyKind.Closure => ArgumentOrder.Environment,
         _ => throw new InvalidOperationException($"The MIR body kind {kind} has no code generation row."),

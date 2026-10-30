@@ -183,6 +183,17 @@ public sealed class TyCtxtTest
         "struct Fixed\n    public var value: i32\n    public computed current: i32\n        get() -> i32 => self.value\n    public init(value: i32) => self.value = value\n" +
         "group Limits\n    public let limit: i32 = seed()\n    public func seed() -> i32 => 3\n";
 
+    // Nested definitions in a generic struct's getter (a function, a Closure and a function in it) and setter, in its method, and a Closure
+    // in a static's initializer.
+    private const string EnclosingSource = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n" +
+        "    public computed got: T\n        get() -> T\n            func inner(z: T) -> T => z\n            let keep = func [] (y: T) -> T\n" +
+        "                func deep(w: T) -> T => w\n                return deep(y)\n            return keep(inner(self.value))\n" +
+        "        set(value: T) -> ()\n            func store(z: T) -> T => z\n            self.value = store(value)\n" +
+        "    public func get(self: ref/Self) -> T\n        func local(z: T) -> T => z\n        return local(self.value)\n" +
+        "group Limits\n    public let limit: i32 = (func [] () -> i32 => 3)()\n" +
+        "func outer<T>(x: T) -> T\n    T is Copy\n    var box = Box<T>.init(x)\n    box.got = x\n    return box.got\n" +
+        "require outer(3) == 3 and Box<i32>.init(4).get() == 4 and Limits.limit == 3 else => $abort(\"enclosing\")\n";
+
     // C → B → A with a default and a nonvirtual member: C's base calls run B's override, B's runs the original.
     private const string BaseCallHierarchy = VirtualDispatchTest.Hierarchy +
         "let c = C.init(3)@obj\nrequire c.value() == 34 and c.direct() == 14 else => $abort(\"base\")\n";
@@ -564,7 +575,8 @@ public sealed class TyCtxtTest
     // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
     // stored cap, and a pair's raw case states none (SPEC 8.1.2), nor does a raw argument a pair slot binds (SPEC 8.1.1, DECISIONS BU-34:
     // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's, so an Exclusive one's members are
-    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract.
+    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract, as
+    // does a `during self` layer a Type argument supplies (DECISIONS BU-58: `self` binds Holder only on a layer its declaration writes).
     [Fact]
     public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
     {
@@ -584,6 +596,90 @@ public sealed class TyCtxtTest
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
+        var supplied = types.Intern(BoundTypeKind.Constructed, p[9].Symbol, SemanticsKind.Owner, [types.Pointer(BoundType.I32, BoundOrigin.Holder)]);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(supplied, 0, [])).Message, StringComparison.Ordinal);
+    }
+
+    // DECISIONS BU-58: WrittenAt is the Type a part's declaration writes at inline positions while it is a Tuple, a fixed array or a raw
+    // layer: a struct Field's root, a Case payload's component at its first position, a Tuple's component and a fixed array's element
+    // below them, a raw-free written Tuple included; null at or past a scalar, a Type parameter, a pair layer or an open projection, and
+    // at an enum's [], so null at p is null below p.
+    [Fact]
+    public void WrittenAtIsTheTypeADeclarationWritesInline()
+    {
+        var (_, p) = StoredLayers();
+        (BoundType Instance, int Part, int[] Positions)[] rows =
+        [
+            (p[3], 0, []), (p[4], 0, [0]), (p[7], 0, []), (p[8], 0, []), (p[8], 0, [0]), (p[8], 1, []), (p[8], 1, [1]), (p[16], 0, []),
+            (p[17], 0, []), (p[8], 0, [1]), (p[4], 0, []), (p[16], 0, [0]), (p[17], 0, [1]), (p[9], 0, []), (p[18], 0, [0]), (p[13], 0, []),
+            (p[15], 0, [0]), (p[15], 1, [0]),
+        ];
+        Assert.Equal(
+            [
+                "raw/u8 during Holder", "raw/u8 during Holder", "raw/E during Parameter", "(raw/u8, isize)", "raw/u8 during Holder", "[2 of raw/u8]",
+                "raw/u8 during Holder", "(T, i32)", "[2 of T]", "-", "-", "-", "-", "-", "-", "-", "-", "-",
+            ],
+            rows.Select(static x => Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))));
+        var c = MirBuildTest.Compile("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
+            "    S is HasElem\n    internal var e: S.Element\nfunc probe(w: W<Src>) => ()\npublic func main() => ()\n");
+        var w = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        Assert.Equal((BoundType.I32, null), (c.Types.StoredParts(w, out _)[0], TyCtxt.WrittenAt(w, 0, [])));
+    }
+
+    // DECISIONS BU-58 (G307's Q1): one kept part at two positions whose declarations write different Types, P's Fields x and y and E's and
+    // E3's Cases A and B sharing one kept payload Tuple, steps by what each writes there (a slot's ref cap, Shared, against a supplied
+    // layer's own Origin, Exclusive, or `static`), so WrittenAt tells the positions apart. Where WrittenAt is null, the layer steps by its
+    // kept Origin's kind alone and has no member (an Exclusive one's members are incomplete).
+    [Fact]
+    public void WrittenAtTellsApartThePositionsOfOneKeptPart()
+    {
+        var c = MirBuildTest.Compile(
+            "enum E<T> {s}\n    A(raw/i32 during s, i32)\n    B(T, i32)\n    C(Loan<ref/i32 during s>)\nstruct P<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n" +
+            "    internal var x: (raw/i32 during s, i32)\n    internal var y: T\nenum E3 {s}\n    A(raw/(ref/i32 during s) during s, i32)\n" +
+            "    B(raw/(ref/i32 during static) during static, i32)\n    C(ref/i32 during s)\n" +
+            "func probe(y: uniq/i32, e: E<raw/i32 during y> during y, p: P<(raw/i32 during y, i32)> during y, e3: E3 during static) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var types = c.Types;
+        var q = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        (BoundType Instance, int Part, int Other)[] twins = [(q[1], 0, 1), (q[2], 1, 2), (q[3], 0, 1)];
+        Assert.All(twins, x => Assert.Same(types.StoredParts(x.Instance, out _)[x.Part], types.StoredParts(x.Instance, out _)[x.Other]));
+        (BoundType Instance, int Part, int[] Positions)[] rows = [(q[1], 0, [0]), (q[1], 1, [0]), (q[2], 1, [0]), (q[2], 2, [0]), (q[3], 0, [0]), (q[3], 1, [0])];
+        var members = new List<RawMember>();
+        Assert.Equal(
+            ["raw/i32 during Parameter Shared True 1", "- Exclusive False 0", "raw/i32 during Parameter Shared True 1", "- Exclusive False 0",
+                "raw/ref/i32 during Parameter Shared True 0", "raw/ref/i32 during Static Static True 0"],
+            rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.RawStep(x.Instance, x.Part, x.Positions)} " +
+                $"{types.RawMembers(x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
+        Assert.Equal(
+            [Binding.StepOf(KeptLayer(types, q[1], 1, [0]).RawOrigin), Binding.StepOf(KeptLayer(types, q[2], 2, [0]).RawOrigin)],
+            [types.RawStep(q[1], 1, [0]), types.RawStep(q[2], 2, [0])]);
+        (BoundType Instance, int Part)[] roots = [(q[2], 1), (q[2], 2), (q[1], 0)];
+        Assert.Equal(["(raw/i32, i32)", "-", "-"], roots.Select(static x => Shown(TyCtxt.WrittenAt(x.Instance, x.Part, []))));
+
+        static List<RawMember> Cleared(List<RawMember> list)
+        {
+            list.Clear();
+            return list;
+        }
+    }
+
+    // DECISIONS BU-58: a closed projection's resolution is the Type the declaration writes, so WrittenAt follows the written DAG of
+    // TypeDagScalingTest's projection chain down to its leaf, the kept part's own nodes where the leaf states `static` (as written).
+    [Fact]
+    public void WrittenAtFollowsAWrittenProjectionDag()
+    {
+        var c = MirBuildTest.Compile(TypeDagScalingTest.ProjectionChain("raw/i32 during static", 8));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "pv").Parameters[1].Type.TypeOf()!;
+        var kept = c.Types.StoredParts(holder, out _)[1]!;
+        var path = new int[8];
+        for (var k = 0; k <= 8; k++)
+        {
+            Assert.Same(kept, TyCtxt.WrittenAt(holder, 1, path.AsSpan(0, k)));
+            kept = k < 8 ? kept.Components[0] : kept;
+        }
+
+        Assert.Equal(RawStep.Static, c.Types.RawStep(holder, 1, path));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
@@ -775,6 +871,26 @@ public sealed class TyCtxtTest
             holders.Select(x => $"{TyCtxt.Name(x)} {c.Binding.PrepareTypeStorage(x)} {TyCtxt.Name(c.Types.StoredParts(x, out _)[0]!)}"));
     }
 
+    // SPEC 8.6.1 (PLAN G290): a requirement call through a bound reference, in each closed instance, names the conformance whose reference
+    // has a projection over the Type's parameter as its argument (InstanceContract): `x.size()` in `use<T>` under `T is Iter<i32>` has
+    // B.size as its Body witness for `B<SrcI>` and for `B<Src>`, whose Item HasMore's refinement binds (before: Binding refuted both
+    // calls, and once it accepted them Witness found no conformance, sel's InternalInvariant_Kd).
+    [Fact]
+    public void ABoundReferenceWithAProjectionArgumentHasItsInstancesWitness()
+    {
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\ncontract HasMore: HasItem\n    associate Elem\n" +
+            "    associate HasItem.Item is Elem\nstruct Src\n    Self is HasMore\n    associate HasMore.Elem is i32\nstruct SrcI\n    Self is HasItem\n" +
+            "    associate HasItem.Item is i32\ncontract Iter<T>\n    func size(self: ref/Self) -> i32\nstruct B<S>\n    S is HasItem\n" +
+            "    Self is Iter<S.(HasItem).Item>\n    var n: i32\n    public init(n: i32) => self.n = n\n" +
+            "    public func size(self: ref/Self) -> i32 => self.n\nfunc use<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    return x.size()\n" +
+            "let a = B<SrcI>.init(n: 7)\nlet b = B<Src>.init(n: 8)\nrequire use(a@ref) == 7 and use(b@ref) == 8 else => $abort(\"size\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(
+            ["B<SrcI> Body size", "B<Src> Body size"],
+            RequirementCalls(c, c.Kotonoha).Select(x => (Composed(c, x)!.Self!, Witness(c, x)))
+                .Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Kind} {x.Item2.Target?.Name}"));
+    }
+
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): a kept part states Unstated on each raw layer its declaration writes without `during`, so an
     // instance's kept parts tell such a layer from one a Type argument supplies at any depth below it (RawStated): in a Field, a Tuple, a
     // Type argument of a Field, a base clause (also an intermediate one's), beside a supplied argument, a nested holder, a pair slot's
@@ -826,7 +942,8 @@ public sealed class TyCtxtTest
             Assert.DoesNotContain(erased, static x => x?.CarriesRawOrigin == true);
         }
 
-        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), static x => TyCtxt.StatesUnstated(x.Type));
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), x => TyCtxt.StatesUnstated(x.Type, seen));
 
         // A kept Field (the kept base at -1), or the kept payload Tuple of an enum's Case `part`.
         BoundType Part(BoundType x, int part)
@@ -864,8 +981,9 @@ public sealed class TyCtxtTest
         Assert.Same(references[0], references[1]);
     }
 
-    // design-final §15 (DECISIONS BU-41, BU-46): the stored-layer readers and the kept parts allocate nothing when warm, also on a kept
-    // nested instance, which its first read substitutes, and on one whose kept part states Unstated (Holder2's Wrap).
+    // design-final §15 (DECISIONS BU-41, BU-46, BU-58): the stored-layer readers and the kept parts allocate nothing when warm, also on a
+    // kept nested instance, which its first read substitutes, and on one whose kept part states Unstated (Holder2's Wrap); so do WrittenAt
+    // and StatesUnstated over the caller's scratch.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmStoredRawLayerReadAllocatesNothing()
@@ -877,6 +995,7 @@ public sealed class TyCtxtTest
         var wrap = declared.Types.StoredParts(holder2, out _)[0]!;
         _ = declared.Types.StoredParts(wrap, out _);
         var members = new List<RawMember>();
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
@@ -892,6 +1011,12 @@ public sealed class TyCtxtTest
                 !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !declared.Types.RawMembers(wrap, 0, [], members))
             {
                 throw new InvalidOperationException("A declared raw layer's reads changed.");
+            }
+
+            if (TyCtxt.WrittenAt(p[8], 1, [1]) is null || TyCtxt.WrittenAt(p[8], 0, [1]) is not null || !TyCtxt.StatesUnstated(wrap, seen) ||
+                TyCtxt.StatesUnstated(types.StoredParts(p[8], out _)[0]!, seen))
+            {
+                throw new InvalidOperationException("The written and Unstated views changed.");
             }
         }));
     }
@@ -912,9 +1037,10 @@ public sealed class TyCtxtTest
         var stated = types.Pointer(BoundType.I32, origin);
         var marked = types.Pointer(BoundType.I32, BoundOrigin.Unstated);
         Assert.Equal((null, BoundOrigin.Unstated, false, true), (marked.Origin, marked.RawOrigin, marked.CarriesOrigin, marked.CarriesRawOrigin));
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             (true, false, true, false),
-            (TyCtxt.RawStated(marked), TyCtxt.RawStated(stated), TyCtxt.StatesUnstated(types.Tuple([BoundType.I32, marked])), TyCtxt.StatesUnstated(stated)));
+            (TyCtxt.RawStated(marked), TyCtxt.RawStated(stated), TyCtxt.StatesUnstated(types.Tuple([BoundType.I32, marked]), seen), TyCtxt.StatesUnstated(stated, seen)));
         Assert.Equal((marked, types.Pointer(BoundType.I32)), (types.PairBinding(marked), types.PairBinding(stated)));
         Assert.Same(types.Erase(types.Pointer(BoundType.I32)), types.Erase(marked));
         Assert.Same(types.Pointer(BoundType.I32), c.Binding.WithoutRawOrigins(marked));
@@ -964,6 +1090,38 @@ public sealed class TyCtxtTest
         };
 
         static FunctionKoto Enclosing(Koto node) => node as FunctionKoto ?? Enclosing(node.Parent!);
+    }
+
+    // SPEC 6.1.3, 9.3, 11.3 (PLAN G157 (49)): the function whose instance a nested definition's instance holds is the named function whose
+    // body declares it, through Closures and blocks, and in an accessor's body the accessor's executing function, which keys its body:
+    // the getter's for a function, a Closure and a function in a Closure there, the setter's for its function (before: none, so the
+    // collector's EnclosingInstance check never saw them); a method's for its function. A member, an accessor, a top-level function and a
+    // static's initializer, with a Closure in it, are declared in a container, so none.
+    [Fact]
+    public void EnclosingFunctionIsTheFunctionWhoseBodyDeclaresTheDefinition()
+    {
+        var c = MinimalEmissionTest.Analyze(EnclosingSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        string[] expected =
+        [
+            "Fn init none", "Getter got.Get none", "Fn inner got.Get", "Closure keep got.Get", "Fn deep got.Get", "Setter got.Set none",
+            "Fn store got.Set", "Fn get none", "Fn local get", "StaticInit limit none", "Closure limit none", "Fn outer none",
+        ];
+        var keys = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null && x.Source.Module == 0).Select(static x => x.Key);
+        var actual = keys.Select(x => $"{x.Kind} {Label(x.Decl!.Declaration)} {Enclosing(x.Decl!)}");
+        Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
+
+        string Enclosing(BindingSymbol definition) => c.Types.EnclosingFunction(definition) is { } function ? Label(function.Declaration) : "none";
+
+        // A Closure is labeled by the local or static it initializes.
+        static string Label(Koto declaration) => declaration switch
+        {
+            FunctionKoto { IsAnonymous: true } closure => Initialized(closure.Parent!),
+            FunctionKoto function => function.Name,
+            _ => ((VariableKoto)declaration).NameKoto.IdentifierName,
+        };
+
+        static string Initialized(Koto node) => node is VariableKoto variable ? variable.NameKoto.IdentifierName : Initialized(node.Parent!);
     }
 
     // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in
@@ -1452,6 +1610,14 @@ public sealed class TyCtxtTest
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
+
+    // A Type for a row: its diagnostic name, a raw layer's with its Origin's kind; "-" for none.
+    private static string Shown(BoundType? type) => type switch
+    {
+        null => "-",
+        { RawOrigin: { } raw } => $"{Binding.DiagnosticTypeName(type)} during {raw.Kind}",
+        _ => Binding.DiagnosticTypeName(type),
+    };
 
     // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
     // then per position a Tuple's component or a fixed array's element.

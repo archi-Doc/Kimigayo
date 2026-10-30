@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -61,59 +60,6 @@ public class GenericCallbackEmissionTest
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
         Assert.Equal("run(use1, use3, h@move, k@move)", error.Text);
-    }
-
-    [Theory]
-    [InlineData("i8", "7")]
-    [InlineData("i32", "7")]
-    [InlineData("bool", "true")]
-    public void MonomorphizesCallableValueCalls(string type, string value)
-    {
-        // SPEC 21.3.1: the instance calls its (T) -> bool value through the substituted signature.
-        var c = MinimalEmissionTest.Analyze("func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value@move)\nlet r = accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
-        var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
-        Assert.Equal([type == "bool" ? "i1" : type, "ptr", "i64"], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
-        Assert.True(valueCall.Callee.CallerLocation);
-        Assert.Equal(AbiParameterKind.Location, valueCall.Callee.Parameters[^2].Kind);
-        Assert.Equal(AbiParameterKind.LocationLength, valueCall.Callee.Parameters[^1].Kind);
-    }
-
-    [Theory]
-    [InlineData("loan")]
-    [InlineData("argument")]
-    [InlineData("receiver")]
-    public void RejectsCorruptValueCallAndReanalysisRecovers(string defect)
-    {
-        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-        // the corrupt value call is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze(
-            "func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "invoke");
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        if (defect == "loan")
-        {
-            body.ComparisonLoans[0] = body.ComparisonLoans[0] with { Place = 0 };
-        }
-        else if (defect == "receiver")
-        {
-            body.OperationStorage[call] = body.Operations[call] with { Input = 0 };
-        }
-        else
-        {
-            var entry = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.CallEntry);
-            body.OperationStorage[entry] = body.Operations[entry] with { Place = 0 };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
     }
 
     [Fact]

@@ -65,7 +65,8 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (this.Address(place, out var address) && this.LoweringOf(place) is { } record)
+        var record = type.Kind == BoundTypeKind.FixedArray ? null : this.LoweringOf(place); // A fixed array's length is its Type's.
+        if (this.Address(place, out var address) && (record is not null || type.Kind == BoundTypeKind.FixedArray))
         {
             this.Store(statement, this.Length(type, record, address));
         }

@@ -63,18 +63,18 @@ public class ElementBorrowOwnerEmissionTest
 
     public static TheoryData<string, string, string, string, int[]> Audits => new()
     {
-        { "LiteralCondition", "if (\"head\", \"tail\").0 == \"head\" => Console.writeLine(\"ok\")", "ok\n", Codegen.Expect("head=1;tail=1;ok=1", "head=2;tail=1;ok=1", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 2], [0, 1, 0, 2], CodegenDeviations.ConstantTemporaries) },
-        { "CallCondition", "func make() -> (string, string) => (\"head\", \"tail\")\nif make().0 == \"head\" => Console.writeLine(\"ok\")", "ok\n", Codegen.Expect("head=1;tail=1;ok=1", "head=2;tail=1;ok=1", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 2], [0, 1, 0, 2], CodegenDeviations.ConstantTemporaries) },
+        { "LiteralCondition", "if (\"head\", \"tail\").0 == \"head\" => Console.writeLine(\"ok\")", "ok\n", "head=1;tail=1;ok=1", [1, 0, 2] },
+        { "CallCondition", "func make() -> (string, string) => (\"head\", \"tail\")\nif make().0 == \"head\" => Console.writeLine(\"ok\")", "ok\n", "head=1;tail=1;ok=1", [1, 0, 2] },
         { "ParameterCleanup", "func f(a: (string, string)) -> bool => a.0 == a.0\nif f((\"head\", \"tail\")) => Console.writeLine(\"ok\")", "ok\n", "head=1;tail=1;ok=1", [1, 0, 2] },
         { "ReverseTemporaries", Same + "if same((\"head\", \"tail\").0, (\"head\", \"last\").0) => Console.writeLine(\"ok\")", "ok\n", "head=2;tail=1;last=1;ok=1", [2, 0, 1, 0, 3] },
-        { "ConditionalLiteral", "func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nif f(true) and not f(false) => Console.writeLine(\"ok\")", "ok\n", Codegen.Expect("head=1;tail=1;ok=1", "head=2;tail=1;ok=1", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 2], [0, 1, 0, 2], CodegenDeviations.ConstantTemporaries) },
-        { "ConditionalCall", "func make() -> (string, string) => (\"head\", \"tail\")\nfunc f(flag: bool) -> bool => flag and make().0 == \"head\"\nif f(true) and not f(false) => Console.writeLine(\"ok\")", "ok\n", Codegen.Expect("head=1;tail=1;ok=1", "head=2;tail=1;ok=1", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 2], [0, 1, 0, 2], CodegenDeviations.ConstantTemporaries) },
-        { "ConditionalSelection", "func f(flag: bool) -> bool => flag and (if flag => (\"head\", \"tail\") else => (\"bad\", \"bad\")).0 == \"head\"\nif f(true) and not f(false) => Console.writeLine(\"ok\")", "ok\n", Codegen.Expect("head=1;tail=1;bad=0;ok=1", "head=2;tail=1;bad=0;ok=1", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 3], [0, 1, 0, 3], CodegenDeviations.ConstantTemporaries) },
-        { "RepeatedConditional", "var n = 0\nwhile n < 4\n    let equal = n % 2 == 0 and (if n == 0 => (\"head\", \"tail\") else => (\"head\", \"tail\")).0 == \"head\"\n    n += 1", string.Empty, Codegen.Expect("head=2;tail=2", "head=4;tail=2", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 1, 0], [0, 1, 0, 0, 1, 0], CodegenDeviations.ConstantTemporaries) },
-        { "DeferredConditional", "func f(flag: bool, early: bool)\n    defer\n        let equal = flag and (if flag => (\"head\", \"tail\") else => (\"bad\", \"bad\")).0 == \"head\"\n    if early => return\nf(true, true)\nf(false, false)\nf(true, false)\nf(false, true)", string.Empty, Codegen.Expect("head=2;tail=2;bad=0", "head=4;tail=2;bad=0", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([1, 0, 1, 0], [0, 1, 0, 0, 1, 0], CodegenDeviations.ConstantTemporaries) },
+        { "ConditionalLiteral", "func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nif f(true) and not f(false) => Console.writeLine(\"ok\")", "ok\n", "head=1;tail=1;ok=1", [1, 0, 2] },
+        { "ConditionalCall", "func make() -> (string, string) => (\"head\", \"tail\")\nfunc f(flag: bool) -> bool => flag and make().0 == \"head\"\nif f(true) and not f(false) => Console.writeLine(\"ok\")", "ok\n", "head=1;tail=1;ok=1", [1, 0, 2] },
+        { "ConditionalSelection", "func f(flag: bool) -> bool => flag and (if flag => (\"head\", \"tail\") else => (\"bad\", \"bad\")).0 == \"head\"\nif f(true) and not f(false) => Console.writeLine(\"ok\")", "ok\n", "head=1;tail=1;bad=0;ok=1", [1, 0, 3] },
+        { "RepeatedConditional", "var n = 0\nwhile n < 4\n    let equal = n % 2 == 0 and (if n == 0 => (\"head\", \"tail\") else => (\"head\", \"tail\")).0 == \"head\"\n    n += 1", string.Empty, "head=2;tail=2", [1, 0, 1, 0] },
+        { "DeferredConditional", "func f(flag: bool, early: bool)\n    defer\n        let equal = flag and (if flag => (\"head\", \"tail\") else => (\"bad\", \"bad\")).0 == \"head\"\n    if early => return\nf(true, true)\nf(false, false)\nf(true, false)\nf(false, true)", string.Empty, "head=2;tail=2;bad=0", [1, 0, 1, 0] },
         { "ArgumentTransfer", "func inspect(a: ref/string, b: bool) => ()\nfunc f() -> string\n    defer => Console.writeLine(\"cleanup\")\n    inspect((\"head\", \"tail\").0, (return \"out\"))\n    return \"bad\"\nConsole.writeLine(f())", "cleanup\nout\n", "head=1;tail=1;cleanup=1;out=1;bad=0", [1, 0, 2, 3] },
         { "ComparisonTransfer", "func f() -> string\n    defer => Console.writeLine(\"cleanup\")\n    (\"head\", \"tail\").0 == (return \"out\")\n    return \"bad\"\nConsole.writeLine(f())", "cleanup\nout\n", "head=1;tail=1;cleanup=1;out=1;bad=0", [1, 0, 2, 3] },
-        { "LastUseIsNotDestruction", "func later() -> i32\n    Console.writeLine(\"later\")\n    return 42\nfunc inspect(a: bool, b: i32) => ()\ninspect((\"head\", \"tail\").0 == \"head\", later())\nConsole.writeLine(\"ok\")", "later\nok\n", Codegen.Expect("head=1;tail=1;later=1;ok=1", "head=2;tail=1;later=1;ok=1", CodegenDeviations.ConstantTemporaries), Codegen.Expect<int[]>([2, 1, 0, 3], [2, 0, 1, 0, 3], CodegenDeviations.ConstantTemporaries) },
+        { "LastUseIsNotDestruction", "func later() -> i32\n    Console.writeLine(\"later\")\n    return 42\nfunc inspect(a: bool, b: i32) => ()\ninspect((\"head\", \"tail\").0 == \"head\", later())\nConsole.writeLine(\"ok\")", "later\nok\n", "head=1;tail=1;later=1;ok=1", [2, 1, 0, 3] },
         { "CalleeCleanup", "func inspect(a: ref/string) -> string\n    defer\n        if a == a => Console.writeLine(\"cleanup\")\n    return \"out\"\nConsole.writeLine(inspect((\"head\", \"tail\").0))", "cleanup\nout\n", "head=1;tail=1;cleanup=1;out=1", [2, 3, 1, 0] },
     };
 
@@ -84,105 +84,6 @@ public class ElementBorrowOwnerEmissionTest
     {
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowOwnerLifetime" + name, source, stdout);
         StringEmissionTest.WriteAuditedFixture("ElementBorrowOwnerLifetime" + name, ir, stdout, destructions, order: order);
-    }
-
-    [Fact]
-    public void ConditionalConstructionActivatesItsDestructionFlag()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        var place = Assert.Single(function.LiveFlags, p => body.Places[p].Type.Kind == BoundTypeKind.Tuple);
-        Assert.Contains(function.Instructions, x => x.Opcode == EmissionOpcode.StoreLiveFlag && x.Place == place && x.Constant == 1 && body.Operations[x.Operation].Kind == OwnershipOperationKind.CompleteConstruction);
-    }
-
-    [Theory]
-    [InlineData("entry")]
-    [InlineData("completion")]
-    [InlineData("clear")]
-    [InlineData("value")]
-    [InlineData("duplicate")]
-    public void ConditionalFlagsRejectMissingOrIncorrectTransitions(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        var place = Assert.Single(function.LiveFlags, p => body.Places[p].Type.Kind == BoundTypeKind.Tuple);
-        var index = function.Instructions.FindIndex(x => x.Place == place && (defect == "entry" ? x.Opcode == EmissionOpcode.InitializeLiveFlag :
-            x.Opcode == EmissionOpcode.StoreLiveFlag && body.Operations[x.Operation].Kind == (defect == "clear" ? OwnershipOperationKind.Cleanup : OwnershipOperationKind.CompleteConstruction)));
-        Assert.True(index >= 0);
-        var instruction = function.Instructions[index];
-        if (defect == "duplicate")
-        {
-            function.Instructions.Insert(index, instruction);
-        }
-        else if (defect == "value")
-        {
-            function.Instructions[index] = instruction with { Constant = 0 };
-        }
-        else
-        {
-            function.Instructions.RemoveAt(index);
-        }
-
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, new int[body.Places.Count + body.Operations.Count]));
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData("parameter", "func f(a: (string, i32)) -> bool => a.0 == a.0\nf(make())")]
-    [InlineData("construction", "let equal = (\"held\", 0).0 == \"held\"")]
-    [InlineData("call", "let equal = make().0 == \"held\"")]
-    [InlineData("selection", "let equal = (if true => (\"held\", 0) else => (\"held\", 1)).0 == \"held\"")]
-    public void BorrowOwnersRequireTheirStoragePlan(string defect, string source)
-    {
-        var c = MinimalEmissionTest.Analyze(Make + source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Projections.Count > 0);
-        var root = body.Projections[0].Root;
-        switch (defect)
-        {
-            case "parameter": body.PlaceStorage[root] = body.Places[root] with { Kind = OwnershipPlaceKind.Temporary }; break;
-            case "construction": body.ConstructionStorage.Clear(); break;
-            case "call":
-                var produce = body.OperationStorage.FindIndex(x => x.Place == root && x.Kind == OwnershipOperationKind.Produce);
-                body.OperationStorage[produce] = body.Operations[produce] with { Kind = OwnershipOperationKind.Declare };
-                break;
-            case "selection": body.SlotResults.Clear(); break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData(OwnershipOperationKind.LocateReceiver)]
-    [InlineData(OwnershipOperationKind.Cleanup)]
-    public void SecuredSelectionStorageIsUnavailableDuringItsCleanup(OwnershipOperationKind kind)
-    {
-        const string Source = "let equal = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (\"held\", 0)\n).0 == \"held\"";
-        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.SlotResults);
-        var deferred = Assert.Single(body.DeferredPlans, x => body.IsReachable(x.Entry));
-        var id = body.OperationStorage.FindIndex(deferred.Entry, deferred.End - deferred.Entry, x => x.Kind == (kind == OwnershipOperationKind.Cleanup ? OwnershipOperationKind.Cleanup : OwnershipOperationKind.Produce));
-        Assert.True(id >= 0);
-        Assert.True((body.GetInputState(id, result.Place) & PlaceState.MustInit) != 0);
-        body.OperationStorage[id] = body.Operations[id] with { Kind = kind, Place = result.Place };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.Contains("normal delivery", error);
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]

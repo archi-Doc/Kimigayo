@@ -45,8 +45,8 @@ public class SealedObjectFinalizationTest
     [InlineData("Arc")]
     public void SealedPayloadsHaveDirectCleanupAndRelease(string factory)
     {
-        // SPEC 16.3.3 (DECISIONS R5-M112, R5-M145): the payload's destructor runs once and its one allocation is released once, natively
-        // under both generators; the handle glue's direct release is FunctionCodegenTest.AHandlesGlueReleasesItsObject's (R5-M12).
+        // SPEC 16.3.3 (DECISIONS R5-M112, R5-M145): the payload's destructor runs once and its one allocation is released once, natively;
+        // the handle glue's direct release is FunctionCodegenTest.AHandlesGlueReleasesItsObject's (R5-M12).
         var source = "struct Item\n    public let value: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
             $"let owner = Kimi.Intrinsics.make{factory}(Item.init())\nrequire owner.value == 7 else => $abort(\"payload\")";
         NativeAllocationAudit.WriteFixture("SealedObjectDirect" + factory, source, 1, 1, 20, "drop\n");
@@ -63,9 +63,6 @@ public class SealedObjectFinalizationTest
     public void TrivialAndStringPayloadsKeepTheirDistinctCleanup(string factory, string value, int drop, int bytes)
     {
         var source = $"let owner = Kimi.Intrinsics.make{factory}({value})";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Equal(drop, Assert.Single(module.Aggregates, x => x.ObjectHandle is not null).ObjectPayloadDrop);
         NativeAllocationAudit.WriteFixture("SealedObjectPayload" + factory + (drop == -1 ? "Trivial" : "String"), source, 1, 1, bytes);
     }
 
@@ -76,18 +73,6 @@ public class SealedObjectFinalizationTest
     [InlineData("Arc")]
     public void ZeroSizeStillDestroysTheLogicalPayload(string factory)
         => NativeAllocationAudit.WriteFixture("SealedObjectZero" + factory, "struct Item\n    drop => Console.writeLine(\"zero\")\n" + $"let owner = Kimi.Intrinsics.make{factory}(Item.init())", 1, 1, 16, "zero\n");
-
-    [Theory]
-    [InlineData("obj")]
-    [InlineData("rc")]
-    [InlineData("arc")]
-    public void OpenTargetsRetainDynamicDestruction(string mode)
-    {
-        var c = MinimalEmissionTest.Analyze($"open struct Base\n    drop => Console.writeLine(\"base\")\nfunc consume(value: {mode}/Base) => ()\n()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var handle = Assert.Single(module.Aggregates, x => x.ObjectHandle is not null);
-        Assert.Null(handle.ObjectPayloadDrop);
-    }
 
     [Trait("Purpose", "Allocation")]
     [Fact]

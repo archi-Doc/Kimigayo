@@ -596,14 +596,16 @@ public sealed partial class Binding
         pending = this.AssociatedEvidencePending;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) && this.AssociatedInPath(path, receiver, associated, qualifier) is { } selected)
+            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
+                this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
             {
                 return this.ResolveAssociated(path, selected, out pending);
             }
         }
 
         if (receiver.Symbol is not { } owner ||
-            (qualifier is not { Kind: BoundTypeKind.Constructed } ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) : this.ConformanceByReference(owner, receiver, associated, qualifier)) is not { } identity)
+            (qualifier is not { Kind: BoundTypeKind.Constructed } ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _)
+                : this.ConformanceByReference(owner, receiver, associated, qualifier, scope)) is not { } identity)
         {
             return null;
         }
@@ -620,7 +622,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier) is not { } selected)
+            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier, scope) is not { } selected)
             {
                 continue;
             }
@@ -660,8 +662,8 @@ public sealed partial class Binding
             (this.StoredType(left, receiver) is { } x && this.StoredType(right, receiver) is { } y && this.SameConformanceType(x, y, scope));
 
     // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
-    // reaches `qualifier` as the declaring reference of `associated`.
-    private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier)
+    // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
+    private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
     {
         if (!this.conformancesByType.TryGetValue(owner, out var identities))
         {
@@ -673,7 +675,7 @@ public sealed partial class Binding
         {
             var identity = identities[i];
             if (identity.Paths.Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
-                (ReferenceEquals(reference, qualifier) || ReferenceEquals(this.StoredType(reference, receiver), qualifier)))
+                (ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope)))
             {
                 if (found is not null && !ReferenceEquals(found, identity))
                 {
@@ -687,7 +689,8 @@ public sealed partial class Binding
         return found;
     }
 
-    private BoundRequirement? AssociatedInPath(BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier)
+    private BoundRequirement? AssociatedInPath(
+        BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope)
     {
         BoundRequirement? found = null;
         foreach (var identity in path.Contract.Contract!.AssociatedStorage)
@@ -695,7 +698,7 @@ public sealed partial class Binding
             if (ReferenceEquals(identity.Symbol, associated))
             {
                 var reference = this.ProjectionContract(associated, identity.Contract);
-                if (qualifier is null || ReferenceEquals(reference, qualifier) || ReferenceEquals(this.StoredType(reference, receiver), qualifier))
+                if (qualifier is null || ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope))
                 {
                     if (found is not null)
                     {

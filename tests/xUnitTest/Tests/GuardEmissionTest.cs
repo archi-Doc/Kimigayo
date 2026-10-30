@@ -57,22 +57,6 @@ public class GuardEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
-    [Fact]
-    public void CandidateIdentityAndStorage()
-    {
-        var c = MinimalEmissionTest.Analyze("match 7@move\n    let n if n == 7 => if n == 7 => ()\n    _ => ()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single();
-        var pattern = body.Matches[0].Binding.Positions[0];
-        Assert.NotNull(pattern.CandidateSymbol);
-        Assert.NotSame(pattern.BodySymbol, pattern.CandidateSymbol);
-        Assert.Same(pattern.BodySymbol!.Declaration, pattern.CandidateSymbol.Declaration);
-        Assert.False(body.SymbolPlaces.ContainsKey(pattern.CandidateSymbol));
-        // SPEC 14.8.3: the candidate is a shared reference, so it borrows the Subject Place, which holds the value.
-        Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.SymbolOf() == pattern.CandidateSymbol);
-        Assert.Contains(module.GetFunction(0).Slots, x => x.Place == body.Matches[0].Subject);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAnalysisAndWritingAllocateNothing()
@@ -113,46 +97,7 @@ public class GuardEmissionTest
         var stdout = success ? "selected\n" : "fallback\n";
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        var legacy = success ? "a=2;selected=1;fallback=0" : "a=1;b=1;selected=0;fallback=1";
-        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, Codegen.Expect(success ? "a=1;selected=1;fallback=0" : "a=1;b=0;selected=0;fallback=1", legacy, CodegenDeviations.ConstantTemporaries));
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-    }
-
-    [Theory]
-    [InlineData("candidate")]
-    [InlineData("acquire")]
-    [InlineData("cleanup")]
-    [InlineData("boolean")]
-    public void MalformedGuardPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var arm = body.MatchArms[0];
-        if (defect == "candidate")
-        {
-            var read = body.OperationStorage.FindIndex(x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
-            body.OperationSteps[read] = -1;
-        }
-        else if (defect == "boolean")
-        {
-            body.MatchArmStorage[0] = arm with { GuardValue = arm.Test };
-        }
-        else
-        {
-            var from = defect == "acquire" ? arm.Test : arm.GuardCleanupStart;
-            var edge = body.EdgeStorage.FindIndex(x => x.From == from && (defect != "acquire" || x.Kind == OwnershipEdgeKind.True));
-            body.EdgeStorage[edge] = body.Edges[edge] with { To = arm.BodyEntry };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, success ? "a=1;selected=1;fallback=0" : "a=1;b=0;selected=0;fallback=1");
     }
 
     [Trait("Purpose", "Allocation")]

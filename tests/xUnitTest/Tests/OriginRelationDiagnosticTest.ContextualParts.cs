@@ -225,12 +225,9 @@ public partial class OriginRelationDiagnosticTest
     {
         var source = body + Main;
         CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
-                .Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").ToArray();
-            Assert.True(errors.Contains("UnprovenOriginRelation_Kd .None") && errors.Length <= 2, $"{form} ({pipeline}): expected UnprovenOriginRelation_Kd .None and at most one further record, found [{string.Join("; ", errors)}]");
-        }
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
+            .Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").ToArray();
+        Assert.True(errors.Contains("UnprovenOriginRelation_Kd .None") && errors.Length <= 2, $"{form}: expected UnprovenOriginRelation_Kd .None and at most one further record, found [{string.Join("; ", errors)}]");
     }
 
     // AssertRecords, and for a contextual payload (`payload` not null) D-1's related location: every Error record relates the payload's

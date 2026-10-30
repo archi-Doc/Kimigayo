@@ -92,12 +92,10 @@ public sealed partial class Binding
         else
         {
             if (selection.DeclaringType is null || implementation.Property.Type is not { } storageType ||
-                this.PartType(storageType, selection.DeclaringType) is not { } field)
+                this.PartTypeIn(storageType, selection.DeclaringType, scope) is not { } field)
             {
                 return ConstraintProof.Unknown;
             }
-
-            field = this.ContractType(field, scope);
 
             var getter = requirement.Kind == PropertyAccessorKind.Get;
             if (receiver.Kind != BoundTypeKind.Semantics || receiver.Semantics != (getter ? SemanticsKind.Ref : SemanticsKind.Uniq) || !SameType(receiver.Components[0], self))

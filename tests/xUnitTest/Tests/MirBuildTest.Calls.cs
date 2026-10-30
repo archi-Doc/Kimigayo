@@ -257,8 +257,8 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
-    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, not of its Never-typed target's, and a
-    // rejected node of Type Never keeps its Opaque value: each body validates.
+    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, and a rejected node of Type Never keeps
+    // its Opaque value: each body validates.
     [Theory]
     [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
     [InlineData("func f(b: (string, i32)) -> bool\n    return (return false) < b\n")]
@@ -271,10 +271,7 @@ public sealed partial class MirBuildTest
     [Fact]
     public void ATupleOperatorWithoutItsComparisonIsUnsupported()
     {
-        var deep = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
-        var c = Compile("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n" +
-            "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
-            $"func f(a: ref/({deep}, i32), b: ref/({deep}, i32)) -> bool => a == b\n");
+        var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);

@@ -155,6 +155,7 @@ public sealed partial class Binding
                     this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
                     this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                    RestPendingOn(originDeclaration, alias);
                     return null;
                 }
 

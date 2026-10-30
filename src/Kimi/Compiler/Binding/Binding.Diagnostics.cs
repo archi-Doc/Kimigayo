@@ -674,7 +674,7 @@ public sealed partial class Binding
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
     {
-        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.exclusiveIndexers.Contains(index) || !ElementAccess.IsUserIndex(index) ||
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(index) ||
             this.Library.UniqIndexable is not { } uniqIndexable)
         {
             return null;
@@ -688,9 +688,10 @@ public sealed partial class Binding
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
-            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1).
+            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
             var name = DiagnosticTypeName(core);
-            var registered = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey) ?? (byKey ? this.ConformanceForKey(owner, uniqIndexable, index.Right) : null);
+            var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
+            _ = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey);
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";

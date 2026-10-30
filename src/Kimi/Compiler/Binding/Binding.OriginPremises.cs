@@ -202,9 +202,12 @@ public sealed partial class Binding
             if ((node is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || requirement) &&
                 this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
             {
-                foreach (var relation in declaration.Relations)
+                this.AddDeclarationPremises(environment, declaration.Relations);
+
+                // DECISIONS BU-62: a declaration's rows are judged with the clauses its failure cleared, so a row they establish rests on it.
+                if (this.judgingDeclarationRows && declaration.RejectedRelations is { } rejected)
                 {
-                    this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
+                    this.AddDeclarationPremises(environment, rejected);
                 }
             }
         }
@@ -220,6 +223,15 @@ public sealed partial class Binding
             {
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
+        }
+    }
+
+    // R1: an established enclosing declaration's clauses.
+    private void AddDeclarationPremises(OriginPremiseEnvironment environment, List<OriginRelation> relations)
+    {
+        foreach (var relation in relations)
+        {
+            this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
         }
     }
 

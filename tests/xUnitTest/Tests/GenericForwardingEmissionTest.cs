@@ -39,9 +39,6 @@ public class GenericForwardingEmissionTest
         // The unchanged Milestone 19 source (concrete generic entries, compound layouts, specialization
         // forwarding and distinct destruction) lowers per instance and runs natively.
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone19.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture("GenericForwardingProgram19", source, "Compound layouts preserved.\nSpecialization preserved.\nRed received.\nRed destroyed.\nBlue received.\nBlue destroyed.\nGeneric generation finished.\n");
     }
 
@@ -106,36 +103,4 @@ public class GenericForwardingEmissionTest
     [Fact]
     public void UnusedDynamicStaticInitializersAreAcceptedWithoutExecution()
         => ScalarEmissionTest.EmitFixture("StaticInitializationUnusedEffect", "group W\n    public let value: i32 = effect()\n    public func effect() -> i32\n        Console.writeLine(\"effect\")\n        return 1\nConsole.writeLine(\"unused\")", "unused\n");
-
-    // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
-    // the corrupt element borrow is rejected on the ordinary body that owns it.
-    [Theory]
-    [InlineData("index")]
-    [InlineData("loan")]
-    public void RejectsCorruptPlanAndRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(
-            "func weight(value: ref/i32) -> i32 => 2\nfunc total(values: ref/[1 of i32]) -> i32 => weight(values[0]@ref/i32)\nlet values: [1 of i32] = [7]\n" +
-            "let result = total(values@ref)",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "total");
-        var sequence = body.Sequences.FindIndex(x => x.Kind == SequenceOperation.Borrow);
-        Assert.True(sequence >= 0);
-        var id = body.Sequences[sequence].Operation;
-        if (defect == "loan")
-        {
-            body.OperationStorage[id] = body.Operations[id] with { LoanMode = LoanRequirement.Uniq };
-        }
-        else
-        {
-            body.Sequences[sequence] = body.Sequences[sequence] with { Index = id };
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
 }

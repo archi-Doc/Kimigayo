@@ -130,7 +130,8 @@ internal sealed partial class FunctionCodegen
             return null;
         }
 
-        var (index, receiver) = (VTableDef.SlotOf(slot), -1);
+        var index = VTableDef.SlotOf(slot);
+        var receiver = -1;
         for (var i = 0; i < routine.Parameters.Length; i++)
         {
             receiver = routine.Parameters[i] is { Kind: AbiParameterKind.Value } parameter && parameter.LogicalIndex == slot.ReceiverIndex ? i : receiver;

@@ -111,44 +111,6 @@ public class CallReservationTest(ITestOutputHelper output)
         Assert.False(c.Validate(out _));
     }
 
-    [Theory]
-    [InlineData("activation")]
-    [InlineData("head")]
-    [InlineData("cycle")]
-    [InlineData("place")]
-    [InlineData("mode")]
-    public void RejectsCorruptedReservationPlans(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.CallReservations.Count != 0);
-        var reservation = body.CallReservations[0];
-        switch (mutation)
-        {
-            case "activation":
-                body.CallReservations[0] = reservation with { Activation = reservation.Borrow };
-                break;
-            case "head":
-                body.OperationStorage[reservation.Activation] = body.Operations[reservation.Activation] with { Reservation = -1 };
-                break;
-            case "cycle":
-                body.CallReservations[0] = reservation with { Next = 0 };
-                break;
-            case "place":
-                body.CallReservations[0] = reservation with { Place = 0 };
-                break;
-            case "mode":
-                body.OperationStorage[reservation.Borrow] = body.Operations[reservation.Borrow] with { LoanMode = LoanRequirement.Ref };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericValueReservationUsesTheReferenceValueAbi()

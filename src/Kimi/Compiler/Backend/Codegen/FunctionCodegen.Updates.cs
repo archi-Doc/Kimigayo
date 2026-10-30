@@ -9,7 +9,8 @@ namespace Kimi.Compiler.Backend;
 // written through the place writer and the one destruction writer (PD3) in the caller's body, at a direct call and at an Item's Value call
 // over the call's operands (SPEC 7.7.4: an Item's call is its direct call's row), and in an update Item's adapter entry over the entry's
 // own parameters (FunctionCodegen.Erasures' WriteAdapter); both take the same steps (DestroyOld, Keep, SwapValues). The target is the
-// address the first input's reference holds, T its referent's Type in the item's instance. Replace destroys the old value by T's glue, the
+// address the first input's reference holds, T the update's Type argument in the item's instance (its row's TypeArguments need, Needed;
+// DECISIONS R5-M149). Replace destroys the old value by T's glue, the
 // site's target (the collector's, from Binding's published in-place row), at the call's location (SPEC 22.5.1; an entry's or a
 // caller-location body's received one), then puts the new value (a string constant written whole); exchange keeps the old value at its
 // result (a call's destination, a fresh temp, DECISIONS R5-M89; an entry's result slot, or the value it returns), then puts the new one at
@@ -21,21 +22,21 @@ internal sealed partial class FunctionCodegen
     // An entry parameter of an input of a Type at a logical index, by the kind the internal convention gives it (Abi.Of), for Own.
     private static AbiParameter Input(BoundType type, int logical) => new(string.Empty, string.Empty, Abi.Kind(Abi.Convention.Internal, type), logical);
 
-    // A call's update by its row's writer, with the target its call site carries (-1: none).
-    private void Update(in MirTerminator call, LegacyWriter writer, int glue)
+    // A call's update by its row's writer under the call's substitution, with the target its call site carries (-1: none).
+    private void Update(in MirTerminator call, LegacyWriter writer, int glue, Subst subst)
     {
         var first = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
-        if (this.Referent(this.InstanceType(first)) is not { } type || this.Laid(type) is not { } lowering || !this.Operand(first, out var target))
+        if (this.Needed(subst, 0, out var type) is not { } lowering || !this.Operand(first, out var target))
         {
             return; // A broken contract, recorded.
         }
 
-        if (writer == LegacyWriter.Replace && !this.DestroyOld(type, target, glue, call.Source))
+        if (writer == LegacyWriter.Replace && !this.DestroyOld(type!, target, glue, call.Source))
         {
             return; // Recorded.
         }
 
-        if (lowering.Layout.Size != 0 && !this.Updated(call, writer, type, lowering, target))
+        if (lowering.Layout.Size != 0 && !this.Updated(call, writer, type!, lowering, target))
         {
             return; // A broken contract, recorded.
         }
@@ -82,7 +83,13 @@ internal sealed partial class FunctionCodegen
     private void WriteUpdateEntry(int item, FunctionAbi entry, LegacyWriter writer, int glue)
     {
         var inputs = this.collector.Set.Items[item].Key.Function!.Components[0].Components;
-        if (this.Referent(inputs[0]) is not { } type || this.Laid(type) is not { } lowering)
+        if (this.typeContext.SubstOfItem(this.collector.Set.Items[item].RepresentativeType!) is not { } subst)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // An update Item instantiates its function.
+            return;
+        }
+
+        if (this.Needed(subst, 0, out var type) is not { } lowering)
         {
             return; // A broken contract, recorded.
         }
@@ -100,12 +107,12 @@ internal sealed partial class FunctionCodegen
         }
 
         var target = new Value('p', first);
-        if (writer == LegacyWriter.Replace && !this.DestroyOld(type, target, glue, default))
+        if (writer == LegacyWriter.Replace && !this.DestroyOld(type!, target, glue, default))
         {
             return; // Recorded.
         }
 
-        this.End(entry, second < 0 ? null : this.Updated(writer, type, lowering, target, second));
+        this.End(entry, second < 0 ? null : this.Updated(writer, type!, lowering, target, second));
     }
 
     // An entry's steps after replace's destruction for a T of nonzero size, over its parameter `second`: swap's exchange through a slot of the

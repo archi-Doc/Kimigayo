@@ -6,11 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract), BoundConformance> conformances = new();
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract, IsKoto Declaration, BindingSymbol Root), BoundConformancePath> conformancePaths = new();
-    private readonly List<BoundConformancePath> activeConformancePaths = new();
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
-    private readonly Dictionary<BindingSymbol, List<BoundConformance>> conformancesByType = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
@@ -71,19 +67,6 @@ public sealed partial class Binding
     private static bool IsBoundContractReference(BindingSymbol contract)
         => contract.Type is { } reference && !ReferenceEquals(reference.Symbol, contract);
 
-    private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
-    {
-        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
-        {
-            return ConstraintAccessCovers(constraint.Left!, contract, intersection) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract, intersection));
-        }
-
-        return (constraint.Contract is null ||
-            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
-             (constraint.Contract.Type is not { } reference || TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
-            (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
-    }
-
     private static bool IsRefinementName(Koto syntax)
         => syntax switch
         {
@@ -108,6 +91,20 @@ public sealed partial class Binding
         }
 
         return name as GenericsKoto;
+    }
+
+    private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
+    {
+        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        {
+            return this.ConstraintAccessCovers(constraint.Left!, contract, intersection) &&
+                (constraint.Right is null || this.ConstraintAccessCovers(constraint.Right, contract, intersection));
+        }
+
+        return (constraint.Contract is null ||
+            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+             (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
+            (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
     }
 
     /// <summary>
@@ -490,168 +487,6 @@ public sealed partial class Binding
         }
     }
 
-    private void RegisterConformances()
-    {
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is not DeclarationContainerKoto container || container is not (StructKoto or EnumKoto))
-            {
-                continue;
-            }
-
-            for (var i = 0; i < container.ConstraintNodes.Count; i++)
-            {
-                var clause = container.ConstraintNodes[i];
-                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint)
-                {
-                    Register(constraint, container.BoundSymbol!, clause, true);
-                }
-            }
-        }
-
-        // SPEC 8.7.3: derived structs inherit the opt-out. Bases are resolved by name here,
-        // before headers bind, so that every later object formation sees the effective state.
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is StructKoto { Bases.Count: > 0 } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
-            {
-                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
-            }
-        }
-
-        void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use, bool standalone)
-        {
-            if (constraint.Kind == ConstraintKind.And)
-            {
-                Register(constraint.Left!, type, use, false);
-                Register(constraint.Right!, type, use, false);
-            }
-            else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
-            {
-                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
-            }
-            else if (constraint.Contract is { } intrinsic && IntrinsicContract.Of(intrinsic.Intrinsic).Declaration is not BindingFailure.None and var failure)
-            {
-                this.Fail(use, failure); // SPEC 8.7.1: decided by the Type's structure alone.
-            }
-            else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract })
-            {
-                this.RegisterConformanceDeclaration(type, contract, use, this.scopes[type.Declaration], null);
-            }
-            else if (constraint.Kind == ConstraintKind.Not)
-            {
-                // SPEC 8.2, 8.7.3: the only negated Self clause is the standalone, unrepeated ObjectPayload opt-out.
-                if (standalone && constraint.Left is { Kind: ConstraintKind.Contract, Contract.Intrinsic: IntrinsicKind.ObjectPayload } && !ReferenceEquals(type.ObjectPayloadOptOut, type))
-                {
-                    type.ObjectPayloadOptOut = type;
-                }
-                else
-                {
-                    this.Fail(use, BindingFailure.InvalidSelfClause);
-                }
-            }
-        }
-    }
-
-    private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
-    {
-        // The current language has one inline base. The bound limits invalid cycles too.
-        for (var depth = 0; structure.Bases.Count > 0 && depth <= this.nodes.Count; depth++)
-        {
-            var syntax = structure.Bases[0];
-            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
-            if (type is null)
-            {
-                return null;
-            }
-
-            if (type.ObjectPayloadOptOut is not null)
-            {
-                return type.ObjectPayloadOptOut;
-            }
-
-            if (type.Declaration is not StructKoto next)
-            {
-                return null;
-            }
-
-            structure = next;
-        }
-
-        return null;
-    }
-
-    private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
-    {
-        if (this.conformancesByType.TryGetValue(type, out var previousBindings))
-        {
-            foreach (var identity in previousBindings)
-            {
-                if (!ReferenceEquals(identity.Contract, contract) && identity.DirectClause is { } clause &&
-                    this.ContractBindingsMayCollide(identity.Contract, contract, scope))
-                {
-                    identity.Invalid = true;
-                    this.FailDuplicate(clause, use);
-                }
-            }
-        }
-
-        var direct = this.RegisterConformance(type, contract, contract, use, scope, premises);
-        if (direct.Identity.DirectClause is { } previous)
-        {
-            direct.Identity.Invalid = true;
-            this.FailDuplicate(use, previous);
-        }
-
-        direct.Identity.DirectClause = use;
-        var shape = contract.Contract!;
-        for (var i = 0; i < shape.Ancestors.Count; i++)
-        {
-            this.RegisterConformance(type, shape.Ancestors[i], contract, use, scope, premises);
-        }
-    }
-
-    private BoundConformancePath RegisterConformance(BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
-    {
-        if (!this.conformances.TryGetValue((type, contract), out var identity))
-        {
-            this.conformances.Add((type, contract), identity = new(type, contract));
-        }
-
-        if (!this.conformancePaths.TryGetValue((type, contract, use, root), out var result))
-        {
-            this.conformancePaths.Add((type, contract, use, root), result = new(type, contract) { Identity = identity });
-        }
-
-        if (!result.Active)
-        {
-            result.Active = true;
-            result.InheritedFrom = null;
-            result.AdditionalInheritedSources?.Clear();
-            result.InheritedBase = null;
-            result.Use = use;
-            result.Declaration = use;
-            result.RootContract = root;
-            result.RootPath = ReferenceEquals(contract, root) ? result : this.conformancePaths[(type, root, use, root)];
-            result.Premises = premises;
-            result.Scope.Parent = scope;
-            this.activeConformancePaths.Add(result);
-            if (identity.PathStorage.Count == 0)
-            {
-                if (!this.conformancesByType.TryGetValue(type, out var list))
-                {
-                    this.conformancesByType.Add(type, list = new());
-                }
-
-                list.Add(identity);
-            }
-
-            identity.PathStorage.Add(result);
-        }
-
-        return result;
-    }
-
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
         // Refinement assumptions are input evidence, not in-progress registrations.
@@ -735,6 +570,7 @@ public sealed partial class Binding
             }
         }
 
+        this.PublishSourceStates();
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var conformance = this.activeConformancePaths[i];
@@ -802,7 +638,8 @@ public sealed partial class Binding
                 this.associatedIdentityChecks.Clear();
                 foreach (var a in environment.Facts)
                 {
-                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } || DependentType(ta))
+                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } ||
+                        this.DependentType(ta))
                     {
                         continue;
                     }
@@ -840,14 +677,14 @@ public sealed partial class Binding
                     }
 
                     var declaringContract = members[i].Contract;
-                    if (a.BoundSymbol!.Type is { } result && !TypeAccessCovers(result, declaringContract, declaringContract))
+                    if (a.BoundSymbol!.Type is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
                     {
                         this.Fail(a, BindingFailure.Access);
                     }
 
                     for (var p = 0; p < a.Parameters.Count; p++)
                     {
-                        if (a.Parameters[p].Type.BoundType is { } parameter && !TypeAccessCovers(parameter, declaringContract, declaringContract))
+                        if (a.Parameters[p].Type.BoundType is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
                         {
                             this.Fail(a, BindingFailure.Access);
                         }
@@ -855,7 +692,7 @@ public sealed partial class Binding
 
                     for (var p = 0; p < a.TypeConstraints.Count; p++)
                     {
-                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !ConstraintAccessCovers(constraint, declaringContract))
+                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !this.ConstraintAccessCovers(constraint, declaringContract))
                         {
                             this.Fail(a, BindingFailure.Access);
                         }
@@ -892,7 +729,8 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
             {
-                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, shape.Symbol) || (shape.ClauseStorage[i].Left.BoundType is { } subject && !TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
+                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!this.ConstraintAccessCovers(constraint, shape.Symbol) ||
+                    (shape.ClauseStorage[i].Left.BoundType is { } subject && !this.TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
                 {
                     this.Fail(shape.ClauseStorage[i], BindingFailure.Access);
                     this.Fail(contract, BindingFailure.Access);

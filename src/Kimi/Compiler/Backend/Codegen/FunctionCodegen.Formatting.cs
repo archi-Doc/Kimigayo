@@ -38,7 +38,9 @@ internal sealed partial class FunctionCodegen
         this.body = this.program.Bodies[collector.Set.Items[target].BodyOrdinal];
         output.Write(wrapper.GetDefinition(exported: false));
         output.Write("entry:\n");
-        var (ret, adapter, value) = (new Value('p', 0), new Value('p', 1), new Value('p', 2));
+        var ret = new Value('p', 0);
+        var adapter = new Value('p', 1);
+        var value = new Value('p', 2);
         var id = this.next++;
         this.Branch(this.WriteCall(LegacyRuntimeHelpers.FormatHealthy, [adapter])!.Value, "%format", "%failure", id);
         Name(output, "format", id);
@@ -67,7 +69,8 @@ internal sealed partial class FunctionCodegen
     private FunctionAbi? Formatting(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
-        var (routine, count) = (row.Routine!, 0);
+        var routine = row.Routine!;
+        var count = 0;
         foreach (var parameter in routine.Parameters)
         {
             count += parameter is { Kind: AbiParameterKind.Context, LogicalIndex: < 0 } ? 1 : 0;
@@ -107,7 +110,12 @@ internal sealed partial class FunctionCodegen
     {
         given = default;
         var kind = destination is null ? -1 : LegacyRuntimeHelpers.WriterKind(destination);
-        Value? dispatch = target < 0 ? (kind is 0 or 1 ? new Value('n', 0) : null) : kind == 2 && this.Dispatches(target) ? new Value('e', target) : null;
+        Value? dispatch = target switch
+        {
+            < 0 when kind is 0 or 1 => new Value('n', 0),
+            >= 0 when kind == 2 && this.Dispatches(target) => new Value('e', target),
+            _ => null,
+        };
         if (dispatch is not { } entry)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets a user Writer's reserve witness (K 4.5 row 6).

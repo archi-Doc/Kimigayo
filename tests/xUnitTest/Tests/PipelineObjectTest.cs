@@ -25,7 +25,7 @@ public class PipelineObjectTest
         => ScalarEmissionTest.EmitFixture("PipelineObjectZero", "struct Empty\n    drop => Console.writeLine(\"empty\")\nlet value = Kimi.Intrinsics.makeObj(Empty.init())", "empty\n");
 
     // SPEC 3.3.1, PD17 (DECISIONS R5-M110): two payloads of one layout are two runtime identities, two metadata constants of the same
-    // layout with distinct Type tokens; no Runtime Type key text is written.
+    // layout with distinct Type tokens.
     [Fact]
     public void DistinctTypesWithIdenticalLayoutsHaveDistinctMetadata()
     {
@@ -34,7 +34,6 @@ public class PipelineObjectTest
             .Select(static x => x.Groups[1].Value).ToArray();
         Assert.Equal(2, tokens.Length);
         Assert.NotEqual(tokens[0], tokens[1]);
-        Assert.DoesNotContain("__kimi_object_type_key", ir, StringComparison.Ordinal);
     }
 
     [Theory]

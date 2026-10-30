@@ -11,22 +11,16 @@ namespace Kimi.Compiler;
 // borrow a Type refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
-    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, and the holds of its outputs,
-    // each with its output, in walk order: the result's whole Type (Retention.Result), and each position of input j's writable storage
-    // whose Type a raw input's own value or a raw layer may reach (a raw layer, an abstract part, or a struct or enum whose stored content
-    // may hold one); reused.
+    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, in walk order; reused.
     private readonly List<(int Input, BoundType Type)> retentionRawInputs = new();
-    private readonly List<(int Output, BoundType Type)> retentionHolds = new();
 
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
-    // Shared (Shared), and in the referent of an exclusive borrow its input holds by value (Addressed, DECISIONS BU-49; removed with
-    // PLAN G276's per-storage retention kind, WK).
+    // Shared (Shared).
     [Flags]
     private enum RetentionPlace : byte
     {
         None = 0,
         Shared = 1,
-        Addressed = 2,
     }
 
     // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it: `R/Env during ρ`,
@@ -36,11 +30,6 @@ public sealed partial class Binding
     internal BoundType ClosureReceiver(FunctionKoto closure, BoundType callee)
         => closure.ClosureDefinition!.Receiver is var receiver && receiver == SemanticsKind.Owner ? callee
             : this.types.Reference(receiver, callee, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
-
-    // Whether a position of the Type may hold a raw input's own value or a raw layer, at it or in its stored content (the hold walk,
-    // Binding.Retention.Rows.cs): a raw layer, an abstract part (a pair layer among them), a struct or an enum.
-    private static bool MayHold(BoundType type)
-        => type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
 
     // A callable Type, which stores nothing (SPEC 15.2.3): no position below it is storage a call writes (RetentionParts, the hold walk).
     private static bool IsCallable(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
@@ -131,43 +120,37 @@ public sealed partial class Binding
     // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
     // the callee's own signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
     // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
-    // pair layer whose binder admits no exclusive Semantics. An exclusive borrow layer (uniq, objuniq, or a pair layer admitting one,
-    // walked by value in every case, DECISIONS BU-3) that the walk reaches through storage the call may write at a position it does not
-    // write is a borrow the input holds by value (SPEC 8.1.2): what lies below it is that borrow's referent (`Addressed`), which holds
-    // other inputs' values and the input's other occurrences but never the input's own value (SPEC 15.6.4: only storage that can hold a
-    // value of its Type retains it), so its occurrences give their own input's stores Content, what a read through the input carries
-    // (MarkClosure), and stay Value sources for the result and the other inputs' stores; the layer's own Origin is no such occurrence
-    // (DECISIONS BU-49; staged removal with PLAN G276). A raw layer with another Origin addresses what each borrow its Origin
+    // pair layer whose binder admits no exclusive Semantics (an exclusive borrow layer, uniq, objuniq, or a pair layer admitting one, is
+    // walked by value in every case, DECISIONS BU-3). Which of an input's occurrences retain its own value, and where, is the storage
+    // walk's and the sources' (Binding.Retention.Storage.cs, .Sources.cs; DECISIONS R4-M154). A raw layer with another Origin
+    // addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
-    // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
-    // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's
-    // holds; the result's one hold is its whole Type (BeginRetention).
+    // (Binding.Retention.Rows.cs), which starts at the positions of the storage walk (DECISIONS BU-52), not here. A callable Type stores
+    // nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). What a position adds depends on its Type, `at`, `variance`
+    // and `callable` alone (the scope and raw inputs are fixed for the contract or erased signature), and a second visit adds the same atoms
+    // again, so each position is walked once (retentionPositions): the walk is linear in the distinct positions, not in the paths to them
+    // through the interned Types (V16; DECISIONS BU-55).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
-        var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
-        if (!callable && here.Writable && MayHold(type))
+        if (!this.retentionPositions.Add((type, at, variance, callable)))
         {
-            this.retentionHolds.Add((here.Input, type));
+            return;
         }
 
-        var entered = at.Writable && !here.Writable && this.AdmitsExclusiveBorrow(type) ? at with { Place = at.Place | RetentionPlace.Addressed } : at;
+        var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
         if (TryPairLayer(type, out _, out var target))
         {
             var exclusive = IsInvariantLayer(type, this);
             var slot = this.OuterOrigin(type);
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
-            this.RetentionWalk(target, entered with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer }, inner, callable);
+            this.RetentionWalk(target, at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer }, inner, callable);
             return;
         }
 
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
             this.retentionAtoms.Add(here with { Carrier = type });
-        }
-        else if (type.Kind == BoundTypeKind.Function)
-        {
-            this.retentionCallables.Add(type);
         }
 
         this.AddRetentionAtom(here with { Origin = OwnedOrigin(type) }, callable);
@@ -177,13 +160,8 @@ public sealed partial class Binding
             this.AddRetentionAtom(at with { Origin = type.OriginArguments[i], Writable = at.Writable && position == OriginVariance.Invariant }, callable);
         }
 
-        this.RetentionParts(type, entered, variance, callable);
+        this.RetentionParts(type, at, variance, callable);
     }
-
-    // Whether a layer is an exclusive borrow in some case (SPEC 8.1.2, 15.3.5): uniq or objuniq, or a pair layer whose binder admits one.
-    private bool AdmitsExclusiveBorrow(BoundType type)
-        => (type.Kind == BoundTypeKind.Semantics && IsExclusive(type.Semantics)) ||
-            (this.LayerAdmitted(type) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0;
 
     // The walk below a Type's own layer at a position of `variance` (RetentionWalk): its components, writable, shared and past a raw
     // layer's step as RetentionWalk states, and the content a raw layer's Origin lets the call write (RawContent); a Closure's components
@@ -257,14 +235,12 @@ public sealed partial class Binding
         }
     }
 
-    // An Origin atom or a carrier of an input or of the result (Retention.Result): the kind it gives the input (none for a raw input's own
+    // An Origin atom or a carrier of an input or of the result (CallRetention.ResultOutput): the kind it gives the input (none for a raw input's own
     // layer's Origin, RetentionInput), whether it is writable storage of the input (RetentionWalk), the Origin of the nearest borrow,
     // Slice or pair layer above it, which a carrier's hidden Origins outlive (SPEC 15.6.1), and where it lies (RetentionPlace).
     private readonly record struct RetentionAtom(
         int Input, RetentionKind? Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, RetentionPlace Place = RetentionPlace.None)
     {
         public bool Shared => (this.Place & RetentionPlace.Shared) != 0;
-
-        public bool Addressed => (this.Place & RetentionPlace.Addressed) != 0;
     }
 }

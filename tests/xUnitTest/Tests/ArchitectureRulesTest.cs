@@ -54,12 +54,12 @@ public class ArchitectureRulesTest
     // control-flow structure is read only by LegacyRecords, and direct calls of the old control-flow entries cannot grow.
     [InlineData("Test calls of the old analysis and generation entry points", "tests/xUnitTest", "*.cs", @"\.Ownership\.(?:Analyze|Result|ReportDiagnostics)\b|\.Emission\.(?:WriteIr|Validate)\b|\.Emission\.TryPrepare\(out _,", 0)]
     [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Issues\b", 16)]
-    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Bodies\b", 159)]
+    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Bodies\b", 30)]
     [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.ControlFlow\b", 1)]
     [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]
-    [InlineData("Test inspections of a prepared emission module (R5)", "tests/xUnitTest", "*.cs", @"\.Emission\.TryPrepare\(out (?!_,)", 119)]
-    [InlineData("Test reads of instance analysis (R5, R6)", "tests/xUnitTest", "*.cs", @"\b(?:Failed|Failure|Analyze)Instance\b", 11)]
-    [InlineData("Test reads of generation failure facts without an entry point", "tests/xUnitTest", "*.cs", @"\.Emission\.(?:FailureIsResourceLimit|ReportFailure)\b", 13)]
+    [InlineData("Test inspections of a prepared emission module (R5)", "tests/xUnitTest", "*.cs", @"\.Emission\.TryPrepare\(out (?!_,)", 0)]
+    [InlineData("Test reads of instance analysis (R5, R6)", "tests/xUnitTest", "*.cs", @"\b(?:Failed|Failure|Analyze)Instance\b", 0)]
+    [InlineData("Test reads of generation failure facts without an entry point", "tests/xUnitTest", "*.cs", @"\.Emission\.(?:FailureIsResourceLimit|ReportFailure)\b", 0)]
     // DECISIONS R4-M136 (refining R4-M50, R4-M60): an OldRule test asserts its MIR target side through MirTargetSide. Without one now: A5-F8's
     // ContentUpdateTest.OldContentAndSlotViewsCannotSurviveReplacement, .ExclusiveContentChildrenBlockEveryUpdate and
     // .OldContentConflictExplainsTheCauseInEveryAdapter and DictionaryStoredReferenceTest.CompoundStoredReferencesOutliveTheContainer,

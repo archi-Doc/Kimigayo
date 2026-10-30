@@ -49,7 +49,7 @@ public sealed partial class Binding
             {
                 IsDirectStorage = true,
                 BoundSymbol = witness.Implementation.Property.Symbol,
-                BoundType = this.PartType(witness.Implementation.Property.Type!, witness.ImplementationType),
+                BoundType = this.PartTypeIn(witness.Implementation.Property.Type!, witness.ImplementationType, path.Scope),
                 BindingState = BindingState.Resolved,
             };
             self.Parent = member;
@@ -87,7 +87,7 @@ public sealed partial class Binding
             var body = function.ExpressionBody!;
             var member = (MemberAccessKoto)(body is ConversionKoto or BinaryKoto { Akind: KotoKind.Equals } ? ((BinaryKoto)body).Left : body);
             member.Left.BoundType = bridge.Receiver;
-            member.BoundType = this.PartType(witness.Implementation.Property.Type!, witness.ImplementationType);
+            member.BoundType = this.PartTypeIn(witness.Implementation.Property.Type!, witness.ImplementationType, path.Scope);
             if (body is ConversionKoto borrow)
             {
                 borrow.BoundType = borrow.Right.BoundType = bridge.Result;

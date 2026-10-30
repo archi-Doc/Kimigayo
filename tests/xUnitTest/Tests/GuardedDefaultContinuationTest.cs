@@ -73,18 +73,4 @@ public class GuardedDefaultContinuationTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Validate(out _));
     }
-
-    [Fact]
-    public void PreparedTupleCopyCannotReadAnotherArgumentSlot()
-    {
-        const string Source = "func f(a: (i32, bool), b: (i32, bool), value: i32 = (match a\n    (let n, _) => n\n)) -> i32 => value\nf((1, true), (2, false))";
-        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        var source = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>()).Expression;
-        var original = source.SymbolOf()!;
-        source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
-        source.SetSymbol(original);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
 }
