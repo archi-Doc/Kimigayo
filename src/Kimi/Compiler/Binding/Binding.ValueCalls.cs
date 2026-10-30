@@ -627,8 +627,8 @@ public sealed partial class Binding
             var parameter = parameters.Components[i];
 
             // DECISIONS R4-M155: a value call's signature is known, so it takes no Type from an expected result: each argument is its own
-            // site, and a part that takes its Type from it records there (PublishPartSite). It opens no position: its per-call Origins
-            // are solved after its arguments are completed.
+            // site, and a part that takes its Type from it records there (PublishPartSite). It opens no position: a Function Type's
+            // per-call Origins are its direct inputs' outer Origins (SPEC 15.3.4), which no contextual Case position names.
             this.PublishArgumentSite(source, source, null);
             var literal = IsUnfittedLiteral(source);
             var actual = this.BindNode(source, scope, literal ? LiteralInputType(parameter) : parameter);

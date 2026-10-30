@@ -5676,7 +5676,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M155 A call proves the instantiated Type of each argument that takes its Type from it; a nested signature's well-formedness is
   its own (G216 (a), prototype-first candidate)** (2026-10-29; Full change, DECISIONS Q11: problem statement d3 with amendment 1, the
   shared tests `a3b648925`; the owner's (A) 「(A) 入れ子自身のもの (推奨)」, (a) 「(a) 無名関数と同じ規則 (推奨)」, D-1
-  「選択肢 (a)：引数に記録し、payload を関連位置に添える」, D-2 「D-2（probe 2 の再計測後に残るコスト）許容します」, D-3 「2 記録でよい」).
+  「選択肢 (a)：引数に記録し、payload を関連位置に添える」, D-2 「D-2（probe 2 の再計測後に残るコスト）許容します」, D-3 「2 記録でよい」;
+  after implementation review 2's suspension under Q11, fix round 2 on 「もう一度修正お願いします」, 2026-10-30, the last round).
   Supersedes R4-M137's nested-result half and, for a nested Function Type part of a signature, BU-26's Type-occurrence judgment.
   - Input rule (SPEC 10.5.1, 15.6.1, 15.6.4 step 3): an argument part that takes its Type from its call (`TakesCallType`: a Literal or
     waiting part, a contextual Case, a Tuple or array literal; ArgumentKinds' class) has no well-formed Type of its own; the call
@@ -5691,8 +5692,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     former "an equality with another input" is corrected to it.
   - §3 (revision 2, R4-B3, BU-B2; Q1, the planning session's exact form): a part's record lies at the argument of the call whose
     solution determines its Type, published by the completing call through one entry, `PublishPartSite` (a named call's
-    `CompleteWaiting` and `CompleteArguments`, a Case construction's `CompletePayloads`; a value call, whose known signature takes
-    nothing from an expected result, publishes each argument as its own site and opens no position): `ArgumentFact.Site`, read by
+    `CompleteWaiting` and `CompleteArguments`, a Case construction's `CompletePayloads`; a value call publishes each argument as its
+    own site and opens no position: a Function Type's per-call Origins are its direct inputs' outer Origins (SPEC 15.3.4), which no
+    contextual Case position names, so every payload position of a value call is fixed completely): `ArgumentFact.Site`, read by
     `JudgedAt`, and `Opened`, read by `OpenedAt` (D-1). Where the call takes the position's Type from its own expected Type and is itself
     a part of an outer argument, it hands on its own site and opened site; a Tuple or array literal's elements share their literal's.
     The provenance is `EvaluatedCandidate.FromExpected`, the slots (Type and Origin) that the expected result bound (`InferExpected`; a
@@ -5724,7 +5726,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     no verdict depends on it. Reason: the legacy Emission's value check (ValidateValues, FitsValue at an Alias) compares region expressions
     structurally instead of reading Binding's proof, and fails UniqSliceTest's indexUniq instance (`return element@move`) without the
     operand; the old analysis's `again UniqItems` gap (AbstractCallReachTest) and OriginRowsTest's `$for.iterator` and RepeatedSet `k`
-    rows also rest on it. Removal condition: the legacy Emission's retirement, or a later owner-approved fix of FitsValue. Pinned by
+    rows also rest on it. Revision 3 (the planning session's condition (2)) tried to take these operands once in `SolveLate` instead of
+    the evidence walk; over the substituted, the formed or both patterns the set differs (OriginRowsTest's `$for.iterator` and `k`, the
+    `again UniqItems` gap), so the walk keeps them; the measured merge step was not this work (cost below). Removal condition: the legacy
+    Emission's retirement, or a later owner-approved fix of FitsValue. Pinned by
     UniqSliceTest's two programs on the default pipeline (`AssignmentEvaluatesRightReceiverAndKeyExactlyOnce`,
     `ViewsPreserveOrdinaryElementAndAcquisitionRules`' TemporaryWrite).
   - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
@@ -5734,13 +5739,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     unjudged would accept an escape, no longer holds: each call of the nested signature proves it.
   - The owner's (a), SPEC 15.3.7, 7.7.4, 8.10: every Callable comparison (a conversion, a Closure's erasure, a reference, a conformance,
     the Callable proof of a Closure or Function value subject) assumes the required signature's own well-formedness and judges the
-    implementation's own well-formedness by one judgment, `FailedSignatureWellFormedness` under the comparison's instantiation: in
-    FunctionFits with a Binding, in `CallableSignatureFits` (it takes the use) after its Binding-less subtyping `CallableSubtype`, and in
-    the explanation `ConversionContractFailure` (revision 2, R4-B1: the Binding-less path never judged it, so an erased or
-    Callable-proven Closure leaked its body's result premise; e1x, e1ret, e1arg2, cal2). A Closure's conditions are judged after selection
-    with its receiver and environment (`ErasesToFunction`; applicability reads `CallableSubtype`, SPEC 15.6.1, 10.5); a Function Item's
-    stay `ItemContractFits`', whose solve, not the instantiation in position, decides its Origins (rk4). Open: a comparison nested in a
-    Function Type part is named by no record part, so its failure is the conversion's TypeMismatch_Kd (nest1_n).
+    implementation's own well-formedness, `FailedSignatureWellFormedness` under the comparison's instantiation, at every nesting
+    (revision 2, R4-B1: e1x, e1ret, e1arg2, cal2). A Closure's conditions are judged after selection with its receiver and environment
+    (`ErasesToFunction`; applicability reads `CallableSubtype`, SPEC 15.6.1, 10.5); a Function Item's stay `ItemContractFits`', whose
+    solve, not the instantiation in position, decides its Origins (rk4).
+  - One judgment decides and records (revision 3 §1, R2-B1; BU's B2): the relation's one walk (`RelationWalk`, its query the Binding,
+    the use and `OriginPart`) returns its first failure, `ComparisonFailure`: the shape, a member's Origin position, the implementation's
+    own well-formedness, an Item's clause or result premise; its ends with the comparison that instantiates them; and the member path of
+    the enclosing comparisons, which `FunctionFits` prepends as the failure unwinds. The judgments return it (`CallableSignatureFits`,
+    `CallableSubtype`, `ItemContractFits`, `ContractFits`, which solves as a selection so that each relation is judged at the member,
+    clause or premise it comes from), and the check that fails builds the one `UnprovenOriginContract_Kd` from it (`ContractFact`,
+    `RecordsCondition`: only where the comparison's structure holds, and for an erasure only where the environment is Owned, whose
+    Constraint record comes first): `ErasesToFunction`, CheckTypeUse's Function root (`ConversionFits`), the anonymous function's header,
+    the Callable proof (`CallableOriginFailure`) and a reference's one candidate. Nothing walks again to explain it:
+    `ConversionContractFailure`, `FailedInstancePart`, `ItemContractFailure`, `ConditionContractFailure` and RecordMismatch's re-walk with
+    its TypeMismatch_Kd fallback are gone. A Closure's conversion and a Callable proof compare Origins as written (`OriginPart.Written`)
+    and judge the conditions at the use; a Function value's conversion is judged at the use. One record per failing conversion (the
+    planning session's condition (1), SPEC 15.6.1): a conversion failing in several conditions names the first (`two`); separate records
+    stay separate (dl1's two per-position records, each Tuple or array element's own conversion). nest1_n is the conversion's
+    `UnprovenOriginContract_Kd` naming "the 1st parameter's 1st parameter's well-formedness" (it was TypeMismatch_Kd); nest2_n is its
+    depth-2 form and nest2_c the valid twin.
   - Q2 (the planning session, 2026-10-30): a comparison's premises belong to its proof requests, not to an ambient field. `CallableInstance`
     carries the required signature (`Expected`) and the enclosing comparisons' (`Outer`, an immutable `ComparisonPremises` chain; a
     nested comparison adds a node only when the enclosing required signature carries an Origin, never on a warm rebind's path); every
@@ -5759,13 +5777,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - §5 (the planning session's decision (A), confirmed by BU, 2026-10-30): `ArgumentFact` keeps two facts apart: `Kind`, SPEC
     10.5.1's kind of every part its call classifies (PrepareArgument's `RecordKind`; Waiting for an anonymous function, a reference that
     needs S and a contextual Case too), and `Deferred`, the argument probe's deferral of a nested call or construction and of control
-    flow that waits with it, written only there (`WasDeferred`: such a part's Type is never evidence after its completion). `TakesCallType`
-    is `Kind != Typed` and re-derives no syntax; a completed reference stays evidence for F
-    (`AWaitingReferenceIsEvidenceWhereADeferredCallIsNot`).
+    flow that waits with it, written only by `Defer` (BU-N5: the probe's `DeferNestedCall` and a Literal join with an unknown source;
+    `WasDeferred`: such a part's Type is never evidence after its completion). `TakesCallType` is `Kind != Typed` and re-derives no
+    syntax; a completed reference stays evidence for F (`AWaitingReferenceIsEvidenceWhereADeferredCallIsNot`). `KindOf` reads the
+    recorded kind of a part its call has not completed before any other rule (R2-N3); a completed part, and one no producer classified,
+    take `ClassifyPart`'s, the one classifier (BU's (B1)): it gives a bound part its form's kind (Composite for an aggregate, else Typed),
+    since a recorded Waiting or Literal kind describes the part only until its call completes it (reading it after completion fails 14
+    ContextualFunctionReferenceTest rows). Unclassified parts reach `KindOf` from operands, unselected calls' parts and nested positions.
   - §4 (BU-B1): a value call prepares its arguments as a named call's selected candidate does (callable context), so a reference that
     needs S waits for its parameter Type and a failed preparation fails the call (`g(choose, 41)` and `g(same, 41)` valid, as their named
-    twins). A join of references is an error at a named call and a value call alike (AmbiguousBinding_Kd, TypeMismatch_Kd), outside
-    this unit.
+    twins).
+  - One rule for a join at both call kinds (revision 3 §2, BU's B5; SPEC 10.5.1, 14.9.2): a result of a call's control-flow argument
+    whose kind by the one classifier is Waiting (an anonymous function, a function reference, a contextual Case) waits for that call
+    (`WaitsByKind`) and its kind is recorded; the join is classified by the recorded kinds (`HoldsWaitingSource`, which replaces BU-43's
+    `HoldsWaitingFunction`) and completed at the selected parameter Type. `g(if c => .None else => .Some(1))`, its `Option.None` form and
+    `k(if c => one else => two)` hold on value calls and on named calls (their named twins failed on dev); a `match` argument of
+    contextual Cases follows (mj1 errs as jt1 does, mj1_ok holds; both were dev's located Unsupported_Kd).
   - Record classes (SPEC 23.1.2): an instantiated Type's well-formedness at a call, an input's as a result's, is an ownership
     obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
@@ -5792,6 +5819,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     shared-base/3e614b427 (verify-commit matched); mir ledger 3,429 -> 3,514 rows: swap3's row at its argument, mb27's at its return,
     WrittenParameter's at `t` and its Loan conflict complete, three nested-result located Unsupported_Kd rows gone, the rest the new
     tests' programs, and no both->old row.
+  - Cost, revision 3's bisect (2026-10-30, census Bind, the machine loaded): every revision-2 commit is within 1% of its predecessor;
+    the step appears at the merge with dev 3e614b427 (B/A' 1.031 there, 1.008 on the old base). Work counted per warm census pass in
+    instrumented throwaway builds shows no interaction and no memo eviction (the merge adds exactly the branch's work); the branch adds
+    +35k well-formedness visits (16c065a44's walk, kept above) and +34k substitutions (`SolveLate`, now skipped where the pattern stores
+    no Origin and names no slot, read from the interned summaries, BU's (B3)). The final head's quiet measurement replaces this line.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -8200,7 +8232,8 @@ resumed by R4-M86 (2026-10-20).
     1, whose whole-join Waiting is implemented as Composite with that function's position Waiting, which implementation review 2
     accepted as the same meaning: a scalar join is no evidence, is checked at the selected candidate and binds its `F` through
     `TakeWaiting`, and Tuple or array results are classified as revised 10.5.1 states, where a whole-join Waiting kind would drop the
-    typed positions' evidence), it is recorded Composite (`HoldsWaitingFunction`) and classified position by position
+    typed positions' evidence), it is recorded Composite (`HoldsWaitingFunction`; superseded in part by R4-M155: any source of kind
+    Waiting, `HoldsWaitingSource`) and classified position by position
     (`Binding.ArgumentKinds.Positions`: `ChildPositions`, `AddChildPosition`, `PositionKind`): a typed position is evidence once, at its
     common Type; a literal one takes its first literal's default after selection, each of its literals checked (a misfit its own
     record); one Never in every source is no evidence and gives no Type at a slot that takes the whole (BU-2 U3's D6); one with a
