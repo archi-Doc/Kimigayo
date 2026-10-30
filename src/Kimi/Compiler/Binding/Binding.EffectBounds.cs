@@ -14,20 +14,6 @@ public sealed partial class Binding
     // Cleanup extraction may run while a transitive effect check requests a library body; keep its scratch independent.
     private EffectSummary? cleanupCollector;
 
-    /// <summary>SPEC 4.9.6: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
-    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names and the calls through the
-    /// Callable input it names (`PublishedRow.Calls`) are covered.</summary>
-    /// <param name="operation">The operation.</param>
-    /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
-    /// <returns>Whether the body stays within confined, and the first effect that does not.</returns>
-    internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, BindingSymbol? published)
-    {
-        var summary = this.effectSummary ??= new(this);
-        var callable = KimiLibraryCatalog.Row(operation) is { Calls: >= 0 } row ? TyCtxt.Signature(operation, null, row.Calls, out _) : null;
-        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published, publishedCallable: callable);
-        return (valid, summary.Violation, summary.ViolationNode);
-    }
-
     internal void CollectCaseDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
         => (this.cleanupCollector ??= new(this)).CollectDestructions(source, target, cases);
 
@@ -134,7 +120,7 @@ public sealed partial class Binding
     // iteration, formatting, comparisons), lazy initialization and destruction are visited once per instantiation context.
     // Anything it cannot classify, such as an indirect call or a Type it cannot instantiate, fails the bound. Destruction
     // is counted only in the pass after ownership analysis, from the cleanups each body actually performs.
-    private sealed class EffectSummary(Binding binding) : KotoVisitor
+    private sealed partial class EffectSummary(Binding binding) : KotoVisitor
     {
         private readonly HashSet<(Koto Node, int Context)> seen = new();
         private readonly HashSet<BoundType> destroyed = new(ReferenceEqualityComparer.Instance);
@@ -151,8 +137,6 @@ public sealed partial class Binding
         private Koto? last;
         private bool valid;
         private bool destructions;
-        private BindingSymbol? published;
-        private BoundType? publishedCallable; // SPEC 4.9.6: the Callable input whose calls the checked operation's row publishes.
         private OwnershipBody? cleanupSource;
         private OwnershipBody? subjectBody;
         private InterpretationContext subjectContext;
