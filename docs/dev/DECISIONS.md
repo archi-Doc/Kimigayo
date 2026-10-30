@@ -266,6 +266,33 @@ rules that result from them.
     a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
     CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
     and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
+- **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
+  "Working-time limit", "Repeated reviews" and "Owner decisions").
+  - The owner's draft (verbatim):
+    「・設計作業や実装作業において、エージェントの実働時間が1時間を超えたら、作業を中断する。
+    ・作業内容、課題、今後の予定を記録する。
+    ・記録を元に、作業を小さく検証可能な単位に分けた、具体的な作業計画を作成する。
+    ・オーナーに作業中断を報告し、作業計画の承認を得る。
+    ・"GO"が得られたら、分割した作業を開始する。」
+    The owner approved it with the R4 planning session's additions (「Record revised version」).
+  - Rule: as WORKFLOW states. The additions:
+    - working time is logged by each agent and summed per phase over agents and rounds, without heavy runs and waits;
+    - the stopping steps, with the findings carried over;
+    - the shape of a split unit, and no unit that makes an invalid program valid merging before the unit that
+      rejects it again;
+    - sizing before a unit starts;
+    - every session's agents and the planning session's own design work are covered, and reviews are not.
+  - Amends Q11 in two places. Both keep its counts from resetting across a split.
+    - A split unit inherits the blocking findings its split plan names, so a later finding that repeats an inherited
+      cause shares a cause with it.
+    - A unit that the limit stops after its work has already been split twice under the limit does not converge.
+    Q11's other signals stand.
+  - Reason: large units took long and did not converge. G216 (a) went through five proposal revisions, three
+    implementation reviews and a redesign review round, and G264's option (A) lost its premise only at the SPEC draft's
+    review. Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time, so one hour fits a small unit.
+  - Rejected:
+    - elapsed time: other sessions' builds and heavy runs load the machine;
+    - resetting the clock per fix round: it lets repeated rounds escape the limit.
 
 ## Code rules (2026-10-12)
 
