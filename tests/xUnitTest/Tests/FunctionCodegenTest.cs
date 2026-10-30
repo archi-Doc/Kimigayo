@@ -1258,6 +1258,38 @@ public sealed partial class FunctionCodegenTest
         Assert.True(Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library).Generate(TextWriter.Null));
     }
 
+    // DECISIONS R5-M58, R5-M89: an import edited without changing its C signature (a parameter renamed) keeps its signature, so the
+    // first generation after the edit allocates nothing (the old pool's twin of this test went with the pool at R6-gen G8).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnEditedImportKeepsItsSignatureWithoutAllocating()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        const string Source = "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n" +
+            "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, t)\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        Assert.True(c.Generate(TextWriter.Null), string.Join(", ", Records(c)));
+        var original = Mix(c.Kotonoha.RootKoto);
+        var donor = ParseTestHelper.ParseSuccess(Source.Replace("mix(a: i8", "mix(x: i8", StringComparison.Ordinal));
+        var edited = Mix(donor.RootKoto);
+        var replacement = ParseTestHelper.Detach(edited, new FunctionKoto(edited.CodeContext, "placeholder"));
+        Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        var written = true;
+        var allocated = AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null));
+        Assert.True(written, string.Join(", ", Records(c)));
+        Assert.Equal(0, allocated);
+
+        static FunctionKoto Mix(Koto root) => KotoTree.Walk(root).OfType<FunctionKoto>().Single(static x => x.Name == "mix");
+    }
+
     // SPEC 7.7.4, 22.6 (DECISIONS R5-M146): a safe #LibraryImport function's Item, which has no body target, is called by the import's C
     // signature, as its direct call is (fail-before: one located Unsupported_Kd at the Value call).
     [Fact]

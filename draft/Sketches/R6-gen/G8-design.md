@@ -1,8 +1,22 @@
 # R6-gen G8: deleting the physical IR layer of the old Emission
 
-Status: G8's census and design (plan §4.9 row G8, review G:R6-gen-del, hold "no"), revision 0, for the planning session's rulings.
-Class Major, no design review. Working record, not authority: what it decides is authority only as the DECISIONS entry of §6.4 (as
-landed). Base: dev `9613a512e` (G7 landed, R5-M162).
+Status: G8's census and design (plan §4.9 row G8, review G:R6-gen-del, hold "no"), revision 1: the planning session's rulings Q1-Q4
+applied and the implementation's departures recorded, on `claude/r6-g8` from dev `f406b0905` (PLAN-only after `9613a512e`, so the line
+numbers hold). Class Major, no design review. Working record, not authority: what it decides is authority only as DECISIONS R5-M163.
+Revision 0 is `claude/r6-g8-design` `b4d5b9abf`.
+
+## Revision 1 (rulings and as implemented)
+
+| Item | Revision 0 | Revision 1 | Source |
+| --- | --- | --- | --- |
+| Q1 split, G8b's scope | G8a-G8d; the whole instance half | yes | ruling |
+| Q2 edited-import reuse | delete the pool's test; MIR twin open | deleted in G8a; no MIR test showed it, so G8d adds `FunctionCodegenTest.AnEditedImportKeepsItsSignatureWithoutAllocating` (passes: 0 B) | ruling |
+| Q3 stale Binding text | G9 or G11 | G9: `Binding.ComparisonPlans.cs:22`, `TyCtxt.Substitutions.cs:65`, `Binding.PlaceAuthority.cs:200-201`, DECISIONS `:6790`; STATUS, `O2Corpus.md`, `LLVM_OPTIMIZATION.md` stay G11's | ruling |
+| Q4 Sessions | one base, one candidate | base `20261030-160406-055-session-g8-base` + semantic base `g8-semantic-base` | ruling |
+| G8b, found by the re-scan | §2.2 | also the CheckKey Dictionary row (no MIR site requests it, R5-M124) with `WriteKeyCheck`, its callback and `HelperNeeds.DictionaryRuntime`; `DictionaryHelper.Related` (MIR passes -1); `RuntimeAbi.DictionaryInit`; `Compilation.cs`' two "both generators" summaries; ARCH's and CODEMAP's "both/every generator" wording | implementer |
+| G8c, found by scan (3) and the writers | §4 | also `OwnershipDeferredPlan.Continuation` (read only by G7's `BodyLowering`), the result declarations' table, `Deliver`'s secured value, `HasCallInspection`, `Condition`'s cleanup start; slot results get no result join | implementer |
+| G8d | a collector row | `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` over `GenericClosureIdentityTest.TwoClosures` (now shared) | implementer |
+| As implemented | §6.1 | a1 Emission −3,746, tests −230, Backend −3, docs +22, this file; b1 Backend −388, docs +9; c1 Analysis −97, docs +7; d1 tests +51, docs +4. M4: Emission `.cs` 5,078 → 1,332 (8 files), Backend 14,756 → 14,365 | `git diff --numstat` |
 
 "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
 `src/Kimi/Compiler/`, `E/` = `C/Emission/`, `B/` = `C/Backend/`, `T/` = `tests/xUnitTest/Tests/`. Line numbers are at `9613a512e`. No

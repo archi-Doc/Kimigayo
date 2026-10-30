@@ -13732,6 +13732,10 @@ structure is recorded here by the unit that first implements it.
     slot results' result joins, the result declarations' table, `Deliver`'s secured value, `HasCallInspection` and
     `Condition`'s cleanup start. The operations they annotated (Declare, Write, Deliver, the joins' edges) stay, and so does
     `SlotResultPlaces`, which chooses a result's Place. The diagnostic and semantic snapshots are unchanged.
+  - G8d (tests): `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` asserts one item per Closure per enclosing instance,
+    each its own body, in place of `GenericClosureIdentityTest`'s `Assert.NotSame` (G7's review); R5-M58's edited-import reuse,
+    which the deleted pool's test held, is `FunctionCodegenTest.AnEditedImportKeepsItsSignatureWithoutAllocating` on the MIR side
+    (a parameter renamed in place; the first generation after the edit allocates 0 B), since no test showed it there.
   - Records: ARCH drops `EmissionOpcode` (49) and the old pool's clauses of its Layout and Abi rows; CODEMAP drops the old layer's
     row and stems; the Backend's contracts drop the deleted types.
   - Rejected: moving the survivors at G8 (resource names, harness paths; G11's CODEMAP decides the folder); keeping the pool's
