@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the test runtime of a test build (SPEC 17.6, 20.6; IMPL 21.4.2), one text both code generators write (R5 PD2): its routines (Text:
+// Owns the test runtime of a test build (SPEC 17.6, 20.6; IMPL 21.4.2), one text MIR code generation writes (R5 PD2): its routines (Text:
 // the selected case, the frames to the runner, a verification's observation, message and Abort, the temporary directory, an observed
 // scalar's frame, and the compared values held until the observation that numbers their failure sends them, DECISIONS R5-M136), the entry
 // that runs the selected case (WriteEntry), the kind an observed scalar's frame gives its Type (ValueKind), and the phase every frame
@@ -13,7 +13,6 @@
 // Must not: decide which tests run (the catalog's), write a case's call itself (WriteEntry's caller does), or decide which code a phase
 // covers (each code generator's).
 
-using System.Globalization;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 
@@ -114,25 +113,6 @@ internal static class TestRuntime
         output.Write("  store i32 ");
         LlvmModuleText.Name(output, prefix, id);
         output.Write(", ptr @__kimi_test_phase\n");
-    }
-
-    /// <summary>Gets a test build's runtime for the old generator: the routines, then the entry calling each case's function by name.</summary>
-    /// <param name="catalog">The test build's catalog.</param>
-    /// <param name="names">The LLVM name of each case's function, in catalog case order.</param>
-    /// <returns>The text.</returns>
-    [Transitional("R6-gen", Reason = "G7 deletes the old generator, its one caller.")]
-    internal static string Create(TestCatalog catalog, IReadOnlyList<string> names)
-    {
-        using var text = new StringWriter(CultureInfo.InvariantCulture);
-        text.Write(Text);
-        WriteEntry(text, catalog, (output, i) =>
-        {
-            output.Write("  call void @");
-            output.Write(names[i]);
-            output.Write("()\n");
-        });
-
-        return text.ToString();
     }
 
     private static string Read()

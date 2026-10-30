@@ -64,14 +64,16 @@ internal static class CompilerPlanMeasurements
             }
 
             c.Kotonoha.AddSource(new SourceDocument(elements ? "element-places.kimi" : defaults ? "generic-defaults.kimi" : fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone36.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
-            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
+            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
             }
 
+            // The emission phase times the generation entry, MIR code generation, which needs the program Analyze keeps (DECISIONS
+            // R5-M94, R5-M162); the ownership phase times the old analysis alone.
             foreach (var phase in allPhases ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
             {
-                if (allPhases && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
+                if (allPhases && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified))
                 {
                     throw new InvalidOperationException("Rebound workload must pass startup and ownership before measurement.");
                 }
@@ -113,7 +115,7 @@ internal static class CompilerPlanMeasurements
                     var valid = phase switch
                     {
                         "binding" => c.Bind().IsComplete,
-                        "emission" => c.Emission.WriteIr(TextWriter.Null, out _),
+                        "emission" => c.WriteIr(TextWriter.Null, out _),
                         _ => c.Ownership.Analyze().IsVerified,
                     };
                     if (!valid)

@@ -6,7 +6,8 @@
 // records in the Emission partition: ModuleCodegen's, gate step 2's refusals (an inexact body's A1 or A2 code at its subject, an arena
 // skip's Unsupported_Kd until H3; DECISIONS R5-M96, R5-M146; a form the backend does not generate is the capability table's gap at
 // check) and InternalInvariant_Kd at a broken input contract, each keyed by its location (a record carries no fact; DECISIONS R5-M65),
-// and, for a module neither written nor explained, InternalInvariant_Kd at the project.
+// and, for a module neither written nor explained, InternalInvariant_Kd at the project. A publication failure of EmissionArtifacts (settings,
+// native supplies, the backend or the file system), which Project renders, is ReportPublicationFailure's record until G9b.
 // Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and the checked set's records, on every
 // pipeline; DECISIONS R5-M156). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none. MIR
 // code generation then needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2, which Project's check reads too).
@@ -20,12 +21,10 @@
 // R5-M149), each a declaration's own body (no Closure's or body-declared function's, which their makers reach, R5-M153); a root without
 // an item or with an undecided slot is a broken contract, as is a test build whose catalog was not discovered for the version generated
 // (its version stamp; PLAN G157 (15), DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
-// Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
-// and the out-string adapters pass this gate, and none runs the old generator: MIR code generation is the one code generator since G4
-// (DECISIONS R5-M160). Outside the gate until G7 deletes LlvmEmitter, and with it Compilation.Emission: its direct readers in
-// src/Benchmark (two stage measurements of the old generator; the pipeline benchmark generates through this entry, R5-M94) run the old
-// generator without the gate; no test reads it since G5 (DECISIONS R5-M161). One ModuleCodegen per compilation keeps MIR code
-// generation's storage.
+// Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test),
+// the out-string adapters and src/Benchmark's measurements pass this gate, and none runs the old generator: MIR code generation is the one
+// code generator since G4 (DECISIONS R5-M160), and R6-gen's G7 deletes the old one (DECISIONS R5-M162). One ModuleCodegen per compilation
+// keeps MIR code generation's storage.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
 // generator.
 
@@ -119,6 +118,16 @@ public partial class Compilation
         }
 
         return false;
+    }
+
+    /// <summary>Records a publication failure of the Emission result (DECISIONS R5-M162): <c>GenerationFailed_Kd</c> at the project with
+    /// the failure's text, the record the old generator's <c>ReportFailure</c> made, replacing the partition's records.</summary>
+    /// <param name="failure">The failure of <c>EmissionArtifacts.Publish</c>.</param>
+    [Transitional("R6-gen", Reason = "G9b replaces GenerationFailed_Kd for publication failures.")]
+    internal void ReportPublicationFailure(string failure)
+    {
+        this.Diagnostics.Invalidate(DiagnosticPartition.Emission);
+        this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.GenerationFailed_Kd, this.Project.FilePath, note: failure);
     }
 
     // A code generation record keyed by its location (DECISIONS R5-M65).
