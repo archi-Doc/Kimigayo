@@ -558,7 +558,7 @@ The exclusive receiver is reserved before later arguments and activated at entry
 | Operation | User-code effects inside the operation |
 | --- | --- |
 | Array `clear`, `truncate`, destruction, Array and fixed-array owning-iterator destruction and indexed replacement | Destruction of the relevant `T` |
-| Array `removeAll` | Calls of `matching`; destruction of the removed `T` |
+| Array `removeAll` | Calls of `matching`; destruction of the removed `T` and of `matching` |
 | Array `sort()` | `T`'s `compare` |
 | Array `sort(by:)` | Calls of `by` |
 | Slice `contains`, `firstIndex(of:)` | `T` equality |
