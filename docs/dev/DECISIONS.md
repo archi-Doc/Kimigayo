@@ -13119,6 +13119,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a per-row exception for `StaticStorage` or any other record (a per-row gate); filtering a record away or shrinking a
     scaling input to keep a pinned test's old expectation (a weakening); an environment rollback for the records (a second mode); a
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
+  - Amended by R5-M160 (G4): `KIMI_CODEGEN=legacy`'s rollback and the kept `C-frame.tsv` are deleted; the depth test's 64-level
+    half kept until G4 moved to MIR code generation.
 - **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, R6-gen; plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and
   OI-3 as applied, with the planning session's rulings Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
   - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's
@@ -13151,6 +13153,8 @@ structure is recorded here by the unit that first implements it.
     `CompilerCodegen.Legacy` pins (99 in 71 files) and the direct `Emission.TryPrepare` readers stay (G4, G5, G7; R5-M85).
   - Rejected: Q1 (a), deleting the form at G3 (S7 deletes it with the selector at G4); Q2 (b), the gate on every default run (the sel
     lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
+  - Amended by R5-M160 (G4): the rollback lane, the empty deviation form, `-Codegen` and the remaining `CompilerCodegen.Legacy`
+    pins are deleted (the direct `Emission.TryPrepare` readers stay for G5 and G7).
 - **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
   G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
   Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
@@ -13202,6 +13206,8 @@ structure is recorded here by the unit that first implements it.
     `ElementReplacementTransfer*` audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the
     right side as the old generator does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a
     transfer abandons (G157 (45)'s part for them).
+  - Amended by R5-M160 (G4): the rollback lane's refusal of an exclusive borrow below a diverging key ended with the old generator's
+    selection; MIR code generation runs those forms.
 - **R5-M160 The R5 scaffolding removed (R6-gen G4)** (2026-10-30, R6-gen; plan §4.9 row G4, PD4, PD10, OQ9; R5-M152 S6 and S7; design
   `draft/Sketches/R6-gen/G4-design.md` with the planning session's rulings Q-P1 to Q-P6; under R5-M18, R5-M156 and R5-M158; Major,
   G:R6-gen-del)
@@ -13253,4 +13259,5 @@ structure is recorded here by the unit that first implements it.
     - R5-M66, R5-M73 and R5-M81;
     - R5-M85, and R5-M106's native half;
     - R5-M18's temporary sel-only behaviors;
-    - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers).
+    - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers);
+    - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.

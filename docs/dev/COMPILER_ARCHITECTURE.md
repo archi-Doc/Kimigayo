@@ -259,8 +259,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   and the legacy row map of the Body-disposition compiler functions, with the formatting runtime's kind numberings (`FormatKind`,
   `WriterKind`), its interpolation estimate (`FormatBound`, `FormatEstimate`) and the conversion text both generators write (R8, DECISIONS
   R5-M16, R5-M116, R5-M128, R5-M130, R5-M131); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's
-  temporaries, recorded by their first units (DECISIONS R5-M18) and reviewed with the owner at R5's exit (DECISIONS R5-M148): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets went at G4
-  (DECISIONS R5-M160);
+  temporaries, recorded by their first units (DECISIONS R5-M18) and reviewed with the owner at R5's exit (DECISIONS R5-M148):
   gate step 2's arena-skip `Unsupported_Kd` (H3, DECISIONS R5-M96, R5-M148); `MonoKind.LegacyRow` (R8; first implemented by C8d, DECISIONS R5-M121); the out-string `WriteIr`/`Validate` adapters (C0a to G9b) in the generation entry (DECISIONS R5-M64; its sel `build`
   refusal, K1 to C0b1, went with C0b1, R5-M65); Binding's i128 division and remainder and its 128-bit float conversion gates beside the capability table's operation rows (H7, DECISIONS R5-M53); the legacy comparison composition (A-12, else R7; DECISIONS R5-M68, R5-M148); the F2c Dictionary-storage view and its TyCtxt forward, `TyCtxt.DictionaryStorage`, whose one reader is the instance collector (R8, deleted with `KimiLibrary.DictionaryStorage.cs`; DECISIONS R5-M28, R5-M124); the
   `Binding.ClosureCall` bridge (R6-gen); `TyCtxt.StorageSubst`, the Self-less substitution of the CallPlan form of

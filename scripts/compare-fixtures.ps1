@@ -5,11 +5,12 @@
 # .ll files, their expectation sidecars and any other fixture output) and the per-fixture native outcomes (result and
 # completed levels; a passing level matched its sidecars). Fixture IR records no checkout path, so runs from any worktree
 # compare byte for byte; nothing is normalized. Exit code 1 when anything differs; a failed run or missing evidence throws.
-# -O2Metrics also writes o2-metrics.json (information only: the exit code stays the comparison's): instructions and blocks per define of each natively run fixture's optimized IR, the first native step's
-# <work>/native*/<stem>.O2.ll (summary.json workDirectory), totalled over the runtime helpers (this checkout's runtime
-# template) and over the generated bodies; fixtures with one in both runs ranked by candidate/baseline body instruction
-# growth, then by the difference, then by name; the others listed as unpaired. Generated bodies are not paired across
-# runs: each run names them __kimi_f<n> by its own numbering.
+# -O2Metrics also writes o2-metrics.json (information only: the exit code stays the comparison's): instructions and
+# blocks per define of each natively run fixture's optimized IR, the first native step's <work>/native*/<stem>.O2.ll
+# (summary.json workDirectory), totalled over the runtime helpers (this checkout's runtime template) and over the
+# generated bodies; fixtures with one in both runs ranked by candidate/baseline body instruction growth, then by the
+# difference, then by name; the others listed as unpaired. Generated bodies are not paired across runs: each run names
+# them __kimi_f<n> by its own numbering.
 #   ./scripts/compare-fixtures.ps1 -Baseline artifacts/verify/<parent run> -Candidate artifacts/verify/<run> [-O2Metrics]
 [CmdletBinding()]
 param(

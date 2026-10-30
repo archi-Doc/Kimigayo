@@ -1367,17 +1367,18 @@ public sealed partial class FunctionCodegenTest
 
     // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness has no MIR body is
     // the collector's BodylessWitness gap at check, InstanceCollectorTest). A string's Move into another local is written since C2b
-    // (DECISIONS R5-M87), a function's call since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
-    // (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since C3c (R5-M141); a Fn call of a formatting row is written
-    // since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included, and Text.toString of an i32 since C9b wrote its target,
-    // the BuiltinFormat item (R5-M130); the records of a for loop's statement and of the siblings its expansion synthesizes with its span
-    // ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the diagnostics could not order when each was
-    // keyed by its node. A static's initializer is written since C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator
-    // rows (DECISIONS R5-M76) write checked 128-bit arithmetic and a comparison through an operand's ref layers since wide (R5-M143); they
-    // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
-    // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83) reads
-    // an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's
-    // address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from none and its iteration's storage.
+    // (DECISIONS R5-M87), a function's call since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop
+    // included (R5-M78, R5-M89), a requirement's since C3b (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since
+    // C3c (R5-M141); a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included,
+    // and Text.toString of an i32 since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of a for loop's statement and
+    // of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS
+    // R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since C7b
+    // (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) write checked 128-bit arithmetic and a
+    // comparison through an operand's ref layers since wide (R5-M143); they have a raw pointer column since C8a (R5-M92), which writes null
+    // too; an erasure is written since C5b (DECISIONS R5-M104), into any target since C5c (R5-M108); an Array's capacity and an Array from
+    // none since C8d (R5-M121); the place writer (DECISIONS R5-M83) reads an object borrow's payload since C6a (R5-M110); the rvalue rows
+    // (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a
+    // Dictionary from none and its iteration's storage.
     [Theory]
     [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library)]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library)]

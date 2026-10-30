@@ -22,6 +22,7 @@ where they differ, this table holds.
 | `FreshProcessTest` | Not named | Keeps only `KIMI_PIPELINE`; a stale `KIMI_CODEGEN` is dropped like any KIMI_ variable | Whitelist |
 | Commits | c1 tests, c2 tooling, c3 selector, c4 records | Same: `c315ccc3e`, `c36eebb9b`, `43bb47ccf`, then the DECISIONS commit | — |
 | Net | ≈ −3,600 | c1 −2,573, c2 −810, c3 −203; DECISIONS +66 | Measured by `git diff --numstat` |
+| Review follow-up | — | VERIFICATION:96's R5 sel paragraph keeps only its current procedure (R4's MIR-builder merges run the default checks and the affected families and kernels, §2.2). ARCH's Transitional list drops the G4 items. STATUS:48 states MIR code generation's default-temporary and Dictionary-literal behaviour. Lines over 160 are wrapped. `VirtualGenericDispatchTest`'s deferred rename lands. R5-M156, R5-M158 and R5-M159 get amendment lines | Implementation review's non-blocking findings |
 
 Base: `origin/claude/r6-g3` `f6828983f` (G3's phase-1 checkpoint, carrying G2 at `bd4f31b0c`). `claude/r6-g3`'s local merge `703297a9d`
 (G2's `13da65219`) is unpushed; the worktree `bin/worktrees/r6-g3` is clean, so phase 2 has not changed a file yet. "Plan" is the
