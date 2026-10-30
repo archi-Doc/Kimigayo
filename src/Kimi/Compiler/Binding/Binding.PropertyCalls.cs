@@ -186,13 +186,17 @@ public sealed partial class Binding
 
         bool BindCall()
         {
-            var inputType = accessor.Input is { } declaredInput ? Signature(declaredInput) : null;
+            // SPEC 11.3, 11.4, 23.1.2: a use of an accessor whose `get` result or stored `set` input is not its Property's Type (the
+            // declaration's TypeMismatch_Kd) takes the Type those rules fix, so what reads the use is judged against it; once validation
+            // has failed the declaration, the use rests on it (Check, CallPlan.Called).
+            var mistyped = AccessorTypeMismatch(accessor);
+            var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
             // is the declaration error of SPEC 11.3, not a limit of this path.
             var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
-                Signature(declaredResult) is not { } result ||
+                Signature(mistyped && accessor.Kind == PropertyAccessorKind.Get ? accessor.Property.Type! : declaredResult) is not { } result ||
                 (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||
                 receiverUnsupported)
             {
@@ -237,14 +241,6 @@ public sealed partial class Binding
                 }
 
                 receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
-            }
-
-            // SPEC 23.1.2: after the use's own checks, a use of an accessor whose Type its declaration rejected takes no Type and rests
-            // on that declaration, as a call of a failed declaration does, so what reads the use adds no record.
-            if (AccessorTypeMismatch(accessor))
-            {
-                this.CompleteDependent(node, accessor.Declaration!);
-                return false;
             }
 
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||

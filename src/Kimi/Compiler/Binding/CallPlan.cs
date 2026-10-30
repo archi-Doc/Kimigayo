@@ -194,6 +194,19 @@ public sealed class CallPlan
         }
     }
 
+    /// <summary>Gets a declaration a node's own selection calls, which a node resting on a failed target reads (SPEC 23.1.2): an
+    /// invocation's selected target as presented (SPEC 22.1), a Property use's accessors, getter then setter (SPEC 11.3; the accessor
+    /// declarations, not their executing functions). One row per form; a form whose selection calls a declaration adds a row.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="ordinal">The position among the declarations the node calls, in evaluation order.</param>
+    /// <returns>The declaration, or null when the node calls none at that position.</returns>
+    internal static Koto? Called(Koto node, int ordinal = 0) => node switch
+    {
+        InvocationKoto { BoundCall: { } call } when ordinal == 0 => node.CodeContext.Compilation.Binding.Library.PresentedTarget(call.Target).Declaration,
+        MemberAccessKoto or IdentifierNameKoto => Of(node, ordinal)?.Target.Declaration is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : null,
+        _ => null,
+    };
+
     /// <summary>Gets the function that executes a custom accessor (SPEC 11.3), which its calls target: its Type is the accessor's result,
     /// and its parameters (<see cref="Parameter"/>) are the receiver <c>self</c>, then the input <c>value</c>.</summary>
     /// <param name="accessor">An accessor with a body.</param>

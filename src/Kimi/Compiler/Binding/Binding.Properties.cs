@@ -52,7 +52,7 @@ public sealed partial class Binding
         => accessor.Receiver is { } receiver && receiver.Semantics != (accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq);
 
     // SPEC 11.3, 11.4: the Type an accessor's use takes, a `get` result or a stored `set` input, is its Property's Type. The declaration
-    // check reports a mismatch (ValidateAccessor); a use of such an accessor rests on that declaration (BindPropertyCall).
+    // check reports a mismatch (ValidateAccessor); a use of such an accessor takes the Property's Type (BindPropertyCall).
     private static bool AccessorTypeMismatch(BoundAccessor accessor)
         => (accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null) is { } used &&
             accessor.Property.Type is { } type && !SameType(used, type);
