@@ -93,8 +93,8 @@ public sealed partial class Binding
     // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held from its
     // holds, the result's whole Type or each position the storage walk names for input j, DECISIONS BU-52; each position once per lent
     // bit, BU-35, BU-40): a raw input's own value at a raw layer with an Origin and where a callable may retain it at an abstract part
-    // (DECISIONS BU-66), every
-    // input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing it), the raw inputs at
+    // (DECISIONS BU-66), every input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule
+    // narrowing it), the raw inputs at
     // one the result lends (R′); one stepping Unstated or Static, not lent, unties every storage of the output, where a transfer operation
     // writes it (TransferWrites, as for rule A), and a result atom whose non-static Origin reaches no input unties the result. A result
     // the call forms within a raw parameter's storage (`within`) retains that argument's own value. The transfer key by declaring identity

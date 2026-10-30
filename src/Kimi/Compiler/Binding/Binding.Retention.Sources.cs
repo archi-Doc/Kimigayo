@@ -8,8 +8,9 @@ namespace Kimi.Compiler;
 // TyCtxt.Retention.cs).
 // Responsibility: the input fold of the one walk (StorageWalk; DECISIONS R4-M154, r2.3): the Value sources of each input
 // (RetentionSources, Source, Through: a value of its Type, of a part it holds by value, or a borrow formed through it, each named by its
-// layer's node with the layers it is formed through), and whether a position can hold one (CanHold, Holds, Borrows, Fits);
-// Binding.Retention.Rows.cs reads them into a storage's Value kinds and pairs, and the hold walk reads Fits.
+// layer's node with the layers it is formed through), whether a position can hold one (CanHold, Holds, Borrows, Fits), and whether an
+// abstract part keeps a raw input's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
+// them into a storage's Value kinds and pairs, and the hold walk reads HoldsRaw.
 // Inputs: the contract's instantiated inputs, the walk's visits, the nodes of a Type's own layers and arguments (OwnNodes), the parts a
 // value holds (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
 // Outputs: per computation, the sources by node (retentionSources, with their layer paths, retentionPaths); per question, whether a

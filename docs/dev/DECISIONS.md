@@ -3527,7 +3527,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and that the implementation does not report SPEC 8.2.3's `cyclic` (an error before B too).
   - Rejected (B 7.2): non-decomposition; decomposing projections or Contract arguments; deriving Origin, length or Semantics relations
     from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
-- **R4-M116 G160-4's design (B′) and SPEC 15.6.4's raw arguments and 5.2.1's own-step Warning** (owner, 2026-10-23, choices
+- **R4-M116 G160-4's design (B′) and SPEC 15.6.4's raw arguments and 5.2.1's own-step Warning** (superseded in part by BU-66: a raw
+  input's own value at an abstract part and at a stated raw layer; owner, 2026-10-23, choices
   verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先 (推奨)」, OQ-2 「(a) OwnStepDeparture_Kd (推奨)」; full
   process: designs A and B, the design review, B′, its re-review ACCEPT WITH FIXES; R4-M95, R4-M105, BU-24 and the owner's two caps
   stay)
@@ -5510,7 +5511,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `EachRecordingRuleNamesItsRequirement`, `EachRecordingRuleNamesItsBody` and `ADefaultsProblemsAreItsTemplates`.
   - Numbering: R4-M153 was reserved for G272's chosen candidate by the R4 planning session.
 - **R4-M154 Retention per storage (WK, PLAN G276 with G279): a call keeps an argument's own value only in storage that can hold it,
-  and the callables its contract hands its body retain as erased callees** (2026-10-29; design by the WK planning session (「WK
+  and the callables its contract hands its body retain as erased callees** (superseded in part by BU-66: rule 2 at an abstract part and
+  rule 3 without a Type gate; 2026-10-29; design by the WK planning session (「WK
   G276/G279 準備書作成」, 2026-10-28; `r4-notes\wk-impl\design-r2.md`, one text replacing the first and Revisions 1–10), the
   owner's answers to it:
   「候補数：一設計・一実装・一独立レビュー」, 「順序：WK を G272 より先に置く」, 「語彙：格納範囲の二値と入力ごとの保持フラグ
@@ -9043,7 +9045,8 @@ resumed by R4-M86 (2026-10-20).
     (equal to the body's effects); whether 4.9.6's text names it is the owner's (R4's review O1).
   - Cost: src +24/−6 lines; tests +9/−8 in the pins (`PublishedRowsAreFixed` two rows and the `Calls` column, 186 → 187 entries), the
     shared tests unchanged; records +25. Fix round 1: the summary's own file (`Binding.PublishedOperations.cs`), the row read whole, the
-    premise check, `CheckBody`, and six MirEffectsTest rows.
+    premise check, `CheckBody`, and six MirEffectsTest rows; the landed net against dev is src +178/−61, mostly the `Check`/`CheckBody`
+    split.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
