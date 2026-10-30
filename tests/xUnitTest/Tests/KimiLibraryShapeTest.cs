@@ -19,7 +19,7 @@ public class KimiLibraryShapeTest
         return c;
     });
 
-    // Lowering and the runtime call these bodiless functions by position (BodyLowering, WindowsLowering): parameter order,
+    // Code generation and the runtime call these bodiless functions by position (WindowsLowering): parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
@@ -454,8 +454,8 @@ public class KimiLibraryShapeTest
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
-    // Lowering and the runtime address these records' stored Fields by name, in this order, and run their drop
-    // (BodyLowering, LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
+    // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
+    // (LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
