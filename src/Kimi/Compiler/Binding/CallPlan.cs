@@ -353,8 +353,8 @@ public sealed class CallPlan
         }
     }
 
-    // R1's condition at this value call's latest binding (DECISIONS R4-M152): its result depends on its call receiver, which the old
-    // analysis's gate reports as the located Unsupported_Kd (Binding.ValueCallGate).
+    // The gate's condition at this value call's latest binding (DECISIONS R4-M152, R4-M159): R1's, its result depends on its call receiver,
+    // or F1's, it reads its maker's images; the old analysis's gate reports it as the located Unsupported_Kd (Binding.ValueCallGate).
     [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
     internal bool ReceiverDependentResult
     {

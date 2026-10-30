@@ -704,7 +704,7 @@ public sealed partial class Binding
             }
         }
 
-        this.RecordReceiverDependence(call, dependent);
+        this.RecordReceiverDependence(call, dependent || (closure is not null && ReadsMakerImages(closure, call)));
         return result;
     }
 }

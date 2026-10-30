@@ -5859,6 +5859,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     v3_reassign_nocall, w3_var_nocall), is `Unsupported_Kd` on the default where dev accepted it. `SupportsType` does not stop the
     old Analysis's Loan analysis of the values, so without the gate row below a valid form can get a false Loan record there
     (v13_param_kept_ok: implementation review 1's B2).
+  - The gate row (implementation review 1's B2; a wider D5 exception, R4-M126 (vi), pending the owner's approval, in its own commit):
+    the old analysis's gate fact also holds at a value call that reads its maker's images (`ReadsMakerImages`: F1's predicate over
+    the callee definition's Origin arguments, which are exactly the enclosing Closures' atoms its declared signature names), so the
+    old analysis reports its located `Unsupported_Kd` there and analyzes nothing else, as for R1's calls; the fact keeps its name
+    (`ReceiverDependentResult`) and its contract names both rows.
   - Rejected: O1 solve the images from the environment (meets normalize; a signature-only atom has no position: a fallback); O3
     images in `Subst` or a closure context (codegen-visible, R4-M152); O4 the definition over its own Origin parameters (every
     definition-world reader changes); a gate row for F1's calls (widens the owner's D5 exception).
