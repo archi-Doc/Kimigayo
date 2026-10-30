@@ -13796,6 +13796,11 @@ structure is recorded here by the unit that first implements it.
     the row's other members.
   - Amended by R5-M165 (G9b): `Compilation.ReportPublicationFailure` is deleted; `EmissionArtifacts.Publish` records the publication
     failure (`ArtifactPublicationFailed_Kd`).
+  - Amended by G10 (plan §4.9 row G10, §5.4 item 4; no new decision): Q3 is done. `ArchitectureRulesTest`'s zero-reference rows (limit
+    0 over `src/Kimi`, `src/Benchmark`, `src/Playground` and `tests`, comments counted) name `BodyLowering`, `EmissionModule`,
+    `LlvmModuleWriter`, `LlvmEmitter`, `GenericStoragePlan` and the instance entry points. They replace the instance-read row and, as
+    `Compilation.Emission` was an `LlvmEmitter`, the prepared-module and generation-failure rows and the entry-point row's Emission
+    half. `LegacyRuntimeHelpers` waits for R8; the Emission failure-string row stays at 0 over the surviving files (M8).
 - **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
   design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
   G:R6-gen-del)
