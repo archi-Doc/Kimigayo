@@ -80,9 +80,9 @@ public class SharedObjectCleanupTest
     public void RawStoredHandlesStillRequireExplicitMoves(string mode)
     {
         var c = MinimalEmissionTest.Analyze(Item + $"func bad(value: raw/({mode}/Item)) -> {mode}/Item\n    unsafe => return value[0]\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -57,7 +57,7 @@ public class GenericFunctionReferenceTest
     public void GenericReferencesEnterTheirBoundInstance(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("GenericReference" + name, source, stdout);
     }
 
@@ -65,7 +65,7 @@ public class GenericFunctionReferenceTest
     public void TheItemRecordsItsBoundArguments()
     {
         var c = MinimalEmissionTest.Analyze(Identity + Apply + "let r = apply(identity, 5)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "apply");
         var item = call.CallOf()!.TypeArguments[0]!;
         Assert.Equal(BoundTypeKind.FunctionItem, item.Kind);
@@ -211,7 +211,7 @@ public class GenericFunctionReferenceTest
         Assert.Contains("Owned bound generic arguments", error.Note, StringComparison.Ordinal);
 
         var proven = MinimalEmissionTest.Analyze(Make + "func outer(x: ref/i32) -> i32\n    origin x outlives static\n    let h: (ref/i32 during x) -> ref/i32 during x = " + reference + "\n    return h(x)@follow\nConsole.writeLine(\"ok\")");
-        Assert.True(proven.Binding.Result.IsComplete && proven.Analyze().IsVerified, MinimalEmissionTest.Describe(proven, null));
+        Assert.True(proven.Binding.Result.IsComplete && proven.Analyze().IsVerified, MinimalEmissionTest.Describe(proven));
         Assert.Contains("define", CompilationTestHelper.WriteIr(proven), StringComparison.Ordinal); // Generation accepts what check accepts.
     }
 
@@ -249,7 +249,7 @@ public class GenericFunctionReferenceTest
     public void ReferenceSlotCounterpartsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 10.6: the record's cause is its own; an independent error stays visible and a use of the annotated binding adds none.
@@ -279,7 +279,7 @@ public class GenericFunctionReferenceTest
     public void ExplicitTypeArgumentsSelectTheReference(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("GenericReferenceExplicit" + name, source, stdout);
     }
 
@@ -353,13 +353,13 @@ public class GenericFunctionReferenceTest
     public void WarmGenericReferenceSelectionAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.GenericFunctionReference);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 10.6: a warm rebind of a per-call slot failure, including one found through an Origin conflict, and of a Type mismatch whose
@@ -390,7 +390,7 @@ public class GenericFunctionReferenceTest
     public void WarmOmittedWrittenOriginAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Identity + "let f: (ref/i32 during static) -> ref/i32 during static = identity<ref/i32>");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete);

@@ -146,7 +146,7 @@ public class SharedSubjectTest
     public void ExclusiveIterationKeepsItsLoan(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
@@ -168,7 +168,7 @@ public class SharedSubjectTest
     public void TransferredBorrowValuesAreConsumed(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
@@ -186,7 +186,7 @@ public class SharedSubjectTest
     public void ExclusiveBorrowSubjectsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -197,7 +197,7 @@ public class SharedSubjectTest
     public void SharedReborrowsKeepTheirLoans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
@@ -207,7 +207,7 @@ public class SharedSubjectTest
     public void BorrowedSlicesSelectTheirEntryThroughTheReference()
     {
         var c = MinimalEmissionTest.Analyze("func total(values: ref/Slice<i32>) -> i32\n    var sum: i32 = 0\n    for v in values\n        sum += v\n    return sum");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Binding.ReadsReferent(FindIterable(c)));
         Assert.True(c.Analysis.IsVerified);
     }
@@ -235,7 +235,7 @@ public class SharedSubjectTest
     public void StaticSubjectsUseTheirAcquisition(string body, SubjectMode mode)
     {
         var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         foreach (var match in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>())
         {
             Assert.True(c.Binding.TryGetMatch(match, out var plan));

@@ -42,7 +42,7 @@ public class ValueCallBindingTest
     public void BindsPositionalSignature(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = Assert.IsType<CallPlan>(call.ValueCallOf());
         Assert.Null(call.CallOf());
@@ -60,7 +60,7 @@ public class ValueCallBindingTest
     public void ObjectCalleesRecordTheirPayloadReceiver(string source, bool payload)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = Assert.IsType<CallPlan>(call.ValueCallOf());
         Assert.Same(call.Method, plan.CalleeValue);
@@ -86,7 +86,7 @@ public class ValueCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 

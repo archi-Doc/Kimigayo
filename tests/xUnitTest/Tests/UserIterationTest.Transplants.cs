@@ -15,8 +15,8 @@ public partial class UserIterationTest
         const string Program = Counter + Three + "for item in Three.init() => Console.writeLine(\"item\")";
         var recipient = MinimalEmissionTest.Analyze(Program, "recipient.kimi");
         var donor = MinimalEmissionTest.Analyze(Program, "donor.kimi");
-        Assert.True(recipient.Analysis.IsVerified, MinimalEmissionTest.Describe(recipient, null));
-        Assert.True(donor.Analysis.IsVerified, MinimalEmissionTest.Describe(donor, null));
+        Assert.True(recipient.Analysis.IsVerified, MinimalEmissionTest.Describe(recipient));
+        Assert.True(donor.Analysis.IsVerified, MinimalEmissionTest.Describe(donor));
         var old = Assert.Single(KotoTree.Walk(recipient.Kotonoha.RootKoto).OfType<ForKoto>());
         var moved = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<ForKoto>());
         var oldPlan = moved.IterationOf().Plan;
@@ -24,7 +24,7 @@ public partial class UserIterationTest
         ParseTestHelper.Detach(moved, new CodeBlockKoto(moved.CodeContext));
         Assert.True(KotoHelper.Replace(old.Parent!, old, moved));
         Assert.Null(moved.IterationOf().Plan);
-        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient));
         var plan = moved.IterationOf().Plan!;
         Assert.NotNull(plan);
         Assert.NotSame(oldPlan, plan);
@@ -36,7 +36,7 @@ public partial class UserIterationTest
 
         Assert.Same(moved.Body, plan.Decomposition.Arms[0].Syntax.Body);
         Assert.True(recipient.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(recipient.Analyze().IsVerified, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Analyze().IsVerified, MinimalEmissionTest.Describe(recipient));
         Assert.NotEmpty(CompilationTestHelper.WriteIr(recipient));
     }
 }

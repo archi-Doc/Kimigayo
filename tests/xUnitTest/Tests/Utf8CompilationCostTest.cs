@@ -29,7 +29,7 @@ public class Utf8CompilationCostTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var allocated = AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")
@@ -40,7 +40,7 @@ public class Utf8CompilationCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
                 {
                     throw new InvalidOperationException("Warm formatting compilation failed.");
                 }
@@ -52,8 +52,8 @@ public class Utf8CompilationCostTest
             {
                 "Binding" => c.Bind().IsComplete,
                 "Ownership" => c.Analyze().IsVerified,
-                "Validation" => c.Validate(out _),
-                _ => c.WriteIr(TextWriter.Null, out _),
+                "Validation" => c.Generate(TextWriter.Null),
+                _ => c.Generate(TextWriter.Null),
             };
             if (!valid)
             {
@@ -69,7 +69,7 @@ public class Utf8CompilationCostTest
     public void ReloadRecomputesFormattingBoundsAndSelectedCalls()
     {
         var c = MinimalEmissionTest.Analyze("let value = \"text\"\nConsole.writeLine(\"value=\\(value)\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var replacement = MinimalEmissionTest.Analyze("let value = 42@i64\nConsole.writeLine(\"value=\\(value)\")");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -80,7 +80,7 @@ public class Utf8CompilationCostTest
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         using var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out error), error);
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         Assert.Contains("alloca [26 x i8]", output.ToString());
         ScalarEmissionTest.WriteFixture("Utf8CompilationReload", output.ToString(), "value=42\n");
     }

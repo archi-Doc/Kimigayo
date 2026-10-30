@@ -79,7 +79,7 @@ public class GenericClosureIdentityTest
     {
         var c = MinimalEmissionTest.Analyze(Identity + "let empty: [0 of i32] = []\n_ = identity(empty)\n_ = identity([1, 2])");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

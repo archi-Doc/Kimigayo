@@ -18,7 +18,7 @@
 //   recorded, a nested Closure's published Storage, a loop's and a match's Subject mode; the Adjust rule (AdjustChildren, Discarded,
 //   Covers, OpOf), IsBareAcquisitionPosition, HasFailureCauses, BareReborrows, BorrowsExclusively and ProveCopy.
 // - Outputs: BoundClosure's receiver facts: Receiver, the strongest over every case, which every reader of a Closure's call
-//   receiver reads (value calls, candidate selection and Callable proofs, effects, the MIR builder, the old analysis and Emission);
+//   receiver reads (value calls, candidate selection and Callable proofs, effects, the MIR builder and the old analysis);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
 //   ExclusiveUse and ExclusiveReborrow, the Exclusive cause a write record names (Binding.Diagnostics.cs); Unlisted, which
 //   BindConcreteClosure fails as the rule's net, a located Unsupported_Kd (the owner, 2026-10-25; DECISIONS R4-M145).

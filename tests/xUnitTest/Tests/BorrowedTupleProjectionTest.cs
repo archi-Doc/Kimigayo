@@ -34,16 +34,16 @@ public class BorrowedTupleProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void RetainsOwnerLifetime()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "var pair = (Counter.init(), true)\nlet view = pair@ref\nlet item = view.0@ref\npair = (Counter.init(), false)\nlet value = item.value");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -54,9 +54,9 @@ public class BorrowedTupleProjectionTest
     public void RejectsEscapesConflictsAndImplicitMoves(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -80,14 +80,14 @@ public class BorrowedTupleProjectionTest
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(c.Analyze().IsVerified);
             using var output = new StringWriter();
-            Assert.True(c.WriteIr(output, out var error), error);
+            Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
             Assert.Equal(original, output.ToString());
         }
 
         var bytes = AllocationMeasurement.Measure(() =>
         {
             c.Analyze();
-            c.WriteIr(TextWriter.Null, out _);
+            c.Generate(TextWriter.Null);
         });
         Assert.Equal(0, bytes);
     }

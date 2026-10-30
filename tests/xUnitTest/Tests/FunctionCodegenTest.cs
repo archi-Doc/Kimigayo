@@ -1283,15 +1283,11 @@ public sealed partial class FunctionCodegenTest
         // The program bound and analyzed, every body item written by the module, and the signature its Write gave the import.
         static FunctionAbi Signature(Compilation c, ModuleCodegen module)
         {
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
             c.Analyze();
-            var program = c.BuildMir();
-            var collector = new InstanceCollector(c.Types, c.Layout);
-            var set = collector.Run(program, 1);
-            var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
-            set.Mark(bodies);
-            Assert.True(module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null), string.Join(", ", module.Records));
+            WrittenModule(c, module, out var written);
+            Assert.True(written, string.Join(", ", module.Records));
             return Assert.IsType<FunctionAbi>(module.Import(Mix(c.Kotonoha.RootKoto).SymbolOf()!));
         }
     }
@@ -1458,8 +1454,7 @@ public sealed partial class FunctionCodegenTest
         Assert.NotEqual(0, writer.ToString().Length);
         Assert.Empty(Records(c));
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Null(failure);
+        Assert.True(c.Generate(TextWriter.Null));
     }
 
     // I1: the same program gives the same text, in one compilation and in two.
@@ -1550,7 +1545,7 @@ public sealed partial class FunctionCodegenTest
             "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n" +
             "        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n",
             OutputKind.Library);
-        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
         _ = c.Generate(TextWriter.Null);
         var set = c.Instances!;
         Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
@@ -1656,7 +1651,7 @@ public sealed partial class FunctionCodegenTest
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
         Assert.True(c.Generate(TextWriter.Null), string.Join(", ", Records(c)));
 
         var set = c.Instances!;
@@ -1709,14 +1704,18 @@ public sealed partial class FunctionCodegenTest
     // A program's module written with every body item an output root (ItemTexts), whatever records it makes: its MIR, collector, module and
     // body items, whose items a test then writes directly.
     private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(Compilation c)
+        => WrittenModule(c, new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests), out _);
+
+    // The same, written by the module given (a module kept across edits), with whether its Write wrote the module.
+    private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(
+        Compilation c, ModuleCodegen module, out bool written)
     {
         var program = c.BuildMir();
         var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(program, 1);
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
         set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
-        _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
+        written = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
         return (program, collector, module, bodies);
     }
 

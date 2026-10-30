@@ -168,9 +168,9 @@ public class DictionaryOperationsTest
     public void AReturnedLookupBorrowProtectsTheWholeDictionary()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 42)\nlet found = entries.tryGet(1)\nentries.clear()\nmatch found\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n    .None => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

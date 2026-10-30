@@ -68,7 +68,7 @@ public class BaseTypeFormationBindingTest
     public void ValidBasesUseDeclarationEvidence(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\n" + declaration);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);

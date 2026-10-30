@@ -102,12 +102,12 @@ public class PropertyResultEmissionTest
     public void GetterPipelineReusesOriginAndStoragePlans()
     {
         var c = MinimalEmissionTest.Analyze(OwnershipPropertyEmissionTest.Resource + Holder + "let h = Holder.init(Resource.init(1))\nlet view = h.view\n_ = view.id\n_ = h.fresh");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

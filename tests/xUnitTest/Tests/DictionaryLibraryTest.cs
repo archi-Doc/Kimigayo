@@ -58,7 +58,7 @@ public class DictionaryLibraryTest
             "    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n" +
             "    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -73,7 +73,7 @@ public class DictionaryLibraryTest
     {
         const string Source = "var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -88,7 +88,7 @@ public class DictionaryLibraryTest
         const string Source = "var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n" +
             "    .None => $abort(\"missing\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -106,7 +106,7 @@ public class DictionaryLibraryTest
     {
         var program = "var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source;
         var c = MinimalEmissionTest.Analyze(program);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -124,7 +124,7 @@ public class DictionaryLibraryTest
     {
         var program = "var entries = [1: 2]\n" + source;
         var c = MinimalEmissionTest.Analyze(program);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);

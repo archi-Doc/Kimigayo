@@ -68,7 +68,7 @@ public class NeverContinuationTest
     {
         // SPEC 3.1.3, 13.3.1, 13.4: Never fits the other operand's Type; it imposes no expected Never on that operand.
         var c = MinimalEmissionTest.Analyze(Stop + "let wide: i64 = 2\nlet n: " + type + " = " + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 3.8 and 12.3.1: Never supplies no numeric Type; a legitimate counterpart or literal default supplies it.
@@ -89,9 +89,9 @@ public class NeverContinuationTest
     public void TheOperatorTypeComesFromTheCompletingOperand(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Binding.Issues);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -121,7 +121,7 @@ public class NeverContinuationTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(code, Assert.Single(c.Binding.Issues).Code);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -383,7 +383,7 @@ public class NeverContinuationTest
     public void NeverFittingIsAValueAndResultJudgment(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 10.4 step 2: parameter Types rank no candidates, Never's included: `f(x: Never)` and `f(x: i32)` both take `stop()`, by

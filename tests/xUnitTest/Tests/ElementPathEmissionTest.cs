@@ -71,9 +71,9 @@ public class ElementPathEmissionTest
     public void RightSideOperandsPrecedeTheElementAccess(string expression)
     {
         var c = MinimalEmissionTest.Analyze("func get(a: [2 of i32]) -> i32 => a[0]\nvar a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -82,9 +82,9 @@ public class ElementPathEmissionTest
     public void AncestorReadsInTheRightSidePrecedeTheUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // A Loan that outlives the RHS still conflicts with the exclusive element access, and the located
@@ -98,10 +98,10 @@ public class ElementPathEmissionTest
     public void LoansOutlivingTheRightSideProduceNoIr(string expression)
     {
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -114,14 +114,14 @@ public class ElementPathEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);

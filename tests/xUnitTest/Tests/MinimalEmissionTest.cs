@@ -26,9 +26,9 @@ public class MinimalEmissionTest
     public void EmitsCheckedLiteralCall(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = writer.ToString();
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
@@ -63,13 +63,13 @@ public class MinimalEmissionTest
     public void RebindingInvalidatesEmissionUntilAnalysisRunsAgain()
     {
         var c = Analyze("Console.writeLine(\"a\")");
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
         c.Bind();
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Analyze();
-        Assert.True(c.Validate(out error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class MinimalEmissionTest
     public void AppendingSourceInvalidatesFinalAnalysisBeforeEmission(bool directContext, bool valid)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
         var source = new SourceDocument("Added.kimi", valid ? "func added() -> i32 => 7" : "func added() -> i32 => missing");
         if (directContext)
         {
@@ -92,7 +92,7 @@ public class MinimalEmissionTest
         }
 
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.Startup.IsComplete);
@@ -102,7 +102,7 @@ public class MinimalEmissionTest
         Assert.Equal(valid, c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.Equal(valid, c.Validate(out error));
+        Assert.Equal(valid, c.Generate(TextWriter.Null));
         if (valid)
         {
             var added = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "added");
@@ -116,7 +116,7 @@ public class MinimalEmissionTest
     public void ReloadingSourceInvalidatesFinalAnalysisEvenForAnEmptySnapshot(bool empty)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
         var snapshot = empty ? Compilation.CreateForTest().Kotonoha : c.Kotonoha;
         var restored = c.Kotonoha;
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(snapshot), ref restored);
@@ -124,14 +124,14 @@ public class MinimalEmissionTest
         Assert.Same(c.Kotonoha, restored);
         restored.OnDeserialized(c);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Analysis.IsVerified);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.Equal(!empty, c.Validate(out _));
+        Assert.Equal(!empty, c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -155,7 +155,7 @@ public class MinimalEmissionTest
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
     }
 
@@ -173,9 +173,9 @@ public class MinimalEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Diagnostics.InvalidateSyntax(c.Kotonoha);
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class MinimalEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
     }
 
     [Fact]
@@ -198,7 +198,7 @@ public class MinimalEmissionTest
         var path = Path.Combine("日本", "file.kimi");
         var c = Analyze("\n::Kimi.Console.writeLine(\"x\")", path);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.True(c.WriteIr(writer, out var error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         const string Expected = "\\u{65E5}\\u{672C}/file.kimi:2:1";
         var escaped = string.Concat(Encoding.ASCII.GetBytes(Expected).Select(x => $"\\{x:X2}"));
         Assert.Contains($"@__kimi_location = private unnamed_addr constant [{Expected.Length} x i8] c\"{escaped}\"", writer.ToString());
@@ -210,11 +210,11 @@ public class MinimalEmissionTest
     public void WarmValidationDoesNotAllocate()
     {
         var c = Analyze("Console.writeLine(\"a\")");
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
 
         // The helper retires the thread's allocation context before measuring (see AllocationMeasurement).
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Validate(out _));
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null));
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -225,7 +225,7 @@ public class MinimalEmissionTest
     {
         var c = Analyze("Console.writeLine(\"a\")");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null));
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -284,7 +284,7 @@ public class MinimalEmissionTest
         {
             var c = Analyze(source, path);
             using var writer = new StreamWriter(Path.Combine(directory, name + ".ll"), false, new UTF8Encoding(false));
-            Assert.True(c.WriteIr(writer, out var error), Describe(c, error));
+            Assert.True(c.Generate(writer), Describe(c));
         }
     }
 
@@ -306,7 +306,7 @@ public class MinimalEmissionTest
     internal static void AssertGenerationResourceLimit(string source, string at)
     {
         var c = Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal("GenerationResourceLimit_Kd " + at, Problems(c));
         c.ReportAnalysis();
         using var output = new StringWriter();
@@ -321,18 +321,20 @@ public class MinimalEmissionTest
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
-    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and
-    // the problems with their Op, the MIR's records among them on every pipeline (DECISIONS R5-M156). It only reads, since a message
-    // argument is evaluated whether or not the assertion fails.
-    internal static string Describe(Compilation c, string? error)
-        => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
+    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location),
+    // the problems with their Op, the MIR's records among them on every pipeline (DECISIONS R5-M156), and the generation records of the
+    // Emission partition (Compilation.Generate's). It only reads, since a message argument is evaluated whether or not the assertion fails.
+    internal static string Describe(Compilation c)
+        => $"Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
             string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
-            string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}"));
+            string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; Emission=" +
+            string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
+                .Select(static x => $"{x.Code} {x.Span}"));
 
     // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
     // for the destructions the implementation's bodies actually perform (their planned cleanups).
     internal static void AssertEffectBoundRejected(Compilation c)
         => Assert.True(
             c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),
-            Describe(c, null));
+            Describe(c));
 }
