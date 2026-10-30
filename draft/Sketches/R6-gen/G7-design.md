@@ -19,6 +19,8 @@ as DECISIONS R5-M162 (§7's draft, as landed). Revision 0 is `claude/r6-g7-desig
 | Q8 PLAN | closures at landing | the planning session closes G69, SP, G157 (5) and (22) | yes |
 | Commit order | c1-c6, Binding fourth | Binding last, with its own message, on dev; BU's reviewer reviews it; bu77 (G300) rebases on it (BU's option (a)): bu77 reads none of the deleted members, its overlaps are textual (a context line beside `ResetCallContexts`; `TyCtxt.Instances.cs`' header, which bu77 rebases onto the `bool` wording) | coordinator, BU |
 | Holds | §5.1 | Backend/Codegen is R5's; never `Mir/Analysis`; the old Analysis only as §3's deletion; Binding only in BU's commit | coordinator |
+| As implemented | — | c1 `af5c1cb7b` (re-points; Kimi +9, Benchmark +2; every plan workload and the lifecycle generate, so no row is deleted), c2 `d1d2e40d0` (Emission −13,206, Core −3, Testing −20), c3 `dfeaf73ea` (Analysis −187; diagnostic snapshot 0 differences; the re-scan frees no further Analysis member), c4 `84cc33d68` (Backend −2), c5 records (DECISIONS R5-M162 and six amendment lines; ARCH, CODEMAP, DIAGNOSTICS, STATUS), c6 Binding (BU) | Measured by `git diff --numstat` |
+| CODEMAP | drop the stems | 47 table cells lose their deleted stems by rule (an emptied cell is "—", the table's convention); the Lowering-and-layout row becomes "Old physical IR layer (until G8)"; two cells' shorthand stems of `BodyLowering` partials go with it | Auto |
 
 "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
 `src/Kimi/Compiler/`, `T/` = `tests/xUnitTest/Tests/`, `B/` = `src/Benchmark/Benchmarks/`. Line numbers are at `1f2d7dea6`. No build,

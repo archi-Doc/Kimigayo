@@ -56,7 +56,7 @@ Constructor inference follows SPEC §10.8 and §23.1. Keep Type lookup, missing 
 
 ### 4.1. Facts and keys
 
-The instance collector reports an instance's limits, capability gaps and layouts over 2^63 - 1 bytes (`OversizedLayout_Kd`, Language, at each by-value use; DECISIONS R5-M52) at check on every pipeline, before code generation, in the ControlFlow partition at the subject its location rule gives (DECISIONS R5-M40, R5-M41, R5-M156). The old generator's instance refusals (`ReportInstanceDiagnostics`, its own limits) reach no product path since R6-gen's G4 (DECISIONS R5-M160) and go with it at G7.
+The instance collector reports an instance's limits, capability gaps and layouts over 2^63 - 1 bytes (`OversizedLayout_Kd`, Language, at each by-value use; DECISIONS R5-M52) at check on every pipeline, before code generation, in the ControlFlow partition at the subject its location rule gives (DECISIONS R5-M40, R5-M41, R5-M156).
 
 A logical model; it requires no allocation per field.
 

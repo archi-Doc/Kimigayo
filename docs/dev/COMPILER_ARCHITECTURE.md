@@ -214,13 +214,10 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   verdicts (CleanupObservesBorrows' per-query depth-monotone memo, HasProjection's gate, AggregateCanComplete's memo,
   VerifyBorrows' per-Place AddType set; DECISIONS BU-19), and the owner's exception for Q-O3 of G160 (2026-10-22): the old
   paths read Types without raw Origins (`Binding.WithoutRawOrigins`) at `OwnershipAnalysis.Place` and `OwnershipBody.Resolve` until
-  R6-check (DECISIONS BU-24; an instance's stored Types state none, so Emission's `AdtDef.CaseTypes` reads need no view), and the
-  owner's second exception for G160 (2026-10-22): the old Emission's `HasInferenceOrigin` treats a meet with an inferred operand as
-  inferred until R6-gen (DECISIONS BU-24), and the owner's third exception for G160 (2026-10-22, 「D5 例外を広げる (推奨)」): the old
-  analysis's `ProjectPointer` compares a stored part's Type with the node's without raw Origins until R6-check (DECISIONS BU-24),
-  and the owner's exception for G160-3 (2026-10-22, 「認める」): the old Emission's Dictionary layout and placement checks take
-  G160-3's `raw/Dictionary<K, V>` handle in place of `raw/u8` until R6-gen (`BodyLowering.DictionaryStorage`,
-  `BodyLowering.Dictionaries`; DECISIONS BU-24), and the owner's exception for G86 (2026-10-26, 「(a) 場合ごとの読みを許可 (推奨)」):
+  R6-check (DECISIONS BU-24), and the owner's third exception for G160 (2026-10-22, 「D5 例外を広げる (推奨)」): the old
+  analysis's `ProjectPointer` compares a stored part's Type with the node's without raw Origins until R6-check (DECISIONS BU-24;
+  BU-24's two exceptions for the old Emission, `HasInferenceOrigin` and the Dictionary layout checks, ended with its code at
+  R6-gen's G7, DECISIONS R5-M162), and the owner's exception for G86 (2026-10-26, 「(a) 場合ごとの読みを許可 (推奨)」):
   the old analysis's `AddType` and `NamedOriginRequirement` read a slot's Loan requirement in the strongest Semantics case its Type
   selects (`Binding.RequirementAt` through `OwnershipBody.SlotLoanRequirement`) until R6-check (DECISIONS BU-44), and the owner's exception for A5-F7's 2c-5
   (OQ-F7-1 (vi), 2026-10-25): the old analysis's gate reports `Unsupported_Kd` at each value call whose result depends on its call
@@ -260,7 +257,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   `WriterKind`), its interpolation estimate (`FormatBound`, `FormatEstimate`) and the conversion text both generators write (R8, DECISIONS
   R5-M16, R5-M116, R5-M128, R5-M130, R5-M131); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's
   temporaries, recorded by their first units (DECISIONS R5-M18) and reviewed with the owner at R5's exit (DECISIONS R5-M148):
-  gate step 2's arena-skip `Unsupported_Kd` (H3, DECISIONS R5-M96, R5-M148); `MonoKind.LegacyRow` (R8; first implemented by C8d, DECISIONS R5-M121); the out-string `WriteIr`/`Validate` adapters (C0a to G9b) in the generation entry (DECISIONS R5-M64; its sel `build`
+  gate step 2's arena-skip `Unsupported_Kd` (H3, DECISIONS R5-M96, R5-M148); `MonoKind.LegacyRow` (R8; first implemented by C8d, DECISIONS R5-M121); the out-string `WriteIr`/`Validate` adapters (C0a to G9b) and the publication failure's record `Compilation.ReportPublicationFailure` (G7 to G9b, DECISIONS R5-M162) in the generation entry (DECISIONS R5-M64; its sel `build`
   refusal, K1 to C0b1, went with C0b1, R5-M65); Binding's i128 division and remainder and its 128-bit float conversion gates beside the capability table's operation rows (H7, DECISIONS R5-M53); the legacy comparison composition (A-12, else R7; DECISIONS R5-M68, R5-M148); the F2c Dictionary-storage view and its TyCtxt forward, `TyCtxt.DictionaryStorage`, whose one reader is the instance collector (R8, deleted with `KimiLibrary.DictionaryStorage.cs`; DECISIONS R5-M28, R5-M124); the
   `Binding.ClosureCall` bridge (R6-gen); `TyCtxt.StorageSubst`, the Self-less substitution of the CallPlan form of
   `Binding.InstantiateStorageType` (R7, DECISIONS R5-M36); the old generator's specialization view `TyCtxt.InstantiatesInLegacy` and the class
