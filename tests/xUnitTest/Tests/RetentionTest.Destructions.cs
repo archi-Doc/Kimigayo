@@ -36,18 +36,21 @@ public sealed partial class RetentionTest
 
     // SPEC 15.6.4, 4.9.6 (PLAN G264 U0′; DECISIONS BU-42, BU-47): a row changes no retention row, which reads the signature and the
     // premises' Callable bounds, never the body: `truncate` and `removeAll` over `Array<Writer>` write their receiver's unstated raw layers
-    // only in its referent (`0 Chain store 0, untied store 0, referent store 0`, as `clear` does), over an abstract `Array<T>` its content
-    // (`0 Content store 0, referent store 0`), and `removeAll` over `Array<i32>` with a Closure that captures raw pointers stores through
-    // the Closure's own raw layer alone (`untied store 1`). Guards: each row holds today and must hold after the rows are published.
+    // only in its referent (`store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0`, as `clear` does), over an abstract
+    // `Array<T>` its content (`store 0: own {0 Content}, reached {}, referent store 0`), and `removeAll` over `Array<i32>` with a Closure
+    // that captures raw pointers writes only its referent (`referent store 0`): a transfer operation unties no input it does not write
+    // (DECISIONS BU-52's G266 fix 1, the TransferWrites gate covering the untied verdict; SPEC's rule by BU-67), so the Closure is no
+    // untied store; removeAllWriteBad (MirBorrowsTest, G266's, kept apart) is the form where that matters. Guards: each row holds today
+    // and must hold after the rows are published.
     [Theory]
-    [InlineData(Writer + "var a: Array<Writer> = []\na.truncate(0)\n", "truncate", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData(Writer + "var a: Array<Writer> = []\na.removeAll(matching: func (v) => true)\n", "removeAll", "0 Chain store 0, untied store 0, referent store 0")]
-    [InlineData("func g<T>(a: uniq/Array<T>) => a.truncate(0)\n", "truncate", "0 Content store 0, referent store 0")]
-    [InlineData("func g<T>(a: uniq/Array<T>) => a.removeAll(matching: func (v) => true)\n", "removeAll", "0 Content store 0, referent store 0")]
+    [InlineData(Writer + "var a: Array<Writer> = []\na.truncate(0)\n", "truncate", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData(Writer + "var a: Array<Writer> = []\na.removeAll(matching: func (v) => true)\n", "removeAll", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData("func g<T>(a: uniq/Array<T>) => a.truncate(0)\n", "truncate", "store 0: own {0 Content}, reached {}, referent store 0")]
+    [InlineData("func g<T>(a: uniq/Array<T>) => a.removeAll(matching: func (v) => true)\n", "removeAll", "store 0: own {0 Content}, reached {}, referent store 0")]
     [InlineData(
         RawStash + "var a: Array<i32> = [1]\nvar slot: raw/u8 = null\nlet p = slot@raw\nlet q: raw/u8 = null\na.removeAll(matching: func [p, q] (v) => stash(p, q))\n",
         "removeAll",
-        "untied store 1, referent store 0")]
+        "referent store 0")]
     public void ATruncateOrRemoveAllCallRetainsByItsSignatureNotItsRow(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 }

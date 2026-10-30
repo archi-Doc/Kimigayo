@@ -242,6 +242,7 @@ public sealed partial class Binding
 
         // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
+        this.projectionForms.TryAdd((projection, this.ConstraintScope(syntax)), syntax);
         syntax.BoundSymbol = associated;
         syntax.Right.BoundSymbol = associated;
         Complete(syntax.Right, projection);
@@ -251,6 +252,30 @@ public sealed partial class Binding
         }
 
         return this.NormalizedProjection(projection, scope, applyingOrigins);
+    }
+
+    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that formed `type` and is judged under `scope`'s own premises: the first use
+    // found walking `scope`'s chain inward-out (the scopes whose premises the solver reads, Supply) before a scope that adds premises
+    // without forming it; null otherwise. Each use is keyed by its Type and the scope its conformance check (ValidateConformances, after
+    // the bodies) judges it in, ConstraintScope. Premises only grow inward, so a use found before such a scope is judged as `scope`
+    // would judge it, and one beyond it may be rejected under fewer premises than `scope` has. A check that fails only because its
+    // Type is such a projection rests on that use, which publication judges (AddPendingPrerequisite).
+    private Koto? ProjectionUseOf(BoundType type, BindingScope scope)
+    {
+        for (BindingScope? current = scope; current is not null; current = current.Parent)
+        {
+            if (this.projectionForms.TryGetValue((type, current), out var use))
+            {
+                return use;
+            }
+
+            if (current.Constraints is { } premises && (premises.Invalid || premises.Facts.Count != 0))
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
