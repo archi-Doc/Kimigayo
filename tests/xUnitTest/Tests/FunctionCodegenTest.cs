@@ -14,8 +14,8 @@ namespace XunitTest;
 /// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a, X2; package C 3.2 and 3.3; DECISIONS R5-M65, R5-M77, R5-M83, R5-M146):
 /// <c>ModuleCodegen</c> writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue,
 /// slots, runtime-reached blocks, the Places of its place writer and every form of an accepted program, and a broken input is one
-/// <c>InternalInvariant_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
-/// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
+/// <c>InternalInvariant_Kd</c> with no module. The fixtures run under the process's generator (MIR code generation by default, the old one
+/// under <c>-Codegen legacy</c> until G4); the other tests select MIR code generation themselves.</summary>
 public sealed partial class FunctionCodegenTest
 {
     private const string Branches =
@@ -1242,7 +1242,7 @@ public sealed partial class FunctionCodegenTest
     public void AnImportIsCalledByItsCSignature()
     {
         var imported = Compilation.CreateForTest();
-        (imported.Pipeline, imported.Codegen) = (CompilerPipeline.Mir, CompilerCodegen.Mir);
+        imported.Codegen = CompilerCodegen.Mir;
         imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(imported.Prepare(WindowsProfile.Target));
         const string Source =
@@ -1633,12 +1633,11 @@ public sealed partial class FunctionCodegenTest
         return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
     }
 
-    // A program analyzed under MIR code generation (sel) for an output form; a source that declares a test is a test build's test-only
-    // source, its catalog discovered after acceptance as Project discovers it.
+    // A program analyzed under MIR code generation for an output form; a source that declares a test is a test build's test-only source,
+    // its catalog discovered after acceptance as Project discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
         c.Codegen = CompilerCodegen.Mir;
         c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
         Assert.True(c.Prepare(WindowsProfile.Target));

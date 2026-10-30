@@ -144,7 +144,8 @@ public class ScalarEmissionTest
     }
 
     // A fixture's IR and its expected outcome. With a deviation's legacy outcome (DECISIONS R5-M85, R5-M106), the outcome is the running
-    // code generator's side and both runs write the same .deviation sidecar, which compare-fixtures.ps1 reads.
+    // code generator's side and both runs write the same .deviation sidecar, which compare-fixtures.ps1 reads; no fixture passes one from G3
+    // (DECISIONS R5-M158), and G4 deletes the parameter.
     internal static void WriteFixture(
         string name, string ir, string stdout, int exit = 0, string? stderr = null, int observationMilliseconds = 0, LegacyNative? legacy = null)
     {

@@ -289,7 +289,7 @@ public class GenericStorageEmissionTest
     // representation errors.
     [Fact]
     public void GrowingSubstitutionKeysAreResourceDiagnosed()
-        => MinimalEmissionTest.AssertGenerationResourceLimit(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)", "grow");
+        => MinimalEmissionTest.AssertGenerationResourceLimit(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)", "grow<Box<T>>(Box<T>.init(value@move), n - 1)");
 
     [Fact]
     public void OversizedSubstitutionSetsAreResourceDiagnosed()

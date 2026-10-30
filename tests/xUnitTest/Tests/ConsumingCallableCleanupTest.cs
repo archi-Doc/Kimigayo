@@ -20,17 +20,15 @@ public class ConsumingCallableCleanupTest
         NativeAllocationAudit.WriteFixture("ConsumingCallable" + name, source, allocations, allocations, bytes, "drop\ndone\n");
     }
 
-    // An erased environment of 4 bytes that needs destruction (PD19, IMPL 21.1.3): MIR code generation stores it in the Function value's word,
-    // the old generator allocates it (DECISIONS R5-M104's inline-env deviation).
+    // An erased environment of 4 bytes that needs destruction is stored in the Function value's word, so it allocates nothing (PD19, IMPL
+    // 21.1.3; DECISIONS R5-M104).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void OwningCallDestroysTheTransferredErasedEnvironmentExactlyOnce()
     {
         var source = Prefix + "let action: () -> i32 = func [item@move] () -> i32 => item.value\nrequire invoke(action@move) == 7 else => $abort(\"value\")\n" +
             "Console.writeLine(\"done\")";
-        var allocations = Codegen.Expect(0, 1, CodegenDeviations.InlineEnvironment);
-        NativeAllocationAudit.WriteFixture(
-            "ConsumingCallableCommon", source, allocations, allocations, Codegen.Expect(0L, 4L, CodegenDeviations.InlineEnvironment), "drop\ndone\n");
+        NativeAllocationAudit.WriteFixture("ConsumingCallableCommon", source, 0, 0, 0, "drop\ndone\n");
     }
 
     [Trait("Purpose", "Allocation")]

@@ -19,9 +19,8 @@ public class ContextualClosureTest(ITestOutputHelper output)
     public void DirectExpectedFunctionsUseOwnedConcreteEnvironments(string name, string source, int count, int bytes, string stdout)
         => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, count, count, bytes, stdout);
 
-    // An expected Function Type's environment of 8 bytes holding an obj handle, which needs destruction (PD19, IMPL 21.1.3): MIR code
-    // generation stores it in the Function value's word, the old generator allocates it (DECISIONS R5-M104's inline-env deviation,
-    // R5-M112); the object is one allocation of 20 bytes either way.
+    // An expected Function Type's environment of 8 bytes holding an obj handle, which needs destruction, is stored in the Function value's
+    // word (PD19, IMPL 21.1.3; DECISIONS R5-M104, R5-M112), so the object is the one allocation, of 20 bytes.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AnObjectCaptureOfAnExpectedFunctionTypeIsReleasedOnce()
@@ -29,9 +28,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
         const string Source = "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
             "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet f: () -> i32 = func [owner@move] () => owner.id\n" +
             "require f() == 7 and f() == 7 else => $abort(\"capture\")";
-        var count = Codegen.Expect(1, 2, CodegenDeviations.InlineEnvironment);
-        var bytes = Codegen.Expect(20L, 28L, CodegenDeviations.InlineEnvironment);
-        NativeAllocationAudit.WriteFixture("ContextualClosureObject", Source, count, count, bytes, "drop\n");
+        NativeAllocationAudit.WriteFixture("ContextualClosureObject", Source, 1, 1, 20, "drop\n");
     }
 
     [Theory]

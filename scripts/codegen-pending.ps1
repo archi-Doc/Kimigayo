@@ -2,7 +2,8 @@
 # G4), dot-sourced by verify.ps1 after verification-selection.ps1, whose Get-KimiExecutedCases decides which cases ran. The
 # ledger is the union of tests/xUnitTest/TestData/codegen-pending/<group>.tsv, one file per review group, with the rows
 #   test<TAB><type>.<method><TAB><full display name>    fixture<TAB><stem>.ll<TAB>1
-# where a test row names one case: under sel, verify.ps1 has xUnit print theory arguments in full, so each name is distinct.
+# where a test row names one case: under an explicit -Codegen mir, verify.ps1 has xUnit print theory arguments in full, so each name is
+# distinct.
 # The report compares the failing set of a MIR code generation run with it and writes codegen-pending.json into the evidence;
 # the run passes when no entry differs, and verify.ps1 -UpdatePending writes the ledger from the report.
 

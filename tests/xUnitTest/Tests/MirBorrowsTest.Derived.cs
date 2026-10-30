@@ -188,8 +188,8 @@ public sealed partial class MirBorrowsTest
     }
 
     // A5's Loan conflicts, A1's MovedPlace_Kd and limit records (a located Unsupported_Kd, the depth limit) over a program (with an
-    // `inspect` of its own), which Binding completes or rejects, whose build has no validator finding (InternalInvariant_Kd under the mir
-    // pipeline) and no record of construction.
+    // `inspect` of its own), which Binding completes or rejects, whose build has no validator finding (InternalInvariant_Kd at check) and
+    // no record of construction.
     private static string CallRecords(string source, bool complete)
     {
         var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + source);

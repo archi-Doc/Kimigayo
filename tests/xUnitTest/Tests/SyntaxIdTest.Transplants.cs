@@ -18,7 +18,6 @@ public partial class SyntaxIdTest
     {
         const string Program = "func target() -> i32 => 1\nfunc use() -> i32 => target()\nrequire use() == 1 else => $abort(\"use\")";
         var recipient = CompilationTestHelper.ParseSuccess(Program, "recipient.kimi");
-        recipient.Pipeline = mir ? CompilerPipeline.Mir : CompilerPipeline.Legacy;
         recipient.Codegen = mir ? CompilerCodegen.Mir : CompilerCodegen.Legacy;
         var donor = CompilationTestHelper.BindSuccess("func target() -> i32 => 2\nfunc use() -> i32 => target()");
         Assert.True(recipient.Bind().IsComplete);
