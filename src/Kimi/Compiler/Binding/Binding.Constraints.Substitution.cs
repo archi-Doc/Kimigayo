@@ -44,6 +44,7 @@ public sealed partial class Binding
     {
         var outer = this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
+        ClauseFact? best = null;
         for (var i = 0; i < clauses.Count; i++)
         {
             var constraint = (IsKoto)clauses[i];
@@ -65,6 +66,7 @@ public sealed partial class Binding
             if (constraint.BoundConstraint is not { } bound)
             {
                 result = ConstraintProof.Error;
+                best = FirstAtVerdict(best, new(constraint, null, ConstraintProof.Error, Limit: false));
                 continue;
             }
 
@@ -77,6 +79,7 @@ public sealed partial class Binding
             // Associated identities also need normalization for calls without a receiver.
             substituted = this.ContractConstraint(substituted, scope, self);
             var unknown = this.unknownRead;
+            var limit = this.limitRead;
             var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
@@ -93,10 +96,19 @@ public sealed partial class Binding
                 this.RecordReferenceConstraint(failureUse, constraint, substituted, proof);
             }
 
-            result = CombineProof(result, bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof, true);
+            var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
+            if (outcome != ConstraintProof.Proven)
+            {
+                var onLimit = outcome == ConstraintProof.Unknown && this.limitRead is not null && !ReferenceEquals(this.limitRead, limit);
+                best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit));
+            }
+
+            result = CombineProof(result, outcome, true);
         }
 
-        return this.EndProof(outer, result);
+        var verdict = this.EndProof(outer, result);
+        this.LeaveClause(best, result);
+        return verdict;
     }
 
     // SPEC 10.5, 8.3: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves

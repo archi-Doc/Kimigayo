@@ -44,17 +44,28 @@ public sealed partial class Binding
     // The candidate trial's own U fact (SlotSolution.Prove), for the selection's explanation of a Pending candidate (CallableOriginFailure).
     private CallableUnknown? trialUnknown;
 
+    // The clause fact (design-r2 G351a, R4-M155): the clause a clause list's combined verdict rests on, handed one step outward
+    // (clauseRead, the scope's), left by a settled clause list for its check (failedClause) and kept by a candidate trial (trialClause),
+    // each diagnostic payload only; no reader yet.
+    private ClauseFact? clauseRead;
+    private ClauseFact? failedClause;
+    private ClauseFact? trialClause;
+
     // The innermost open frame's epoch (0: none) and the monotonic counter that issues them (design-r2 Amendment 5).
     private int frameEpoch;
     private int epochCounter;
 
+    // The first clause at the highest rank of a clause list, or of the lists a scope holds (G351a).
+    private static ClauseFact? FirstAtVerdict(ClauseFact? best, ClauseFact clause) => clause.Rank > (best?.Rank ?? 0) ? clause : best;
+
     // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request.
-    private (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, int Frame) BeginProof()
+    private (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, int Frame) BeginProof()
     {
-        var outer = (this.limitRead, this.errorRead, this.unknownRead, this.proofNesting == 0 ? this.OpenFrame() : -1);
+        var outer = (this.limitRead, this.errorRead, this.unknownRead, this.clauseRead, this.proofNesting == 0 ? this.OpenFrame() : -1);
         this.limitRead = null;
         this.errorRead = null;
         this.unknownRead = null;
+        this.clauseRead = null;
         this.proofNesting++;
         return outer;
     }
@@ -63,7 +74,8 @@ public sealed partial class Binding
     // the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is no longer combined,
     // an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes it (TakeFailedCause),
     // which publishes a site.
-    private ConstraintProof EndProof((ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, int Frame) outer, ConstraintProof proof)
+    private ConstraintProof EndProof(
+        (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, int Frame) outer, ConstraintProof proof)
     {
         this.proofNesting--;
         var cause = this.ProofCause(proof);
@@ -71,6 +83,7 @@ public sealed partial class Binding
         this.limitRead = outer.Limit;
         this.errorRead = outer.Error;
         this.unknownRead = outer.Unknown;
+        this.clauseRead = outer.Clause;
         if (outer.Frame >= 0)
         {
             this.CloseFrame(outer.Frame);
@@ -82,7 +95,9 @@ public sealed partial class Binding
         }
 
         // Where the answer is no longer combined, an untaken U fact is dropped and an Unknown without a limit leaves its own for the
-        // frame's consumer, under the epoch of the frame it is read in.
+        // frame's consumer, under the epoch of the frame it is read in; an untaken clause fact is dropped (a clause list leaves its own
+        // after its end, LeaveClause).
+        this.failedClause = null;
         this.failedUnknown = cause is null ? fact : null;
         if (this.failedUnknown is { } left)
         {
@@ -122,6 +137,36 @@ public sealed partial class Binding
         }
     }
 
+    // A clause list's clause fact (G351a): the first clause at the list's combined verdict, E > R > L > U (`Rank`), handed after the
+    // list's end to its enclosing scope, or where no scope encloses it to the channel under the innermost open frame, and only when
+    // the list's combined verdict is that clause's outcome (as LeaveUnknown requires Unknown). The enclosing scope keeps the first at
+    // the highest rank of the lists it holds; it hands it on no further (EndProof restores the outer scope's), so a cached verdict and a
+    // computed one leave the same facts.
+    private void LeaveClause(ClauseFact? fact, ConstraintProof combined)
+    {
+        if (fact is not { } clause || clause.Outcome != combined)
+        {
+            return;
+        }
+
+        if (this.proofNesting != 0)
+        {
+            this.clauseRead = FirstAtVerdict(this.clauseRead, clause);
+            return;
+        }
+
+        this.failedClause = clause with { Epoch = this.frameEpoch };
+    }
+
+    // A composite proof whose parts settle as separate judgments (ReferenceArgumentProof) holds each part's clause fact, as HoldUnknown
+    // holds its U fact, and leaves the first at the composite's verdict (LeaveClause).
+    private ClauseFact? HoldClause(ClauseFact? held)
+    {
+        var fact = this.failedClause;
+        this.failedClause = null;
+        return fact is { } clause ? FirstAtVerdict(held, clause) : held;
+    }
+
     // Opens a frame with a fresh epoch (design-r2 Amendment 5) and returns the enclosing frame's.
     private int OpenFrame()
     {
@@ -135,6 +180,8 @@ public sealed partial class Binding
     {
         this.failedUnknown = this.failedUnknown?.Epoch == this.frameEpoch ? null : this.failedUnknown;
         this.trialUnknown = this.trialUnknown?.Epoch == this.frameEpoch ? null : this.trialUnknown;
+        this.failedClause = this.failedClause?.Epoch == this.frameEpoch ? null : this.failedClause;
+        this.trialClause = this.trialClause?.Epoch == this.frameEpoch ? null : this.trialClause;
         this.frameEpoch = enclosing;
     }
 
@@ -165,6 +212,9 @@ public sealed partial class Binding
         this.unknownRead = null;
         this.failedUnknown = null;
         this.trialUnknown = null;
+        this.clauseRead = null;
+        this.failedClause = null;
+        this.trialClause = null;
         this.frameEpoch = 0;
         this.proofNesting = 0;
     }
@@ -199,5 +249,22 @@ public sealed partial class Binding
 
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
         internal int Epoch { get; set; }
+    }
+
+    // A clause of a clause list with its outcome: Refuted, Unknown (on a limit when `Limit`), or Error; the Constraint as proven, none
+    // for a clause that did not bind. Diagnostic payload only (G351a).
+    internal readonly record struct ClauseFact(IsKoto Clause, BoundConstraint? Constraint, ConstraintProof Outcome, bool Limit)
+    {
+        // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
+        internal int Epoch { get; init; }
+
+        // E > R > L > U, the conjunction's order (DECISIONS BU-22); a Proven clause has none.
+        internal int Rank => this.Outcome switch
+        {
+            ConstraintProof.Error => 4,
+            ConstraintProof.Refuted => 3,
+            ConstraintProof.Unknown => this.Limit ? 2 : 1,
+            _ => 0,
+        };
     }
 }

@@ -216,6 +216,7 @@ public sealed partial class Binding
 
             proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
+            var clause = binding.clauseRead is { } kept && kept.Outcome == proof ? kept : (ClauseFact?)null; // G351a: at the trial's verdict.
             proof = binding.EndProof(outer, proof);
             if (fact is not null)
             {
@@ -223,6 +224,7 @@ public sealed partial class Binding
             }
 
             binding.trialUnknown = fact;
+            binding.trialClause = clause is { } trial ? trial with { Epoch = binding.frameEpoch } : null;
             return proof;
         }
 

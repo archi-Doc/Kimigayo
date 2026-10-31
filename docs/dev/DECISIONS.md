@@ -5739,6 +5739,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Staged: PLAN G351 (a reference's Refuted, fact-less and pending constraint outcomes still record through `referenceConstraints`;
     removal: they route through RequireConstraint, then that record path is deleted).
   - Rejected: a second walk to explain a record; the explainer as an interim; per-form clauses.
+  - Amendment (G351a, U2.1 r2-4, 2026-10-31; BU's census check): the proof channel also carries a clause fact, `ClauseFact` (the
+    clause, its Constraint as proven, its outcome, whether it rests on a limit). Each clause list (`CheckConstraints`,
+    `ProveConditionalPremises`) hands the first clause at its combined verdict (E > R > L > U) one step outward after its end, and only
+    when that verdict is the clause's outcome; a composite whose parts settle as separate judgments holds it across them
+    (`HoldClause`, as `HoldUnknown`), a candidate trial keeps it (`trialClause`), frames drop it as they drop the U fact; no decision
+    reads it. Its readers come with G352 (selection's `CandidateConstraintFailure`) and G351 (r2-5).
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
