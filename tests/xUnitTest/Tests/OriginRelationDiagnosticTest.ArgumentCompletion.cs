@@ -65,6 +65,12 @@ public partial class OriginRelationDiagnosticTest
 
     private const string N3Join = "if c => [identity(1), 3] else => [x, 4]";
 
+    private const string Twice = "func twice(v: i64) -> i64 => v\n";
+
+    private const string Fh = "func fh(x: (i64) -> i64) -> i32 => 0\n";
+
+    private const string TwiceJoin = "(if d => twice else => twice)";
+
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
     // (`h(a)` and a value call `h(a)` give NoApplicableOverload_Kd at the call); its twins pass sources of the parameter Type.
@@ -94,6 +100,18 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.3", "r7l", RefOne + ApFunc + ApWide + RunHead + "    let a = ap(if c => one else => one)\n    return a\n")]
     [InlineData("U1.3", "r7f", RefOne + ApFunc + ApBool + RunHead + "    return ap(if c => one else => one)\n")]
     public void AJoinOfIndependentReferencesSelectsByItsType(string unit, string form, string body)
+        => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
+
+    // P4 over the call's position (BU's U1.6 survivors design 2): References that agree only in a nested join are judged with the call's
+    // whole flattened position (SPEC 10.5.3, 14.9.2 step 2), so an inner agreement never types the outer join: beside `identity`, which
+    // needs S, or an anonymous function, they wait with it and the selected candidate completes them at its Function Type (SPEC 10.5.1,
+    // 7.7.4), at a value call (v1, v1f) and a named call (v1n, g161).
+    [Theory]
+    [InlineData("U1.6", "v1", IdentityT + Twice + Fh + KD + "    let h = fh\n    return h(if c => " + TwiceJoin + " else => identity)\n")]
+    [InlineData("U1.6", "v1n", IdentityT + Twice + Fh + KD + "    return fh(if c => " + TwiceJoin + " else => identity)\n")]
+    [InlineData("U1.6", "v1f", Twice + Fh + KD + "    let h = fh\n    return h(if c => " + TwiceJoin + " else => func [] (v: i64) -> i64 => v)\n")]
+    [InlineData("U1.6", "g161", IdentityT + Stop + Twice + "func f(x: (i64) -> i64) -> i32 => 0\nfunc k(g1: (i64) -> i64, c2: bool, c3: bool, g4: (i64) -> i64, c5: bool, c6: bool, c7: bool, c8: bool) -> i32\n    return f((if c7 => func [] (v) => v else if c8 => (if c5 => twice else if c6 => g4@move else => (if c2 => identity else if c3 => stop() else => g1@move)) else => func [] (v: i64) -> i64 => v))\n")]
+    public void AnInnerAgreementWaitsWithItsCallsPosition(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 
     // The invalid twins: whatever the call kind, a typed argument that no candidate admits is NoApplicableOverload_Kd at the call (SPEC

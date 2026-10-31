@@ -296,7 +296,7 @@ public sealed partial class Binding
     {
         if (context.Expected is null)
         {
-            this.BindAgreeingReferences(context); // P4: agreeing References at its sources are its Function Item.
+            this.BindAgreeingReferences(node, context); // P4: agreeing References at its call's position are its Function Item.
         }
 
         var types = this.resultTypes;

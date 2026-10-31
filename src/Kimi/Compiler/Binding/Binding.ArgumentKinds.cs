@@ -12,8 +12,9 @@ namespace Kimi.Compiler;
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
 //   (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a function reference that needs S, or a function
-//   name at a result of the probe's control flow (P2), unless every such result is the same declaration that needs no S, which P4
-//   binds as its Function Item (BindAgreeingReferences). Case: a contextual `.Case(...)` (it resolves only in its expected enum).
+//   name at a result of the probe's control flow (P2), unless every unbound part of that control flow's whole position, nested joins
+//   flattened, is the same declaration that needs no S, which P4 binds as its Function Item (BindAgreeingReferences). Case: a
+//   contextual `.Case(...)` (it resolves only in its expected enum).
 //   Call: a nested call or construction the argument probe deferred.
 //   A part its producer records as a Join, Case, Reference, Function or Call awaits its call (AwaitsCall) until its call completes it,
 //   its core bound or failed; all but a Join are SPEC 10.5.1's waiting parts, which the selected candidate completes. Typed: every
@@ -241,32 +242,44 @@ public sealed partial class Binding
         return true;
     }
 
-    // P4 (SPEC 10.5.3, 14.9.2 step 2): when every source of the join still unbound is a Reference to one declaration that needs no S
-    // (IndependentFunctionItem, P1's rule), they are bound as that Function Item before the join judges its sources, so the join is
-    // typed and checked per candidate; otherwise they wait for the call, which completes them at its Function Type.
-    private void BindAgreeingReferences(ResultContext context)
+    // P4 (SPEC 10.5.3, 14.9.2 step 2): the call's whole position decides whether its References are a Function Item, so P4 judges only
+    // the argument probe's own join, over its flattened results (AddResults), nested joins included. When every unbound part there is
+    // a Reference to one declaration that needs no S (IndependentFunctionItem, P1's rule), the join's waited sources are bound as that
+    // Function Item before it judges them, so it is typed and checked per candidate; otherwise they wait for the call, which completes
+    // them at its Function Type. A nested join's References wait with its call's position: an inner agreement never types the outer.
+    private void BindAgreeingReferences(Koto join, ResultContext context)
     {
-        BindingSymbol? item = null;
-        for (var i = 0; i < context.Sources.Count; i++)
+        if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
-            {
-                var core = PartCore(source);
-                if (this.KindOf(core) != PartKind.Reference || (item is not null && !ReferenceEquals(item, core.BoundSymbol)) ||
-                    !IndependentFunctionItem(core.BoundSymbol!, this.UnboundMemberReference(core), this.ReferenceDeclaringType(core)))
-                {
-                    return;
-                }
-
-                item = core.BoundSymbol;
-            }
+            return;
         }
 
-        BoundType? type = null;
-        for (var i = 0; item is not null && i < context.Sources.Count; i++)
+        var start = this.positionParts.Count;
+        this.AddResults(join);
+        Koto? item = null;
+        for (var i = start; i < this.positionParts.Count; i++)
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } source &&
-                (type ??= this.BindFunctionItem(PartCore(source), item, this.ConstraintScope(source))) is not null)
+            var core = PartCore(this.positionParts[i]);
+            if (core.BoundType is not null)
+            {
+                continue;
+            }
+
+            if (this.KindOf(core) != PartKind.Reference || (item is not null && !ReferenceEquals(item.BoundSymbol, core.BoundSymbol)) ||
+                !IndependentFunctionItem(core.BoundSymbol!, this.UnboundMemberReference(core), this.ReferenceDeclaringType(core)))
+            {
+                item = null;
+                break;
+            }
+
+            item ??= core;
+        }
+
+        this.ClosePosition(start);
+        var type = item is null ? null : this.BindFunctionItem(item, item.BoundSymbol!, this.ConstraintScope(item));
+        for (var i = 0; type is not null && i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
             {
                 context.Sources[i] = this.BindWaiting(source, type); // Through the forms that deliver it, at the Item's Type.
             }
