@@ -14558,3 +14558,13 @@ structure is recorded here by the unit that first implements it.
     this expectation change) fail on dev with `GenerationResourceLimit_Kd`; `AChainWithoutGrowthHasNoLimitAndTheSetLimitStopsAtItsCall`
     replaces the depth row (130 distinct functions, no record); the growth rows (`grow<Box<T>>`, the growing destructor, the tables'
     growing key, `ComponentSummaryTest`'s non-regular value, now stopped by the generation) are unchanged.
+  - Amended by G332 U2 (window): W stays 1,024 identity items, chosen from deterministic data (a throwaway probe of a fresh collector
+    over a built program, W = 128 against 1,024, interleaved twice): Generic 128 is identical (2,570 items, Work 11,793, 3,608 walk
+    steps, 1.92 MB); an 800-function chain admits the same 801 items and Work 3,199, its walk 94,272 against 320,400 steps (O(W·n),
+    review 2's N5); a growing drop glue cycle through 130 structs stops at generation 17 with 1,024 (4,164 items, 262,276 steps,
+    3.4 MB) and only at the height cap with 128 (33,023 items, 2,105,280 steps, 22.3 MB), and a body cycle longer than 128 stays
+    Resource. Timing, indicative only (unpinned, a merge window open): chain 5.6 against 3.3-4.4 ms, the cycle 15-31 against 139-160
+    ms, Generic 128 within noise; it did not decide W. Rows: `StorageRingsHaveNoGrowth` 64 (the largest ring under the storage cap)
+    and 65 (its storage-nesting gap); `GrowthStopsAtItsSite` (a mutual cycle, a non-regular value behind a handle, the 130-struct
+    cycle, a written nest of 130 past the height cap, a branching non-regular Type at the 1,025th glue item, and the Known limit's
+    written growth, each at its site); `AChainWithoutGrowthScalesLinearly` (200, 400, 800 functions: items and Work in proportion).
