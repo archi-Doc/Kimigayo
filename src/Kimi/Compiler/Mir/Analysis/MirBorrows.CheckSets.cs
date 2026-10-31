@@ -50,7 +50,10 @@ internal sealed partial class MirBorrows
     private int[] entryFirst = []; // By slot + 1: the first of the location's entries into its holder at that check (None: none).
     private int[] takenFirst = []; // By slot + 1: the last value a pass took under its holder at that check (None: none).
     private int[] entryNext = []; // By entry: the next entry into its holder.
+    private (int Pass, int Via, bool Several, bool Plain)[] readBy = []; // By set: the pass that read it under a holder, its first holder,
+                                                                         // whether under another, and under a non-escape one.
     private int takenCount;
+    private int passes; // The passes begun, never reset (Read's stamp).
     private int stamp;
     private byte pass;
     private int passIndex; // A Valued or Rooted pass's operand.
@@ -309,7 +312,36 @@ internal sealed partial class MirBorrows
         return slot + 1;
     }
 
-    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex) = (pass, index);
+    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex, this.passes) = (pass, index, this.passes + 1);
+
+    // Whether the pass has read a holder's set under two other holders, so reading it under this one tags nothing more (V16, PLAN G342:
+    // holders past E share E's interned state): a candidate keeps its first holder and the first two an activation's passes find it in,
+    // and the closure is the set's. A holder that reserves a two-phase Loan, where its mode differs, is always read and counts for none;
+    // an escape holder's read keeps less of rule W (Kept), so it stands for another only after a non-escape one. Else records the read.
+    private bool Read(int set, int via)
+    {
+        if (this.reserves[via])
+        {
+            return false;
+        }
+
+        MirDataflow.Grow(ref this.readBy, set + 1);
+        ref var seen = ref this.readBy[set];
+        var plain = this.wCount == 0 || !this.escape[via];
+        if (seen.Pass != this.passes)
+        {
+            seen = (this.passes, via, false, plain);
+            return false;
+        }
+
+        if (seen.Several && (seen.Plain || !plain))
+        {
+            return true;
+        }
+
+        (seen.Several, seen.Plain) = (seen.Several || via != seen.Via, seen.Plain || plain);
+        return false;
+    }
 
     // A holder reached at the check: in the Based and Stored passes, the drop tier's included, its stores count, and its state is read where
     // the pass reads it first (a Based read stands for every pass, a Valued one for the later operands and a Rooted one for the earlier).
@@ -346,7 +378,11 @@ internal sealed partial class MirBorrows
         {
             var slot = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
-            this.Scan((int)state[slot], slot);
+            if (!this.Read((int)state[slot], slot))
+            {
+                this.Scan((int)state[slot], slot);
+            }
+
             this.Work++;
         }
     }

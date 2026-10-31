@@ -33,6 +33,7 @@ internal sealed partial class MirBorrows
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
     private int[] queuedBy = []; // By holder: the closure that queued it.
     private int[] partlyBy = []; // By holder: the closure that reached it through a part or E (rule W's read-through clause).
+    private int[] namedBy = []; // By set: the closure that queued the holders it names.
     private int closures; // The closures made (Chain).
     private MirWrites[] writable = []; // By local: what a call may write past it (MirTypes.HoldsLoans).
     private int[] writing = []; // By slot: the W walk that reached it.
@@ -94,7 +95,13 @@ internal sealed partial class MirBorrows
 
         for (var i = 0; i < this.chained.Count; i++)
         {
-            this.Queue((int)state[this.chained[i]]);
+            var read = (int)state[this.chained[i]];
+            MirDataflow.Grow(ref this.namedBy, read + 1);
+            if (this.namedBy[read] != this.closures)
+            {
+                this.namedBy[read] = this.closures; // A set's holders are queued once per closure, however many holders hold it.
+                this.Queue(read);
+            }
         }
 
         this.parts.Clear();

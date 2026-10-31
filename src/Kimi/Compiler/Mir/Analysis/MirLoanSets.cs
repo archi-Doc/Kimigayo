@@ -8,10 +8,10 @@
 // elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
 // equal exactly when their ids are; a node never changes once made. Each operation but Of and the n-ary Union is memoized by its operands,
-// so repeating it costs one lookup; Of's run is its own key, and the n-ary Union reads each element once and sorts the marker words it
-// sets, never the range between its least and greatest element (its caller memoizes it). Storage is pooled: Clear empties it per body
-// view in proportion to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a warm run of a sized workload
-// allocates nothing.
+// so repeating it costs one lookup; Of's run is its own key, and the n-ary Union reads each distinct part once (V16, PLAN G342: holders
+// that share one interned state are many parts of one set), each of its elements once, and sorts the marker words it sets, never the
+// range between its least and greatest element (its caller memoizes it). Storage is pooled: Clear empties it per body view in proportion
+// to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a warm run of a sized workload allocates nothing.
 // Must not number or interpret elements, read MIR, or keep a set in another form.
 
 using System.Numerics;
@@ -33,6 +33,8 @@ internal sealed class MirLoanSets
     private int[] starts = [0, 0]; // Each node's first element, then the end of the last node's run and of a candidate's.
     private ulong[] marker = []; // The n-ary Union's bit per element, clear between its calls.
     private int[] touched = []; // The marker words an n-ary Union set, in the order it set them.
+    private int[] unionBy = []; // By node: the n-ary Union pass that read it, so each distinct part is read once.
+    private int unionsMade; // The n-ary Union passes made.
     private int created = 1; // The nodes made; node 0 is the empty set.
 
     /// <summary>Initializes a new instance of the <see cref="MirLoanSets"/> class, holding the empty set.</summary>
@@ -123,20 +125,23 @@ internal sealed class MirLoanSets
         return union;
     }
 
-    /// <summary>Gets the union of any number of sets in one pass (R4-M138): each element is set once in a reused bit marker, whose words
-    /// set are listed as they are first set, then sorted and read back in ascending order, each cleared; one or no distinct set is
-    /// returned as it is. Its work is the elements read, the words touched times their logarithm and the set made, never the range between
+    /// <summary>Gets the union of any number of sets in one pass (R4-M138): each distinct part is read once (a node stamp), each element set
+    /// once in a reused bit marker, whose words set are listed as they are first set, then sorted and read back in ascending order, each
+    /// cleared; one or no distinct set is returned as it is. Its work is the elements read, the words touched times their logarithm and the set made, never the range between
     /// the least element and the greatest.</summary>
     /// <param name="parts">The sets.</param>
     /// <returns>The elements of any.</returns>
     internal int Union(ReadOnlySpan<int> parts)
     {
         var (first, distinct, total, high) = (0, false, 0, -1);
+        MirDataflow.Grow(ref this.unionBy, this.created);
+        this.unionsMade++;
         foreach (var part in parts)
         {
-            if (part != 0)
+            if (part != 0 && this.unionBy[part] != this.unionsMade)
             {
-                distinct |= first != 0 && part != first;
+                this.unionBy[part] = this.unionsMade;
+                distinct |= first != 0;
                 first = first == 0 ? part : first;
                 var run = this.Elements(part);
                 (total, high) = (total + run.Length, Math.Max(high, run[^1]));
@@ -151,8 +156,15 @@ internal sealed class MirLoanSets
         MirDataflow.Grow(ref this.marker, (high >> 6) + 1);
         MirDataflow.Grow(ref this.touched, total);
         var words = 0;
+        this.unionsMade++;
         foreach (var part in parts)
         {
+            if (this.unionBy[part] == this.unionsMade)
+            {
+                continue;
+            }
+
+            this.unionBy[part] = this.unionsMade;
             foreach (var element in this.Elements(part))
             {
                 ref var word = ref this.marker[element >> 6];
