@@ -50,7 +50,8 @@ internal sealed partial class ModuleCodegen
     }
 
     /// <summary>Gets the release of an adapter item's heap environment, its table's drop entry (IMPL 21.1.3; DECISIONS R5-M104): a glue
-    /// function's signature (<see cref="DropGlue.Parameters"/>) named after its entry with <c>_drop</c>, kept across Writes.</summary>
+    /// function's signature (<see cref="DropGlue.Parameters"/>), called at the address of a copy of the environment word (G182), named after
+    /// its entry with <c>_drop</c>, kept across Writes.</summary>
     /// <param name="item">The adapter item.</param>
     /// <returns>The signature.</returns>
     internal FunctionAbi Release(int item)

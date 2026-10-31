@@ -127,9 +127,8 @@ public class GenericFunctionReferenceTest
         var record = Assert.Single(result.Diagnostics, x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Equal(new[] { "declaration", "parameter" }, record.Related!.Select(static x => x.Role).Order(StringComparer.Ordinal));
-        var document = c.Diagnostics.FindDocument(path)!;
         var shown = record.Related!.Single(static x => x.Role == "parameter").Span!.Value;
-        Assert.Equal(parameter, document.SourceText.Substring(shown.Start, shown.Length)); // The written parameter of S.
+        Assert.Equal(parameter, TestDiagnostics.Text(c.Diagnostics, path, shown)); // The written parameter of S.
         if (name != "Initializer")
         {
             return;
@@ -169,9 +168,8 @@ public class GenericFunctionReferenceTest
         var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics, x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Equal(new[] { "declaration", "parameter", "parameter" }, record.Related!.Select(static x => x.Role).Order(StringComparer.Ordinal));
-        var text = c.Diagnostics.FindDocument(path)!.SourceText;
         var spans = record.Related!.Where(static x => x.Role == "parameter").Select(static x => x.Span!.Value).ToArray();
-        Assert.All(spans, x => Assert.Equal("ref/i32", text.Substring(x.Start, x.Length))); // The written parameters of S, in order.
+        Assert.All(spans, x => Assert.Equal("ref/i32", TestDiagnostics.Text(c.Diagnostics, path, x))); // The written parameters of S, in order.
         Assert.True(spans[0].Start < spans[1].Start, name);
     }
 

@@ -51,14 +51,22 @@ internal static class TestDiagnostics
     /// <param name="compilation">The compilation.</param>
     /// <returns>The diagnostics.</returns>
     internal static TestDiagnostic[] Of(Compilation compilation)
-        => Collect(compilation.Diagnostics, null);
+        => Collect(compilation.Diagnostics, null, null);
 
     /// <summary>Gets the published diagnostics of one source of a compilation.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <param name="path">The source path as the compilation names it, such as <c>Hello.kimi</c>.</param>
     /// <returns>The diagnostics.</returns>
     internal static TestDiagnostic[] Of(Compilation compilation, string path)
-        => Collect(compilation.Diagnostics, path);
+        => Collect(compilation.Diagnostics, path, null);
+
+    /// <summary>Gets every published diagnostic of a compilation that holds two snapshots of one path, reading the text under the spans
+    /// of that path from the snapshot the test names, since the path cannot tell which one a record names (PLAN G175).</summary>
+    /// <param name="compilation">The compilation.</param>
+    /// <param name="snapshot">The snapshot whose records the test reads.</param>
+    /// <returns>The diagnostics.</returns>
+    internal static TestDiagnostic[] Of(Compilation compilation, SourceDocument snapshot)
+        => Collect(compilation.Diagnostics, null, snapshot);
 
     /// <summary>Gets every published diagnostic of the compilation that owns a source unit.</summary>
     /// <param name="kotonoha">The source unit.</param>
@@ -72,7 +80,16 @@ internal static class TestDiagnostics
     internal static TestDiagnostic[] Of(CodeContext context)
         => Of(context.Kotonoha.Compilation);
 
-    private static TestDiagnostic[] Collect(DiagnosticOwner owner, string? path)
+    /// <summary>Reads the source text under a span of a finalized record, the one way tests read it by path.</summary>
+    /// <param name="owner">The owner that finalized the record.</param>
+    /// <param name="path">The path of the record's source.</param>
+    /// <param name="span">The span.</param>
+    /// <returns>The text, or <see langword="null"/> when no document has that path.</returns>
+    /// <exception cref="InvalidOperationException">The owner holds two snapshots of the path (PLAN G175).</exception>
+    internal static string? Text(DiagnosticOwner owner, string path, SourceSpan span)
+        => owner.FindDocument(path)?.SourceText.Substring(span.Start, span.Length);
+
+    private static TestDiagnostic[] Collect(DiagnosticOwner owner, string? path, SourceDocument? snapshot)
     {
         var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
         var records = new List<TestDiagnostic>(result.Diagnostics.Length);
@@ -85,7 +102,8 @@ internal static class TestDiagnostics
             }
 
             var span = diagnostic.Span ?? default;
-            var text = diagnostic.Span is { } primary && source is not null && owner.FindDocument(source) is { } document ? document.SourceText.Substring(primary.Start, primary.Length) : null;
+            var text = diagnostic.Span is not { } primary || source is null ? null
+                : snapshot is not null && snapshot.Path == source ? snapshot.SourceText.Substring(primary.Start, primary.Length) : Text(owner, source, primary);
             records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Label, diagnostic.Repairs) { RepairSummary = TestDiagnostic.Summarize(diagnostic.Repairs, span.Start) });
         }
 
