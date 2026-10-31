@@ -4575,7 +4575,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
   - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
     the 70% rule).
-- **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (2026-10-26, R4's
+- **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (superseded in part
+  by R4-M155: its result half, the owner's (A)) (2026-10-26, R4's
   implementer lane under R4-M126 §2.15 (P10) and D-11, the planning session's scope confirmation; supersedes R4-M101 O1)
   - Rule (SPEC 15.3.4 "Nested signatures", which names Function Types, Callable and anonymous functions together as nested signatures
     with per-call direct-input quantification; SPEC 15.6.1: a definition assumes its signature's Types well-formed and each call proves
@@ -5712,6 +5713,32 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
     pair-cases' six a5-writes rows.
+- **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
+  (2026-10-31; R4's design round 2 and design-r2 Amendments 1-5 (`r4-notes\g216a-u21\design-r2.md`), BU agreeing to the proof
+  channel; the owner, verbatim: 「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and
+  「すべて推奨の内容でお願いします」 for the e1a split; units a-g, branch `claude/a5-g216a-u21`) SPEC 10.7, 15.3.5, 15.3.7, 15.6.1, 7.7.4,
+  8.3, 23.1. Supersedes R4-M137's result half and, in part, BU-26; amends BU-22.
+  - One fact: `ComparisonFailure` (Kind, Part, Path, Depth, Clause, ends, CallableInstance), produced once by the judgment that fails:
+    the relation walk (`RelationWalk`), ContractFits and its solve (a failed solve names fixed ends only, the unsolved variable
+    eliminated, Amendment 2), the common-Type search (`CommonOriginType`), the erasure judgment (`ErasesToFunction`) and the Callable
+    proof. Every recording site of census-a #1-#27 reads it through a required parameter; `RecordMismatch` is a table over its Kind;
+    nothing walks or judges again to explain a record (the explainers `ConversionContractFailure`, `FailedInstancePart`,
+    `ItemContractFailure`, `ConditionContractFailure`, `ContractFits(explain)` and the transitional path are deleted).
+  - Records: a whole-contract condition is one `UnprovenOriginContract_Kd` at the value (`ContractFact`); every failing position of a
+    walk is a record, further ones through one "records beyond the first" channel for relation and contract records (Amendment 1,
+    A2); a member's position whose relation only an inferred or body-local region decides is the located `Unsupported_Kd` (A1); a
+    structure that holds with no fact, a position its search cannot find, and a judged erasure failing without a condition are
+    `InternalInvariant_Kd` (S1, S2, S5). A Closure header is judged by structure; its Origins by erasure (SPEC 7.7.4, Amendment 3).
+  - The proof channel (`Binding.ConstraintValidation.Proofs.cs`) carries a Callable proof's Unknown comparison failure, the U fact,
+    stamped with its outermost clause and stored with its verdict in every cache; frames and epochs (Amendment 5): a judgment's
+    outermost BeginProof or a candidate trial opens a frame with a fresh epoch, a frame's end drops its untaken facts, a consumer takes
+    only its own frame's fact (a foreign one is `InternalInvariant_Kd`). `RequireConstraint` (`FailUnprovenConstraint`) is the one
+    recording owner of the Constraint record after a Callable clause's proof; selection's explanation reads its trial's fact.
+  - (A)'s use side by rule: a value call of a nested signature proves its instantiated result well formed at the call
+    (`RequireNestedResult`); an anonymous function's body assumes its own result's well-formedness.
+  - Staged: PLAN G351 (a reference's Refuted, fact-less and pending constraint outcomes still record through `referenceConstraints`;
+    removal: they route through RequireConstraint, then that record path is deleted).
+  - Rejected: a second walk to explain a record; the explainer as an interim; per-form clauses.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -6713,7 +6740,8 @@ resumed by R4-M86 (2026-10-20).
   Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
   binds as a transfer (PLAN G100; classification superseded by G224 Static Field classification, acquisition legality remains).
-- **BU-22** (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
+- **BU-22** (amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2
+  Amendments 4-5) (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
   `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
   component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
   struct or enum, what its storage adds, in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments
@@ -6807,7 +6835,9 @@ resumed by R4-M86 (2026-10-20).
   `.Defaults`' copy rows, `MirAnalysisTest`'s effect row (now an R3 Drop) and `OriginRowsTest`'s static rows 6, 7 and 7' (7 and 7' keep
   an accessor storage witness; R4 restores row 6's Closure case), the effect rule's witnesses being `MirBorrowsTest.Rooted`'s.
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
-- **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed") (2026-10-22;
+- **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed"; superseded in
+  part by R4-M155: a nested Function Type part's result well-formedness for an owner without a named declaration (the owner's (A)))
+  (2026-10-22;
   the BU planning session after the full process: designs A and B, the design review's merge M, R4
   agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
   body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
