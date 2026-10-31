@@ -6,12 +6,12 @@ namespace Kimi.Compiler;
 
 // The Type relation's one walk (SPEC 3.8, 10.7, 15.6.1).
 // - Responsibility: whether `actual` is a subtype of `expected`, part by part, and a Function Type by one Callable comparison
-//   (FunctionFits).
+//   (FunctionFits), whose implementation conditions it judges at every nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
 // - Outputs: whether the relation holds.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
-//   inputs, then its result.
+//   inputs, its result, then the implementation's own well-formedness.
 // - Prohibitions: a mode that changes what the relation is goes into the query, never into a parameter of one entry.
 public sealed partial class Binding
 {
@@ -139,7 +139,9 @@ public sealed partial class Binding
         // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
         // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
         // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly. Inside a Function
-        // Type only `Everywhere` treats Origin bindings as equal.
+        // Type only `Everywhere` treats Origin bindings as equal. Under the owner's (a), the implementation's own well-formedness, its
+        // inputs' and result's, is one of its conditions, proven from the required signatures' own well-formedness (the instance's
+        // premises) and the premises at the use (FailedSignatureWellFormedness); without a Binding no premise is visible.
         private bool FunctionFits(BoundType actual, BoundType expected, bool invariant, in CallableInstance instance)
         {
             var actualInputs = actual.Components[0];
@@ -151,8 +153,10 @@ public sealed partial class Binding
             }
 
             var outer = this.part;
-            this.part = outer == OriginPart.Everywhere ? OriginPart.Everywhere : OriginPart.Judged;
-            var fits = this.MembersFit(actual, expected, invariant, instance);
+            var everywhere = outer == OriginPart.Everywhere;
+            this.part = everywhere ? OriginPart.Everywhere : OriginPart.Judged;
+            var fits = this.MembersFit(actual, expected, invariant, instance) &&
+                (this.binding is null || everywhere || this.binding.FailedSignatureWellFormedness(actual, instance, this.use!) is null);
             this.part = outer;
             return fits;
         }

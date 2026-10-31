@@ -30,11 +30,17 @@ public sealed partial class Binding
     internal static bool FitsStructuralPart(BoundType actual, BoundType expected)
         => new RelationWalk(null, null, OriginPart.Everywhere).Fits(actual, expected);
 
-    // SPEC 10.7, 15.3.7: callable compatibility of an implementation's signature with a required one: subtyping against the required
-    // signature, its result Never when the implementation's is (CompatibleResult); `own` is the declaration whose per-call inputs the
-    // implementation's signature names.
-    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own)
-        => new RelationWalk(null, null, OriginPart.Judged).Fits(actual, this.CompatibleSignature(actual, expected), own: own);
+    // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
+    // result Never when the implementation's is (CompatibleResult), judged without recording a bound; `own` is the declaration whose
+    // per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
+    internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own) => IsSubtype(actual, this.CompatibleSignature(actual, expected), own);
+
+    // SPEC 10.7, 15.3.7: callable compatibility of a Closure's or a Function value's signature with a required one: CallableSubtype and
+    // the implementation's conditions, its own well-formedness proven from the required signature's and the premises at `use` under
+    // the instantiation in position (the owner's (a); FailedSignatureWellFormedness, the one judgment FunctionFits makes too).
+    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use)
+        => this.CallableSubtype(actual, expected, own) && (actual is not { Kind: BoundTypeKind.Function, Components.Count: 2 } ||
+            this.FailedSignatureWellFormedness(actual, Comparison(actual, own, this.CompatibleSignature(actual, expected), null), use) is null);
 
     // SPEC 3.8 at a use whose premises and Origins the relation reads.
     internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected);
@@ -155,8 +161,19 @@ public sealed partial class Binding
             }
         }
 
-        return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
-            ? new(at, "the result", result.Longer, result.Shorter, result.Equality) : null;
+        if (this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result)
+        {
+            return new(at, "the result", result.Longer, result.Shorter, result.Equality);
+        }
+
+        // The owner's (a): the implementation's own well-formedness, proven from the required signature's (the one judgment).
+        if (this.FailedSignatureWellFormedness(actual, instance, use) is not { } formed)
+        {
+            return null;
+        }
+
+        var member = formed.Part < inputs.Components.Count ? $"the {Ordinal(formed.Part + 1)} parameter's well-formedness" : "the result's well-formedness";
+        return new(at, member, this.Instantiated(formed.Longer, instance), this.Instantiated(formed.Shorter, instance), false);
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }

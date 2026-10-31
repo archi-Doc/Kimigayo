@@ -27,7 +27,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
-            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
+            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSubtype(itemSignature, signature, SignatureOwner(item))
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -47,7 +47,7 @@ public sealed partial class Binding
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration)
+            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration, node)
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };

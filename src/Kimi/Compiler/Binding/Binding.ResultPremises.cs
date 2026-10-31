@@ -72,7 +72,7 @@ public sealed partial class Binding
         signature = this.ContractType(signature, this.ConstraintScope(use));
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSignatureFits(signature, required, SignatureOwner(item)))
+            if (!this.CallableSubtype(signature, required, SignatureOwner(item)))
             {
                 return false;
             }
@@ -339,6 +339,33 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.7, the owner's (a): the first part of the implementation's own well-formedness, its n-th input's or its result's, that the
+    // required signatures' own well-formedness and the premises at `use` do not prove under the instantiation (null when every part
+    // holds), with the failing relation.
+    private (int Part, BoundOrigin Longer, BoundOrigin Shorter)? FailedSignatureWellFormedness(BoundType actual, in CallableInstance instance, Koto use)
+    {
+        try
+        {
+            var inputs = actual.Components[0];
+            var visit = new WellFormedVisit(WellFormedSubject.Input, null, use, WellFormedAction.Instance) { Comparison = instance };
+            for (var i = 0; i <= inputs.Components.Count; i++)
+            {
+                var part = i < inputs.Components.Count ? inputs.Components[i] : actual.Components[1];
+                this.failedResultPremise = null;
+                if (!this.VisitWellFormedPremises(part, part, null, visit) && this.failedResultPremise is { } failed)
+                {
+                    return (i, failed.Longer, failed.Shorter);
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            this.failedResultPremise = null;
+        }
+    }
+
     private OriginContractFact ConditionFact(Koto at, string member, BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance, Koto use)
     {
         if (!equality && longer.Kind == OriginKind.Intersection)
@@ -594,6 +621,18 @@ public sealed partial class Binding
         {
             return this.ProvesOriginOutlives(longer, shorter, visit.Use, visit.Comparison) &&
                 (!equality || this.ProvesOriginOutlives(shorter, longer, visit.Use, visit.Comparison));
+        }
+
+        if (visit.Action == WellFormedAction.Instance)
+        {
+            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use, 0) &&
+                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use, 0)))
+            {
+                return true;
+            }
+
+            this.failedResultPremise = (longer, shorter);
+            return false;
         }
 
         if (visit.Action == WellFormedAction.Bound)
