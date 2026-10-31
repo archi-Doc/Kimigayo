@@ -13928,7 +13928,10 @@ structure is recorded here by the unit that first implements it.
     gap again (`InstanceCollectorTest.AGroupStaticsClosureIsTheGap`, fail-first). The gap's family is now a nested function's call
     (G149, R5-M43), a Closure whose held instance has an Origin position (until G300's per-use opening) and a group static's Closure
     (until P42). Rejected: a group arm in the collector (a consumer deciding what TyCtxt publishes); EnclosingDeclaration skipping a
-    group (Binding's view: it would close the Closure per instance while X33 (a) keys the static's storage by its symbol).
+    group (Binding's view: it would close the Closure per instance while X33 (a) keys the static's storage by its symbol). The test
+    is a whitelist (a function or a Type), so another kind of enclosing declaration falls to the gap, never into an identity (BU's
+    n1). A function nested in a group static's Closure loses its record at its call (m-groupstaticfunc's `inner()`): the Closure's
+    body is no longer admitted, and that record existed only through N5's open admission (R5's reviewer).
 - **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
   §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
   - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and

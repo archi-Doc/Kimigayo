@@ -81,8 +81,8 @@ internal sealed partial class TyCtxt
             return instance;
         }
 
-        var frame = closure.ClosureContext is null && this.EnclosingDeclaration(symbol) is { Kind: not BindingSymbolKind.Container } enclosing
-            ? enclosing : symbol;
+        var frame = closure.ClosureContext is null &&
+            this.EnclosingDeclaration(symbol) is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Type } enclosing ? enclosing : symbol;
         return this.Identity(frame.Declaration);
     }
 
