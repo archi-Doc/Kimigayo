@@ -11,8 +11,10 @@ namespace Kimi.Compiler;
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a function reference that needs S. Case: a
-//   contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or construction the argument probe deferred.
+//   (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a function reference that needs S, or a function
+//   name at a result of the probe's control flow (P2), unless every such result is the same declaration that needs no S, which P4
+//   binds as its Function Item (BindAgreeingReferences). Case: a contextual `.Case(...)` (it resolves only in its expected enum).
+//   Call: a nested call or construction the argument probe deferred.
 //   A Call awaits its call (AwaitsCall) always, a Join, Case, Reference or Function while unbound; all but a Join are SPEC 10.5.1's
 //   waiting parts, which the selected candidate completes. Typed: every other part.
 // - Inputs: the part's syntax and binding state; ControlFlow's survey of a control-flow part's result sources (SurveyResult); the
@@ -298,9 +300,55 @@ public sealed partial class Binding
         => ControlFlowExpression(part) is { } flow ? this.SurveyResult(flow, scope, type).Fits : this.FitsInputLiteral(part, type, scope);
 
     // SPEC 10.5: a function name that is a call argument or the part under the argument probe is not bound as its Item without an
-    // expectation; PrepareArgument decides whether it is evidence or waits for S.
+    // expectation; PrepareArgument decides whether it is evidence or waits for S. P2 (SPEC 10.5.3, 14.9.2): a function name that is a
+    // result of the probe's control flow, at a position its call completes (CallableTarget), stays unbound as a Reference.
     private bool AtArgumentPosition(Koto node)
-        => (TryNameRoot(node, out var root) && root.Parent is InvocationKoto) || ReferenceEquals(this.argumentProbe, node);
+    {
+        if ((TryNameRoot(node, out var root) && root.Parent is InvocationKoto) || ReferenceEquals(this.argumentProbe, node))
+        {
+            return true;
+        }
+
+        if (CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target))
+        {
+            return false;
+        }
+
+        this.RecordPart(node, PartKind.Reference);
+        return true;
+    }
+
+    // P4 (SPEC 10.5.3, 14.9.2 step 2): when every source of the join still unbound is a Reference to one declaration that needs no S
+    // (IndependentFunctionItem, P1's rule), they are bound as that Function Item before the join judges its sources, so the join is
+    // typed and checked per candidate; otherwise they wait for the call, which completes them at its Function Type.
+    private void BindAgreeingReferences(ResultContext context)
+    {
+        BindingSymbol? item = null;
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
+            {
+                var core = PartCore(source);
+                if (this.KindOf(core) != PartKind.Reference || (item is not null && !ReferenceEquals(item, core.BoundSymbol)) ||
+                    !IndependentFunctionItem(core.BoundSymbol!, this.UnboundMemberReference(core), this.ReferenceDeclaringType(core)))
+                {
+                    return;
+                }
+
+                item = core.BoundSymbol;
+            }
+        }
+
+        BoundType? type = null;
+        for (var i = 0; item is not null && i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source &&
+                (type ??= this.BindFunctionItem(PartCore(source), item, this.ConstraintScope(source))) is not null)
+            {
+                context.Sources[i] = this.BindWaiting(source, type); // Through the forms that deliver it, at the Item's Type.
+            }
+        }
+    }
 
     // Independent argument evidence is prepared once for named and constraint-based calls.
     private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)

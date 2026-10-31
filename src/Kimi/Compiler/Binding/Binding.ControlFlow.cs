@@ -294,6 +294,11 @@ public sealed partial class Binding
     // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
     private BoundType? DecideResult(Koto node, ResultContext context)
     {
+        if (context.Expected is null)
+        {
+            this.BindAgreeingReferences(context); // P4: agreeing References at its sources are its Function Item.
+        }
+
         var types = this.resultTypes;
         types.Clear();
         var awaiting = this.ResultCandidates(context, types);

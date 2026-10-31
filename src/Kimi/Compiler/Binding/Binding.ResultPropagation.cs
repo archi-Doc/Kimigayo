@@ -252,8 +252,9 @@ public sealed partial class Binding
 
     // The same with the source's Awaiting (AwaitsFor) when the caller already has it, so the source is not walked twice.
     private bool Deferred(Koto source, Awaiting? awaits)
-        => source.BindingState is BindingState.Unvisited or BindingState.Unresolved && !this.PartFailed(source) &&
-            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source) || this.KindOf(source) == PartKind.Call);
+        => !this.PartFailed(source) && (this.KindOf(source) is var kind && kind is PartKind.Call or PartKind.Reference ? AwaitsCall(source, kind) :
+            source.BindingState is BindingState.Unvisited or BindingState.Unresolved &&
+            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source)));
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
@@ -657,9 +658,9 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            _ when kind is PartKind.Function or PartKind.Case or PartKind.Reference => // One waiting for its call, fitted as an argument
+            _ when kind is PartKind.Function or PartKind.Case => // One waiting for its call, fitted as an argument by its header
                 this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
-            _ when kind == PartKind.Call => target, // A deferred call, which its own call completes at this position's Type.
+            _ when kind is PartKind.Call or PartKind.Reference => target, // Completed by its call at this position's Type (SPEC 10.1).
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 
