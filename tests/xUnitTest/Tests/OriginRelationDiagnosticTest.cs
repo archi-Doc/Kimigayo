@@ -259,6 +259,11 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> i32\n    let d = [h.link]\n    _ = d@move\n    return 0\n")]
     // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
     [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
+    // The owner's (A) (2026-10-26, 「(A) 入れ子自身のもの (推奨)」; G216 (a), DECISIONS R4-M155, superseding BU-26 in part): a nested
+    // Function Type part of a signature has its own well-formedness, which each call of it proves for its per-call Origin; the declaration
+    // owes none (these were ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence's rows).
+    [InlineData("contract C\n    func f() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n")]
+    [InlineData("func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\nfunc get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n")]
     public void AProvenRelationIsAccepted(string body)
     {
         var output = DiagnosticCorpus.Check(body + Main);
@@ -282,10 +287,10 @@ public partial class OriginRelationDiagnosticTest
         Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
     }
 
-    // SPEC 15.3.2, 15.3.4, 15.6.1 (DECISIONS BU-26): a declaration's Type occurrence (a Field's, payload's or base's declared Type, a nested
-    // Function Type part of a signature, which no premise covers) is judged by Binding from the premises visible at it: an unproven
-    // relation is Binding's wellFormed record there, one per failing operand of a meet. The valid twin writes the premise (a clause or a
-    // Semantics bound of the declaration) or, in a nested Function Type part, the Origin.
+    // SPEC 15.3.2, 15.6.1 (DECISIONS BU-26): a declaration's Type occurrence (a Field's, payload's or base's declared Type) is judged by
+    // Binding from the premises visible at it: an unproven relation is Binding's wellFormed record there, one per failing operand of a
+    // meet. The valid twin writes the premise (a clause or a Semantics bound of the declaration). A nested Function Type part of a
+    // signature is no longer one (AProvenRelationIsAccepted; the owner's (A), DECISIONS R4-M155).
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    public let", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n    public init(x: ref/(ref/i32 during (b and c)) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    origin c outlives a\n    public let", "ref/(ref/i32 during (b and c)) during a", "self.b outlives self.a", "self.c outlives self.a")]
@@ -293,8 +298,6 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("open struct B<T>\n    public init() => ()\nstruct D {a, b} : B<ref/(ref/i32 during b) during a>\n    public init() : base() => ()\n", "    public init() :", "    origin b outlives a\n    public init() :", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("open struct Base<T>\n    public init() => ()\nstruct Holder {a, b}\n    public let item: objref/Base<ref/i32 during a> during b\n", "    public let", "    origin a outlives b\n    public let", "objref/Base<ref/i32 during a> during b", "self.a outlives self.b")]
     [InlineData("public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\nstruct View<s/T> {a}\n    s is ref\n    public let b: ref/Box<s/T> during a\n", "s is ref", "s is owner", "ref/Box<s/T> during a", "the omitted Origin of s/T outlives self.a")]
-    [InlineData("contract C\n    func f() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n", "(ref/i32) during", "(ref/i32 during static) during", "ref/(ref/i32) during static", "the omitted Origin of ref/i32 outlives static")]
-    [InlineData("func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\nfunc get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n", "(ref/i32) during", "(ref/i32 during static) during", "ref/(ref/i32) during static", "the omitted Origin of ref/i32 outlives static")]
     public void ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence(string body, string written, string premise, string text, params string[] relations)
     {
         var source = body + Main;

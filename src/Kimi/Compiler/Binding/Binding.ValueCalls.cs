@@ -584,6 +584,10 @@ public sealed partial class Binding
             {
                 this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
             }
+            else if (ownBinder is not FunctionKoto { IsAnonymous: false })
+            {
+                this.RequireNestedResult(signature.Components[1], result, call); // The owner's (A): a nested signature's result.
+            }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
             var declaredSignature = signature;

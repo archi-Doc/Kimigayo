@@ -181,11 +181,12 @@ public sealed partial class Binding
             }
 
             // A conditional pair slot exists only in admitted borrow cases. Its payload keeps its own Origins
-            // in every case, but value/object cases impose no outlives relation to an inactive outer slot. A nested signature's input (an
-            // anonymous function's or a Function Type's parameter) forms none: its well-formedness is a premise of that signature (R2) and
-            // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
+            // in every case, but value/object cases impose no outlives relation to an inactive outer slot. A nested signature's input or
+            // result (an anonymous function's or a Function Type's parameter or result) forms none: its well-formedness is a premise of that
+            // signature (R2, R3) and an obligation of each call (RequireInputPremises, RequireNestedResult), never a relation of the body it
+            // is written in (SPEC 15.3.4, 15.6.1; the owner's (A)).
             if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use) &&
-                context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
+                context is not { Position: TypePosition.Parameter or TypePosition.Result, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
                 // binding, guarantees its own stored Origins outlive the borrow: each call judges them as the instantiated input's

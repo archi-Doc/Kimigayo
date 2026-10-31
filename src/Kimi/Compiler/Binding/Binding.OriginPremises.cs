@@ -198,9 +198,10 @@ public sealed partial class Binding
                     this.AddReceiverPremises(environment, literal, plan);
                 }
 
-                // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
+                // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs), an
+                // anonymous function's too (the owner's (A): a nested signature's well-formedness is its own).
                 if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
-                    signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
+                    signature is FunctionKoto { IsConstructor: false, BoundSymbol.Type: { } result })
                 {
                     this.AddResultPremises(environment, result);
                 }
