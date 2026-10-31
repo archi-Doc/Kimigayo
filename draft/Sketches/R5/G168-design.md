@@ -10,6 +10,7 @@ access's HIR facts, `program.Records`, `program.Findings`, module-0 problems and
 | 1 | R4's review 1 (REVISE): B1, rows c1Used and c3Moved with base's records, rows c2 and c3 called guards; `Reborrowed` folded in (R4 released its lines); (a)'s CLI result in item 1; N1 recorded as an open item; N2's window. The coordinator's addition: the interim for (a) lies partly in R4-held `Selections.cs`, so BU takes it; STATUS lines drafted. |
 | 1a | Window: no sel lane (R4's correction); the newest shared base. |
 | 2 | R4 released `Element`/`ConstElement`: the identity interim (R4's four conditions: Binding's published identity-substituted Type as the positive guard, one rule with `Field`'s and its removal condition, rows a1-a4 on both pipelines, A1-A6 after the fix); `Field`'s non-identity failure is `InternalInvariant_Kd`; the STATUS boundary line replaces the known-defect draft; a DECISIONS entry. |
+| 3 | R4's review 2: the guard is the positive premise predicate (planning ruling); no published premise fact exists for the builder, so the interim waits for a BU publication; bareT's probe recorded; chainTU guard row; snapshot classification of moved `Unsupported_Kd`. |
 
 ## Finding: valid programs reach `Field`'s failure
 
@@ -71,16 +72,26 @@ Why G168's `Field` hunk alone is not enough: the typeless projection is interned
 and `MirValidator` checks every interned row with a prefix (`MirValidator.Tables.cs`, `Admits`), so (a) keeps its `Projection`
 finding and its `InternalInvariant_Kd`. The interim decides before any projection is formed.
 
-**The positive fact (condition 1).** Binding gives every expression the one Type its scope's Type-identity premises make of its
-Types (`Binding.BindAndAdaptNode`, `SubstituteIdentityPremises`; owner Binding's `Binding.TypeIdentity`, SPEC 8.2, 8.2.3: only
-premises whose subject is a Type parameter are applied), and the HIR publishes it in the Meaning column (`HirTables.Meaning`). Probe
-(base): `s` in `func f<T>(s: ref/T…)` / `T is Array<Pair>` is published `ref/Array<Pair>` (with `T is (Pair, i32)`:
-`ref/(Pair, i32)`; with `T is (Pair, U)`: `ref/(Pair, U)`), while its MIR local is `ref/T`. The guard `Identical(place, node)`:
-the Place the builder formed for a node has a Type parameter's Type (`BoundTypeKind.Parameter`), and the node's published Type,
-followed through the node's published Layers by `TyCtxt.Layer` (the rule `Follow` applies to the Place), is not a Type parameter.
-Inside its own body Binding replaces a Type parameter in an expression's Type only by an identity premise, so the guard is that
-premise's published effect; it never tests that a projection has no Type. Any other typeless projection still reaches
-`MirValidator` (a broken contract stays `InternalInvariant_Kd`).
+**The positive fact (condition 1; revision 3, R4's R2-B1 and the planning ruling).** The predicate, nothing inferred:
+`TypeOf(place)` is a Type parameter P, AND the enclosing declaration's published premises contain an available `TypeIdentity`
+fact whose subject is P (read, never recomputed; a chain `T is U`, `U is Pair` passes because a premise with subject T exists), AND
+the node's published Type through its Layers is not P. Revision 2's mismatch test alone is withdrawn: a builder Place-Type bug or a
+wrong Binding Type would pass it.
+
+**No published premise fact exists for the builder to read; the interim stops here.** Searched (base):
+- the HIR columns (`HirTables`: States, Failures, Meanings, Symbols, ErasedTypes, Ops, Res, Completions, Adjusts, Places, plans):
+  none carries a premise; Meaning carries only the substitution's result (`BindAndAdaptNode`);
+- TyCtxt: no identity or premise query (`TyCtxt.Effects` reads `binding.EffectPremises(definition)` only for Copy and Sealed);
+- Binding's model: the facts live in `BindingScope.Constraints` (`ConstraintEnvironment.Facts`, `DirectFacts`, `DerivedFacts`;
+  `Binding.Constraints.Model.cs`), refilled per pass, reached through `Binding.ConstraintScope`/`EffectPremises`, and "available"
+  is Binding's private `AvailableConstraintFact` (a derived fact's source must be an available Contract premise). The builder may not
+  read Binding internals (its contract: syntax, HIR columns and plans, TyCtxt), and reading `Facts` without that judgment would be
+  a second copy of it.
+
+Route (the planning session settles it with BU): a small BU publication the builder reads, e.g. a TyCtxt query
+`IdentityPremise(definition, P)` answering from `EffectPremises(definition)` with `AvailableConstraintFact`, or Binding's image per
+node or scope; the identity query of open item 1 can later replace it. With it, this section's predicate holds as written and
+conditions 2-4 stand (R4's review 2).
 
 **One rule with `Field`'s (condition 2).** Where the guard holds on the receiver a projection would select from, the node is the
 one located `Unsupported_Kd` (`Unsupported(node, temp, node)`), its value an Opaque in an Opaque temp of the node's published Type,
@@ -92,9 +103,9 @@ comment states the temporary structure and its removal: when TyCtxt's identity q
 projects with the identical Type and the helper, its calls and the `Unsupported_Kd` go. The PLAN identity-Places item names the same
 condition.
 
-**No premise (condition 3's guard row).** None reachable. Probed: with the invalid `T is ref/Pair` (`InvalidConstraint_Kd`),
-`s@follow.a` and `s.a` are Errors (`TypeMismatch_Kd`, `UnresolvedBinding_Kd`); without a premise, `s.a` on a bare `T` has no member
-to select (not probed; the implementation adds it to the probe set). A typeless projection without the identity is reached only by a broken contract, so there is no row; its
+**No premise (condition 3's guard row).** None reachable. Probed: bareT (no premise, `s.a` on a bare `T`) is Binding's
+`UnresolvedBinding_Kd` at `s.a`, an Error node (R4's review 2 probe); with the invalid `T is ref/Pair` (`InvalidConstraint_Kd`),
+`s@follow.a` and `s.a` are Errors (`TypeMismatch_Kd`, `UnresolvedBinding_Kd`). A typeless projection without the identity is reached only by a broken contract, so there is no row; its
 validator finding is unchanged.
 
 **A1-A6 after the fix (condition 4).** Today a validator finding stops A1-A6 for these bodies; after the fix they are analyzed. Only
@@ -127,7 +138,8 @@ pipeline (as `PipelineSwitchTest` sets it), asserting the published diagnostics:
 | a1 | `T is Array<Pair>`, `return s[pos(t@move)].a` | `Unsupported_Kd` at the member, `Projection` finding, CLI `InternalInvariant_Kd` | one `Unsupported_Kd` at `s[pos(t@move)]`, site `_1` | fail-first |
 | a2 | `T is (Pair, i32)`, `return s.0.a` | `Unsupported_Kd` at the member, `Projection` finding | one `Unsupported_Kd` at `s.0` | fail-first |
 | a3 | `T is (Pair, U)` in `func f<T, U>`, `return s.0.a` | as a2 (published `ref/(Pair, U)`) | as a2 | fail-first; the rule's other form |
-| a4 | `T is [2 of Pair]`, `return s[0].a` (`ConstElement`) | expected as a2 (confirm on base) | one `Unsupported_Kd` at `s[0]` | fail-first |
+| a4 | `T is [2 of Pair]`, `return s[0].a` (`ConstElement`) | as a2 (R4's review 2 probe) | one `Unsupported_Kd` at `s[0]` | fail-first |
+| chainTU | `T is U`, `U is Pair` in `func f<T, U>`, `return s.a` | `Unsupported_Kd` at `s.a` | the same (the premise with subject T) | guard: the identity's closure form |
 
 No invariant test: no input reaches `Field`'s or `Reborrowed`'s broken-contract path or a typeless projection without the premise.
 No (b) row.
@@ -141,6 +153,7 @@ removal condition) and 2 open. Size: `Places.cs` about +25/-2 (the helper, `Memb
 `Acquisitions.cs` about +4/-1, the tests about +50 lines. Window: the default Session with
 `-DiagnosticSnapshot` against the newest shared base and R5's own full mir ledger (a `-Pipeline mir` Session optional; no sel lane). Expected
 ledger movement: only rows where a false member `MovedPlace_Kd` beside an `Unsupported_Kd` goes, or an identity body that the validator
-used to stop is analyzed with the Opaque's own effect (none expected: F19 round 2 found no MIR-side `Unsupported_Kd` at a
+used to stop is analyzed with the Opaque's own effect; the snapshot classifies each identity form's published `Unsupported_Kd` moving
+from the member to the projecting node (a1-a4's shape) as expected (R2-N2) (none expected: F19 round 2 found no MIR-side `Unsupported_Kd` at a
 `MemberAccessKoto` in the suite), each moved row classified by its probe; any other A1-A6 record or verdict change stops the unit and
 goes to R4.
