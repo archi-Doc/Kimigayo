@@ -119,7 +119,8 @@ public partial class OriginRelationDiagnosticTest
     // lt1_n inside a Tuple) as at a value call (l2_n, b1v_n); N11 (BU's design review): a waiting join takes no part in applicability
     // (SPEC 10.1, 10.5.1), so with `p` overloaded on Option<i32> and Option<bool> no candidate is best (10.4); B6 (BU's review 3): a
     // failing call in an unannotated `let` keeps its Language error, a `match` (b6m), a wrong second argument (b6y) and dev's anonymous
-    // function join at a value call (b6x: no candidates, so the join is checked at k's parameter Type, 14.9.2 step 4).
+    // function join at a value call (b6x: no candidates, so the join is checked at k's parameter Type, 14.9.2 step 4); U1.6g3b: g050's
+    // conflict between `idg`'s and `twice`'s array results waits for the call, so neither `f` is best (10.4; its 6:106 stays under G159).
     [Theory]
     [InlineData("U1.3", "r7_n", RefOneBool + ApFunc + ApWide + RunHead + "    return ap(if c => one else => one)\n", "NoApplicableOverload_Kd ap(if c => one else => one)")]
     [InlineData("U1.3", "r7m_n", RefOneBool + ApFunc + ApWide + RunHead + "    return ap(match c\n        true => one\n        false => one\n    )\n", "NoApplicableOverload_Kd ap(match c")]
@@ -142,6 +143,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.2", "b6m", OptionH + RunHead + "    let a = h(match c\n        true => .None\n        false => .Some(true)\n    )\n    return a\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("U1.2", "b6y", "func h(o: Option<i32>, n: i32) -> i32 => 0\n" + RunHead + "    let a = h(if c => .None else => .Some(1), true)\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(1), true)")]
     [InlineData("U1.2", "b6x", RunK + "    let a = k(if c => func [] (x: i32) -> i32 => x else => func [] (x: i64) -> i32 => 0)\n    return a\n", "TypeMismatch_Kd func [] (x: i64) -> i32 => 0")]
+    [InlineData("U1.6g3b", "g050", Twice + Idg + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool) -> i32\n    return f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])\n", "AmbiguousBinding_Kd f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])")]
     public void AFailingArgumentKeepsItsIndependentLanguageErrors(string unit, string form, string body, string required)
         => AssertLanguageErrors($"{form} [{unit}]", body, required);
 

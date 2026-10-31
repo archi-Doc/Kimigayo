@@ -5,17 +5,19 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Argument completion (SPEC 10.5, 10.5.4, 10.2, 7.7.4, 23.1.2; DECISIONS BU-2, BU-43): the completion of a call's argument parts, an
-// output of Binding.ArgumentKinds.cs. CompleteWaiting completes the selected candidate's waiting arguments and the waiting callables
-// at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken); CompleteArguments completes its arguments at its
-// operations and erases a callable completed at a common Function Type (ErasePart); CompleteValueCallPart completes a value call's
-// part at its one candidate's parameter Type; CompleteUnselected binds on its own each part of a call that completes none. The
-// selection, its defaults and their re-check (SolveSelected, CheckDefaulted) stay in Binding.ArgumentKinds.cs.
+// output of Binding.ArgumentKinds.cs. CompleteWaiting takes each argument of the selected candidate (TakeArgument), completes its
+// waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
+// CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
+// CompleteValueCallPart completes a value call's part at its one candidate's parameter Type; CompleteUnselected binds on its own each
+// part of a call that completes none. The selection, its defaults and their re-check (SolveSelected, CheckDefaulted) stay in
+// Binding.ArgumentKinds.cs.
 public sealed partial class Binding
 {
-    // SPEC 10.5, 10.5.4: completes the selected candidate's waiting arguments against its Types, and the waiting callables of its Tuple
-    // and array literal arguments and of its control-flow arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone
-    // kept waiting then decided (DecideTaken; DECISIONS BU-43). A body or capture failure never retries another candidate, and an
-    // inferred result never supplies outer signature evidence. False when one fails.
+    // SPEC 10.5, 10.5.4: takes each argument first (TakeArgument, CallRelation.Taken), then completes the selected candidate's waiting
+    // arguments against its Types, and the waiting callables of its Tuple and array literal arguments and of its control-flow
+    // arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone kept waiting then decided (DecideTaken; DECISIONS
+    // BU-43). A body or capture failure never retries another candidate, and an inferred result never supplies outer signature
+    // evidence. False when one fails.
     private bool CompleteWaiting(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var call = evaluation.Call;
@@ -30,6 +32,7 @@ public sealed partial class Binding
             {
                 var argument = call.ArgumentNodes[i];
                 var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
+                this.TakeArgument(argument); // SPEC 10.5.1: the call has selected; no conflict in the argument waits for it since.
                 if (this.IsWaiting(argument))
                 {
                     completedWaiting[i] = true;

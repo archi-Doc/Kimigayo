@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 //   (Binding.ResultPropagation.Parts.cs) or, for a call's control-flow argument, the wait for the call that classifies it
 //   (AwaitsWithoutCandidate; DECISIONS BU-43), whose late fit takes a waiting literal and a waiting list or fill literal by the shape
 //   it constructs, writing nothing; an anonymous function among its results waits for the call, which completes it (TakeWaiting) and
-//   then decides the join part by part, the sources holding it waiting until then (Completed, DecideTaken); (5) the join's one
+//   then decides the join part by part, the sources holding it waiting until then (BoundSince, DecideTaken); (5) the join's one
 //   outcome (ResultContext.Outcome, DECISIONS BU-43), written once where it becomes true: Waiting; Conflict, its own record;
 //   Dependent, resting on its first failed part or on the join it waited for (Cause), with no record (SPEC 23.1.2); Decided. A part's
 //   failure is read from who decides it (PartFailed). A join tree (a join holding nested joins through its sources, the forms that
@@ -177,7 +177,7 @@ public sealed partial class Binding
     private Awaiting PartAwaits(Koto part) => ReferenceEquals(part.BoundType, BoundType.Never) ? Awaiting.Never : this.AwaitsFor(part);
 
     // A result target awaits when it delivers a value and each of its value sources awaits, has Type Never, or waited and holds only
-    // what its call completed since (Completed), which awaits nothing but the join's decision.
+    // parts bound since (BoundSince), which await nothing but the join's decision.
     private Awaiting SourcesAwait(ResultContext context)
     {
         var awaiting = Awaiting.None;
@@ -244,15 +244,16 @@ public sealed partial class Binding
                 (this.resultContexts.TryGetValue(target, out var context) && context.Collecting && context.Expected is null)
             : collecting;
 
-    // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position, holding what its call
-    // completed since (Completed), or a call the probe deferred (Call, SPEC 10.5.1), which it waits to take with the rest of its join
-    // (SPEC 14.9.2 steps 2-3; DECISIONS BU-43).
+    // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position, holding only parts
+    // bound since, by its call or its join's step 3 (BoundSince), or a call the probe deferred (Call, SPEC 10.5.1), which it waits to
+    // take with the rest of its join (SPEC 14.9.2 steps 2-3; DECISIONS BU-43). This is position waiting, not a part's relation to its
+    // call (DECISIONS BU-74; its reconstruction from BoundType is PLAN G335's).
     private bool Deferred(Koto source) => this.Deferred(source, null);
 
     // The same with the source's Awaiting (AwaitsFor) when the caller already has it, so the source is not walked twice.
     private bool Deferred(Koto source, Awaiting? awaits)
         => !this.PartFailed(source) && (this.AwaitsCall(source) || (source.BindingState is BindingState.Unvisited or BindingState.Unresolved &&
-            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source))));
+            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.BoundSince(source))));
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
@@ -326,24 +327,25 @@ public sealed partial class Binding
         return part.BoundType is null && !this.IsWaitingPart(part) && this.HasFailureCauses(part);
     }
 
-    // SPEC 10.5.1 (DECISIONS BU-43): whether a source that waited was completed since by its call (TakeWaiting), through the forms that
-    // made its anonymous functions wait (CallableTarget): bound, a form that delivers one, an aggregate each of whose parts at least one
-    // (CallableParts) was, or a waiting result target each of whose waited sources was.
-    private bool Completed(Koto source)
+    // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
+    // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
+    // delivers one, an aggregate each of whose parts at least one (CallableParts) was, or a waiting result target each of whose waited
+    // sources was. Position waiting (Deferred), not a call relation: it holds before any selection.
+    private bool BoundSince(Koto source)
     {
         if (DeliveredOperand(source) is { } operand)
         {
-            return this.Completed(operand);
+            return this.BoundSince(operand);
         }
 
         if (this.WaitingResult(source) is not { } context)
         {
-            return source.BoundType is not null || (CallableParts(source) is { Count: > 0 } parts && this.AllCompleted(parts));
+            return source.BoundType is not null || (CallableParts(source) is { Count: > 0 } parts && this.AllBoundSince(parts));
         }
 
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.Completed(waited))
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.BoundSince(waited))
             {
                 return false;
             }
@@ -352,11 +354,11 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool AllCompleted(List<Koto> parts)
+    private bool AllBoundSince(List<Koto> parts)
     {
         foreach (var part in parts)
         {
-            if (!this.Completed(part))
+            if (!this.BoundSince(part))
             {
                 return false;
             }
@@ -383,8 +385,8 @@ public sealed partial class Binding
     // are independent of it). Still Waiting, bound with no Type by the pass of the join it waited for (PositionTarget) once that join
     // failed, it rests on that join's record or cause (SPEC 23.1.2: the root judged its parts).
     // Otherwise its sources take the Type the position supplies, as a Target Result Type fixed by an outer expectation, or, without
-    // one, it decides as a root (DecideResult); one its call bound meanwhile supplies the Type it took, and one holding what its call
-    // completed is Deferred (Completed).
+    // one, it decides as a root (DecideResult); a source bound meanwhile, whoever bound it, supplies the Type it took, and one holding
+    // parts bound since is Deferred (BoundSince).
     private BoundType? DecideWaiting(Koto node, ResultContext context, BoundType? expected)
     {
         if (context.Outcome == JoinOutcome.Waiting && expected is null && this.PositionTarget(node, out _) is { } position &&

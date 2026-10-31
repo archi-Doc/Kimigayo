@@ -13,14 +13,14 @@ namespace Kimi.Compiler;
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
 //   (Binding.ArgumentKinds.Positions.cs), and one whose typed parts have no common Type (ConflictWaits, U1.6g). Function: an anonymous
-//   function. Reference: a function reference that needs S, or a function
-//   name at a result of the probe's control flow (P2), unless every such result is the same declaration that needs no S, which P4
-//   binds as its Function Item (BindAgreeingReferences). Case: a contextual `.Case(...)` (it resolves only in its expected enum).
-//   Call: a nested call or construction the argument probe deferred.
+//   function. Reference: a function reference that needs S, at a call argument (P1) or at a result of the probe's control flow (P2);
+//   a name there that needs none is bound as its Function Item, a typed part (SPEC 10.5.3, 14.9.2 step 2; the owner's reading).
+//   Case: a contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or construction the argument probe
+//   deferred.
 //   A part its producer records as a Join, Case, Reference, Function or Call awaits its call (CallRelation.Awaits, AwaitsCall) while
 //   its core is unbound and has no failure of its own. A join's step 3 may bind it while its call classifies the argument (SPEC
-//   14.9.2), so its binding is not its completion. All but a Join are SPEC 10.5.1's waiting parts, which the selected candidate
-//   completes. Typed: every other part.
+//   14.9.2), so its binding is not its completion: a call argument is taken by its call when the call has selected (CallRelation.Taken,
+//   TakeArgument). All but a Join are SPEC 10.5.1's waiting parts, which the selected candidate completes. Typed: every other part.
 // - Inputs: the part's syntax and binding state; ControlFlow's survey of a control-flow part's result sources (SurveyResult); the
 //   argument probe (BindIndependentArgument), which reaches the result sources of a control-flow part (UnderArgumentProbe) and under
 //   which each part that is not an Aggregate or Join is bound: a nested call that only an outer expectation could type defers
@@ -40,8 +40,9 @@ namespace Kimi.Compiler;
 //   (Prove).
 // - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
 //   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
-//   row (every kind awaits but Literal), and a writer of another column keeps the relation (SlotSolution.Default records a Literal's
-//   default through RecordPart); a producer records every part that awaits its call and a Literal control-flow part: P1
+//   row (every kind awaits but Literal), TakeArgument the one writer of Taken, and a writer of another column keeps the rest of the
+//   relation (RecordPart keeps Taken; SlotSolution.Default records a Literal's default through RecordPart); a record TakeArgument
+//   creates reads as an absent one; a producer records every part that awaits its call and a Literal control-flow part: P1
 //   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function or Case result (AwaitsCallAtResult) or a Reference one
 //   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
@@ -58,13 +59,16 @@ public sealed partial class Binding
     private Koto? argumentProbe;
     private InvocationKoto? nestedOperandProbe;
 
-    // A recorded part's relation to its call (DECISIONS BU-74), a column of its record: Awaits, its producer recorded it as awaiting its
-    // call (RecordPart's row), read by Awaits alone.
+    // A recorded part's relation to its call (DECISIONS BU-74), a column of its record, one writer and one reader per bit: Awaits, its
+    // producer recorded it as awaiting its call (RecordPart's row; Awaits); Taken, on a call argument's own record, its call has
+    // selected and takes it (TakeArgument; TakenByCall). Taken ends no Awaits: a taken Join argument stays Join for TryCandidate's
+    // re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
     [Flags]
     private enum CallRelation : byte
     {
         None = 0,
         Awaits = 1,
+        Taken = 2,
     }
 
     private enum PartKind : byte
@@ -170,13 +174,29 @@ public sealed partial class Binding
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
-    // every recorded kind awaits its call but Literal. SlotSolution.Default records a Literal through it and adds its default.
+    // every recorded kind awaits its call but Literal. It keeps Taken, since ClassifiedByCall and DeferNestedCall re-record the probe
+    // while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
     private ref ArgumentPart RecordPart(Koto part, PartKind kind)
     {
-        ref var record = ref CollectionsMarshal.GetValueRefOrAddDefault(this.argumentParts, SourceRef.Of(PartCore(part)), out _);
-        record = new(kind, null, kind == PartKind.Literal ? CallRelation.None : CallRelation.Awaits);
+        ref var record = ref this.PartRecord(part);
+        record = new(kind, null, (record.Relation & CallRelation.Taken) | (kind == PartKind.Literal ? CallRelation.None : CallRelation.Awaits));
         return ref record;
     }
+
+    // SPEC 10.5.1: the one writer of Taken. CompleteWaiting's selected candidate takes each argument first, before it completes its
+    // waiting parts and decides its join again (DecideTaken); a record it creates (Typed, no Awaits) reads as an absent one.
+    private void TakeArgument(Koto argument)
+    {
+        ref var record = ref this.PartRecord(argument);
+        record = record with { Relation = record.Relation | CallRelation.Taken };
+    }
+
+    // Whether the argument's call has selected and takes it (Taken): the one reader of Taken.
+    private bool TakenByCall(Koto argument) => (this.RecordedPart(argument).Relation & CallRelation.Taken) != 0;
+
+    // The record of a part for its writers, created when absent.
+    private ref ArgumentPart PartRecord(Koto part)
+        => ref CollectionsMarshal.GetValueRefOrAddDefault(this.argumentParts, SourceRef.Of(PartCore(part)), out _);
 
     private ArgumentPart RecordedPart(Koto node)
         => PartCore(node) is { SyntaxOwner: { } owner } core && this.argumentParts.TryGetValue(new(owner.Module, core.SyntaxId), out var part)
@@ -228,62 +248,18 @@ public sealed partial class Binding
     // SPEC 10.5.1, 14.9.2 step 2 (U1.6g (a); supersedes BU-43's "fails it at once" for call arguments): a join under the argument probe
     // that classifies its call's argument, whose typed parts have no common Type, fixes no complete Type without its call's expectation,
     // so it waits: P4 records it as a Join, which its call completes at the selected candidate's Type, an enclosing join holding it as
-    // a waiting source. Once its call has completed parts of the argument (DecideTaken), the call has selected and no expectation is
-    // left to wait for (the owner's answer, 2026-10-31: (i)); there, as outside a call argument, the conflict is the join's own record.
+    // a waiting source. Once its call has selected and taken the argument (TakenByCall), as when DecideTaken decides it again, no
+    // expectation is left to wait for (the owner's answer, 2026-10-31: (i)); there, as outside a call argument, the conflict is the
+    // join's own record. A part a nested join's step 3 bound (SPEC 14.9.2: no call involved) leaves the argument untaken.
     private bool ConflictWaits(Koto join)
     {
-        if (!this.UnderArgumentProbe(join) || this.HoldsCompletedPart(this.argumentProbe!))
+        if (!this.UnderArgumentProbe(join) || this.TakenByCall(this.argumentProbe!))
         {
             return false;
         }
 
         this.RecordPart(join, PartKind.Join);
         return true;
-    }
-
-    // Whether a part holds one its call completed (TakeWaiting): a part its producer recorded as awaiting its call, other than a Join,
-    // bound since, reached through the forms that deliver it, the parts of Tuple, array and Dictionary literals and the value sources
-    // of result targets. While its call classifies the argument, no such part is bound.
-    private bool HoldsCompletedPart(Koto part)
-    {
-        if (DeliveredOperand(part) is { } operand)
-        {
-            return this.HoldsCompletedPart(operand);
-        }
-
-        if (part.BoundType is not null && this.RecordedPart(part).Kind is PartKind.Function or PartKind.Case or PartKind.Reference or PartKind.Call)
-        {
-            return true;
-        }
-
-        var holds = false;
-        switch (part)
-        {
-            case TupleLiteralKoto or ArrayLiteralKoto:
-                foreach (var element in CallableParts(part)!)
-                {
-                    holds |= this.HoldsCompletedPart(element);
-                }
-
-                return holds;
-            case DictionaryLiteralKoto dictionary:
-                foreach (var entry in dictionary.Entries)
-                {
-                    holds |= this.HoldsCompletedPart(entry.Key) || this.HoldsCompletedPart(entry.Value);
-                }
-
-                return holds;
-            default:
-                if (DeliversResult(part) && this.resultContexts.TryGetValue(part, out var context))
-                {
-                    foreach (var source in context.SourceNodes)
-                    {
-                        holds |= source is not null && this.HoldsCompletedPart(source);
-                    }
-                }
-
-                return holds;
-        }
     }
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other
@@ -304,7 +280,8 @@ public sealed partial class Binding
 
     // SPEC 10.5: a function name that is a call argument or the part under the argument probe is not bound as its Item without an
     // expectation; PrepareArgument decides whether it is evidence or waits for S. P2 (SPEC 10.5.3, 14.9.2): a function name that is a
-    // result of the probe's control flow, at a position its call completes (CallableTarget), stays unbound as a Reference.
+    // result of the probe's control flow, at a position its call completes (CallableTarget), stays unbound as a Reference when it
+    // needs S; one that needs none (IndependentFunctionItem, P1's rule) is bound as its Function Item, a typed part.
     private bool AtArgumentPosition(Koto node)
     {
         if ((TryNameRoot(node, out var root) && root.Parent is InvocationKoto) || ReferenceEquals(this.argumentProbe, node))
@@ -312,45 +289,14 @@ public sealed partial class Binding
             return true;
         }
 
-        if (CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target))
+        if (CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target) ||
+            IndependentFunctionItem(node.BoundSymbol!, this.UnboundMemberReference(node), this.ReferenceDeclaringType(node)))
         {
             return false;
         }
 
         this.RecordPart(node, PartKind.Reference);
         return true;
-    }
-
-    // P4 (SPEC 10.5.3, 14.9.2 step 2): when every source of the join still unbound is a Reference to one declaration that needs no S
-    // (IndependentFunctionItem, P1's rule), they are bound as that Function Item before the join judges its sources, so the join is
-    // typed and checked per candidate; otherwise they wait for the call, which completes them at its Function Type.
-    private void BindAgreeingReferences(ResultContext context)
-    {
-        BindingSymbol? item = null;
-        for (var i = 0; i < context.Sources.Count; i++)
-        {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
-            {
-                var core = PartCore(source);
-                if (this.KindOf(core) != PartKind.Reference || (item is not null && !ReferenceEquals(item, core.BoundSymbol)) ||
-                    !IndependentFunctionItem(core.BoundSymbol!, this.UnboundMemberReference(core), this.ReferenceDeclaringType(core)))
-                {
-                    return;
-                }
-
-                item = core.BoundSymbol;
-            }
-        }
-
-        BoundType? type = null;
-        for (var i = 0; item is not null && i < context.Sources.Count; i++)
-        {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } source &&
-                (type ??= this.BindFunctionItem(PartCore(source), item, this.ConstraintScope(source))) is not null)
-            {
-                context.Sources[i] = this.BindWaiting(source, type); // Through the forms that deliver it, at the Item's Type.
-            }
-        }
     }
 
     // Independent argument evidence is prepared once for named and constraint-based calls.
