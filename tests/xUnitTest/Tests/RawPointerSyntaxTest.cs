@@ -47,7 +47,7 @@ public class RawPointerSyntaxTest
     {
         var c = MinimalEmissionTest.Analyze("struct Sample\n    public let raw: i32\n    public init(raw: i32) => self.raw = raw\n" +
             "func read(pointer: raw/i32) -> raw/i32 => pointer\npublic func main()\n    let raw = Sample.init(raw: 1)\n    let total = raw.raw + 1\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public class RawPointerSyntaxTest
     {
         var source = declarations.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", "()", StringComparison.Ordinal) + "\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var census = 0;
         var leaks = new List<string>();
         foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto))
@@ -363,8 +363,8 @@ public class RawPointerSyntaxTest
             "func shared(b: ref/Buffer) -> raw/i32 => b.data\nfunc pass(r: ref/i32, p: raw/i32 during r) -> raw/i32 => p\n" +
             "func local(n: i32)\n    let r = n@ref\n    let p: raw/i32 during r = null\n    let q: raw/i32 = p\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Binding.Obligations, static x => RawOnly(x.Longer) || RawOnly(x.Shorter));
 
         static bool RawOnly(BoundOrigin? origin) => origin?.Kind is OriginKind.Holder or OriginKind.Unstated;
@@ -386,7 +386,7 @@ public class RawPointerSyntaxTest
         const string Source = "func f(x: ref/i32) -> raw/i32\n    let g = func [x] ()\n        var v = x\n        let p: raw/i32 during v = null\n        return p\n" +
             "    return g()\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsAnonymous).SymbolOf()!.Type!;
         Assert.NotNull(result.RawOrigin);
         Assert.False(Binding.IsLocalRegion(result.RawOrigin!));

@@ -61,7 +61,7 @@ public class ObjectRuntimeTest
         var c = MinimalEmissionTest.Analyze(Declarations + "\n" + operation);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.NotEmpty(c.Binding.Issues);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class ObjectRuntimeTest
             _ = view@move
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
     }
 
@@ -179,6 +179,6 @@ public class ObjectRuntimeTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

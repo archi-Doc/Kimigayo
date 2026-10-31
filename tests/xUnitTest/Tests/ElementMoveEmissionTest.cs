@@ -70,7 +70,7 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -100,7 +100,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -134,7 +134,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze($"let a = (\"first\", 0)\nlet result = a.0 {op} \"first\"");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze("func inspect(text: ref/string) => ()\nlet a: [1 of string] = [\"first\"]\ninspect(a[0])");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
@@ -156,7 +156,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == failure);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class ElementMoveEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
 
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
@@ -200,7 +200,7 @@ public class ElementMoveEmissionTest
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);

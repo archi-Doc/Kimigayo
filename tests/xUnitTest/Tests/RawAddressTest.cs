@@ -29,8 +29,8 @@ public class RawAddressTest
     {
         var source = Point + "public func main()\n    " + body;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var address = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "address");
         Assert.Equal(type, Text(address.TypeOf()!));
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
@@ -65,7 +65,7 @@ public class RawAddressTest
         const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32)\n        effect confined\ngroup Metrics\n    public var puts: i32 = 0\n" +
             "struct AddressSink\n    Self is Sink\n    var count: i32 = 0\n    public func put(self: uniq/Self, value: i32)\n    ";
         var c = MinimalEmissionTest.Analyze(Sink + body + "        unsafe => *slot = value\npublic func main() => ()\n");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
@@ -85,7 +85,7 @@ public class RawAddressTest
     {
         var source = "public func main()\n    var number: i32 = 1\n    let pointer = number@raw\n    let address = pointer@raw/u8\n    let integer = pointer@usize\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var address = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "address");
         Assert.Equal("raw/u8", Text(address.TypeOf()!));
     }
@@ -152,7 +152,7 @@ public class RawAddressTest
     public void ATypedPathStatesTheOriginItIsReachedThrough(string body, string? borrow)
     {
         var c = MinimalEmissionTest.Analyze(Point + "public func main()\n    " + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var fields = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
         var raw = fields.Single(static x => x.NameKoto.IdentifierName == "address").TypeOf()!.RawOrigin;
         if (borrow is null)

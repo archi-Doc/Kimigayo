@@ -38,10 +38,10 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: [2 of i32], i: isize, y: i32 = x[i]) -> i32 => y\nf([1, 2], 0)\nf([3, 4], 1)");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Prepared element default emission failed.");
             }
@@ -76,10 +76,10 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: bool, first: () = (if x => ()), second: () = first, y: i32 = 3) -> i32 => y\nf(true)\nf(false)");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Unit default emission failed.");
             }
@@ -204,7 +204,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    " + mutation + "\n    exit to scope x\n)) => ()\nf(1, 2)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -224,7 +224,7 @@ public class ScalarDefaultEmissionTest
         Assert.True(c.Binding.Result.IsComplete);
         var issue = Assert.Single(c.Problems);
         Assert.Equal((DiagnosticCode.Unsupported_Kd, Source.IndexOf("n + 1", StringComparison.Ordinal), 1), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -233,7 +233,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class ScalarDefaultEmissionTest
         var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(s: string, x: i32 = (if true => 1 else => helper(s@move))) => ()\nf(\"a\", 3)");
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -256,7 +256,7 @@ public class ScalarDefaultEmissionTest
         // SPEC 7.2.3: an ordinary scalar call is a supported default expression wherever a value is.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -264,14 +264,14 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
         Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         using var rebound = new StringWriter();
-        Assert.True(c.WriteIr(rebound, out error), error);
+        Assert.True(c.Generate(rebound), MinimalEmissionTest.Describe(c));
         Assert.Equal(original.ToString(), rebound.ToString());
 
         var restored = Compilation.CreateForTest();
@@ -280,12 +280,12 @@ public class ScalarDefaultEmissionTest
         Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
         Assert.NotNull(kotonoha);
         kotonoha.OnDeserialized(restored);
-        Assert.False(restored.Validate(out _));
+        Assert.False(restored.Generate(TextWriter.Null));
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var reloaded = new StringWriter();
-        Assert.True(restored.WriteIr(reloaded, out error), error);
+        Assert.True(restored.Generate(reloaded), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), reloaded.ToString());
     }
 
@@ -320,7 +320,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -329,10 +329,10 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Scalar default emission failed.");
             }

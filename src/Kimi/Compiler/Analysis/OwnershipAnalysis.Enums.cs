@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private readonly Dictionary<BoundType, bool> supportedTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, TypeSupport> supportedTypes = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> visitingTypes = new();
     private readonly HashSet<BoundType> completeTuples = new(ReferenceEqualityComparer.Instance);
 
@@ -94,9 +94,35 @@ public sealed partial class OwnershipAnalysis
         return true;
     }
 
+    // Why SupportsType refuses a Type, in precedence order (DECISIONS R4-M159): Refused, a Type this subset does not analyze, whose
+    // located Unsupported_Kd lets the analysis go on; UndeclaredOriginArguments, a Type (or a part) carrying Origin arguments its
+    // symbol does not declare (a Closure Type with its maker's images), at which the analysis stops (Stop).
+    private enum TypeSupport : byte
+    {
+        Supported,
+        Refused,
+        UndeclaredOriginArguments,
+    }
+
+    private static TypeSupport Join(TypeSupport left, TypeSupport right) => left >= right ? left : right;
+
+    // SPEC 6.1.3: the Origin parameters a Type's symbol declares, its enclosing declarations' included (the symbol's schema); a
+    // symbol without one, a Tuple's, an array's or a Closure's, declares none.
+    private static int DeclaredOrigins(BoundType type) => type.Symbol?.Schema?.Origins.Count ?? 0;
+
+    // A Type's Origin arguments beyond the ones its symbol declares are undeclared (fewer is an incomplete Type, refused).
+    private static TypeSupport Arguments(BoundType type)
+        => type.OriginArguments.Count > DeclaredOrigins(type) ? TypeSupport.UndeclaredOriginArguments
+            : type.OriginArguments.Count < DeclaredOrigins(type) ? TypeSupport.Refused : TypeSupport.Supported;
+
     // This is a conservative subset gate, not the language's finite-storage validation.
     // Every Case is checked because a whole value can arrive from a parameter or branch.
-    private bool SupportsType(BoundType type)
+    private bool SupportsType(BoundType type) => this.Support(type) == TypeSupport.Supported;
+
+    private TypeSupport Part(BoundType type) => type.Kind == BoundTypeKind.Parameter ? TypeSupport.Supported : this.Support(type);
+
+    // SupportsType's answer with its refusal's reason; a refusal found first ends the walk of the remaining parts, as before.
+    private TypeSupport Support(BoundType type)
     {
         var handle = type.HandleMode;
         if (handle is null && ReferenceTypes.IsReference(type))
@@ -106,7 +132,7 @@ public sealed partial class OwnershipAnalysis
 
         if (handle is not null)
         {
-            return true;
+            return TypeSupport.Supported;
         }
 
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
@@ -123,31 +149,35 @@ public sealed partial class OwnershipAnalysis
 
         if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type))
         {
-            return true;
+            return TypeSupport.Supported;
         }
 
         if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
         {
-            return true;
+            return TypeSupport.Supported;
         }
 
         if (type.Kind == BoundTypeKind.Array)
         {
             // SPEC 4.5: a handle owns its buffer and recursively destroys its stored elements. A generic element is
             // checked again by each instance under its substitution; zero-sized elements still need no allocation.
-            var element = type.Components[0];
-            return element.Kind == BoundTypeKind.Parameter || this.SupportsType(element);
+            return this.Part(type.Components[0]);
         }
 
         if (type.Kind == BoundTypeKind.Dictionary)
         {
-            return type.Components.Count == 2 && (type.Components[0].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[0])) &&
-                (type.Components[1].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[1]));
+            if (type.Components.Count != 2)
+            {
+                return TypeSupport.Refused;
+            }
+
+            var key = this.Part(type.Components[0]);
+            return key != TypeSupport.Supported ? key : this.Part(type.Components[1]);
         }
 
         if (type.Kind == BoundTypeKind.Primitive)
         {
-            return !ReferenceEquals(type, BoundType.Never);
+            return ReferenceEquals(type, BoundType.Never) ? TypeSupport.Refused : TypeSupport.Supported;
         }
 
         if (this.supportedTypes.TryGetValue(type, out var supported))
@@ -163,13 +193,17 @@ public sealed partial class OwnershipAnalysis
             }
 
             // Reserve the key before following fields to reject recursive inline storage.
-            this.supportedTypes[type] = false;
+            this.supportedTypes[type] = TypeSupport.Refused;
             var parent = AdtDef.Base(type);
-            supported = (parent is null || this.SupportsType(parent)) && type.OriginArguments.Count <= structure.OriginNames.Count;
-            for (var i = 0; i < AdtDef.Count(type) && supported; i++)
+            supported = parent is null ? TypeSupport.Supported : this.Support(parent);
+            // An inherited Origin is declared (DeclaredOrigins) but outside this subset, refused as before with the analysis going on.
+            supported = supported != TypeSupport.Supported ? supported
+                : type.OriginArguments.Count > DeclaredOrigins(type) ? TypeSupport.UndeclaredOriginArguments
+                : type.OriginArguments.Count > structure.OriginNames.Count ? TypeSupport.Refused : TypeSupport.Supported;
+            for (var i = 0; i < AdtDef.Count(type) && supported == TypeSupport.Supported; i++)
             {
                 // Collection fields retain their recursive destruction plans (SPEC 16.3.2).
-                supported = AdtDef.FieldType(type, i) is { } field && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
+                supported = AdtDef.FieldType(type, i) is { } field ? this.Part(field) : TypeSupport.Refused;
             }
 
             this.supportedTypes[type] = supported;
@@ -178,10 +212,10 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)
         {
-            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
+            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null ? Arguments(type) : TypeSupport.Refused;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                supported &= type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]);
+                supported = Join(supported, this.Part(type.Components[i]));
             }
 
             this.supportedTypes[type] = supported;
@@ -189,12 +223,17 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (type.Semantics != SemanticsKind.Owner || type.Origin is not null ||
-            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) ||
             type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
             type.Symbol is not { Declaration: EnumKoto, Adt.Types: { } storage })
         {
-            this.supportedTypes[type] = false;
-            return false;
+            this.supportedTypes[type] = TypeSupport.Refused;
+            return TypeSupport.Refused;
+        }
+
+        if (Arguments(type) is not TypeSupport.Supported and var arguments)
+        {
+            this.supportedTypes[type] = arguments;
+            return arguments;
         }
 
         // Allow finite nesting such as Option<Option<i32>>, but refuse inline cycles
@@ -204,24 +243,24 @@ public sealed partial class OwnershipAnalysis
             var ancestor = this.visitingTypes[i];
             if (ReferenceEquals(ancestor.Symbol, type.Symbol) && TypeDepth(type) >= TypeDepth(ancestor))
             {
-                return false;
+                return TypeSupport.Refused;
             }
         }
 
         this.visitingTypes.Add(type);
-        supported = true;
-        for (var i = 0; i < type.Components.Count && supported; i++)
+        supported = TypeSupport.Supported;
+        for (var i = 0; i < type.Components.Count && supported == TypeSupport.Supported; i++)
         {
-            supported = type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]);
+            supported = this.Part(type.Components[i]);
         }
 
-        for (var i = 0; i < storage.Count && supported; i++)
+        for (var i = 0; i < storage.Count && supported == TypeSupport.Supported; i++)
         {
-            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
+            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload ? this.Part(payload) : TypeSupport.Refused;
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);
-        supported = supported && Array.IndexOf(AdtDef.CaseTypes(type)!, null) < 0;
+        supported = supported == TypeSupport.Supported && Array.IndexOf(AdtDef.CaseTypes(type)!, null) >= 0 ? TypeSupport.Refused : supported;
         this.supportedTypes[type] = supported;
         return supported;
     }

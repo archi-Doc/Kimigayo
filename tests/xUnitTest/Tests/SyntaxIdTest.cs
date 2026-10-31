@@ -50,7 +50,7 @@ public partial class SyntaxIdTest
     {
         var c = CompilationTestHelper.Parse(Source, "Program.kimi");
         var version = c.Kotonoha.Syntax.Version;
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
 
         // The try is selected for an Option while binding, which edits its arms; the none Pattern joined the tree after numbering.
         var table = c.Kotonoha.Syntax;
@@ -84,7 +84,7 @@ public partial class SyntaxIdTest
         Assert.NotEqual(version, table.Version);
         Assert.Equal(libraryVersion, c.Library.Kotonoha.Syntax.Version);
 
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         AssertConsistent(table);
         Assert.Equal(Enumerable.Range(1, table.ParsedCount), PreOrder(c.Kotonoha.RootKoto).Select(x => x.SyntaxId));
         Assert.All(removed, x => Assert.True(x.SyntaxOwner is null && x.SyntaxId == 0));
@@ -109,7 +109,7 @@ public partial class SyntaxIdTest
         Assert.Same(table, attribute.SyntaxOwner);
         Assert.True(structure.RemoveAttribute(attribute));
         Assert.Equal(version + 1, table.Version);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(attribute.SyntaxOwner is null && attribute.SyntaxId == 0);
         Assert.Equal(Enumerable.Range(1, table.ParsedCount), PreOrder(c.Kotonoha.RootKoto).Select(x => x.SyntaxId));
 
@@ -178,7 +178,7 @@ public partial class SyntaxIdTest
 
         var statement = Statement(c, "p");
         Assert.True(KotoHelper.Replace(statement.Parent!, statement, donor));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
 
         // The tree that holds the subtree numbers it as one pre-order range; the donor's table keeps an entry that no longer names
         // its owner.

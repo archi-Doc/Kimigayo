@@ -23,7 +23,7 @@ public class ParenthesizedCalleeTest
     public void AParenthesizedNameIsCalledByName(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ParenthesizedCallee" + name, source, string.Empty);
     }
 

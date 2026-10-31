@@ -10,15 +10,15 @@ namespace Kimi.Compiler.Backend;
 // admitting call's substitution, a caller-location function), which a Requirement call, a requirement Item's Value call and its adapter
 // entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
 // reports nothing. By its function's compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
-// - BuiltinEquals and BuiltinCompare: TyCtxt.Comparison of its Contract (TyCtxt.Contract) on its Self under the Contract's mapping, the
-//   collector's tree, so its Witness leaves are the item's targets in order. A Tuple's parts left to right at their Field offsets, each
-//   but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
-//   layer's referent; a Builtin leaf through the operator table's column of its Type (Leaf); a Witness leaf its target's call (BodyRun,
-//   its virtual slot included) on the two leaf addresses.
+// - BuiltinEquals and BuiltinCompare: the comparison item's node (InstanceCollector.Comparison; DECISIONS R5-M166) by its direct parts,
+//   whose items and witnesses are the item's targets in order: a Tuple's parts left to right at their Field offsets in its Self's layout,
+//   each but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
+//   layer's referent; a Builtin leaf through the operator table's column of its Type under the item's mode (Leaf); any other part its
+//   target's run (Witness: a comparison item, a Mapping item or a witness body, its virtual slot included) on the two part addresses.
 // - BuiltinArithmetic: its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) through the operator table's row, as a statement's, on
 //   the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // - BuiltinFormat: the built-in formatting witness, its parameters forwarded to P1d's BuiltinFormat routine with its Self's kind (Format).
-// A node the collector refuses (Requirement, None, no tree) is its record at the item's admission, which stops generation; an arithmetic
+// A node the collector refuses (a None leaf, no node) is its record at the item's admission, which stops generation; an arithmetic
 // operation the capability table refuses is the collector's record at each requesting site, whose edge admits no item.
 // A PropertyWitness item's function (C3c, SPEC 11.9.2; DECISIONS R5-M141) is a standard property witness under its key's signature
 // (InstanceCollector.StorageSignature, ModuleCodegen.Shim), caller-location as every shim: its Field's address in the layer that stores it,
@@ -26,7 +26,7 @@ namespace Kimi.Compiler.Backend;
 // result: the value (Copy), the address (Borrow) or none (Set) (Storage). It has no MIR body (PD3).
 internal sealed partial class FunctionCodegen
 {
-    private int leaf; // The shim's next Witness leaf target.
+    private int leaf; // The comparison item's next part target.
 
     /// <summary>Writes the function of a shim item, Builtin or PropertyWitness, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
@@ -62,8 +62,7 @@ internal sealed partial class FunctionCodegen
                 this.Returned(this.Arithmetic(contract, self));
                 return;
             default:
-                var tree = this.typeContext.Comparison(contract, self, operators: false);
-                this.Returned(this.Compare(tree, contract.LibraryDeclaration, new('p', 0), new('p', 1)));
+                this.Returned(this.Compare(contract.LibraryDeclaration, (ComparisonMode)key.Variant, self));
                 return;
         }
     }
@@ -99,36 +98,36 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 13.4: the comparison of the values at two addresses by its node under Equatable or Comparable: equals' i1 or compare's i32; null
-    // after a record.
-    private Value? Compare(ComparisonNode? node, KimiDeclarationId? contract, Value left, Value right)
+    // SPEC 13.4: the comparison of the values at the function's two addresses by the item's node under Equatable or Comparable: a Builtin
+    // Self's leaf (Leaf); a Composite's direct parts in order (each but the last deciding, Decide), a Tuple's at their Field offsets in its
+    // Self's layout, a reference layer's referent through the loaded pointers; equals' i1 or compare's i32. Null after a record.
+    private Value? Compare(KimiDeclarationId? contract, ComparisonMode mode, BoundType self)
     {
-        switch (node?.Kind)
+        Value left = new('p', 0);
+        Value right = new('p', 1);
+        var node = this.collector.Comparison(this.item);
+        if (node?.Kind != ComparisonKind.Composite)
         {
-            case ComparisonKind.Composite when node.Type.Kind == BoundTypeKind.Tuple:
-                return this.Parts(node, contract, left, right);
-            case ComparisonKind.Composite:
-                return this.Compare(node.Parts[0], contract, this.LoadAt(left, PointerLayout), this.LoadAt(right, PointerLayout)); // A referent.
-            case ComparisonKind.Builtin:
-                return this.Leaf(node.Type, contract, left, right);
-            case ComparisonKind.Witness:
-                return this.WitnessLeaf(left, right);
-            default:
-                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector records every other node at the item's admission.
-                return null;
-        }
-    }
+            if (node?.Kind == ComparisonKind.Builtin)
+            {
+                return this.Leaf(self, contract, mode, left, right);
+            }
 
-    // SPEC 13.4: a Tuple's parts left to right at their Field offsets (the node's Parts need, Needed; DECISIONS R5-M149); each but the last
-    // returns its value from the shim when it is not equal (Decide), and the last one's value is the Tuple's.
-    private Value? Parts(ComparisonNode node, KimiDeclarationId? contract, Value left, Value right)
-    {
-        if (this.Needed(node) is not { } tuple)
-        {
-            return null; // Recorded.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector records every other node at the item's admission.
+            return null;
         }
 
-        var offsets = tuple.Layout.FieldOffsets.Span;
+        ValueLowering? tuple = null;
+        if (node.Type.Kind == BoundTypeKind.Tuple && (tuple = this.Laid(self)) is null)
+        {
+            return null; // Recorded: the collector laid out the item's Self (K 4.8).
+        }
+
+        if (tuple is null)
+        {
+            (left, right) = (this.LoadAt(left, PointerLayout), this.LoadAt(right, PointerLayout)); // A reference layer's referent.
+        }
+
         Value? value = null;
         for (var i = 0; i < node.Parts.Length; i++)
         {
@@ -137,7 +136,10 @@ internal sealed partial class FunctionCodegen
                 this.Decide(previous, contract);
             }
 
-            if ((value = this.Compare(node.Parts[i], contract, this.Offset(left, offsets[i]), this.Offset(right, offsets[i]))) is null)
+            var offset = tuple is null ? 0 : tuple.Layout.FieldOffsets.Span[i];
+            var (a, b) = tuple is null ? (left, right) : (this.Offset(left, offset), this.Offset(right, offset));
+            value = node.Parts[i].Kind == ComparisonKind.Builtin ? this.Leaf(self.Components[i], contract, mode, a, b) : this.Part(a, b);
+            if (value is null)
             {
                 return null; // Recorded.
             }
@@ -165,11 +167,13 @@ internal sealed partial class FunctionCodegen
         output.Write(":\n");
     }
 
-    // SPEC 13.4.1, 12.4.3: a Builtin leaf through the operator table's column of its Type. A string's: its row's routine on the records'
-    // bytes (equals' StringEqual compared with 0 by Eq's entry, compare's StringCompare i32 itself). Any other: its loaded values; equals'
-    // Eq, or both values unequal to themselves (Ne), which only a NaN is (SPEC 13.4), so all NaNs are one value and +0.0 == -0.0 by Eq;
-    // compare's Gt less Lt as an i32 (zero-sized operands are Apply's: the row's Reflexive). Null after a record.
-    private Value? Leaf(BoundType type, KimiDeclarationId? contract, Value left, Value right)
+    // SPEC 13.4, 13.4.1, 12.4.3: a Builtin leaf through the operator table's column of its Type. A string's: its row's routine on the
+    // records' bytes (equals' StringEqual compared with 0 by Eq's entry, compare's StringCompare i32 itself). Any other: its loaded values;
+    // equals' Eq, under the Contract's mapping (Mapping) or both values unequal to themselves (Ne), which only a NaN is, so all NaNs are
+    // one value; +0.0 == -0.0 by Eq; compare's Gt less Lt as an i32, an operator mode's unordered pair (a value unequal to itself) counted
+    // as greater (Operator: < and <= are false) or as less (Reversed: > and >= are false); zero-sized operands are Apply's (the row's
+    // Reflexive). Null after a record.
+    private Value? Leaf(BoundType type, KimiDeclarationId? contract, ComparisonMode mode, Value left, Value right)
     {
         var column = Column(type);
         var equality = contract == KimiDeclarationId.Equatable;
@@ -187,28 +191,47 @@ internal sealed partial class FunctionCodegen
 
         var a = this.Loaded(type, lowering, left);
         var b = this.Loaded(type, lowering, right);
-        if (!equality)
+        if (this.Apply((int)(equality ? MirBinaryOp.Eq : MirBinaryOp.Gt), column, a, b, proven: false, default) is not { } first ||
+            (equality ? first : this.Apply((int)MirBinaryOp.Lt, column, a, b, proven: false, default)) is not { } less)
         {
-            return this.Apply((int)MirBinaryOp.Gt, column, a, b, proven: false, default) is { } greater &&
-                this.Apply((int)MirBinaryOp.Lt, column, a, b, proven: false, default) is { } less
-                ? this.Combine("sub", "i32", this.Convert("zext ", "i1", greater, "i32"), this.Convert("zext ", "i1", less, "i32")) : null;
+            return null; // Recorded.
         }
 
-        return this.Apply((int)MirBinaryOp.Eq, column, a, b, proven: false, default) is { } same &&
-            this.Apply((int)MirBinaryOp.Ne, column, a, a, proven: false, default) is { } leftNaN &&
-            this.Apply((int)MirBinaryOp.Ne, column, b, b, proven: false, default) is { } rightNaN
-            ? this.Combine("or", "i1", same, this.Combine("and", "i1", leftNaN, rightNaN)) : null;
+        if (equality != (mode == ComparisonMode.Mapping))
+        {
+            return equality ? first : this.Ordered(first, less); // IEEE equality; the mapping's order, which no float has (SPEC 13.4.1).
+        }
+
+        if (this.Apply((int)MirBinaryOp.Ne, column, a, a, proven: false, default) is not { } leftNaN ||
+            this.Apply((int)MirBinaryOp.Ne, column, b, b, proven: false, default) is not { } rightNaN)
+        {
+            return null; // Recorded.
+        }
+
+        if (equality)
+        {
+            return this.Combine("or", "i1", first, this.Combine("and", "i1", leftNaN, rightNaN));
+        }
+
+        var unordered = this.Combine("or", "i1", leftNaN, rightNaN);
+        return mode == ComparisonMode.Operator ? this.Ordered(this.Combine("or", "i1", first, unordered), less)
+            : this.Ordered(first, this.Combine("or", "i1", less, unordered));
     }
 
-    // A Witness leaf: the shim's next target, its witness's body (BodyRun, through its virtual slot when it implements one; G157 (28)),
-    // called (CallWitness) with the two leaf addresses at its logical inputs 0 and 1, the shared borrows its requirement takes (SPEC 13.4.1),
-    // and with the location the shim received at a caller-location body's location parameters; its value. Null after a record.
-    private Value? WitnessLeaf(Value left, Value right)
+    // compare's i32 of a greater and a less bit: the greater's zext less the less's.
+    private Value Ordered(Value greater, Value less)
+        => this.Combine("sub", "i32", this.Convert("zext ", "i1", greater, "i32"), this.Convert("zext ", "i1", less, "i32"));
+
+    // A part that is not a Builtin leaf: the item's next target's run (Witness: a comparison item, a Mapping item or a witness body, through
+    // its virtual slot when it implements one; G157 (28)), called (CallWitness) with the two part addresses at its logical inputs 0 and 1,
+    // the shared borrows its requirement takes (SPEC 13.4.1), and with the location the function received at a caller-location callee's
+    // location parameters; its value. Null after a record.
+    private Value? Part(Value left, Value right)
     {
         var targets = this.collector.Set.Targets(this.item);
-        if (this.leaf >= targets.Length || this.BodyRun(targets[this.leaf++].Item) is not { Signature: var callee } run)
+        if (this.leaf >= targets.Length || this.Witness(targets[this.leaf++].Item, default) is not { Signature: var callee } run)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets each Witness leaf's body in order (or recorded).
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets each such part in order (or recorded).
             return null;
         }
 
@@ -218,7 +241,7 @@ internal sealed partial class FunctionCodegen
             return null;
         }
 
-        _ = this.Location(default, out var site); // The shim's own location parameters (a caller-location function).
+        _ = this.Location(default, out var site); // The function's own location parameters (a caller-location function).
         return this.CallWitness(run, [left, right], null, site, out var value) ? value : null;
     }
 

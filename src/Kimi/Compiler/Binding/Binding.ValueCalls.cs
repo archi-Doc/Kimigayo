@@ -4,9 +4,10 @@
 // - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
 //   (AcquireValueCallArguments), the per-call inputs solved and substituted, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
-//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a result naming,
-//   in a non-raw Origin position, an atom of a Closure that does not enclose the call is F1's located Unsupported_Kd (a raw layer's is
-//   PLAN G273's open issue); R1's condition is the old analysis's gate fact.
+//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a Closure value
+//   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
+//   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
+//   Unsupported_Kd; R1's condition is the old analysis's gate fact.
 // - Inputs: the call, the callee's call signature (TryCallable; a Closure Type's definition, BoundClosure.Of) and its receiver mode.
 //   Outputs: the call's plan (CallPlan.SetValue) and its result Type, or a failure at the call.
 // - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
@@ -223,12 +224,11 @@ public sealed partial class Binding
         }
     }
 
-    // The atoms of Closures a value call's result names in its non-raw Origin positions (SPEC 15.8.2; DECISIONS R4-M152): its callee
-    // Closure's call receiver ρ and call result, each of which the call substitutes, and F1's located limit, an atom of another Closure
-    // that does not enclose the call (its receiver's, an environment binding's or an input's): a Closure value returned from that
-    // Closure's call, whose signature names that Closure's atoms, which no representation maps to the receiver and arguments of the call
-    // that returned the value (the owner's 「2c-5 F1: (c')」). A raw layer's Origin is not read here (PLAN G273's open issue, with the
-    // raw role's sites, DECISIONS BU-24).
+    // The atoms of Closures a value call's result names in its Origin positions, raw layers included (SPEC 15.8.2, 5.7; DECISIONS R4-M152,
+    // R4-M159): its callee Closure's call receiver ρ and call result, each of which the call substitutes, and F1's located limit, an atom
+    // of another Closure that does not enclose the call, which no image reached: a Closure value returned from its maker's call reads that
+    // call's images through its Type's Origin arguments (ClosureSignature), so only a value that reached the call without passing its
+    // maker's call can still name one (the owner's 「2c-5 F1: (c')」).
     private static CallAtoms CallAtomsOf(BoundType type, FunctionKoto closure, Koto call)
     {
         if (!type.CarriesAnyOrigin)
@@ -236,7 +236,7 @@ public sealed partial class Binding
             return CallAtoms.None;
         }
 
-        var atoms = CallAtomsOf(type.Origin, closure, call);
+        var atoms = CallAtomsOf(OwnedOrigin(type), closure, call);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
             atoms |= CallAtomsOf(type.OriginArguments[i], closure, call);
@@ -302,6 +302,21 @@ public sealed partial class Binding
         return this.PlaceOrigin(call.Method);
     }
 
+    // SPEC 8.10, 15.8.2: the Closure Type a callable value's calls read, the one TryCallable reads its signature from and a value call
+    // declares (R4-M159): the value without its acquisition layer, else its normalized Callable contract Type; null for any other callable.
+    private BoundType? CallableClosure(BoundType type, BindingScope scope)
+    {
+        var owner = CallableCore(type)!;
+        if (BoundClosure.Of(owner) is not null)
+        {
+            return owner;
+        }
+
+        var normalized = owner.Kind == BoundTypeKind.Function || this.FunctionItemSignature(owner) is not null
+            ? owner : this.CallableContractType(owner, scope);
+        return ReferenceEquals(normalized, owner) ? null : this.CallableClosure(normalized, scope);
+    }
+
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
     // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
@@ -325,10 +340,10 @@ public sealed partial class Binding
             return true;
         }
 
-        if (BoundClosure.Of(owner) is { } closure)
+        if (this.CallableClosure(owner, scope) is { } closureType)
         {
-            signature = this.ClosureSignature(owner)!;
-            receiver = closure.Receiver;
+            signature = this.ClosureSignature(closureType)!;
+            receiver = BoundClosure.Of(closureType)!.Receiver;
             return true;
         }
 
@@ -586,7 +601,9 @@ public sealed partial class Binding
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
-            var declaredSignature = signature;
+            // A Closure callee declares its definition's signature, the world retention reads (R4-M159).
+            var declaredSignature = this.CallableClosure(call.Method.BoundType!, scope) is { } closureType
+                ? this.ClosureDefinitionSignature(closureType)! : signature;
             signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
             return Complete(call, result);

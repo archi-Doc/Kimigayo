@@ -88,9 +88,9 @@ public class SealedObjectFinalizationTest
             let clone = Kimi.Intrinsics.clone(second@ref)
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         NativeAllocationAudit.WriteFixture("SealedObjectMixed", Source, 2, 2, 32, "second\nfirst\n");
     }
@@ -102,7 +102,7 @@ public class SealedObjectFinalizationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         NativeAllocationAudit.WriteFixture("SealedObjectRecursive" + name, source, allocations, allocations, bytes, stdout);
     }

@@ -137,10 +137,10 @@ public partial class OriginRelationDiagnosticTest
     public void AWarmRebindOfANestedJoinArgumentAllocatesNothing()
     {
         var c = MirBuildTest.Compile(NestedJoinArgument(32, valueCall: false, failing: false, literal: false) + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     // The B4 program of `depth`: a join inside a Tuple inside a join, at a named call or a value call, with `.None` leaves (one

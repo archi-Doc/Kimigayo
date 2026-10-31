@@ -58,7 +58,7 @@ public class DictionaryLibraryTest
             "    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n" +
             "    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -73,7 +73,7 @@ public class DictionaryLibraryTest
     {
         const string Source = "var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -88,7 +88,7 @@ public class DictionaryLibraryTest
         const string Source = "var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n" +
             "    .None => $abort(\"missing\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -106,7 +106,7 @@ public class DictionaryLibraryTest
     {
         var program = "var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source;
         var c = MinimalEmissionTest.Analyze(program);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -124,7 +124,7 @@ public class DictionaryLibraryTest
     {
         var program = "var entries = [1: 2]\n" + source;
         var c = MinimalEmissionTest.Analyze(program);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -252,11 +252,12 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
         var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
-        var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool(c.Layout).Get(pointer.Components[0]));
-        Assert.True(layout.CLayout);
-        Assert.Equal(56, layout.Value.Layout.Size);
-        Assert.Equal(8, layout.Value.Layout.Alignment);
-        Assert.Equal(new[] { 0, 8, 16, 24, 32, 40, 48 }, layout.Value.Layout.FieldOffsets.ToArray());
+        var handle = pointer.Components[0];
+        Assert.True(handle.Symbol!.Adt!.IsCLayout);
+        var layout = c.Layout.Of(handle).Value!.Layout;
+        Assert.Equal(56, layout.Size);
+        Assert.Equal(8, layout.Alignment);
+        Assert.Equal(new[] { 0, 8, 16, 24, 32, 40, 48 }, layout.FieldOffsets.ToArray());
     }
 
     [Fact]

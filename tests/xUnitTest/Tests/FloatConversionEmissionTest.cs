@@ -51,7 +51,7 @@ public class FloatConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // The Windows profile explicitly excludes typed 128-bit floating conversions.
@@ -65,7 +65,7 @@ public class FloatConversionEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Unsupported);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -74,13 +74,13 @@ public class FloatConversionEmissionTest
         const string Source = "let x = 1.00000005960464477539062500000000000000000000000000001@f32\nif x@f64 == 1.00000011920928955078125 => Console.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("FloatConvertRoundTrip", writer.ToString(), "ok\n");
     }
@@ -91,10 +91,10 @@ public class FloatConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: f32) -> f64 => x@f64\nlet x = 1.25@f32\nlet y = if x > 0.0 => f(x) else => x@f64\nlet z = y@f64");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Float conversion analysis or emission failed.");
             }

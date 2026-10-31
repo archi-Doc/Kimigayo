@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class ClosureResultOriginTest
+public partial class ClosureResultOriginTest
 {
     private const string Inspect = "func inspect(value: ref/i32) => ()\n";
 
@@ -52,10 +52,10 @@ public class ClosureResultOriginTest
     public void TheReturnedViewProtectsTheOwnerAfterTheLastClosureUse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -92,83 +92,37 @@ public class ClosureResultOriginTest
         Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), call), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
-    // SPEC 15.8.2 (DECISIONS R4-M152, the owner's 「2c-5 F1: (c')」): a Closure value returned from another Closure's call names that
-    // Closure's atoms in its signature, its receiver's or an input's, which no representation maps to the receiver and arguments of the
-    // call that returned it, so a call of it outside that Closure's body is the located Unsupported_Kd on both pipelines (F1's boundary,
-    // until F1's representation unit): a nested bare entry (n1, both calls), under a Consuming maker, an inner `[n@ref]` of the maker's
-    // binding, a call through a captured maker, and a capture of the maker's input (BU's f1in, f1inbad and f1inok: a false
-    // UnprovenOriginRelation_Kd, the default's acceptance of a dangling read, and a valid twin). The maker's calls bind: n1's second
-    // `outer()` is the MIR's Loan conflict (MirBorrowsTest), and an inner Closure called in its maker's body is valid.
+    // Kept apart, not counted for G273 (PLAN G280; R4's G273 problem check K3). SPEC 15.8.2, 23.1.2 (DECISIONS R4-M152 P8, R5-M63): a
+    // returned Closure literal that P8 fails, a maker's expression body at any nesting, keeps its definition: its record is at the literal,
+    // as the block form's `return` places it, and the returned value stays callable, with no derived NotCallable_Kd or UnresolvedBinding_Kd
+    // (review 2's B1: v2, a08, f03 = G273's p8_param_bad, f04, f07; each with its block-form twin). A reader reaching a closure through its
+    // Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome. The call's result rests on that record (P9's
+    // image of the call result atom is an Unbound end), so the record is the program's one; dev adds F1's located Unsupported_Kd at the
+    // call. Question: does G280 (or G206 (6)) give an Unbound end its cause, so that the call records nothing?
     [Theory]
-    [InlineData(
-        "var x: i32 = 1\nlet u = x@uniq\nvar outer = func [u] () => func [u] () => u@move\nlet a = outer()\nlet b = outer()\nlet pa = a@move()\n" +
-            "let pb = b@move()\npa@follow = 1\npb@follow = 2",
-        "a@move()|b@move()")]
-    [InlineData(
-        "func makeText() -> string => \"a\"\nfunc consumeText(value: string) => ()\nfunc f(u: uniq/i32) -> uniq/i32 during u\n    let t = makeText()\n" +
-            "    let outer = func [u, t@move] ()\n        consumeText(t@move)\n        return func [u] () => u@move\n    let a = outer@move()\n    return a@move()\nlet k = 0",
-        "a@move()")]
-    [InlineData("let n: i32 = 4\nlet outer = func [n] () => func [n@ref] () => n\nlet a = outer()\nlet r = a()\nlet s = r@follow", "a()")]
-    [InlineData("let n: i32 = 4\nlet outer = func [n] () => func [n@ref] () => n\nlet wrap = func [outer] () => outer()()\nlet r = wrap()", "outer()()")]
-    [InlineData("func h(p: ref/i32) -> ref/i32 during p\n    let outer = func (x: ref/i32) => func [x] () => x\n    let a = outer(p)\n    return a()\nlet k = 0", "a()")]
-    [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) => func [x] () => x\nlet a = outer(local@ref)\nlet r = a()\nlocal = 2\ninspect(r)", "a()")]
-    [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) => func [x] () => x\nlet a = outer(local@ref)\nlet r = a()\ninspect(r)\nlocal = 2", "a()")]
-    [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) -> i32\n    let inner = func [x] () => x\n    return inner()@follow\ninspect(outer(local@ref)@ref)", "")]
-    public void AReturnedClosuresCallOverItsMakersAtomsIsUnsupported(string source, string calls)
-    {
-        var records = ContextualCaptureTest.PublishedRecords(source);
-        Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
-        Assert.Equal(calls.Split('|', StringSplitOptions.RemoveEmptyEntries), records.Select(x => source.Substring(x.Span.Start, x.Span.Length)));
-    }
-
-    // SPEC 15.8.2, 23.1.2 (DECISIONS R4-M152 P8, R5-M63): a returned Closure literal that P8 fails, a maker's expression body at any
-    // nesting, keeps its definition: its record is at the literal, as the block form's `return` places it, and the returned value stays
-    // callable, its call F1's located Unsupported_Kd (its signature names the maker's parameter storage), with no derived NotCallable_Kd
-    // or UnresolvedBinding_Kd (review 2's B1: v2, a08, f03, f04, f07; each with its block-form twin). A reader reaching a closure through
-    // its Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome.
-    [Theory]
-    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", "a()")]
-    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", "a()")]
-    [InlineData(Inspect + "let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x", "a()")]
-    [InlineData(Inspect + "let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x", "a()")]
-    [InlineData("let outer = func (x: i32) => func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y", "a()")]
-    [InlineData("let outer = func (x: i32)\n    return func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y", "a()")]
+    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x")]
+    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x")]
+    [InlineData(Inspect + "let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x")]
+    [InlineData(Inspect + "let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x")]
+    [InlineData("let outer = func (x: i32) => func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y")]
+    [InlineData("let outer = func (x: i32)\n    return func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y")]
     [InlineData(
         "let outer = func (x: i32)\n    return func (y: i32)\n        return func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()",
-        "func [y@ref] () => y",
-        "a()")]
-    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "outer(3)()")]
-    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "outer(3)()")]
-    public void AFailedReturnedLiteralKeepsItsDefinition(string source, string literal, string call)
-    {
-        var records = ContextualCaptureTest.PublishedRecords(source).OrderBy(static x => x.Span.Start)
-            .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
-        Assert.Equal([$"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}", $"{nameof(DiagnosticCode.Unsupported_Kd)} {call}"], records);
-    }
+        "func [y@ref] () => y")]
+    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x")]
+    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x")]
+    public void AFailedReturnedLiteralKeepsItsDefinitionPendingG280(string source, string literal)
+        => Assert.Equal($"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}", Records(source));
 
-    // Pins of a returned Closure's records (DECISIONS R4-M152): a valid nested maker's returned Closure, whose signature names the
-    // maker's ρ, passed to a generic `F is Callable<…>` is UnprovenConstraint_Kd at the argument, an interim limit the owner accepted
-    // (「暫定として認める」) until PLAN G273's images reach that use (dev: R1's Unsupported_Kd at the maker's call); a returned value P8
-    // failed whose result is `ref/i32` keeps, beside the record at the literal, an independent NoApplicableOverload_Kd, since a valid
-    // Closure of that signature gets it too (dev: a derived NotCallable_Kd); and a call whose signature names the maker's input only in a
-    // raw layer is not F1's located limit yet, so the valid a17 keeps f1in's false UnprovenOriginRelation_Kd (G273, with the raw role's
-    // sites, DECISIONS BU-24).
-    [Theory]
-    [InlineData(
-        "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\nlet outer = func (x: i32) => func [x] () => func [x@ref] () => x\n" +
-            "let m = outer(3)\nlet a = m()\nlet r = apply(a@ref)",
-        "UnprovenConstraint_Kd a@ref")]
-    [InlineData(
-        "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\nlet outer = func (x: i32)\n    return func [x@ref] () => x\n" +
-            "let a = outer(3)\nlet r = apply(a@ref)",
-        "UnsatisfiedOriginRelation_Kd func [x@ref] () => x; NoApplicableOverload_Kd apply(a@ref)")]
-    [InlineData(
-        "func h(q: ref/i32) -> raw/i32 during q\n    let outer = func (x: ref/i32) => func [x] () => x@follow@raw\n    let a = outer(q)\n    return a()\nlet k = 0",
-        "UnprovenOriginRelation_Kd a()")]
-    public void AReturnedClosureKeepsItsInterimRecord(string source, string records)
-    {
-        Assert.Equal(records, Records(source));
-    }
+    // DECISIONS R4-M152 (round 3, BU's re-check 2): a returned value P8 failed whose result is `ref/i32`, passed to a generic
+    // `F is Callable<() -> i32>`, keeps beside the record at the literal an independent NoApplicableOverload_Kd, since a valid Closure of
+    // that signature gets it too (dev had a derived NotCallable_Kd).
+    [Fact]
+    public void AFailedReturnedLiteralsCallableUseKeepsItsIndependentRecord()
+        => Assert.Equal(
+            "UnsatisfiedOriginRelation_Kd func [x@ref] () => x; NoApplicableOverload_Kd apply(a@ref)",
+            Records("func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\nlet outer = func (x: i32)\n    return func [x@ref] () => x\n" +
+                "let a = outer(3)\nlet r = apply(a@ref)"));
 
     // SPEC 7.7.4, 8.11, 23.1.2 (DECISIONS R4-M152, R5-M63 (1)): a use that reaches a returned literal P8 failed through its Type reads the
     // closure's definition, so the bare expression body gives its parenthesized and block twins' records: no TransferRequired_Kd with an
@@ -239,7 +193,7 @@ public class ClosureResultOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Captured + "let erased: () -> ref/i32 = f\nerased()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 7.7.4, 15.6.1, 23.1: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
@@ -272,7 +226,7 @@ public class ClosureResultOriginTest
         var c = MinimalEmissionTest.Analyze("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\nbad()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Failure == BindingFailure.Unsupported);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -285,7 +239,7 @@ public class ClosureResultOriginTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }

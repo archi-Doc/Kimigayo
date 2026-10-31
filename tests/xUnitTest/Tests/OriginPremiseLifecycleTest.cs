@@ -21,7 +21,7 @@ public class OriginPremiseLifecycleTest
     {
         var source = OriginProofWorkloads.Create("proven", 4);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var obligations = c.Binding.Obligations.Count;
         var storage = c.Binding.OriginPremiseStorage;
         Assert.False(storage.Retains);
@@ -48,7 +48,7 @@ public class OriginPremiseLifecycleTest
 
             Assert.True(KotoHelper.Replace(replacement.Parent!, replacement, clause));
             Reanalyze(c);
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
             Assert.Equal(obligations, c.Binding.Obligations.Count);
             Assert.Equal((storage.Environments, storage.Nodes, storage.Edges, false), c.Binding.OriginPremiseStorage);
         }

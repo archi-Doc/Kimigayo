@@ -17,7 +17,7 @@ public class PlaceCalleeTest
     public void APublishedFunctionPlaceIsCalledThroughABorrow(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("PlaceCallee" + name, source, string.Empty);
     }
 
@@ -25,8 +25,8 @@ public class PlaceCalleeTest
     public void TheLentPlaceCannotChangeDuringTheArguments()
     {
         var c = MinimalEmissionTest.Analyze(Inc + "func clear(m: uniq/Dictionary<i32, (i32) -> i32>) -> i32\n    m.clear()\n    return 1\nvar m: Dictionary<i32, (i32) -> i32> = [:]\nlet f: (i32) -> i32 = inc\n_ = m.tryInsert(1, f@move)\nlet r = m[1](clear(m@uniq))");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

@@ -74,7 +74,7 @@ public class StringEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -83,7 +83,7 @@ public class StringEmissionTest
     public void NoncompletingRhsHasNoStringWrite()
     {
         var c = MinimalEmissionTest.Analyze("loop\n    var text = \"old\"\n    text = (exit)");
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // A defer that never completes leaves the string's destruction and the delivery to the checks (their MIR: tests/mir/scopes.kimi
@@ -105,7 +105,7 @@ public class StringEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, allocated);
@@ -123,8 +123,8 @@ public class StringEmissionTest
     }
 
     // Audits the destructions of the module's string constants (count, and optionally order, per text). A constant is found by its bytes
-    // among the definitions of the audited text itself, which either generator writes through LlvmConstantPool, so the audit holds for
-    // both; a text the module defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
+    // among the definitions of the audited text itself, which code generation writes through LlvmConstantPool; a text the module
+    // defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
     internal static void WriteAuditedFixture(string name, string ir, string stdout, string destructions, int exit = 0, string? stderr = null, int[]? order = null)
     {
         var constants = new Dictionary<string, string>(StringComparer.Ordinal);

@@ -54,7 +54,7 @@ public class FunctionTypeConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze("public " + kind + " Target\n    (i32) -> bool is (i32) -> bool" + (kind == "enum" ? "\n    A" : string.Empty));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

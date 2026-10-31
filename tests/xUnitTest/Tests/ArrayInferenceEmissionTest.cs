@@ -42,7 +42,7 @@ public class ArrayInferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -61,10 +61,10 @@ public class ArrayInferenceEmissionTest
         var c = MinimalEmissionTest.Analyze("let source: [1 of string] = [\"value\"]\nlet row: [1 of _] = source@move\nlet twice = source@move");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         var bare = MinimalEmissionTest.Analyze("let source: [1 of string] = [\"value\"]\nlet row: [1 of _] = source");
         Assert.Contains(bare.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
-        Assert.False(bare.Validate(out _));
+        Assert.False(bare.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class ArrayInferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet row: [2 of _] = [1, value]\nif row[0] == 1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var variable = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "row");
         var array = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
         array.ElementType.SetType(BoundType.String);
@@ -81,14 +81,14 @@ public class ArrayInferenceEmissionTest
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         using var rebound = new StringWriter();
-        Assert.True(c.WriteIr(rebound, out error), error);
+        Assert.True(c.Generate(rebound), MinimalEmissionTest.Describe(c));
         Assert.Equal(original.ToString(), rebound.ToString());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("ArrayInferenceReload", writer.ToString(), "ok\n");
     }

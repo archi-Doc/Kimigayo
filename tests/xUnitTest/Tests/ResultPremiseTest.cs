@@ -107,7 +107,7 @@ public partial class ResultPremiseTest
         foreach (var write in new[] { "other = 4\n", "value = 8\n" })
         {
             var invalid = MinimalEmissionTest.Analyze(source.Replace("require r@follow@follow", write + "require r@follow@follow", StringComparison.Ordinal));
-            Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
+            Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid));
             Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
         }
     }
@@ -121,7 +121,7 @@ public partial class ResultPremiseTest
             "require second@follow == 3 else => $abort(\"second\")\nConsole.writeLine(\"\\(second@follow)\")\n";
         ScalarEmissionTest.EmitFixture("ResultPremiseLeakPart", source, "3\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("require second@follow", "other = 5\nrequire second@follow", StringComparison.Ordinal));
-        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
+        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid));
         Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
 
         // A fixed caller cannot pass that part off as bounded by the outer input alone: its return is the fit failure.
@@ -147,7 +147,7 @@ public partial class ResultPremiseTest
             "    require r@follow@follow == 7 else => $abort(\"r\")\n    Console.writeLine(\"\\(r@follow@follow)\")\n    if flag\n        let z = h.viaSlot(other@ref)\n        Console.writeLine(\"\\(z@follow@follow)\")\nrun(false)\n";
         ScalarEmissionTest.EmitFixture("ResultPremiseMethod", source, "7\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("        Console.writeLine(\"\\(z@follow@follow)\")", "        other = 4\n        Console.writeLine(\"\\(z@follow@follow)\")", StringComparison.Ordinal));
-        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
+        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid));
         Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
         MirTargetSide.Check(invalid);
     }
@@ -192,7 +192,7 @@ public partial class ResultPremiseTest
     {
         ScalarEmissionTest.EmitFixture("ResultPremiseItemUses", ItemUses, "30 3\n");
         var conflict = MinimalEmissionTest.Analyze(ItemUses.Replace("require second@follow", "other = 5\nrequire second@follow", StringComparison.Ordinal));
-        Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict, null));
+        Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict));
         Assert.Contains(conflict.Problems, static issue => issue.Code.IsLoanConflict());
 
         var direct = LeakItem + LeakEscape + Main;
@@ -464,7 +464,7 @@ public partial class ResultPremiseTest
     {
         ScalarEmissionTest.EmitFixture("ResultPremiseFunctionPart", FunctionPart, "19 3\n");
         var conflict = MinimalEmissionTest.Analyze(FunctionPart.Replace("require second@follow", "other = 4\nrequire second@follow", StringComparison.Ordinal));
-        Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict, null));
+        Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict));
         Assert.Contains(conflict.Problems, static issue => issue.Code.IsLoanConflict());
     }
 

@@ -92,17 +92,17 @@ public class SharedElementReadTest
     public void BareNonCopyElementReadsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void BorrowedStringPreventsReplacementBeforeLastUse()
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"hello\"]\nlet saved = values[0]@ref\nvalues[0] = \"new\"\nConsole.writeLine(saved)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

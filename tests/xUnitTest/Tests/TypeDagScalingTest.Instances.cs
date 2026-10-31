@@ -24,7 +24,7 @@ public partial class TypeDagScalingTest
     public void InstanceChainWalksAreLinearInDistinctParts(string form, int size)
     {
         var c = MirBuildTest.Compile(InstanceChain(form, size));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = new List<string>();
         foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
         {

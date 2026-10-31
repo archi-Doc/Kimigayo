@@ -41,6 +41,7 @@ public class DependencyConfigurationTest
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={Kind=\"import\" Input=\"codec.lib\"}}}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"static\" ContractId=\"a\"}}} NativeLibraries={\"x86_64-pc-windows-msvc\"={codec={ContractId=\"b\" Input=\"codec.lib\"}}}")]
     [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"kernel32.lib\"}}}")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={unused={Kind=\"unknown\" Input=\"unused.lib\"}}}")]
     [InlineData("NativeRequirements={t={codec={Kind=\"static\"} codec={Kind=\"import\"}}}")]
     [InlineData("NativeRequirements={t={codec={Kind=\"static\"}} t={codec={Kind=\"import\"}}}")]
     [InlineData("NativeRequirements={t={codec={Kind=\"static\"}}} NativeRequirements={t={codec={Kind=\"import\"}}}")]
@@ -68,6 +69,14 @@ public class DependencyConfigurationTest
     [InlineData("CompileTimeSettings={A={Bool=true}} CompileTimeSettings={B={Bool=true}}")]
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source)));
+
+    // The project's kernel32 entry names its migration (NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
+    [Fact]
+    public void LoadingAnExplicitKernel32EntryNamesItsMigration()
+    {
+        var source = Encoding.UTF8.GetBytes("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}");
+        Assert.Contains("Remove the kernel32 entry", Assert.Throws<TinyhandException>(() => ProjectFile.Load(source)).Message);
+    }
 
     [Theory]
     [InlineData("NativeBindings={}")]

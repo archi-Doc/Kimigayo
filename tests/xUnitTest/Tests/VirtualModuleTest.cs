@@ -106,7 +106,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
         // This is a support-boundary regression, not a language rejection or a completed positive case.
         var c = ModuleBindingTest.Create(Derived + "public func main()\n    let value = Derived.init()@obj\n    _ = Lib.Api.call(value@objref)", ConformingLibrary());
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
         const string LibrarySource = "public open struct Ancestor\n    private func read(self: ref/Self) -> i32 => 1\npublic open struct Base : Ancestor\n";
         var source = "public struct Derived : Lib.Base\n    public func read(self: ref/Self) -> i32 => 3\npublic func main() => ()";
         var c = ModuleBindingTest.Create(source, LibrarySource);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -179,7 +179,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -196,9 +196,9 @@ public class VirtualModuleTest(ITestOutputHelper output)
 
     private static string Emit(Compilation c)
     {
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         return CompilationTestHelper.WriteIr(c);
     }
 }

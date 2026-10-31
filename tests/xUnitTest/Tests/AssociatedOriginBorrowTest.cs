@@ -16,10 +16,10 @@ public class AssociatedOriginBorrowTest
     public void BorrowFamilySubstitutesApplicationOrigin(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(declarations + "\nfunc f(x: ref/i32 during source) -> S.(C).Item(source) => x");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(f.Parameters[0].Type.TypeOf(), f.ReturnType!.TypeOf());
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -28,7 +28,7 @@ public class AssociatedOriginBorrowTest
     public void GenericFixedFamilySubstitutesOriginExpressions(string argument)
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(step) is ref/i32 during step\nfunc f<T>(x: ref/i32 during a, y: ref/i32 during b) -> T.(C).Item(" + argument + ")\n    T is C\n    return x");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -39,11 +39,11 @@ public class AssociatedOriginBorrowTest
     public void BorrowedResultKeepsSourceLoan()
     {
         var c = MinimalEmissionTest.Analyze(SharedFamily + "var value = 7\nlet borrowed = f(value@ref)\nvalue = 9\nlet observed: i32 = borrowed");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.NotEmpty(c.Problems);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -98,7 +98,7 @@ public class AssociatedOriginBorrowTest
     public void EditingApplicationRevokesAndRestoresTheOriginCertificate(bool indexed)
     {
         var c = MinimalEmissionTest.Analyze(SharedFamily + "let value = 7\nlet result = f(value@ref)");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var application = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginApplicationKoto>().Single(x => x.Type is MemberAccessKoto);
         var original = application.ArgumentNodes.Single();
         var donor = ParseTestHelper.ParseSuccess(SharedFamily.Replace("Item(source)", "Item(static)", StringComparison.Ordinal));
@@ -114,10 +114,10 @@ public class AssociatedOriginBorrowTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(application, replacement, original));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

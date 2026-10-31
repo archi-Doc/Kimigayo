@@ -30,7 +30,7 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             (independent ? "\nfunc invalid()\n    let value = 1\n    let moved = value@move\n    let invalid = value" : string.Empty);
         var path = Path.GetFullPath("ownership-storage.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var previous = OwnershipStorage.ByteLimit;
         try
         {
@@ -41,12 +41,12 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             Assert.True(issue.RequiredBytes > 4096);
             Assert.Equal(4096, issue.LimitBytes);
             Assert.Contains("func check()", issue.Source.ToString(), StringComparison.Ordinal);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
 
             // PD12: whichever generator the process selects, the limited body is refused before generation, with no module and no
             // Internal record (the Finalize below covers what generation reported).
             using var module = new StringWriter();
-            Assert.False(c.WriteIr(module, out _));
+            Assert.False(c.Generate(module));
             Assert.Empty(module.ToString());
             c.ReportAnalysis();
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);

@@ -30,7 +30,7 @@ public class CallAdaptationTest
     public void ATemporaryAtAFixedDestinationBindsButCannotEscapeItsStatement()
     {
         var c = MinimalEmissionTest.Analyze("let n: i32 = 1\nlet r: ref/(i32, i32) = (n, 2)\nlet value = r@follow");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -82,7 +82,7 @@ public class CallAdaptationTest
     public void CorrectAcquisitionPasses(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -90,7 +90,7 @@ public class CallAdaptationTest
     public void WarmResultAdaptationReusesStorage()
     {
         var c = CompilationTestHelper.ParseSuccess(ReadResult);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 }

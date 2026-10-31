@@ -48,10 +48,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     public void ABorrowPastAResultKeepsTheContainersLoan(string name, string source, string mutation)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, name + ": " + MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, name + ": " + MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == mutation);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -65,11 +65,11 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
             "            require item.0 == 42 else => $abort(\"value\")\n        .None => ()";
         var path = Path.GetFullPath("optional-tuple-slot.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "entries.clear()");
         Assert.DoesNotContain(c.Problems, x => c.SyntaxOf(x.Subject).ToString() == "item.0" || c.SyntaxOf(x.Subject).ToString() == "item.0@follow");
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
@@ -111,10 +111,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     {
         var source = Header + "    let found = " + child + "\n    " + access + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -124,10 +124,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     {
         var source = "var value = 42\nvar entries = [1: value@uniq]\nlet child = entries[1]@follow@" + mode + "\n" + access + "\nrequire child == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // The Cleared and Removed forms keep the index result's Loan (ABorrowPastAResultKeepsTheContainersLoan).
@@ -149,11 +149,11 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     {
         var source = Header + "    let view = entries@ref\n    let found = view[1]@follow@ref\n    " + mutation + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => c.SyntaxOf(x.Subject).ToString()!.Contains("entries[1]", StringComparison.Ordinal));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 4.7.1, 15.6.2 (DECISIONS BU-8): on the MIR a write, an exclusive borrow or an exclusive Reborrow through the stored reference
@@ -166,7 +166,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     public void AnExclusiveUseConflictsWithASharedBorrowOnTheMir(string use, bool conflicts)
     {
         var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + Header + "    let view = entries@ref\n    " + use + "\n    inspect(view)\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.Equal(conflicts, program.Problems.All.ToArray().Any(static x => x.Code.IsLoanConflict() && x.Subject.Module == 0));
@@ -279,11 +279,11 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     {
         const string source = "func store(target: uniq/Dictionary<i32, uniq/i32 during a>, value: uniq/i32 during a)\n    _ = target.tryInsert(1, value@move)\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    store(entries@uniq, value@move)\n    let found = entries[1]@follow@ref\n    entries[1]@follow = 99\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         var valid = MinimalEmissionTest.Analyze(source.Replace("    entries[1]@follow = 99\n", string.Empty, StringComparison.Ordinal));
-        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid));
     }
 
     [Theory]
@@ -357,7 +357,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     private static Compilation AnalyzedFieldReborrow(string function)
     {
         var c = MinimalEmissionTest.Analyze(FieldHolders + function + "    return 0\npublic func main() => ()\n", "Program.kimi");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         return c;
     }
 }

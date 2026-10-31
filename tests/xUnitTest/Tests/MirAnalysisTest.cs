@@ -414,6 +414,22 @@ public sealed class MirAnalysisTest
         }
     }
 
+    // G308 S3 (V16): the analyses (A1-A6) of the program of P_n's equality (MirBuildTest.Dag) at n = 16 and 20 have no problem. Fails before
+    // G308: the comparison's body builds its 2^n leaves, whose arena exceeds A1's, OwnershipStorageLimit_Kd at n = 16.
+    [Fact]
+    public void ADagComparisonHasNoAnalysisProblem()
+    {
+        foreach (var n in new[] { 16, 20 })
+        {
+            var c = MirBuildTest.Compile(MirBuildTest.Dag(n, MirBuildTest.DagOperator));
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Equal([], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i)).Where(static x => x.Problem.Subject.Module == 0)
+                .Select(x => $"n = {n}: {x.Problem.Requirement} {x.Problem.Code} {Line(c, x.Problem.Subject)}" +
+                    (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty)));
+        }
+    }
+
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
     [Trait("Purpose", "Allocation")]
     [Fact]

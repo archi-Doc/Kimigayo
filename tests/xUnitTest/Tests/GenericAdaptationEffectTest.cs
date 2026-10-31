@@ -22,10 +22,10 @@ public class GenericAdaptationEffectTest
             $"struct Worker\n    Self is Runner\n    public func run(self: ref/Self, value: {mode}/Payload)\n        Helpers.discard(value@move)\n" +
             "func later<u/U>(value: u/U)\n    u is ref or obj\n    return\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (valid)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
         else
         {
@@ -48,10 +48,10 @@ public class GenericAdaptationEffectTest
         var source = Destruction + $"contract Runner\n    func run<s/T>(self: ref/Self, value: s/{payload})\n        s is {admitted}\n        effect confined\n" +
             $"struct Worker\n    Self is Runner\n    public func run<s/T>(self: ref/Self, value: s/{payload})\n        s is {admitted}\n        Helpers.discard(value@move)\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (valid)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
         else
         {
@@ -77,7 +77,7 @@ public class GenericAdaptationEffectTest
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
     }
 }

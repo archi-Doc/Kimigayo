@@ -24,7 +24,7 @@ public class AssociatedContractParameterTest
     public void ImplementationUsesOnlyTheSubstitutedPublicDomain(string domain, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item(a)" + domain + "\nstruct S<T>\n    Self is C<T>\n    associate C.Item(b) is ref/T during b");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -34,7 +34,7 @@ public class AssociatedContractParameterTest
     public void BorrowedTypeArgumentKeepsItsFormationConditions(string relation, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item(step) for ref/E during step\nfunc f<U>(x: ref/i32 during a, y: ref/i32 during b) -> U.(C<ref/i32 during b>).Item(a)\n    U is C<ref/i32 during b>\n    " + relation + "\n    $abort(\"unused\")");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class AssociatedContractParameterTest
     {
         const string source = "contract C<E>\n    associate Item(a) is ref/E during a\nstruct S\n    Self is C<i32>\nfunc f(value: ref/i32 during a) -> S.Item(a) => value\nvar value = 7\nlet result = f(value@ref)\nvalue = 9\nrequire result == 7 else => $abort(\"loan\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
     }
 
@@ -53,7 +53,7 @@ public class AssociatedContractParameterTest
     {
         var source = "contract C<E>\n    associate Item(a) for ref/E during a\nfunc f<U, E>(value: " + input + ", other: ref/i32 during a) -> U.(C<E>).Item(a)\n    U is C<E>\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -81,7 +81,7 @@ public class AssociatedContractParameterTest
     {
         var source = "contract C<E>\n    associate Item(a) is E\nfunc f<U>(value: ref/U during a) -> " + result + "\n    U is " + premise + "\n    return 42";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

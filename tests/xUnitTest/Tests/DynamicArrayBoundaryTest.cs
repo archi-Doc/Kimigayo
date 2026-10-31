@@ -14,10 +14,10 @@ public class DynamicArrayBoundaryTest
     {
         // SPEC 4.5: stored handles keep their element-specific cleanup, including through generic substitution.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified);
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out var error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         Assert.NotEmpty(writer.ToString());
     }
 
@@ -38,7 +38,7 @@ public class DynamicArrayBoundaryTest
         // A zero-sized component inside an element with bytes keeps an ordinary stride; a zero-sized element has
         // stride zero and needs no buffer.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
     }
 }

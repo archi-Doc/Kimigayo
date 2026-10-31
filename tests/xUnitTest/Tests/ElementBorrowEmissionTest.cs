@@ -132,8 +132,7 @@ public class ElementBorrowEmissionTest
         => ScalarEmissionTest.EmitFixture("ElementBorrowPlace" + name, source, stdout);
 
     // SPEC 4.7.1, 3.1.3 (DECISIONS R5-M159): an element whose key diverges, which has its element Type, or a part of it, is never borrowed
-    // or changed as a call's exclusive input: a `@uniq` argument, a `uniq/Self` receiver, an intrinsic's input; run under MIR code
-    // generation in every run (the old generator refuses each, GenerationFailed_Kd; STATUS).
+    // or changed as a call's exclusive input: a `@uniq` argument, a `uniq/Self` receiver, an intrinsic's input.
     [Theory]
     [InlineData("Argument", "bump(a[(return 42)]@uniq)")]
     [InlineData("Receiver", "b[(return 42)].inc()")]
@@ -171,7 +170,7 @@ public class ElementBorrowEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Item + Pt + Bank + Bump + source + "\npublic func main() => ()");
         Assert.Contains(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.SharedPathAccess_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 3.4.3, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
@@ -179,9 +178,9 @@ public class ElementBorrowEmissionTest
     public void ARuntimeSelectionOfAPartiallyMovedFixedArrayIsRejected()
     {
         var c = MinimalEmissionTest.Analyze(Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet taken = ys[1]@move\nlet i: isize = 0\nbump(ys[i].n@uniq)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 15.6.2, 15.6.3, 15.6.7: a part borrow keeps its Array borrowed while it is live: resizing, clearing, moving or replacing
@@ -195,9 +194,9 @@ public class ElementBorrowEmissionTest
     public void APartBorrowKeepsItsArrayBorrowed(string use, string code)
     {
         var c = MinimalEmissionTest.Analyze(Item + "var xs: Array<Item> = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(code, Assert.Single(c.Problems).Code.ToString());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 3.4.3, 10.2, 15.6.2: element routes compose: nested Field, Tuple and Array projections select one Place, a stored reference
@@ -219,9 +218,9 @@ public class ElementBorrowEmissionTest
     public void ARetainedPartBorrowBlocksItsArray(string source)
     {
         var c = MinimalEmissionTest.Analyze(Item + Bank + source + "\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("CallActivationConflict_Kd", Assert.Single(c.Problems).Code.ToString());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 15.6.2: element indices prove no disjointness, so exclusive borrows of parts of two elements conflict exactly as exclusive
@@ -232,7 +231,7 @@ public class ElementBorrowEmissionTest
         static string[] Codes(string use)
         {
             var c = MinimalEmissionTest.Analyze(Item + "var xs: Array<Item> = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\n" + use);
-            Assert.False(c.WriteIr(TextWriter.Null, out _));
+            Assert.False(c.Generate(TextWriter.Null));
             return c.Problems.Select(static x => x.Code.ToString()).ToArray();
         }
 
@@ -260,7 +259,7 @@ public class ElementBorrowEmissionTest
         var outcomes = new[] { first, second }.Select(static use =>
         {
             var c = MinimalEmissionTest.Analyze(Prefix + use);
-            return (Failures: string.Join(",", c.Problems.Select(static x => x.Code)), Emitted: c.WriteIr(TextWriter.Null, out _));
+            return (Failures: string.Join(",", c.Problems.Select(static x => x.Code)), Emitted: c.Generate(TextWriter.Null));
         }).ToArray();
         Assert.Equal(outcomes[0], outcomes[1]);
         Assert.Equal(stdout is not null, outcomes[0].Emitted);
@@ -328,10 +327,10 @@ public class ElementBorrowEmissionTest
             ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
             Assert.True(KotoHelper.Replace(conversion, placeholder, read));
             ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             Assert.True(KotoHelper.Replace(conversion, read, placeholder));
             ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
             Assert.True(KotoHelper.Replace(declaration, borrowed, read));
@@ -354,7 +353,7 @@ public class ElementBorrowEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
 
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
@@ -362,7 +361,7 @@ public class ElementBorrowEmissionTest
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
@@ -378,14 +377,14 @@ public class ElementBorrowEmissionTest
             "var ps: Array<Pt> = [Pt.init(41)]\nset(ps@uniq)\nlet bank = Bank.init([Item.init(\"a\", 7)])\nlet n = first(bank@ref)");
         var parts = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nlet name = xs[0].name@ref\nConsole.writeLine(name)\n" +
             "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\nbump(ys[i].n@uniq)\nConsole.writeLine(ys[i].name)");
-        Assert.True(parts.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(parts.Generate(TextWriter.Null), MinimalEmissionTest.Describe(parts));
         var success = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             success &= shared.Analyze().IsVerified;
             success &= referenced.Analyze().IsVerified;
             success &= parts.Analyze().IsVerified;
-            success &= parts.WriteIr(TextWriter.Null, out _);
+            success &= parts.Generate(TextWriter.Null);
         }));
         Assert.True(success);
     }
@@ -401,12 +400,12 @@ public class ElementBorrowEmissionTest
     public void WarmElementPlaceWorkloadsAllocateNothing(string axis)
     {
         var c = MinimalEmissionTest.Analyze(Verification.VerificationWorkloads.ElementPlaces(axis, 8));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -416,7 +415,7 @@ public class ElementBorrowEmissionTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 }

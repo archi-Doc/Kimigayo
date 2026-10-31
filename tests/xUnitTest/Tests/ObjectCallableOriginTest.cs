@@ -23,7 +23,7 @@ public class ObjectCallableOriginTest
     {
         var source = Program(mode);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ObjectCallableOrigin" + mode, source, string.Empty);
     }
 
@@ -50,7 +50,7 @@ public class ObjectCallableOriginTest
     public void CallablePayloadsCallThroughObjectCallees(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ObjectCallablePayload" + name, source, string.Empty);
     }
 
@@ -59,10 +59,10 @@ public class ObjectCallableOriginTest
     public void WarmPayloadCallPlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n + 1)\nlet v = h@objref\nrequire h() == 5 and v() == 5 and h@follow() == 5 else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         bool verified = true, written = true, bound = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null)));
         Assert.Equal(0, AllocationMeasurement.Measure(() => bound &= c.Bind().IsComplete));
         Assert.Equal((true, true, true), (verified, written, bound));
     }
@@ -75,7 +75,7 @@ public class ObjectCallableOriginTest
     public void WarmContractAndCallChecksReuseStorage(string mode)
     {
         var c = MinimalEmissionTest.Analyze(Program(mode));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 

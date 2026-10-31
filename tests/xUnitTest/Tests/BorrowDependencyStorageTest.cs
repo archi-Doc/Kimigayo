@@ -15,7 +15,7 @@ public class BorrowDependencyStorageTest
     public void DependentBodiesUseCompactTables(int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count, true));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
         var bytePerCell = (2L * body.Places.Count * body.Places.Count) + ((long)body.Places.Count * body.Operations.Count);
         Assert.True(body.BorrowStorageBytes <= bytePerCell / 4, $"Retained {body.BorrowStorageBytes} bytes for {bytePerCell} Boolean/loan cells.");
@@ -32,7 +32,7 @@ public class BorrowDependencyStorageTest
     public void InspectionOnlyBodiesNeedNoLocalDependencyTable(int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
         Assert.True(body.Places.Count >= count);
         Assert.Equal(0, body.BorrowDependencyCapacity);
@@ -47,7 +47,7 @@ public class BorrowDependencyStorageTest
     {
         var source = VerificationWorkloads.InspectionLoans(4, stored);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
         Assert.Equal(stored, body.BorrowDependencyCapacity > 0);
         ScalarEmissionTest.EmitFixture("BorrowDependencyStorage" + stored, source, string.Empty);
@@ -60,9 +60,9 @@ public class BorrowDependencyStorageTest
     {
         var source = "func inspect(text: ref/string, effect: ()) -> bool => text == \"x\"\nvar value = \"x\"\nlet result = inspect(value, " + effect + ")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(accepted, c.Analysis.IsVerified);
-        Assert.Equal(accepted, c.Validate(out _));
+        Assert.Equal(accepted, c.Generate(TextWriter.Null));
         if (!accepted)
         {
             Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());

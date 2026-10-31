@@ -15,7 +15,7 @@ public class WrapConversionTest
     {
         const string source = "let x: u64 = 1\nlet a = x@wrap<u32>\nlet b = x@wrap<Wrapping<u8>>\nlet w: Wrapping<i16> = 1\nlet c = w@wrap<u64>\nlet d = w@wrap<Wrapping<i16>>\nlet e = x@wrap<u64>\nlet f = x@wrap<i128>";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
         Assert.Same(BoundType.Primitives["u32"], variables["a"].NameKoto.TypeOf());
         Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u8"]), variables["b"].NameKoto.TypeOf());
@@ -38,7 +38,7 @@ public class WrapConversionTest
     public void DirectLiteralsAreWrappedAtCompileTime(string expression, string type, long payload)
     {
         var c = MinimalEmissionTest.Analyze($"let w = {expression}");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
         Assert.Same(expected, conversion.TypeOf());
@@ -53,14 +53,14 @@ public class WrapConversionTest
             Assert.Equal((Int128)payload, folded);
         }
 
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void GenericTargetsTakeTheGenericLiterals()
     {
         var c = MinimalEmissionTest.Analyze("func f<T>(x: T) -> Wrapping<T>\n    T is PrimitiveInteger\n    return 127@wrap<Wrapping<T>> + x@wrap<Wrapping<T>>\nlet r = f(1@u8)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(MinimalEmissionTest.Analyze("func f<T>(x: T) -> Wrapping<T>\n    T is PrimitiveInteger\n    return 128@wrap<Wrapping<T>>").Binding.Result.IsComplete);
     }
 
@@ -110,7 +110,7 @@ public class WrapConversionTest
     public void InvalidFormsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

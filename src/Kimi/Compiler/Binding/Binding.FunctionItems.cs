@@ -41,10 +41,6 @@ public sealed partial class Binding
         }
     }
 
-    // Generation-only context of an already selected declaration. An override never becomes a public Item.
-    internal CallPlan? ImplementationContext(FunctionKoto function, BoundType declaring)
-        => this.FunctionItemContext(this.FunctionItemType(function.BoundSymbol!, [], declaring));
-
     // A declaration and its bound generic arguments are the complete identity of its zero-sized Item. Its signature is a
     // call contract, not stored environment data; in particular, per-call input Origins do not make the Item borrow anything.
     internal BoundType? FunctionItemSignature(BoundType type)
@@ -81,11 +77,11 @@ public sealed partial class Binding
         }
     }
 
-    // The call context of an Item: generation requires closed arguments, while public effect checks also inspect
-    // symbolic contracts. One context per Item Type lets repeated preparation reuse both operands and substitutions.
-    internal CallPlan? FunctionItemContext(BoundType type, bool requireClosed = true)
+    // The call context of an Item, whose arguments may be symbolic: public effect checks inspect symbolic contracts. One context per
+    // Item Type lets repeated preparation reuse both operands and substitutions.
+    internal CallPlan? FunctionItemContext(BoundType type)
     {
-        if (type.Kind != BoundTypeKind.FunctionItem || (requireClosed && type.ContainsParameter) ||
+        if (type.Kind != BoundTypeKind.FunctionItem ||
             type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
         {
             return null;
@@ -122,7 +118,7 @@ public sealed partial class Binding
         {
             CopyItemArguments(type, function, own);
             // Compiler entries and virtual Items consume already-acquired logical parameters. Their public
-            // contract operands serve generation and effect checks without inventing a source invocation.
+            // contract operands serve effect checks without inventing a source invocation.
             var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
             for (var i = 0; i < operations.Length; i++)
             {

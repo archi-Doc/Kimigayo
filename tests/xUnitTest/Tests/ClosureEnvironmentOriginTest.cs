@@ -677,11 +677,12 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 23.1.2, DIAGNOSTICS (DECISIONS R4-M133; reviews B1, F3): a pending relation is recorded as a binding-time fit is: a local
     // annotation's fit at its initializer, under a Consuming receiver too (d3, Refuted; and d1 above), and a failure that no chain refutes
-    // in a failed Origin environment a dependent of that failure (b1: the clause's record alone, as the same Unknown formed in the
-    // function body). They were at the whole declaration and an independent record.
+    // in a failed Origin environment a dependent of that failure only when a repair of the failed clause could prove it (DECISIONS BU-69;
+    // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
+    // They were at the whole declaration and an independent record.
     [Theory]
     [InlineData(LocalAnnotatedConsuming, "UnsatisfiedOriginRelation_Kd n@ref")]
-    [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz")]
+    [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]
     public void APendingRelationIsRecordedAsABindingTimeFit(string function, string records)
     {
         var source = function + "public func main() => ()\n";
@@ -796,7 +797,7 @@ public class ClosureEnvironmentOriginTest
     {
         var source = function + "public func main() => ()\n";
         var c = VerifiedSpecExampleTest.Bind(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Analyze();
         var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
         Assert.Empty(Errors([.. common, .. mir]));
@@ -839,10 +840,10 @@ public class ClosureEnvironmentOriginTest
         var nested = LocalView.Replace("use", "nested", StringComparison.Ordinal) + "    let t = \"a\"\n    var outer = func [u, t@move] () -> i32\n" +
             "        consumeText(t@move)\n        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n    return 0\n";
         var c = MinimalEmissionTest.Analyze(G6c + nested + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -850,13 +851,13 @@ public class ClosureEnvironmentOriginTest
     public void WarmEnvironmentBorrowsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.EnvironmentBorrows);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // One record of ARecordShowsTheBorrowThatSuppliedItsEnd: its code, label, location, related Borrow and destination.

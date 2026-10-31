@@ -53,7 +53,7 @@ public class StringFunctionEmissionTest
     [InlineData(true)]
     public void NamedArgumentsDistinguishCallerAndCalleeDestructionOrder(bool transfer)
     {
-        // The arguments are calls' results, values both generators make, so an abandoned call's caller has them to destroy (a constant
+        // The arguments are calls' results, values code generation makes, so an abandoned call's caller has them to destroy (a constant
         // abandoned there is never materialized by MIR code generation; DECISIONS R5-M145).
         var source = Echo + "func choose(first: string, second: string, gap: ()) => ()\nfunc f()\n    choose(second: echo(\"second\"), first: echo(\"first\"), gap: " +
             (transfer ? "(return)" : "()") + ")\nf()";
@@ -101,7 +101,7 @@ public class StringFunctionEmissionTest
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bytes);

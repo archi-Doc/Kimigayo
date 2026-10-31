@@ -85,7 +85,7 @@ public class GenericStorageEmissionTest
     public void GenericCallsBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -96,7 +96,7 @@ public class GenericStorageEmissionTest
     public void ChecksGenericOwnershipAtDefinition(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -112,7 +112,7 @@ public class GenericStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
@@ -122,7 +122,7 @@ public class GenericStorageEmissionTest
     public void AFunctionItemSharesTheInstanceOfADirectCall()
     {
         var c = MinimalEmissionTest.Analyze(Choose + "let pick = choose<i32>\nlet n = pick(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var startup = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
         var calls = startup.Instructions.Where(static x => x.Callee?.Signature == "internal i32 (i32, i32, i1)").ToArray();
         Assert.Equal(2, calls.Length);
@@ -159,13 +159,13 @@ public class GenericStorageEmissionTest
         var c = MinimalEmissionTest.Analyze(Box + "let b = Box<i32>.init(42)\nrequire b@move.take() == 42 else => $abort(\"value\")");
         for (var i = 0; i < 3; i++)
         {
-            Assert.True(c.Validate(out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             c.Bind();
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
         }
 
-        Assert.True(c.Validate(out var finalError), finalError);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

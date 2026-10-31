@@ -91,7 +91,7 @@ public class Utf8ReserveEffectTest
     public void InputAuthorityAndImmutableStateAreAllowed(string prefix, string operation)
     {
         var c = Analyze(prefix, operation);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null) + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c) + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
     }
 
     [Theory]
@@ -172,8 +172,8 @@ public class Utf8ReserveEffectTest
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -198,7 +198,7 @@ public class Utf8ReserveEffectTest
     public void PureDictionaryCallbacksAndCapacityOperationsAreAllowed()
     {
         var c = Analyze(string.Empty, "var values: Dictionary<i32, i32> = [:]\n        values.reserve(3)\n        _ = values.tryInsert(1, 2)\n        _ = values.tryGet(1)\n        _ = values.insertOrReplace(1, 3)\n        _ = values.remove(1)\n        values.clear()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -227,7 +227,7 @@ public class Utf8ReserveEffectTest
     public void PureSealedObjectDestructionIsAllowed()
     {
         var c = Analyze("struct Value\n", "let value = Kimi.Intrinsics.makeObj(Value.init())");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
