@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Mir;
 // what it does (KindOf, MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
 // (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
 // also read by MirBorrows.OwnSteps' MayDepart, Dropping by MirBorrows.Holders (drop slots), Dropping and Destruction by MirBorrows.Liveness
-// and MirBorrows.Activations, and Destruction by MirBorrows.Calls' referent stores.
+// and MirBorrows.Activations, and Dropping by MirBorrows.Destructions' receivers.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -62,14 +62,13 @@ internal sealed partial class MirBorrows
             return AccessKind.Destroy;
         }
 
-        return this.Destruction(cases.Type(this.body.TypeOf(place)!), out _);
+        return this.Destruction(cases.Type(this.body.TypeOf(place)!));
     }
 
     // How destroying a value of a case Type accesses it, read off the walks' answer (MirTypes.Observation): observing where decided or Limit,
-    // unclassified where Deep (past the walk's bound), else shallowly, and whether it observes only through an abstract part not proven
-    // Copy (unproven: Limit); once per case Type for the body's definition and the program version (Observation reads the definition's Copy
-    // and Sealed proofs).
-    private AccessKind Destruction(BoundType type, out bool unproven)
+    // unclassified where Deep (past the walk's bound), else shallowly; once per case Type for the body's definition and the program version
+    // (Observation reads the definition's Copy and Sealed proofs).
+    private AccessKind Destruction(BoundType type)
     {
         if (this.destructionsOf != (this.body.Key.Decl, this.program.Version))
         {
@@ -83,7 +82,6 @@ internal sealed partial class MirBorrows
             observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.entered);
         }
 
-        unproven = observation.IsLimit;
         if (observation.IsDeep)
         {
             return AccessKind.Unclassified;

@@ -89,7 +89,7 @@ internal sealed partial class MirBorrows
     // conflicts relation's ObservePast; past the destruction walk's bound it is unclassified, the depth limit at the call (R4-M153).
     private void Destroyed(int reservation, BoundType target, int taking, MirLocation at)
     {
-        var kind = this.Destruction(target, out _);
+        var kind = this.Destruction(target);
         if (kind == AccessKind.Unclassified)
         {
             this.Limit(this.Subject(at), MirOutcome.Deep);

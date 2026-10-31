@@ -116,6 +116,17 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.keyEnds[node] = this.keyCount;
     }
 
+    // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
+    // destroys (A4's, and A5's MirBorrows.Destructions'): the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance,
+    // DECISIONS R4-M139), Rejected storage included; null where the substitution does not instantiate it or its storage is a Limit.
+    internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
+    {
+        var declared = TyCtxt.Signature(callee, null, slot, out _);
+        var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
+        _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
+        return below;
+    }
+
     private static byte Class(CompilerFunctionEffect effect) => effect switch
     {
         CompilerFunctionEffect.Inputs => 0,
@@ -276,17 +287,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             default:
                 throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
         }
-    }
-
-    // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
-    // destroys: the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139), Rejected storage included;
-    // null where the substitution does not instantiate it or its storage is a Limit.
-    private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
-    {
-        var declared = TyCtxt.Signature(callee, null, slot, out _);
-        var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
-        _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
-        return below;
     }
 
     // R4-M6a: what a Drop destroys in the view, by A2's verdict group. One only the checks reach runs no destructor (drop elaboration and

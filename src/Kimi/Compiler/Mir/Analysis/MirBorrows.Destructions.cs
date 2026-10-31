@@ -12,9 +12,12 @@ namespace Kimi.Compiler.Mir;
 // (16.3.2, MirTypes.Parts); a Sealed handle's payload, walked on (an rc or arc release may be final); an erased destruction where the walk
 // cannot see the drop (an abstract part not proven Copy, a Function value, a handle whose payload is not proven Sealed;
 // TyCtxt.RetainsErasedDestruction). Each drop's retention (TyCtxt.Retains over the drop and its declaring layer) stores through its
-// output as a Call's does (MirBorrows.Calls' Keep, W from the receiver); a Limit retention is the depth limit at the Drop (R4-M153).
-// Input: the view's kept Drops, A2's verdicts (Dropping), Binding's drop retention.
-// Output: by block, the Drop's receiver entry (-1: none); at the Drop's plan, its drops' stores.
+// output as a Call's does (MirBorrows.Calls' Keep, W from the receiver); a Limit retention is the depth limit at the location (R4-M153).
+// A published operation's cleanup is the destruction its row lists (SPEC 4.9.6; PublishedRow.Destroys, DECISIONS BU-70), composed at the
+// call after its own rows over the destroying argument's value (Destroying), which replaces C3's referent guard (R4-M143).
+// Input: the view's kept Drops, A2's verdicts (Dropping), Binding's drop retention, the published rows and A4's Type below a parameter
+// (MirEffects.Below).
+// Output: by block, the Drop's receiver entry (-1: none); at the Drop's or the Call's plan, the drops' stores.
 // Invariants: the retentions of a case Type are walked once per definition and program version (the destructions memo's key).
 // Must not derive retention (TyCtxt), compute W (MirBorrows.Reach) or record a problem (MirBorrows.Locations).
 internal sealed partial class MirBorrows
@@ -40,19 +43,38 @@ internal sealed partial class MirBorrows
         this.Work += this.body.Blocks.Length;
     }
 
-    // A Drop's stores (SPEC 15.6.4): each drop its destruction runs, as a call over the receiver, through each output (Keep).
+    // A Drop's stores (SPEC 15.6.4): its destruction composed over the receiver, the destroyed root's address.
     private void Destroyed(ulong[] state, in MirTerminator drop, int block, bool checks)
     {
-        if (this.receivers[block] < 0)
+        if (this.receivers[block] >= 0)
         {
-            return;
+            var call = drop with { Operand = MirOperand.Copy(drop.Place) };
+            this.Compose(state, call, this.sets.Add(0, this.loanBase + this.receivers[block]), cases.Type(this.body.TypeOf(drop.Place)!), checks);
         }
+    }
 
-        var (start, count) = this.DropRows(cases.Type(this.body.TypeOf(drop.Place)!));
-        var call = drop with { Operand = MirOperand.Copy(drop.Place) };
+    // A published operation's cleanup (SPEC 4.9.6, 15.6.4; DECISIONS BU-70): the destruction of the Type below its row's Destroys parameter,
+    // composed at the call after its own rows over the argument's value as the receiver: the borrow of the destroyed target (`clear`,
+    // `truncate`, `removeAll`, `replace`), or a by-value input's own value (`insertOrReplace`'s unused key).
+    private void Destroying(ulong[] state, in MirTerminator call, bool checks)
+    {
+        if (call.Callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } symbol } && types.Published(symbol) is { Destroys: >= 0 } row &&
+            effects.Below(symbol, call.Callee.Subst, row.Destroys) is { } type)
+        {
+            var position = MirCallee.Position(symbol, row.Destroys);
+            var input = call with { Count = 0, Operand = this.body.Operands[call.Start + position] };
+            this.Compose(state, input, this.argValues[position], type, checks);
+        }
+    }
+
+    // A destruction of a case Type over a receiver value: each drop it runs, as a call whose input 0 is the receiver (the view's operand
+    // `call.Operand`, position 0 = call.Count), through each output (Keep); a Limit retention is the depth limit at the location.
+    private void Compose(ulong[] state, in MirTerminator call, int receiver, BoundType type, bool checks)
+    {
+        var (start, count) = this.DropRows(type);
         MirDataflow.Grow(ref this.argValues, 1);
         MirDataflow.Grow(ref this.slotPositions, 1);
-        (this.argValues[0], this.slotPositions[0], this.referentCount) = (this.sets.Add(0, this.loanBase + this.receivers[block]), 0, 0);
+        (this.argValues[0], this.slotPositions[0], this.referentCount) = (receiver, 0, 0);
         for (var i = start; i < start + count; i++)
         {
             var retention = this.dropRows[i];

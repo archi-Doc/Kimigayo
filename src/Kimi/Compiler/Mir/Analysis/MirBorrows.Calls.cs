@@ -12,21 +12,17 @@ namespace Kimi.Compiler.Mir;
 // Reached.All where none names it, never the Abstract entry), joined over the ways the walk reached it. A Closure
 // callee's call receiver is its input at position call.Count, the callee operand, read before the Moves, and a store into it takes W as
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
-// membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) whose referent destroys
-// shallowly (Destruction), the store reaches refs(S) alone (W's first step, Referents; R4-M143); where the referent may observe a
-// destruction, which the record leaves to its callers, W stays, each holder past refs(S) also taking the root's record, until A5 composes
-// it there (PLAN G264); where it observes only through an abstract part not proven Copy, or past the destruction walk's bound, W past
-// refs(S) is undecided for a Loan or an address (R4-M147, R4-M153).
+// membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
+// refs(S) alone (W's first step, Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
+// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
 // an untied storage), and the result into the destination; Φ_E for an untied result, and for a result that may hold a raw pointer where it
 // is untracked (MirBorrows.Addresses); in the checks replay, whether a store is undecided, two facts: the limit, where its W reached a
-// holder the guard leaves undecided (MirWrites.Limit, R4-M147), at a referent store whose referent observes only through an abstract part
-// not proven Copy W past refs(S) would store a Loan or an address, which then stops at refs(S), or a record's pair whose Origins the
-// view's Origin class does not class where its Value would store one (R4-M154); and the depth fact (R4-M153), where the step from a
-// holder W met whose guard is Deep would change what W writes, or a referent past the destruction walk's bound stops such a store at
-// refs(S); the location records their join (MirBorrows.Locations). A record's pairs
+// holder the guard leaves undecided (MirWrites.Limit, R4-M147), or a record's pair whose Origins the view's Origin class does not class
+// where its Value would store one (R4-M154); and the depth fact (R4-M153), where the step from a holder W met whose guard is Deep would
+// change what W writes; the location records their join (MirBorrows.Locations). A record's pairs
 // (StorageRetention.Pairs: Origins of the call's Type arguments) are judged by MirOrigins.Outlives under the view's class: one that holds
 // makes its input Value (Solved, memoized per record, body, view and site for the program version).
 // Must not choose a Call's records (MirBorrows.CallRows), compute W (MirBorrows.Reach), judge a Type (an entry's Type is Binding's, the
@@ -103,6 +99,8 @@ internal sealed partial class MirBorrows
             this.Keep(state, call, written, checks);
         }
 
+        this.Destroying(state, call, checks);
+
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         if (call.Target < 0)
         {
@@ -118,38 +116,22 @@ internal sealed partial class MirBorrows
         this.Store(state, call.Place, result, 0, issue: false);
     }
 
-    // The store through one output: W from its argument's value (at a referent store whose referent destroys shallowly, refs(S) alone),
-    // each holder taking its storage's record (Received); where the referent may observe a destruction, which the record leaves to its
-    // callers, each holder past refs(S) also takes the root's record (R4-M143: W stays, with what the referent holds). An undecided store
-    // of a Loan or an address (R4-M147; V16: one read, the sorted set's last element) stops at refs(S), a limit at the call, the depth
-    // limit for a referent past the destruction walk's bound (R4-M153).
+    // The store through one output: W from its argument's value (at a referent store, refs(S) alone; R4-M143), each holder taking its
+    // storage's record (Received). A Drop's drops store through the same path (MirBorrows.Destructions).
     private void Keep(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
     {
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
         var input = this.TypeOf(this.Input(call, position));
-        BoundType? referent = (this.wCount > 0 || stored) && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
-        var unproven = false;
-        var destroys = stored && referent is not null ? this.Destruction(referent, out unproven) : AccessKind.Observe;
-        var shallow = destroys == AccessKind.Destroy;
-        var deepReferent = destroys == AccessKind.Unclassified;
-        var reach = this.Referents(this.argValues[position]);
-        var (limited, deepHolder) = shallow ? default : this.Writes(state, this.argValues[position]);
+        BoundType? referent = this.wCount > 0 && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
+        this.Referents(this.argValues[position]);
+        var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position]);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
-        var undecided = (unproven || deepReferent) && this.targets.Count > reach;
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
             var value = this.Received(state, call, written, target, checks);
-            value = t >= reach && stored && !shallow ? this.sets.Union(value, this.RecordValue(state, call, written.Own, checks)) : value;
-            if (t >= reach && undecided && this.sets.Elements(value) is [.., var last] && last >= this.loanBase)
-            {
-                this.limit |= checks && !deepReferent;
-                this.deep |= checks && deepReferent;
-                continue;
-            }
-
             this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, Joined, issue: false);
         }
     }
