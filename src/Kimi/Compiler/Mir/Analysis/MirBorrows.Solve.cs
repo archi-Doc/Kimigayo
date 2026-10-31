@@ -30,6 +30,7 @@ internal sealed partial class MirBorrows
         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
         this.Addresses();
+        this.Receivers();
         if (!this.producing)
         {
             // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, PQ-10 and an own-step entry an access may
