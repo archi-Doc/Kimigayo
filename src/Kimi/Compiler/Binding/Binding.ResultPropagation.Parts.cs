@@ -211,30 +211,23 @@ public sealed partial class Binding
         return null;
     }
 
-    // Appends the parts of child position `index` of the aggregate parts in [start, end).
+    // SPEC 14.9.2 step 2, 12.4.1: appends the parts that child `index` of the aggregate parts in [start, end) forms its Type from: each
+    // part's child there (AddIndexedChild), but every element of an array, which has one element Type (ShapeChildren).
     private void AddPartsAt(int start, int end, int index)
     {
         for (var i = start; i < end; i++)
         {
-            switch (this.positionParts[i])
+            var part = KotoHelper.UnwrapParentheses(this.positionParts[i]);
+            if (part is ArrayLiteralKoto array && this.IsAggregatePart(array))
             {
-                case TupleLiteralKoto tuple when this.IsAggregatePart(tuple):
-                    this.AddResultPart(tuple.Elements[index]);
-                    break;
-                case ArrayLiteralKoto array when this.IsAggregatePart(array):
-                    foreach (var element in array.Elements)
-                    {
-                        this.AddResultPart(element);
-                    }
-
-                    break;
-                case DictionaryLiteralKoto dictionary when this.IsAggregatePart(dictionary):
-                    foreach (var entry in dictionary.Entries)
-                    {
-                        this.AddResultPart(index == 0 ? entry.Key : entry.Value);
-                    }
-
-                    break;
+                foreach (var element in array.Elements)
+                {
+                    this.AddResultPart(element);
+                }
+            }
+            else if (this.IsAggregatePart(part))
+            {
+                this.AddIndexedChild(part, index);
             }
         }
     }

@@ -11,7 +11,9 @@ namespace Kimi.Compiler;
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
-//   child positions are formed part by part (SPEC 14.9.2). AddResultPart forms every part of a child position (Never dropped, the
+//   child positions are its aggregate parts' by index (SPEC 10.5.1: an array result's too, each index holding the elements of the
+//   sources that have it; the owner, 2026-10-31), while its Type is formed with an array's one element position (14.9.2 step 2,
+//   AddPartsAt). AddResultPart forms every part of a child position (Never dropped, the
 //   forms that deliver it passed, a waiting join flattened). A position of several parts has one kind (PositionKind), typed first
 //   (SPEC 14.9.2 step 2): Typed at its typed parts' common Type (one evidence) whatever else it holds, its literals and the parts
 //   awaiting their call beside them taking it (step 3), or with no Type when a part failed; only a position with no typed part, and so
@@ -39,6 +41,15 @@ public sealed partial class Binding
         _ => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
     };
 
+    // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements
+    // are classified one by one: a Tuple's or array's elements, a Dictionary's key and value.
+    private static int IndexedChildren(Koto part) => part switch
+    {
+        TupleLiteralKoto tuple => tuple.Elements.Count,
+        ArrayLiteralKoto array => array.Elements.Count,
+        _ => 2,
+    };
+
     // A walk's position of one argument part; ClosePosition removes it with every part appended after it.
     private int OpenPosition(Koto part)
     {
@@ -49,48 +60,77 @@ public sealed partial class Binding
 
     private void ClosePosition(int start) => this.positionParts.RemoveRange(start, this.positionParts.Count - start);
 
-    // The child positions of [start, end): of one part, its Tuple or array literal's elements, or the one position of a join's results
-    // its call classifies; of several parts, a join's, theirs part by part.
+    // The child positions of [start, end), by index (SPEC 10.5.1; the owner, 2026-10-31): of one part, its Tuple or array literal's
+    // elements, or the one position of a join's results its call classifies; of several parts, a join's, those of its aggregate parts
+    // (IndexedChildren), so that arrays of unequal length have the longest one's.
     private int ChildPositions(int start, int end)
     {
         if (end - start != 1)
         {
-            return this.PartsShape(start, end) is { } shape ? ShapeChildren(shape) : 0;
+            var count = 0;
+            for (var i = start; i < end; i++)
+            {
+                if (this.IsAggregatePart(this.positionParts[i]))
+                {
+                    count = Math.Max(count, IndexedChildren(this.positionParts[i]));
+                }
+            }
+
+            return count;
         }
 
         var part = KotoHelper.UnwrapParentheses(this.positionParts[start]);
-        return part switch
-        {
-            TupleLiteralKoto tuple => tuple.Elements.Count,
-            ArrayLiteralKoto array => array.Elements.Count,
-            _ => this.ComposedJoin(part) is null ? 0 : 1,
-        };
+        return part is TupleLiteralKoto or ArrayLiteralKoto ? IndexedChildren(part) : this.ComposedJoin(part) is null ? 0 : 1;
     }
 
-    // Appends the parts of child position `index` of [start, end), each formed by AddResultPart, and gives the parameter Type at it: a
-    // Tuple element's component, an array element's element Type, a Dictionary key's or value's, a join's results its own; null where
-    // the pattern's shape differs.
+    // Appends the parts of child position `index` of [start, end), each part's there (AddIndexedChild), and gives the parameter Type at
+    // it: a Tuple element's component, an array element's element Type, a Dictionary key's or value's, a join's results its own; null
+    // where the pattern's shape differs.
     private BoundType? AddChildPosition(int start, int end, int index, BoundType? pattern)
     {
         if (end - start != 1)
         {
-            var shape = this.PartsShape(start, end)!;
-            this.AddPartsAt(start, end, index);
-            return ChildPattern(shape, index, pattern);
+            for (var i = start; i < end; i++)
+            {
+                if (this.IsAggregatePart(this.positionParts[i]))
+                {
+                    this.AddIndexedChild(this.positionParts[i], index);
+                }
+            }
+
+            return ChildPattern(this.PartsShape(start, end)!, index, pattern);
         }
 
         var part = KotoHelper.UnwrapParentheses(this.positionParts[start]);
+        if (part is TupleLiteralKoto or ArrayLiteralKoto)
+        {
+            this.AddIndexedChild(part, index);
+            return ChildPattern(part, index, pattern);
+        }
+
+        this.AddResults(this.ComposedJoin(part)!);
+        return pattern;
+    }
+
+    // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for an array without one, a
+    // Dictionary's keys or values.
+    private void AddIndexedChild(Koto part, int index)
+    {
         switch (part)
         {
             case TupleLiteralKoto tuple:
                 this.AddResultPart(tuple.Elements[index]);
-                return ChildPattern(tuple, index, pattern);
-            case ArrayLiteralKoto array:
+                break;
+            case ArrayLiteralKoto array when index < array.Elements.Count:
                 this.AddResultPart(array.Elements[index]);
-                return ChildPattern(array, index, pattern);
-            default:
-                this.AddResults(this.ComposedJoin(part)!);
-                return pattern;
+                break;
+            case DictionaryLiteralKoto dictionary:
+                foreach (var entry in dictionary.Entries)
+                {
+                    this.AddResultPart(index == 0 ? entry.Key : entry.Value);
+                }
+
+                break;
         }
     }
 
