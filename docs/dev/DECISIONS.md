@@ -1236,6 +1236,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
     R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19), and restored
     by R4-M86 (2026-10-20).
+  - Amended by R5-M167 (R6-gen's exit, the owner's row 12): D5's Emission half ended on 2026-10-31 with R6-gen; the Analysis half and
+    its exceptions continue until R6-check.
 - **R4-M36** (superseded in part by R4-M153: the bound's answer and record) (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -9727,6 +9729,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M160 (G4): the temporary sel-only behaviors and the R5 tooling of the package end with the code generator selection.
   - Amended by R5-M165 (G9b): the owner's choice is implemented: `EmissionArtifacts.Publish` records `ArtifactPublicationFailed_Kd`
     (Input) and `GenerationFailed_Kd` is gone (net 0 codes); contract failures are `InternalInvariant_Kd`.
+  - Amended by R5-M167 (the owner's row 14): `DiagnosticPartition.Emission` and the `Emission` requirement are lasting names, the
+    generation request's partition and requirement, not R6 temporaries; no attribute.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
   `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
@@ -13582,6 +13586,8 @@ structure is recorded here by the unit that first implements it.
        and G285-G289).
   - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
     collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
+  - Amended by R5-M167 (the owner's row 13): R5-M7's shared-file hold protocol, carried over to R6-gen, continues beside R4 until R4's
+    exit.
 - **R5-M149 Layout needs: one published fact of what a form's generated code reads a layout of, read by the collector and code
   generation; an uncalled constructor without a layout is checked only (unit proj)** (2026-10-29, C lane; PLAN G157 (41), the end-to-end
   review's B2; design `proj-design.md` revision 3, design review 2 ACCEPT; the owner's approval 2026-10-29, verbatim
@@ -14168,6 +14174,8 @@ structure is recorded here by the unit that first implements it.
     destruction half (no reader).
   - Amends, each with its amendment line: R5-M16, R5-M17, R5-M27, R5-M46, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's
     unit mapping.
+  - Amended by R5-M167 (the owner's row 15): G11c moved the five `.ll.in` templates to `Backend/`; `C/Emission` keeps the toolchain,
+    publication and profile files until R9 moves the toolchain out of the compiler.
 - **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, R6-gen; plan §4.9 row G9, R5-M18's G9a/G9b split;
   design `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q1-Q10; under R5-M162; Major, G:R6-gen-del; BU
   reviews the Binding commit)
@@ -14238,3 +14246,77 @@ structure is recorded here by the unit that first implements it.
   - Owner: the departure from K package 4.3's Builtin row (the comparison mode in `Variant`; an operator node with an abstract part
     keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
     「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.
+- **R5-M167 R6-gen's exit gate item by item; the owner's review of the exit's exceptions and Transitional declarations (G11)** (owner,
+  2026-10-31, verbatim 「R6-gen の出口も、推奨の内容でお願いします」 on G11's table, relayed by the planning session, PLAN `7869725d2`;
+  planning session; plan §4.9 row G11, §5.4, OQ17 (c); design `draft/Sketches/R6-gen/G11-design.md` with the planning session's
+  rulings Q1-Q4; under R5-M148, the model, R5-M152 and R5-M156 to R5-M165)
+  - The owner approved the table as recommended (`artifacts/benchmarks/r6-gen-exit/exceptions-and-transitional.md`, 18 rows; 100
+    declarations at `25570bb00`: "R6" 51, "R6-check" 9, "R7" 12, "R8" 28, "R6-gen" 0): row 12, D5's Emission half ends at this exit,
+    its Analysis half and exceptions continuing to R6-check (ARCH; R4-M35's amendment); row 13, R5-M7's shared-file hold protocol
+    continues beside R4 until R4's exit (R5-M148's amendment); row 14, `DiagnosticPartition.Emission` and the `Emission` requirement
+    are lasting names, no attribute (R5-M18's amendment); row 15, option (B): the five `.ll.in` templates move to `Backend/`, beside
+    their readers `LlvmModuleText` and `LegacyRuntimeHelpers.Formatting` (P11-P12's LLVM text), and the toolchain, publication and
+    profile files stay in `C/Emission`, P13's build boundary, which R9 moves out of the compiler, so nothing moves twice (R5-M163's
+    amendment); row 18, LLVM_OPTIMIZATION §6.1 and P34_REMAINING are in scope and name the code that exists. The other rows stand.
+  - The template comment (G11c, option (a), the planning session's Q2): `WindowsRuntime.ll.in` line 18 names `RuntimeAbi`, line 1 the
+    Backend's #0 profile; they named the deleted `WindowsLowering` and the emitter in every generated module, where G10's `*.cs` rows
+    cannot see them. A declared `.ll` text change.
+  - Gate (plan §5.4), on `claude/r6-g11` (dev `506ddbebc` with G11a-G11c); the runs are that worktree's `artifacts/verify/`:
+    1. E1 `20261030-212731-789-session-g11-e1-7ef1f02d0` (base `7ef1f02d0`), E2c `20261030-214736-909-session-g11-e2c-85c10bbb9`
+       (the comment) and E2m `20261030-221942-871-session-g11-e2m-6a10c82b2` (the move and the documents): each a default Session
+       with `'*.ll'` at O0 and O2, 25,628 tests (6 not run), 12,240 native executions. E1 to E2c: natives 6,120 equal, sidecars
+       identical, every `.ll` identical but the two template lines (`compare-ll-modulo-template.py`, kept with E2c); E2c to E2m
+       identical, so the move is behavior-preserving. The 40 harnessed milestones and the five CLI harnesses run in the landing window.
+    2. Snapshot 0 at each step (E1 against the shared base `506ddbebc`, E2c against E1, E2m against E2c); G2's classification, the
+       20 methods and `stage-baselines.json` stand (R5-M156).
+    3. The 8 O2 corpus kernels' input and O2 IR are identical between G3's B `519d88f38` and `df7ae4c45`
+       (`artifacts/benchmarks/r6-gen-exit/kernel-ir.txt`), so G3's run 3 (`r6-g3-run3/`, every kernel within variance) measured the
+       exit's code; G11c changed comment lines only. G308, merged into dev after this head, keeps that: its O2 A/B found the 8
+       kernels' `.ll` and `.O2.ll` byte-identical between `f600ef4c8` and its D `cbdc16afc` (`artifacts/benchmarks/r6-g308-o2/`).
+       M5 = 0: G287's `count.sh` at `df7ae4c45` counts Z 63, B 28, A 20 raw, and the
+       changed sites read: two zero-expect audits through `WriteFixture`, which fails closed; four negative names left with deleted
+       old-module tests; `VirtualOwnershipTest`'s names a symbol `ObjectRuntime` writes. The warm allocation tests pass in each Session: 1,183
+       `Purpose=Allocation` tests (the 6 tests not run are Explicit).
+    4. G10's zero-reference rows (R5-M162's G10 line) hold; their `*.cs` scope missed two names, fixed by G11a (`O2Corpus.md`) and
+       G11c (the template); M8's Emission rows are 0.
+    5. No `[Transitional("R6-gen")]`; `GenerationFailed_Kd` replaced (R5-M165); `AnalyzeInstance` deleted (R5-M162).
+    6. PLAN10-P3, measured 2026-10-31 in a quiet slot (`artifacts/benchmarks/r6-gen-exit/plan10-p3/`: `run-p3.sh`, `summarize-p3.py`,
+       the raw reports; A = `acc2f12ad`, the old generator's default, B = `8d93fec57`, both run from one folder, CPU 2 pinned at High
+       priority, tiering off, 5 interleaved rounds, each report's compiler id checked; times are the median of the rounds' sample
+       medians). The MIR side, BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against
+       the old Analyze and Emission (A's stages 4 to 6): 11.0-17.0 ms against 0.13-7.8 ms on the Scalar and Branching inputs and Generic 1,
+       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 39.4, 58.7
+       and 118.4 ms against 91.7, 190.1 and 388.3 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 3.8-5.9 MB against
+       0.06-4.7 MB on the small inputs; 11.4, 18.8 and 33.7 MB against 26.1, 50.6 and 100.2 MB. The whole default build (A's total without its
+       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+9.0 to +15.0 ms) on the small inputs, 0.65,
+       0.51 and 0.47 on Generic 32, 64 and 128 (74.1, 113.4 and 199.8 ms against 114.8, 220.3 and 427.7 ms). Cold collection is equal within
+       2.5 % (B/A 0.98-1.02; bytes and items equal; Generic 128: 25.5 ms and 7.9 MB on both). Check cost against G2's head `90697ecfa`
+       (its default configuration; R5-M156's measurement): a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1
+       and 157.4 ms against 34.4, 94.2 and 154.7) and 61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.00 to
+       +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms, the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on
+       both, cold +21 KB (Hello) and +17 KB (Milestone26). The owner accepted the fresh small-build cost, verbatim
+       「(a) 受け入れる」 (2026-10-31); its fixed cost's measured breakdown is R5's next unit (PLAN G337).
+       Corrected 2026-10-31 (G337's census): the first summary took each sample's ticks and bytes, which cover the report's 8
+       iterations, as one iteration, so the owner was shown each absolute figure 8 times too large (+72 to +120 ms); the figures
+       above are per iteration (`summarize-p3.py` fixed; the first output kept as `summary-output-uncorrected-x8.txt`); every ratio
+       and the owner's answer stand.
+    7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
+       `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
+       `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
+       -272, Binding -179, Core -140, root -21). M4: the Emission's C# 18,284 lines in 77 files to 1,362 in 8, the Backend 14,365 (the
+       2,335 template lines join it at G11c). M8: TryPrepare reads, generation failure facts, instance reads and Emission failure
+       strings 0; `Ownership.Bodies` 30 (R6-check's). Hotspots: `Compilation.Generation.cs` (9 R6-gen commits, now 158 lines) and
+       `Compilation.Switch.cs` (5). Duplication: R5's two line clones, no new one. No NativeAOT run (OQ17 (c)). The final review
+       follows these records.
+  - Corrections (G11a's probes under MIR code generation, `artifacts/benchmarks/r6-gen-exit/probes/`; STATUS, P34_REMAINING, PLAN
+    G147 (2)): P34's generation-failure forms, G147 (2)'s two old-generator failures, `(p@uniq, 1)` and Unit or struct
+    temporaries on the right of `and`/`or` build and run; a custom setter or compound assignment through `uniq/(rc/T)` reports
+    `InternalInvariant_Kd` at check (PLAN's BU row).
+  - Open after the exit: G330 (one rule for a thrown code generation contract failure, its own design; Q1). Re-staged in PLAN,
+    each to the next unit changing its files (R6-gen ended without one): G157 (7), (17), (25)'s cache, (26), (28), (29)'s `Use`,
+    (30), (37), (38), (40), (43), (44), (46) and (50), G153, G289 (4) and LN (whose old-generator copy, `ObjectGenerationPlan.WriteKey`,
+    went at G7); G158 (1) and (2) to BU after the exit. G157 (34), the old generator's defect, closed by G7 as (22). BU's G147 (2),
+    G158 and G300 restate their old-generator outcomes as history or the current fact. LLVM_OPTIMIZATION §4 (`:638`) still names
+    `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G336).
+  - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
+    R5-M163 (the folder).

@@ -36,7 +36,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleStack", Source, 0, 0, 0, "My number is 42\n");
         var c = MinimalEmissionTest.Analyze(Source);
         var outputIr = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("alloca [33 x i8], align 1", outputIr); // The region's own name is each generator's (R5-M12 class I).
+        Assert.Contains("alloca [33 x i8], align 1", outputIr); // The region's own name is code generation's (R5-M12 class I).
     }
 
     // Each side of the limit with a region partly empty (7 writes one of i8's four bytes), and the limit's region full (i8's widest value).
