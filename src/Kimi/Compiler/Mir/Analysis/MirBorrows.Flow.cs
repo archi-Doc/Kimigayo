@@ -4,13 +4,15 @@ namespace Kimi.Compiler.Mir;
 
 // A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
 // checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
-// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, and a Call's are MirBorrows.Calls'. A store adds the
-// markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7).
+// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, and a Call's are MirBorrows.Calls'. A store into a
+// holder's own Place changes its Placed part, one through a reference joins its Shared part (MirBorrows.States, DECISIONS R4-M160). A
+// store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
     private const byte Replaced = 1;
     private const byte Joined = 2;
+    private const byte JoinedThrough = 3; // Joined into the Shared part: a store through a reference (P10, W).
 
     private Entry[] entries = [];
     private int entryCount;
@@ -69,6 +71,7 @@ internal sealed partial class MirBorrows
             {
                 Cleared => 0,
                 Replaced => State(value, 0),
+                JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), value)),
                 _ => State(this.sets.Union(Placed(state[slot]), value), Shared(state[slot])),
             };
         }
@@ -119,7 +122,7 @@ internal sealed partial class MirBorrows
         this.Refs(pointer);
         foreach (var target in this.targets)
         {
-            this.AddSlot(target, this.Arrive(target, receiving, false, through, value), this.Arrive(target, receiving, false, through, own), Joined, issue);
+            this.AddSlot(target, this.Arrive(target, receiving, false, through, value), this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
     }
 
@@ -136,6 +139,7 @@ internal sealed partial class MirBorrows
     }
 
     /// <summary>A planned change of a holder's state: cleared, replaced or joined with a value and the Loans issued with it (born at the
-    /// location, so in no state before it), from a Ref (Issue) or a flow.</summary>
+    /// location, so in no state before it), from a Ref (Issue) or a flow; joined into its Placed part, or through a reference into its
+    /// Shared part.</summary>
     private readonly record struct Entry(int Slot, int Value, int Own, byte Op, bool Issue);
 }

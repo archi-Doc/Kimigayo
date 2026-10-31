@@ -150,7 +150,7 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, Joined, issue: false);
+            this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, JoinedThrough, issue: false);
         }
     }
 
