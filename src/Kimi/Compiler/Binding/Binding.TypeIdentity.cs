@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // SPEC 8.2, 8.8.1: an available Type-identity premise `X is U` makes X and U one Type in its scope. Expressions bound
@@ -34,6 +36,33 @@ public sealed partial class Binding
         }
 
         return this.SubstituteIdentity(type, scope);
+    }
+
+    // DECISIONS BU-72, temporary: removed when G170's identity query lands, when TyCtxt answers the identical Type under premises. A member
+    // access or an element access whose receiver's Type, through its Semantics layers, is a Type parameter P that the premises make the
+    // complete Type U was resolved on U; it publishes the interned `P is U` (HirTables.IdentityPremise), since a MIR Place keeps P.
+    private void PublishIdentityPremise(Koto receiver, BoundType actual, BoundType substituted)
+    {
+        var access = receiver.Parent;
+        while (access is ParenthesizedKoto)
+        {
+            access = access.Parent;
+        }
+
+        if (access is not (MemberAccessKoto or IndexKoto) || !ReferenceEquals(KotoHelper.UnwrapParentheses(((BinaryKoto)access).Left), receiver))
+        {
+            return;
+        }
+
+        while (actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && substituted is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
+        {
+            (actual, substituted) = (actual.Components[0], substituted.Components[0]);
+        }
+
+        if (actual.Kind == BoundTypeKind.Parameter && substituted.Kind != BoundTypeKind.Parameter)
+        {
+            HirTables.PlanFor(access, written: true).Second = this.InternConstraint(new(ConstraintKind.TypeIdentity, actual, substituted));
+        }
     }
 
     private BoundType SubstituteIdentity(BoundType type, BindingScope scope, bool parametersOnly = false)

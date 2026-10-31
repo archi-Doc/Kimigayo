@@ -261,6 +261,7 @@ public sealed partial class Binding
                 node.BoundType = substituted;
             }
 
+            this.PublishIdentityPremise(node, actual, substituted);
             actual = substituted;
         }
 
