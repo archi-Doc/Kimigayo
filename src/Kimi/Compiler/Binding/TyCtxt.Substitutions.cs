@@ -61,9 +61,9 @@ internal sealed partial class TyCtxt
 
     // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
-    // that SubstOf adds, as the old analyses and generator have always instantiated a call's Types. A second substitution per call beside
-    // SubstOf, it goes when the readers of that CallPlan form apply SubstOf instead: the old generator's at G7, the old analyses' at R6-check
-    // and Binding's own with R7's CallPlan pipeline (DECISIONS R5-M36).
+    // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
+    // goes when the readers of that CallPlan form apply SubstOf instead: the old analyses' at R6-check and Binding's own with R7's CallPlan
+    // pipeline (DECISIONS R5-M36).
     [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
@@ -81,7 +81,7 @@ internal sealed partial class TyCtxt
 
         if (function.IsRequirement)
         {
-            return binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
+            return binding.FunctionItemContext(item) is { } context ? this.SubstOf(context) : null;
         }
 
         var count = function.GenericArguments.Count;

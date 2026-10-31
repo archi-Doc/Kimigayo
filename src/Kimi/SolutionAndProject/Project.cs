@@ -262,14 +262,9 @@ public partial class Project
     /// <returns>Whether the artifacts were published.</returns>
     internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
     {
-        if (EmissionArtifacts.Publish(compilation, paths, out irPath, out var failure))
+        if (EmissionArtifacts.Publish(compilation, paths, out irPath))
         {
             return true;
-        }
-
-        if (failure is not null)
-        {
-            compilation.Emission.ReportFailure(failure); // A publication failure (GenerationFailed_Kd until G9b); generation records its own.
         }
 
         this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);

@@ -60,10 +60,9 @@ internal delegate void StorageKernelWriter(TextWriter output, in StorageKernelIn
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record StorageKernelRow(StorageKernelKind Kind, StorageKernelWriter Write, HelperNeeds Needs);
 
-/// <summary>SPEC 22.2: the storage-boundary kernels written inline in their caller's body, the kernels of the Raw.slice and
-/// capacity intrinsics (SPEC 5.6, 4.9.5), the private storage byte primitives' request, and the addressing of a library record's Field
-/// that they share with the old writer (Windows x64 profile).</summary>
-internal sealed partial class LegacyRuntimeHelpers
+/// <summary>SPEC 22.2: the storage-boundary kernels written inline in their caller's body, the kernel of the capacity intrinsic
+/// (SPEC 4.9.5), and the addressing of a library record's Field (Windows x64 profile).</summary>
+internal static partial class LegacyRuntimeHelpers
 {
     // One row per kind, in StorageKernelKind order; a new kind adds a row.
     private static readonly StorageKernelRow[] StorageKernelRows =
@@ -78,9 +77,6 @@ internal sealed partial class LegacyRuntimeHelpers
         new(StorageKernelKind.OwnDictionary, WriteDictionaryOwn, HelperNeeds.None),
     ];
 
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
-    internal bool NeedsStorageBytes { get; set; }
-
     /// <summary>Gets the row of an inline storage kernel kind; a kind without a row is a broken contract.</summary>
     /// <param name="kind">The kernel kind.</param>
     /// <returns>The kind's row.</returns>
@@ -88,30 +84,6 @@ internal sealed partial class LegacyRuntimeHelpers
         => (uint)kind < (uint)StorageKernelRows.Length && StorageKernelRows[(int)kind].Kind == kind
             ? StorageKernelRows[(int)kind]
             : throw new InvalidOperationException("A storage kernel kind has no row.");
-
-    /// <summary>Writes SPEC 5.6's <c>Raw.slice</c>: the Slice record {buffer, length} stored into its result slot; nothing is read
-    /// or checked.</summary>
-    /// <param name="output">The function text.</param>
-    /// <param name="buffer">The spelling of the raw pointer.</param>
-    /// <param name="count">The spelling of the element count.</param>
-    /// <param name="record">The spelling of the result slot's address.</param>
-    /// <param name="id">The number naming the kernel's temporaries.</param>
-    internal static void WriteRawSlice(TextWriter output, ReadOnlySpan<char> buffer, ReadOnlySpan<char> count, ReadOnlySpan<char> record, int id)
-    {
-        output.Write("  store ptr ");
-        output.Write(buffer);
-        output.Write(", ptr ");
-        output.Write(record);
-        output.Write(", align 8\n  %rslen");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(record);
-        output.Write(", i64 8\n  store i64 ");
-        output.Write(count);
-        output.Write(", ptr %rslen");
-        WriteNumber(output, id);
-        output.Write(", align 8\n");
-    }
 
     /// <summary>Writes SPEC 4.9.5's <c>capacity</c>: an Array or Dictionary handle stores its capacity at offset 16, an Array's
     /// after its buffer and length.</summary>
@@ -173,8 +145,7 @@ internal sealed partial class LegacyRuntimeHelpers
         WriteNumber(output, offset);
     }
 
-    // SPEC 22.2: the layout projection's Tuple {handle address, entry stride}, whose elements the old lowering found at offsets 0
-    // and 8.
+    // SPEC 22.2: the layout projection's Tuple {handle address, entry stride}, its elements at offsets 0 and 8.
     private static void WriteDictionaryLayout(TextWriter output, in StorageKernelInput input)
     {
         output.Write("  store ptr ");
@@ -303,16 +274,5 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write(", ptr ");
         WriteField(output, input.Result, "%dfield", input.Id, offset);
         output.Write(", align 8\n");
-    }
-
-    // The storage byte primitives, written before the Dictionary runtime when a body uses them: the runtime's nullable Alloc, then its
-    // byte copy (LlvmModuleText.TryAllocate, LlvmModuleText.TransferBytes).
-    private void WriteStorageBytes(TextWriter output)
-    {
-        if (this.NeedsStorageBytes)
-        {
-            output.Write(TryAllocate);
-            output.Write(TransferBytes);
-        }
     }
 }

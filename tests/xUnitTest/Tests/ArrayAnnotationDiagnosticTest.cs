@@ -62,7 +62,7 @@ public class ArrayAnnotationDiagnosticTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
     }
 

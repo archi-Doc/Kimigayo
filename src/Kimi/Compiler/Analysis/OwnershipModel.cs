@@ -166,17 +166,16 @@ public readonly record struct OwnershipCleanupStep(int Operation, int Place, Kot
 public readonly record struct OwnershipCleanupPlan(int Edge, int Start, int Count, CleanupReason Reason);
 
 /// <summary>One deferred execution, including empty bodies; endpoints are explicit CFG operations.</summary>
-public readonly record struct OwnershipDeferredPlan(Koto Source, int Edge, int Entry, int Continuation, int End, int Parent, bool CanComplete);
+public readonly record struct OwnershipDeferredPlan(Koto Source, int Edge, int Entry, int End, int Parent, bool CanComplete);
 
 /// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous. Case is null for tuples and fixed arrays.</summary>
 public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase? Case, int PayloadStart, int PayloadCount);
 
 /// <summary>Analysis fans out to every arm; runtime selection tests these Patterns in source order.</summary>
-public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result, int ArmStart, int ArmCount);
+public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result);
 
 /// <summary>One successful Pattern test and its ownership decomposition before the arm body.</summary>
-public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
-    int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
+public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int GuardEntry = -1, int GuardLoan = -1);
 
 /// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
 public readonly record struct OwnershipLending(Koto Input, Koto Call);
@@ -235,11 +234,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipSequence> Sequences = new();
     internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
-    internal readonly List<OwnershipSlotResult> SlotResults = new();
-    internal readonly List<OwnershipResultArrival> ResultArrivals = new();
-    internal readonly List<OwnershipResultWrite> ResultWrites = new();
     internal readonly Dictionary<Koto, int> SlotResultPlaces = new(ReferenceEqualityComparer.Instance);
-    internal readonly List<OwnershipDelivery> Deliveries = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipDeferredPlan> DeferredPlanStorage = new();
@@ -250,9 +245,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly List<OwnershipProjection> Projections = new();
     internal readonly List<OwnershipElementUpdate> ElementUpdates = new();
-    internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
-    internal readonly List<OwnershipCallLoans> CallLoans = new();
     internal readonly List<OwnershipCallReservation> CallReservations = new();
     internal readonly List<int> LoanInputs = new();
     internal readonly List<int> LoanStates = new();
@@ -299,13 +292,7 @@ public sealed partial class OwnershipBody
 
     public bool IsVerified { get; internal set; }
 
-    public bool IsConcrete { get; internal set; }
-
     internal int DefaultParameter { get; set; } = -1;
-
-    internal int ParameterCount => this.DefaultParameter >= 0 ? this.DefaultParameter : this.Function.Parameters.Count;
-
-    internal BoundType? DeclaredResultType => this.DefaultParameter >= 0 ? this.Function.Parameters[this.DefaultParameter].Type.BoundType : this.Function.BoundSymbol?.Type;
 
     internal List<OwnershipIdentity>? Identities { get; set; }
 
@@ -314,9 +301,6 @@ public sealed partial class OwnershipBody
     /// <summary>Gets or sets the anchor Places of the body's raw Place borrows, each sourced at its borrow (SPEC 5.2.2).</summary>
     internal List<int>? Anchors { get; set; }
 
-    /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
-    internal CallPlan? Instance { get; set; }
-
     internal Binding? InstanceBinding { get; set; }
 
     /// <summary>Gets the Semantics case this definition run analyzes (SPEC 8.15); empty outside a case run.</summary>
@@ -324,8 +308,8 @@ public sealed partial class OwnershipBody
 
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
-    // Concrete, from building and solving to lowering, sees the substituted Type.
+    // A case plan carries its substitution from the start, so every phase that reads a declared Type through Concrete, from
+    // building to solving, sees the substituted Type.
     internal OwnershipTransfers TransfersAt(int operation)
     {
         var entry = this.Operations[operation];
@@ -338,13 +322,12 @@ public sealed partial class OwnershipBody
         };
     }
 
-    internal void Reset(FunctionKoto function, CallPlan? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
+    internal void Reset(FunctionKoto function, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.ResetResolvedCalls();
         this.ResetCleanupEffects();
         this.Function = function;
         this.DefaultParameter = -1;
-        this.Instance = instance;
         this.caseBit = caseBit;
         if (this.caseStorage.Length < cases.Length)
         {
@@ -353,9 +336,8 @@ public sealed partial class OwnershipBody
 
         cases.CopyTo(this.caseStorage);
         this.caseCount = cases.Length;
-        this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
+        this.InstanceBinding = cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
-        this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
         this.DefaultContexts?.Clear();
@@ -372,11 +354,7 @@ public sealed partial class OwnershipBody
         this.Anchors?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
-        this.SlotResults.Clear();
-        this.ResultArrivals.Clear();
-        this.ResultWrites.Clear();
         this.SlotResultPlaces.Clear();
-        this.Deliveries.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.DeferredPlanStorage.Clear();
@@ -391,9 +369,7 @@ public sealed partial class OwnershipBody
         this.movePathIndex.Clear();
         this.movePathOrder.Clear();
         this.ElementUpdates.Clear();
-        this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
-        this.CallLoans.Clear();
         this.CallReservations.Clear();
         this.LoanInputs.Clear();
         this.LoanStates.Clear();
@@ -452,11 +428,10 @@ public sealed partial class OwnershipBody
         return condition;
     }
 
-    // The root stage of Resolve: a case run sees its case Types and an instance plan its closed substitution. Every consumer
-    // names its interpretation context through Resolve (SPEC 7.2.3, 8.15).
+    // The root stage of Resolve: a case run sees its case Types. Every consumer names its interpretation context through Resolve
+    // (SPEC 7.2.3, 8.15).
     private BoundType? Concrete(BoundType? type)
-        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
-        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
+        => type is null || this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
 }
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
@@ -542,18 +517,7 @@ internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Star
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.
 internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write);
 
-// The value is captured before cleanup; Write is the operation that secured it.
-internal readonly record struct OwnershipDelivery(int Operation, int Value, int Write);
-
 internal readonly record struct OwnershipIdentity(ConversionKoto Source, int Place);
-
-// A dynamic expression result lifetime; deferred replicas can share Place but not Declare/Join.
-internal readonly record struct OwnershipSlotResult(int Place, int Declare, int Join, int Start, int Count);
-
-internal readonly record struct OwnershipResultArrival(int Edge, int Write);
-
-// Includes secured results whose cleanup prevents arrival.
-internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
 // Persistent stack links preserve independent branch environments.
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
@@ -562,10 +526,6 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, Koto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
 
 internal readonly record struct OwnershipCallReservation(Koto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
-
-internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
-
-internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 
 // Parent is another projection index. Output is the final Copy/Move acquisition, Write the replacement.
 // An update has both and links its numeric calculation/result through ElementUpdates.

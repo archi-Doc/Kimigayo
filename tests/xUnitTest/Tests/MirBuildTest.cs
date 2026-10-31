@@ -18,6 +18,16 @@ namespace XunitTest;
 /// builder builds: Values, Defaults, Cases (Semantics case views), Calls (reservations and evaluation order) and Places.</summary>
 public sealed partial class MirBuildTest(ITestOutputHelper output)
 {
+    // PLAN G308's forms over the compared Tuple of its DAG family P_n, each a format of the paths {0} = a.x…x and {1} = b.x…x: the tuple
+    // operator (S1), a generic equality whose T is the Tuple, its Contract mapping (S4), and a Dictionary keyed by the Tuple (S6).
+    internal const string DagOperator = "func f(a: ref/D1<i32>, b: ref/D1<i32>) -> bool => {0} == {1}\n";
+
+    internal const string DagContract = "func same<T>(a: ref/T, b: ref/T) -> bool\n    T is Equatable\n    return a == b\n" +
+        "func f(a: ref/D1<i32>, b: ref/D1<i32>) -> bool => same({0}, {1})\n";
+
+    internal const string DagKey = "func fill<K>(key: K)\n    K is Copy and Equatable\n    var table: Dictionary<K, i32> = [:]\n" +
+        "    _ = table.tryInsert(key, 1)\n    _ = table.tryGet(key)\nfunc f(a: ref/D1<i32>, b: ref/D1<i32>) => fill({0})\n";
+
     // A struct with an Array Field, an inspection of it and the start of a function f that binds a holder (SPEC 15.6.7).
     private const string Holder = "struct Holder\n    public var items: Array<i32>\n    public var count: i32\n    public init()\n" +
         "        self.items = []\n        self.count = 0\nfunc inspect(values: ref/Array<i32>) => ()\nfunc see(value: ref/i32) => ()\n" +
@@ -301,6 +311,26 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
+    // G308 S1 (==), S2 (<, >=; V16): the program of a comparison over P_n's Tuple at n = 8, 12, 16 has a MIR (Blocks + Statements of every
+    // body BuildMir returns) linear in n, the distinct Types (DropTreesScaleLinearly's ratio rule). Fails before G308: the comparison builds
+    // each of its 2^n leaves, so the second increment is about 16 times the first.
+    [Theory]
+    [InlineData("==")]
+    [InlineData("<")]
+    [InlineData(">=")]
+    public void ADagComparisonsMirGrowsWithItsDistinctTypes(string op)
+    {
+        var sizes = new[] { 8, 12, 16 };
+        var work = sizes.Select(n =>
+        {
+            var program = Compile(Dag(n, DagOperator.Replace("==", op, StringComparison.Ordinal))).BuildMir();
+            Assert.Empty(program.Findings);
+            return program.Bodies.ToArray().Sum(static x => (long)x.Blocks.Length + x.Statements.Length);
+        }).ToArray();
+        output.WriteLine($"{op} N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}");
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"{op}: MIR size {string.Join(", ", work)}");
+    }
+
     // G136 N2: a malformed fixture must fail before Binding can silently change the program under test.
     [Theory]
     [InlineData("func loop() => ()\n")]
@@ -315,6 +345,21 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // A body's TestRecordValue calls, in block order.
     internal static MirTerminator[] Records(MirBody body) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
         .Where(static x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.TestRecordValue } })];
+
+    // PLAN G308's DAG family P_n with a form: D1 to Dn, D_k<T>'s Field x a D_{k+1}<(T, T)> and Dn's the pair (T, T), so a.x…x (n steps)
+    // of a D1<i32> is a Tuple of 2^n leaves but n distinct composite Types; each init builds its value from one leaf.
+    internal static string Dag(int n, string form)
+    {
+        var text = new StringBuilder();
+        for (var k = 1; k <= n; k++)
+        {
+            var (field, value) = k < n ? ($"D{k + 1}<(T, T)>", $"D{k + 1}<(T, T)>.init((value, value))") : ("(T, T)", "(value, value)");
+            text.Append($"struct D{k}<T>\n    T is Copy\n    public var x: {field}\n    public init(value: T) => self.x = {value}\n");
+        }
+
+        var steps = string.Concat(Enumerable.Repeat(".x", n));
+        return text.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, form, "a" + steps, "b" + steps)).ToString();
+    }
 
     internal static Compilation Compile(string source, bool test = false)
     {

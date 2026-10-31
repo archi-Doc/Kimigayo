@@ -1258,6 +1258,40 @@ public sealed partial class FunctionCodegenTest
         Assert.True(Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library).Generate(TextWriter.Null));
     }
 
+    // DECISIONS R5-M58, R5-M89: an import edited without changing its C signature (a parameter renamed) keeps its signature: the
+    // module's Write after the edit returns the same FunctionAbi, as the compilation's pooled module does across edits.
+    [Fact]
+    public void AnEditedImportKeepsItsSignature()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        const string Source = "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n" +
+            "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, t)\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
+        var before = Signature(c, module);
+        var original = Mix(c.Kotonoha.RootKoto);
+        var donor = ParseTestHelper.ParseSuccess(Source.Replace("mix(a: i8", "mix(x: i8", StringComparison.Ordinal));
+        var edited = Mix(donor.RootKoto);
+        var replacement = ParseTestHelper.Detach(edited, new FunctionKoto(edited.CodeContext, "placeholder"));
+        Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
+        Assert.Same(before, Signature(c, module));
+
+        static FunctionKoto Mix(Koto root) => KotoTree.Walk(root).OfType<FunctionKoto>().Single(static x => x.Name == "mix");
+
+        // The program bound and analyzed, every body item written by the module, and the signature its Write gave the import.
+        static FunctionAbi Signature(Compilation c, ModuleCodegen module)
+        {
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            c.Binding.CheckStartup(OutputKind.Application);
+            c.Analyze();
+            WrittenModule(c, module, out var written);
+            Assert.True(written, string.Join(", ", module.Records));
+            return Assert.IsType<FunctionAbi>(module.Import(Mix(c.Kotonoha.RootKoto).SymbolOf()!));
+        }
+    }
+
     // SPEC 7.7.4, 22.6 (DECISIONS R5-M146): a safe #LibraryImport function's Item, which has no body target, is called by the import's C
     // signature, as its direct call is (fail-before: one located Unsupported_Kd at the Value call).
     [Fact]
@@ -1420,8 +1454,7 @@ public sealed partial class FunctionCodegenTest
         Assert.NotEqual(0, writer.ToString().Length);
         Assert.Empty(Records(c));
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Null(failure);
+        Assert.True(c.Generate(TextWriter.Null));
     }
 
     // I1: the same program gives the same text, in one compilation and in two.
@@ -1512,7 +1545,7 @@ public sealed partial class FunctionCodegenTest
             "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n" +
             "        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n",
             OutputKind.Library);
-        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
         _ = c.Generate(TextWriter.Null);
         var set = c.Instances!;
         Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
@@ -1613,12 +1646,47 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(0, allocated);
     }
 
+    // G308 S7: the program of P_n's equality (MirBuildTest.Dag) at n = 12 rebuilds (Binding and the MIR) and writes its module warm without
+    // allocating.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmDagComparisonRebuildsAndWritesWithoutAllocating()
+    {
+        var c = Analyze(MirBuildTest.Dag(12, MirBuildTest.DagOperator), OutputKind.Library);
+        Assert.True(c.Generate(TextWriter.Null), string.Join(", ", Records(c)));
+        var written = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null)));
+        Assert.True(written);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
+    }
+
+    // G308 S5 (V16): the module of S1's operator and of S4's Contract mapping over P_n's Tuple (MirBuildTest.Dag) at n = 6, 9, 12, a Library
+    // generating every root, has an IR text length and a function count linear in n, the distinct Types (the ratio rule of
+    // MirBuildTest.DropTreesScaleLinearly). Fails before G308: the comparison's code is written per leaf, 2^n of them, so the text's second
+    // increment is about 8 times the first.
+    [Theory]
+    [InlineData(MirBuildTest.DagOperator)]
+    [InlineData(MirBuildTest.DagContract)]
+    public void ADagComparisonsModuleGrowsWithItsDistinctTypes(string form)
+    {
+        var modules = new[] { 6, 9, 12 }.Select(n => Generate(Analyze(MirBuildTest.Dag(n, form), OutputKind.Library))).ToArray();
+        var lengths = modules.Select(static x => (long)x.Length).ToArray();
+        var functions = modules.Select(static x => (long)Regex.Count(x, "(?m)^define ")).ToArray();
+        var shown = $"IR text {string.Join(", ", lengths)}; functions {string.Join(", ", functions)}";
+        Assert.True(lengths[2] - lengths[1] <= (2 * (lengths[1] - lengths[0])) + 8, shown);
+        Assert.True(functions[2] - functions[1] <= (2 * (functions[1] - functions[0])) + 8, shown);
+    }
+
     // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
     // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
         Assert.True(c.Generate(TextWriter.Null), string.Join(", ", Records(c)));
 
         var set = c.Instances!;
@@ -1671,14 +1739,18 @@ public sealed partial class FunctionCodegenTest
     // A program's module written with every body item an output root (ItemTexts), whatever records it makes: its MIR, collector, module and
     // body items, whose items a test then writes directly.
     private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(Compilation c)
+        => WrittenModule(c, new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests), out _);
+
+    // The same, written by the module given (a module kept across edits), with whether its Write wrote the module.
+    private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(
+        Compilation c, ModuleCodegen module, out bool written)
     {
         var program = c.BuildMir();
         var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(program, 1);
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
         set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
-        _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
+        written = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
         return (program, collector, module, bodies);
     }
 

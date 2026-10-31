@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // SPEC 8.11.3: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
-public class EffectBoundImplementationTest
+public partial class EffectBoundImplementationTest
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n" +
         "group Metrics\n    public var puts: isize = 0\n    public func record() => Metrics.puts += 1\n";
@@ -35,7 +35,7 @@ public class EffectBoundImplementationTest
     public void ConfinedRejectsEnvironmentEffects(string declarations, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Sink + declarations + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
@@ -55,7 +55,7 @@ public class EffectBoundImplementationTest
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Sink + declarations + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
@@ -143,13 +143,14 @@ public class EffectBoundImplementationTest
     }
 
     // SPEC 4.9.6: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
-    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, and the capacity and clear rows
-    // publish none at Binding (destructions are checked after ownership analysis).
+    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, `removeAll`'s `matching` the only
+    // Callable input one publishes (the summary reads both from the row), and the capacity, clear and truncate rows publish none at
+    // Binding (destructions are checked after ownership analysis).
     [Fact]
     public void PublishedOperationBodiesStayWithinTheirRows()
     {
         var c = MinimalEmissionTest.Analyze(Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var equals = ((ContractKoto)c.Library.GetSymbol(KimiDeclarationId.Equatable)!.Declaration).Members.OfType<FunctionKoto>().Single(static x => x.Name == "equals").SymbolOf();
         var operations = 0;
         foreach (var entry in KimiLibraryCatalog.Entries)
@@ -167,14 +168,14 @@ public class EffectBoundImplementationTest
                 continue;
             }
 
-            var published = KimiLibraryCatalog.Row(operation)!.Value.Runs is null ? null : equals;
-            var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, published);
+            Assert.True(c.Types.Published(operation)!.Value.Runs is not { } runs || runs == equals, entry.Name); // The summary reads the row.
+            var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation);
             Assert.True(valid, $"{entry.Name}: {violation} at {node}");
 
             operations++;
         }
 
-        Assert.Equal(11, operations);
+        Assert.Equal(13, operations);
     }
 
     // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
@@ -206,8 +207,8 @@ public class EffectBoundImplementationTest
         var c = MinimalEmissionTest.Analyze(Step + declarations + Main);
         var rejected = c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) ||
             c.Problems.Any(static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        Assert.True(valid != rejected, MinimalEmissionTest.Describe(c, null));
-        Assert.True(!valid || (c.Binding.Result.IsComplete && c.Analysis.IsVerified), MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid != rejected, MinimalEmissionTest.Describe(c));
+        Assert.True(!valid || (c.Binding.Result.IsComplete && c.Analysis.IsVerified), MinimalEmissionTest.Describe(c));
     }
 
     // Editing a reached helper, generic helper or selected specialization revokes the conformance, and restoring it restores the
@@ -232,7 +233,7 @@ public class EffectBoundImplementationTest
 
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "update" && x.IsSpecialization == (kind == 2));
         var original = function.ExpressionBody!;
         var donor = ParseTestHelper.ParseSuccess(source.Replace("=> self.count += 1", "=> Console.writeLine(\"step\")", StringComparison.Ordinal));
@@ -242,15 +243,15 @@ public class EffectBoundImplementationTest
         {
             Assert.True(KotoHelper.Replace(function, original, replacement));
             output.GetStringBuilder().Clear();
-            Assert.False(c.WriteIr(output, out _));
+            Assert.False(c.Generate(output));
             Assert.Empty(output.ToString());
             Assert.False(c.Bind().IsComplete);
             Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
             Assert.True(KotoHelper.Replace(function, replacement, original));
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.WriteIr(output, out error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -262,7 +263,7 @@ public class EffectBoundImplementationTest
     {
         const string Declarations = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\ncontract StableSource: Source\n    effect Source.take confined\n";
         var c = MinimalEmissionTest.Analyze(Declarations + $"struct Noisy\n    Self is {contract}\n    associate Source.Item is i32\n    public func take(self: uniq/Self) -> Option<i32>\n        Console.writeLine(\"take\")\n        return .None\n" + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // Warm rebinding of user-declared bounds and their witness summaries allocates nothing.
@@ -272,7 +273,7 @@ public class EffectBoundImplementationTest
     {
         const string Declarations = "struct Forward<W>\n    W is Sink\n    Self is Sink\n    var inner: W\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        return self.inner.put(value)\n";
         var c = MinimalEmissionTest.Analyze(Sink + Declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Equal(0, allocated);

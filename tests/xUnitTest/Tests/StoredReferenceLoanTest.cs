@@ -20,10 +20,10 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         var source = "func run(value: uniq/i32" + origin + ")\n    let child = value@follow@uniq\n    let snapshot: i32 = " + read + "\n    child@follow = 99";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -91,7 +91,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32" + origin + ")\n    let found = value@follow@ref\n    change(value)\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, static x => x.Code == Kimi.DiagnosticCode.CallActivationConflict_Kd);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
@@ -124,7 +124,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    " + acquisition + "\n    " + mutation + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -145,7 +145,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         const string source = "var entries = [1: 42]\nvar iterator = entries.iterateUniq()\nmatch iterator.next()\n    .Some((let key, let value))\n        let child = value@follow@ref\n        value@follow = 99\n        require child == 42 and key == 1 else => $abort(\"child\")\n    .None => $abort(\"missing\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -199,7 +199,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
             }
         }
 
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

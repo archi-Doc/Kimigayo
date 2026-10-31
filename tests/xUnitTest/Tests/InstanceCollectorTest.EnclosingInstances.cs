@@ -68,7 +68,7 @@ public sealed partial class InstanceCollectorTest
     public void DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance(string form, string source, int closures, string records)
     {
         var c = MirBuildTest.Compile(source);
-        Assert.True(c.Binding.Result.IsComplete, form + ": " + MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, form + ": " + MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);

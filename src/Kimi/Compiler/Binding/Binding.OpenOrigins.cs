@@ -71,59 +71,6 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code, so two Types that differ only by open regions
-    // name one instance.
-    internal static bool SameModuloOpenOrigins(BoundType? left, BoundType? right)
-    {
-        if (ReferenceEquals(left, right))
-        {
-            return true;
-        }
-
-        if (left is null || right is null || !left.SameExceptOrigins(right) || !SameOrigin(left.Origin, right.Origin) || !(HasOpenOrigin(left) || HasOpenOrigin(right)))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.OriginArguments.Count; i++)
-        {
-            if (!SameOrigin(left.OriginArguments[i], right.OriginArguments[i]))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < left.Components.Count; i++)
-        {
-            if (!SameModuloOpenOrigins(left.Components[i], right.Components[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static bool SameOrigin(BoundOrigin? a, BoundOrigin? b) => ReferenceEquals(a, b) || (a is { Open: true } && b is { Open: true });
-    }
-
-    internal static bool SameModuloOpenOrigins(ReadOnlySpan<BoundType?> left, ReadOnlySpan<BoundType?> right)
-    {
-        if (left.Length != right.Length)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.Length; i++)
-        {
-            if (!SameModuloOpenOrigins(left[i], right[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // An Origin that a known call signature's binder quantifies, or that a nested Function Type's own syntax binds per call.
     private static bool QuantifiedBy(BoundOrigin origin, Koto binder)
     {

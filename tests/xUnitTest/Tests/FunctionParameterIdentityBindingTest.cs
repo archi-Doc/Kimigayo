@@ -41,7 +41,7 @@ public class FunctionParameterIdentityBindingTest
         }
 
         var signatures = MinimalEmissionTest.Analyze("group G\n    func f(a: " + left + ", b: " + right + ") => ()");
-        Assert.True(signatures.Binding.Result.IsComplete, MinimalEmissionTest.Describe(signatures, null));
+        Assert.True(signatures.Binding.Result.IsComplete, MinimalEmissionTest.Describe(signatures));
         var function = signatures.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single();
         var a = function.Parameters[0].Type.TypeOf()!;
         var b = function.Parameters[1].Type.TypeOf()!;

@@ -292,7 +292,7 @@ public partial class LayoutAttributeBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"#Layout(\"{mode}\")\nstruct S\n    var a: i32\nfunc main() => ()");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

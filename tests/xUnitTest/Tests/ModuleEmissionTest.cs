@@ -45,12 +45,12 @@ public class ModuleEmissionTest
         var first = Emit(c);
         Assert.True(c.Bind().IsComplete);
         using var rejected = new StringWriter();
-        Assert.False(c.WriteIr(rejected, out _));
+        Assert.False(c.Generate(rejected));
         Assert.Empty(rejected.ToString());
         Assert.Equal(first, Emit(c));
         c.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "public func unused() => missing()"));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.WriteIr(rejected, out _));
+        Assert.False(c.Generate(rejected));
         Assert.Empty(rejected.ToString());
     }
 
@@ -65,7 +65,7 @@ public class ModuleEmissionTest
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -76,7 +76,7 @@ public class ModuleEmissionTest
         Emit(c);
         c.SourceModules[1].DiagnosticCollection.Add(default, DiagnosticCode.LibraryRuntimeBody_Kd);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -88,9 +88,9 @@ public class ModuleEmissionTest
         Emit(c);
         void Write()
         {
-            if (!c.WriteIr(TextWriter.Null, out var failure))
+            if (!c.Generate(TextWriter.Null))
             {
-                throw new InvalidOperationException(failure);
+                throw new InvalidOperationException(MinimalEmissionTest.Describe(c));
             }
         }
 
@@ -99,9 +99,9 @@ public class ModuleEmissionTest
 
     private static string Emit(Compilation c)
     {
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         return CompilationTestHelper.WriteIr(c);
     }
 }

@@ -98,9 +98,9 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
     public void WarmClosedTablesReuseGenericEntries()
     {
         var c = MinimalEmissionTest.Analyze(Hierarchy + "let a = Leaf<i32>.init()@obj\nrequire a.nested() == 132 else => $abort(\"dispatch\")");
-        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

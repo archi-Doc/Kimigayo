@@ -27,7 +27,7 @@ public class DefaultOwnershipTest
         var issue = Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
         c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == c.SyntaxOf(issue.Subject).Span);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class DefaultOwnershipTest
         Assert.Equal(c.SyntaxOf(issue.Subject).Span, diagnostic.Span);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.DoesNotContain(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 7.2.3, 13.5.3: an explicit transfer moves even a Copy prepared argument, and a default closure's `@move` capture entry is

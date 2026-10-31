@@ -56,7 +56,7 @@ public class UserArithmeticOperatorTest
             let result = Value.init() + {{value}}
             """;
         var compilation = CompilationTestHelper.ParseSuccess(source);
-        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.Empty(compilation.Binding.Issues);
     }
 
@@ -76,7 +76,7 @@ public class UserArithmeticOperatorTest
             let result = Value.init() {{op}} 2
             """;
         var compilation = CompilationTestHelper.ParseSuccess(source);
-        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.Empty(compilation.Binding.Issues);
     }
 
@@ -124,7 +124,7 @@ public class UserArithmeticOperatorTest
     public void AJoinTakesAnOperatorResultFromItsRoute(string source, string type)
     {
         var c = MinimalEmissionTest.Analyze(Declarations + Vector + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "result");
         Assert.Equal(type, result.SymbolOf()!.Type!.Name);
     }
@@ -172,7 +172,7 @@ public class UserArithmeticOperatorTest
     {
         var program = "struct Value\n    Self is LeftAddable<i32>\n    associate Output is i32\n    public func addedFrom(left: ref/i32, self: ref/Self) -> i32 => left + 1\nfunc bump(value: uniq/i32) -> Value\n    value@follow += 1\n    return Value.init()\nvar number = 40\nlet result = number" + (copied ? "@copy" : string.Empty) + " + bump(number@uniq)\nrequire result == 41 and number == 41 else => $abort(\"order\")";
         var c = MinimalEmissionTest.Analyze(program);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(copied, c.Analysis.IsVerified);
         if (copied)
         {
@@ -320,7 +320,7 @@ public class UserArithmeticOperatorTest
     public void AnEditedProviderCannotReuseItsPreviousOperatorSelection()
     {
         var c = MinimalEmissionTest.Analyze(Declarations + "\nlet value = Value.init()\nlet result = value + 2");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var original = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
         var donor = MinimalEmissionTest.Analyze("struct Value\n    public let value: i32 = 40\nlet value = Value.init()");
         var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
@@ -328,7 +328,7 @@ public class UserArithmeticOperatorTest
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -362,12 +362,12 @@ public class UserArithmeticOperatorTest
     public void WarmOperatorPlansReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Declarations + "\nlet value = Value.init()\nlet added = value + 2\nlet scaled = 2.0 * value\nlet negative = -value");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

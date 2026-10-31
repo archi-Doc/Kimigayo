@@ -39,10 +39,10 @@ public class FollowedReferentFieldTest(ITestOutputHelper output)
         var source = S + "func f(p: uniq/S) -> i32\n" + body + "\npublic func main() => ()";
         var path = Path.GetFullPath("followed-field-update.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();

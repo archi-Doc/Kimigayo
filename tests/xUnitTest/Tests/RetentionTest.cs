@@ -15,7 +15,7 @@ namespace XunitTest;
 /// rows <c>input kind output</c> (the result, or <c>store j</c>, the storage input j's exclusive, raw or invariant layers let the call
 /// write), whether the result is untied, the untied stores and the stores written only in the receiver's referent (<c>referent store
 /// j</c>, DECISIONS BU-42).</summary>
-public sealed class RetentionTest
+public sealed partial class RetentionTest
 {
     // A struct B that stores its Type argument, and B^64<i32> and B^65<i32>, whose storage heights are 64 and 65 (DECISIONS BU-12's bound
     // is 64).
@@ -677,13 +677,14 @@ public sealed class RetentionTest
     }
 
     // SPEC 5.7 Calls (the design review's item 3): two raw layers stating one Origin each walk its members as their own input's content
-    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike; the
-    // abstract `T` they and `n` reach may hold the other's own value (SPEC 15.6.4, DECISIONS R4-M116).
+    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike. The abstract
+    // `T` they and `n` reach holds neither's own value: no premise makes it storage that can hold a `raw/u8` and no callable is handed
+    // the body (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66, G297 fix 1: the Origin relation `T` outlives `a` does not).
     [Fact]
     public void TwoRawLayersOfOneOriginKeepTheirRows()
         => Assert.Equal(
-            "store 0: own {0 Content, 1 Value Content, 2 Value Content}, reached {0 Content, 1 Value Content, 2 Value Content}, " +
-            "store 1: own {0 Content, 1 Content, 2 Value Content}, reached {2 Value}, store 2: own {0 Content, 1 Value Content, 2 Content}, reached {1 Value}",
+            "store 0: own {0 Content, 1 Content, 2 Content}, reached {0 Content, 1 Content, 2 Content}, " +
+            "store 1: own {0 Content, 1 Content, 2 Content}, reached {}, store 2: own {0 Content, 1 Content, 2 Content}, reached {}",
             Declared(Bind("struct K<T> {s}\n    internal let at: uniq/T during s\nfunc f<T>(n: uniq/(K<T> during a), p: raw/u8 during a, q: raw/u8 during a) => ()\n"), "f"));
 
     // SPEC 5.7 Calls, 15.6.4 (R4-M52): an erased callable's signature is its own scope for its raw layers, also when it has fewer inputs
@@ -755,9 +756,10 @@ public sealed class RetentionTest
     // inside its pointee is Content: the result keeps what a read through `p` carries (a Value row lost it once the addressed holder was
     // replaced: `snap`), and its own layer's Origin gives no row (R-B3: a `ref/i32 during b` result cannot hold the pointer). Its own
     // value is a Value row only of an output that can hold a value of its Type: a raw layer agreeing with it with Origins fitted (R-B4),
-    // or an abstract part (Array's `T`); never its own pointee (no `head` row into `head`). An unstated layer the call writes, at a
-    // position (`slot`'s pointee, which it unties) or in a struct's stored content (Node's `next`, both ways), retains every argument
-    // with its chain and every other argument's own value (rule A, DECISIONS R4-M131, BU-40).
+    // or an abstract part where the premises or an erased callable make it one (DECISIONS BU-66: no premise makes Array's `T` a
+    // `raw/i32`, so SPEC 15.6.4 gives `p` no row there); never its own pointee (no `head` row into `head`). An unstated layer the call
+    // writes, at a position (`slot`'s pointee, which it unties) or in a struct's stored content (Node's `next`, both ways), retains every
+    // argument with its chain and every other argument's own value (rule A, DECISIONS R4-M131, BU-40).
     [Theory]
     [InlineData("func f(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p", "result {0 Content}, store 0: own {0 Content}, reached {}")]
     [InlineData("func f(b: ref/i32, p: raw/i32 during b) -> ref/i32 during b => b", "result {0 Value}")]
@@ -765,9 +767,37 @@ public sealed class RetentionTest
     [InlineData(
         "struct Node\n    public var next: raw/Node\n    public init(next: raw/Node) => self.next = next\nfunc f(head: raw/Node, n: raw/Node) => ()",
         "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied")]
-    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "store 0: own {0 Content}, reached {}")]
     public void RawArgumentsRetainAsBorrowedOnes(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66, R4-M154 rules 2 and 3): an abstract part holds a raw argument's own value
+    // only where a callable the call may run may retain it there; no premise makes it storage that can hold one
+    // (TwoRawLayersOfOneOriginKeepTheirRows). `make`, which `T is MakeW` hands the body, returns a `T` from raw pointers, whatever their
+    // pointee (a raw cast keeps the address, SPEC 5.4; G297 fix 1, fails on fd7058a42: `raw/i32` gave no row);
+    // a requirement on an abstract Self is such a callee itself (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、今の動作のまま進
+    // める」), so `T.make`'s result keeps both. A pair layer admitting `raw` is, in that case, a raw layer without an Origin the call
+    // writes (rule A); one admitting only owner and uniq holds what its target `T` holds. `putRaw<s/T>`'s `value` keeps no handle
+    // (PLAN G297; fails before: `store 1: own {0 Value, 1 Content}`).
+    [Theory]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "store 0: own {0 Content}, reached {}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]
+    public void AnAbstractPartHoldsARawArgumentWhereThePremisesOrAnErasedCallableMakeItOne(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" + function + "\n"), "f"));
+
+    // The call records of the rule above: a user call of the G297 shape and an erased requirement callee (DECISIONS BU-66).
+    [Fact]
+    public void AnAbstractPartHoldsARawArgumentAtACall()
+    {
+        var c = Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\nunsafe func putRaw<V>(handle: raw/i32, value: V) => ()\n" +
+            "func f<s/T>(x: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var b: i32 = 0\n    let r = b@uniq\n    unsafe => putRaw(r@follow@raw, x)\n" +
+            "func g<T>() -> ()\n    T is MakeW\n    var slot: raw/u8 = null\n    let t = T.make(p: slot@raw, q: slot)\n");
+        Assert.Equal(["store 1: own {1 Content}, reached {}"], Calls(c, "putRaw"));
+        Assert.Equal(["result {0 Value, 1 Value}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(c, "make"));
+    }
 
     // SPEC 5.7 Calls, 15.6 (the design review's S2 and R-B2; DECISIONS R4-M116 item 5): a raw pointer in an unstated or `static` Field or
     // Case payload is stated by the Type's Fields alone, so a call that forms it ties it to no argument: a result that stores one, at any
@@ -1261,7 +1291,7 @@ public sealed class RetentionTest
             equality: true);
         ParseTestHelper.Detach(replacement, placeholder);
         Assert.True(KotoHelper.Replace(relation.Parent!, relation, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal([after], Calls(c, "f"));
     }
 
@@ -1333,7 +1363,7 @@ public sealed class RetentionTest
     private static Compilation Bind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         return c;
     }
 

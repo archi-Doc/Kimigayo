@@ -57,7 +57,7 @@ public class RawPlaceAccessTest
     public void ACopyUnprovenTakeNeedsMove(string function, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(function + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -93,8 +93,8 @@ public class RawPlaceAccessTest
     public void ARawPlaceBorrowFitsItsDestination(string function)
     {
         var c = MinimalEmissionTest.Analyze(Resource + function + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // A returned borrow takes the declared result's Origin, in concrete and generic functions.
@@ -145,7 +145,7 @@ public class RawPlaceAccessTest
     public void AnUnreturnedRawPlaceBorrowCarriesItsAnchor()
     {
         var c = MinimalEmissionTest.Analyze(Resource + "func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        return item.value\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(static x => x.ConversionOf().Kind == ConversionBinding.Borrow);
         Assert.Equal(OriginKind.Anchor, borrow.TypeOf()!.Origin!.Kind);
         Assert.Same(borrow, borrow.TypeOf()!.Origin!.Binder);

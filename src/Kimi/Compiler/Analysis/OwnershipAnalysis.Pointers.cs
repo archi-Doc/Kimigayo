@@ -11,8 +11,7 @@ public sealed partial class OwnershipAnalysis
     {
         var type = this.Resolve(source.BoundType, this.Active);
         // SPEC 5.2, 21.3.1: a generic read acquires CopyOrMove without inventing a Loan.
-        // The closed ownership plan must still prove a supported pointee representation.
-        if (abstractRead && this.instance is null && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
+        if (abstractRead && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
             return true;
         }

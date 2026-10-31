@@ -70,7 +70,7 @@ public class AssociatedForwardingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == diagnostic);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -90,14 +90,14 @@ public class AssociatedForwardingTest
     public void MilestoneBinds()
     {
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void MilestoneOwnershipIsVerified()
     {
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -110,7 +110,7 @@ public class AssociatedForwardingTest
         var source = MilestoneSource[..MilestoneSource.IndexOf("public func main", StringComparison.Ordinal)] +
             $"func project(value: Wrapper<{inner}>.Source.Element) -> {result} => value\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

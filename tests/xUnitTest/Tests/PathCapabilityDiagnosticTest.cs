@@ -348,7 +348,7 @@ public class PathCapabilityDiagnosticTest
     public void StaticAccessesWithoutABorrowBind(string body)
     {
         var c = MinimalEmissionTest.Analyze(Statics + body + "\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -356,7 +356,7 @@ public class PathCapabilityDiagnosticTest
     {
         // SPEC 15.1.6, 3.4.3: `r.n` through `ref/(ref/S)` is a Place, so the Subject is Shared and binds `ref/i32`.
         var c = MinimalEmissionTest.Analyze(S + "func f(r: ref/(ref/S during a)) -> i32\n    match r.n\n        let v => return v@follow");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -389,7 +389,7 @@ public class PathCapabilityDiagnosticTest
     public void OwnedAndExclusivePathsKeepTheirCapabilities(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 3.6, 6.5.2: a Case construction is a Temporary Value, qualified, in parentheses or with a nested payload, lent shared or,
@@ -402,8 +402,8 @@ public class PathCapabilityDiagnosticTest
     public void ACaseConstructionIsATemporaryValue(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        var generated = c.WriteIr(TextWriter.Null, out var failure);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && generated, MinimalEmissionTest.Describe(c, failure));
+        var generated = c.Generate(TextWriter.Null);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && generated, MinimalEmissionTest.Describe(c));
     }
 
     // The checked records a row's own text locates, after the Statics prelude, whose StaticStorage records

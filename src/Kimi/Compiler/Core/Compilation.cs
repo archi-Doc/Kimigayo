@@ -114,19 +114,16 @@ public partial class Compilation
     /// <summary>Gets reusable ownership CFG analysis. Verification is separate from executable emission.</summary>
     public OwnershipAnalysis Ownership => this.ownership ??= new(this);
 
-    /// <summary>Gets the reusable, checked LLVM emitter for the implemented execution subset.</summary>
-    public LlvmEmitter Emission => field ??= new(this);
-
     internal Testing.TestCatalog Tests => field ??= new();
 
     private SourceLocationTable? locations;
 
-    /// <summary>Gets the runtime location texts of this compilation's syntax (SPEC 22.5.1), which both generators read.</summary>
+    /// <summary>Gets the runtime location texts of this compilation's syntax (SPEC 22.5.1), which code generation reads.</summary>
     internal SourceLocationTable Locations => this.locations ??= new(this);
 
     private Layout? layout;
 
-    /// <summary>Gets the storage layout of this compilation's closed Types (IMPL 21.1), which both generators read.</summary>
+    /// <summary>Gets the storage layout of this compilation's closed Types (IMPL 21.1), which the collector and code generation read.</summary>
     internal Layout Layout => this.layout ??= new();
 
     /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>

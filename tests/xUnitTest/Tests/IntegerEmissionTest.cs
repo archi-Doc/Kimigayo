@@ -100,7 +100,7 @@ public class IntegerEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(bound, c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -132,7 +132,7 @@ public class IntegerEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, allocated);

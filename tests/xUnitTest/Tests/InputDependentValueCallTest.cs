@@ -31,7 +31,7 @@ public class InputDependentValueCallTest
     public void ResultsTakeTheArgumentOrigins(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("InputDependentCall" + name, source, string.Empty);
     }
 
@@ -45,10 +45,10 @@ public class InputDependentValueCallTest
     public void TheResultRetainsTheArgumentLoans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     private const string None = "func none() -> Option<ref/i32> => .None\nfunc noneOf(x: i32) -> Option<ref/i32> => .None\n";
@@ -68,7 +68,7 @@ public class InputDependentValueCallTest
     public void StaticResultsNeedNoSubstitution(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("InputDependentCallStatic" + name, source, string.Empty);
     }
 
@@ -78,14 +78,14 @@ public class InputDependentValueCallTest
     public void ALocalResultIsNoStaticResult(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified && c.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified && c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void TheCallResultIsOverTheArgumentPlace()
     {
         var c = MinimalEmissionTest.Analyze(Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.InvocationKoto>(), x => x.ValueCallOf() is not null);
         var origin = call.TypeOf()!.Origin!;
         Assert.Equal(OriginKind.Projection, origin.Kind);
@@ -107,7 +107,7 @@ public class InputDependentValueCallTest
     public void FixedInputsAreOrdinaryArguments(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("FixedInputCall" + name, source, string.Empty);
     }
 
@@ -154,9 +154,9 @@ public class InputDependentValueCallTest
     public void AFixedResultKeepsItsLoans()
     {
         var c = MinimalEmissionTest.Analyze("func apply(x: ref/i32, f: ref/((i32) -> ref/i32 during x)) -> ref/i32 during x\n    return f(1)\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c = MinimalEmissionTest.Analyze(Swap + "    return c(x)\nvar a: i32 = 3\nlet r = pass(a@ref)\na = 4\nrequire r@follow == 3 else => $abort(\"read\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
@@ -166,13 +166,13 @@ public class InputDependentValueCallTest
     public void WarmFixedInputValueCallsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.FixedInputValueCall);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -180,12 +180,12 @@ public class InputDependentValueCallTest
     public void WarmInputDependentValueCallsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InputDependentValueCall);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

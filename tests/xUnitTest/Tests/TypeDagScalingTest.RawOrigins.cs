@@ -67,7 +67,7 @@ public partial class TypeDagScalingTest
     public void AWrittenProjectionDagIsWalkedOncePerPart(string leaf, int size, string step)
     {
         var c = MirBuildTest.Compile(ProjectionChain(leaf, size));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "pv").Parameters[1].Type.TypeOf()!;
         var kept = c.Types.StoredParts(holder, out _)[1]!;
         var path = new int[size];
@@ -92,7 +92,7 @@ public partial class TypeDagScalingTest
     public void AHolderReadRebuildsOnlyThePartsHoldingTheLayer(string form, int size)
     {
         var c = MirBuildTest.Compile(HolderBeside(form, size));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "v").NameKoto.TypeOf()!;
         Assert.Equal(BoundTypeKind.Tuple, read.Kind);
         Assert.NotEqual(OriginKind.Holder, read.Components[0].RawOrigin?.Kind);

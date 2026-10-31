@@ -14,18 +14,6 @@ public sealed partial class Binding
     // Cleanup extraction may run while a transitive effect check requests a library body; keep its scratch independent.
     private EffectSummary? cleanupCollector;
 
-    /// <summary>SPEC 4.9.6: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
-    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
-    /// <param name="operation">The operation.</param>
-    /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
-    /// <returns>Whether the body stays within confined, and the first effect that does not.</returns>
-    internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, BindingSymbol? published)
-    {
-        var summary = this.effectSummary ??= new(this);
-        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
-        return (valid, summary.Violation, summary.ViolationNode);
-    }
-
     internal void CollectCaseDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
         => (this.cleanupCollector ??= new(this)).CollectDestructions(source, target, cases);
 
@@ -132,7 +120,7 @@ public sealed partial class Binding
     // iteration, formatting, comparisons), lazy initialization and destruction are visited once per instantiation context.
     // Anything it cannot classify, such as an indirect call or a Type it cannot instantiate, fails the bound. Destruction
     // is counted only in the pass after ownership analysis, from the cleanups each body actually performs.
-    private sealed class EffectSummary(Binding binding) : KotoVisitor
+    private sealed partial class EffectSummary(Binding binding) : KotoVisitor
     {
         private readonly HashSet<(Koto Node, int Context)> seen = new();
         private readonly HashSet<BoundType> destroyed = new(ReferenceEqualityComparer.Instance);
@@ -149,7 +137,6 @@ public sealed partial class Binding
         private Koto? last;
         private bool valid;
         private bool destructions;
-        private BindingSymbol? published;
         private OwnershipBody? cleanupSource;
         private OwnershipBody? subjectBody;
         private InterpretationContext subjectContext;
@@ -291,50 +278,40 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P). With `destructions`, the values each
-        // reached body destroys are summarized too.
-        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
+        // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P), through the call of a witness or of a Callable
+        // binding with `receiver`. With `destructions`, the values each reached body destroys are summarized too.
+        internal bool Check(
+            BindingSymbol implementation,
+            BindingScope scope,
+            bool destructions,
+            BoundType? callable = null,
+            SemanticsKind receiver = SemanticsKind.Ref)
         {
-            this.published = published;
-            this.scope = scope;
-            this.valid = true;
-            this.destructions = destructions;
-            this.seen.Clear();
-            this.destroyed.Clear();
-            this.pending.Clear();
-            this.contexts.Clear();
-            this.contextIndex.Clear();
-            this.contexts.Add(null);
-            this.context = 0;
-            this.site = null;
-            this.last = null;
-            this.Violation = EffectViolation.None;
-            this.ViolationNode = null;
-            this.ViolationSite = null;
-            this.stepUse = null;
-            if (implementationBody && implementation.Declaration is FunctionKoto body)
-            {
-                // The obligation checks this body; all calls inside it still use their own dispatch kind.
-                this.Body(body, null);
-            }
-            else
-            {
-                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable, requireClosed: false));
-            }
-
+            this.Begin(scope, destructions);
+            this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
             if (receiver == SemanticsKind.Owner && BoundClosure.Of(callable) is { Receiver: not SemanticsKind.Owner })
             {
                 this.Destruction(callable, implementation.Declaration);
             }
 
-            for (var i = 0; this.valid && i < this.pending.Count; i++)
+            return this.Finish();
+        }
+
+        // The obligation of a definition's own body (a virtual function under its slot's bound, a published operation under its row) checks
+        // that body; all calls inside it still use their own dispatch kind.
+        internal bool CheckBody(BindingSymbol definition, BindingScope scope, bool destructions)
+        {
+            this.Begin(scope, destructions);
+            if (definition.Declaration is FunctionKoto body)
             {
-                this.context = this.pending[i].Context;
-                this.site = this.pending[i].Site;
-                this.Visit(this.pending[i].Node);
+                this.Body(body, null);
+            }
+            else
+            {
+                this.Function(definition, null);
             }
 
-            return this.valid;
+            return this.Finish();
         }
 
         private static BoundType? Dictionary(BoundType? type)
@@ -356,6 +333,40 @@ public sealed partial class Binding
 
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
+
+        // A check's start: the scope and mode, and a fresh summary.
+        private void Begin(BindingScope scope, bool destructions)
+        {
+            this.scope = scope;
+            this.valid = true;
+            this.destructions = destructions;
+            this.seen.Clear();
+            this.destroyed.Clear();
+            this.pending.Clear();
+            this.contexts.Clear();
+            this.contextIndex.Clear();
+            this.contexts.Add(null);
+            this.context = 0;
+            this.site = null;
+            this.last = null;
+            this.Violation = EffectViolation.None;
+            this.ViolationNode = null;
+            this.ViolationSite = null;
+            this.stepUse = null;
+        }
+
+        // A check's end: the queued nodes, each in its context, until the first violation.
+        private bool Finish()
+        {
+            for (var i = 0; this.valid && i < this.pending.Count; i++)
+            {
+                this.context = this.pending[i].Context;
+                this.site = this.pending[i].Site;
+                this.Visit(this.pending[i].Node);
+            }
+
+            return this.valid;
+        }
 
         private SemanticsMask AdaptationSemantics(BoundType type, Koto use)
         {
@@ -699,10 +710,15 @@ public sealed partial class Binding
                 return;
             }
 
+            if (ReferenceEquals(type, this.publishedCallable))
+            {
+                return; // SPEC 4.9.6: the calls of the Callable input the operation's row publishes.
+            }
+
             if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
             {
                 this.stepUse = use;
-                this.Function(symbol, binding.FunctionItemContext(type, requireClosed: false));
+                this.Function(symbol, binding.FunctionItemContext(type));
                 this.stepUse = null;
                 if (call.ReceiverKind == SemanticsKind.Owner && BoundClosure.Of(type) is { Receiver: not SemanticsKind.Owner })
                 {

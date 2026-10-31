@@ -222,7 +222,7 @@ public class RawStorageTest
             "struct RawSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32)\n        let storage = Raw.allocate<i32>(1)\n" +
             "        unsafe\n            Raw.initialize(storage, value)\n            Raw.release(storage)\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 5.6, 5.7: Buffer's storage is its own (`during self`): the constructor's claim, drop's reads and Take, and the reads through a
@@ -330,7 +330,7 @@ public class RawStorageTest
             $"func choose(c: bool, a: {mode}/Block, b: {mode}/Block) -> {mode}/Block => if c => a else => b\n" +
             $"func read(c: bool, x: {mode}/Block, y: {mode}/Block) -> raw/u8 => choose(c, x, y).data\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(static x => x.ToString() == "choose(c, x, y).data").TypeOf()!.RawOrigin!;
         Assert.Equal(OriginKind.Intersection, read.Kind);
     }

@@ -3,7 +3,6 @@
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -98,7 +97,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze("func test(left: ref/string, right: bool) -> bool => right\nfunc take(a: string) -> bool => true\nlet a = \"a\"\n" + expression);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Problems, x => x.Code == failure);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -120,7 +119,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -130,7 +129,7 @@ public class ReferenceEmissionTest
     {
         var source = "func test(a: ref/string) -> bool\n    " + expression + "\n    return false\nlet a = \"a\"\nif test(a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
     }
 
@@ -143,7 +142,7 @@ public class ReferenceEmissionTest
         const string Source = Same + "let a = \"a\"\nif same(a, a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(Source);
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out var error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = writer.ToString();
         const string Shared = @"ptr noundef nonnull align 8 dereferenceable\(24\) %\w+";
         var same = Assert.Single(Regex.Matches(ir, @"(?ms)^define internal i1 @([\w.]+)\(" + Shared + ", " + Shared + @"\) #0 \{\n.*?^\}"));
@@ -161,48 +160,18 @@ public class ReferenceEmissionTest
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var emissionBytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, emissionBytes);
-    }
-
-    [Fact]
-    public void ReparseReusesThePhysicalAbi()
-    {
-        const string Source = Same + "let a = \"a\"\nsame(a, a)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        var pool = new FunctionAbiPool();
-        var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
-        var abi = pool.Get(0, same, c.Layout);
-        var oldType = same.Parameters[0].Type.TypeOf();
-        c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
-        Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
-        Assert.Same(abi, pool.Get(0, renamed, c.Layout));
-    }
-
-    [Fact]
-    public void PhysicalAbiPoolDoesNotRetainOriginBinders()
-    {
-        var pool = new FunctionAbiPool();
-        var oldTree = Populate(pool);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        Assert.False(oldTree.IsAlive);
-        GC.KeepAlive(pool);
     }
 
     [Theory]
@@ -237,14 +206,5 @@ public class ReferenceEmissionTest
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pick");
         Assert.Equal(ArgumentOperationKind.Value, call.CallOf()!.ArgumentOperations[0].Kind);
         ScalarEmissionTest.EmitFixture("ReferenceOverload", Source, "owned\n");
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static WeakReference Populate(FunctionAbiPool pool)
-    {
-        var c = MinimalEmissionTest.Analyze(Same + "()");
-        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
-        pool.Get(0, function, c.Layout);
-        return new WeakReference(function);
     }
 }

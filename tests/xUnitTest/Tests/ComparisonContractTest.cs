@@ -12,7 +12,7 @@ public class ComparisonContractTest
     public void LibraryDeclarationsHaveRecognizedIdentitiesAndRefinement()
     {
         var c = MinimalEmissionTest.Analyze("()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var equality = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
         var ordering = c.Library.GetSymbol(KimiDeclarationId.Comparable)!;
         Assert.Equal("equals", Assert.Single(equality.Contract!.Requirements).Symbol.Name);

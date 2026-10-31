@@ -77,7 +77,7 @@ public class IndexableContractTest
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
@@ -89,7 +89,7 @@ public class IndexableContractTest
     public void APartBelowAStoredSharedReferenceKeepsItsOrigin(string receiver)
     {
         var c = MinimalEmissionTest.Analyze(Stored + $"func f(entries: {receiver}/Dictionary<i32, ref/Point during a>) -> ref/Inner during a\n    return entries[1].inner@ref");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -99,7 +99,7 @@ public class IndexableContractTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
@@ -171,12 +171,12 @@ public class IndexableContractTest
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var success = true;
             var binding = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             var ownership = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
-            var generation = AllocationMeasurement.Measure(() => success &= c.WriteIr(TextWriter.Null, out _));
+            var generation = AllocationMeasurement.Measure(() => success &= c.Generate(TextWriter.Null));
             Assert.True(success);
             return (binding, ownership, generation);
         }
@@ -315,7 +315,7 @@ public class IndexableContractTest
     public void BoundContractReferencesKeepDistinctIdentities()
     {
         var c = MinimalEmissionTest.Analyze(Pair + "var pair = Pair<i32>.init(1, 2)\nrequire pair[0] == 1 else => $abort(\"x\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var uniqIndexable = c.Library.GetSymbol(KimiDeclarationId.UniqIndexable)!;
         Assert.Contains(uniqIndexable.Contract!.Ancestors, x => ReferenceEquals(x.Declaration, c.Library.GetSymbol(KimiDeclarationId.Indexable)!.Declaration) && !ReferenceEquals(x, c.Library.GetSymbol(KimiDeclarationId.Indexable)));
     }

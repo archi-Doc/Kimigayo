@@ -32,7 +32,7 @@ public class DelimiterRecoveryTest(ITestOutputHelper output)
         Assert.Equal(closer, edit.Text);
         Assert.Equal(2, c.Kotonoha.GeneratedFunction!.Body!.Items.Count);
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         ScalarEmissionTest.EmitFixture("DelimiterRepair" + (int)opening, source.Insert(edit.Span.Start, edit.Text), string.Empty);
     }
 
@@ -51,7 +51,7 @@ public class DelimiterRecoveryTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(source.IndexOf(found), 1), errors[0].Span);
         Assert.Equal(new SourceSpan("let n = ".Length, 1), Assert.Single(errors[0].Related!).Span);
         Assert.Null(errors[0].Repairs);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);

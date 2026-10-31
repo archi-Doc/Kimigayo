@@ -16,7 +16,7 @@ public class ContractSelfTest
         const string Source = "public contract Holder\n    associate Item\n    func take(self: ref/Self) -> Item\n" +
             "func read<H>(holder: ref/H) -> H.Item\n    H is Holder\n    H.Item is Copy\n    return holder.take()\nlet x = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var holder = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Holder");
         var take = holder.Members.OfType<FunctionKoto>().Single();
         var self = take.Parameters[0].Type.TypeOf()!.Components[0];
@@ -38,7 +38,7 @@ public class ContractSelfTest
     {
         const string Source = "func first<S>(items: ref/S) -> S.(Indexable<isize>).Element\n    S is Indexable<isize>\n    S.(Indexable<isize>).Element is Copy\n    return items[0]\nlet x = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var indexable = c.Binding.Library.Indexable!;
         var index = ((ContractKoto)indexable.Declaration).Members.OfType<FunctionKoto>().Single();
         var element = index.ReturnType!.TypeOf()!.Components[0];

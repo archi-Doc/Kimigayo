@@ -21,7 +21,7 @@ public class LibraryEmissionTest
     {
         var c = Analyze(source);
         Assert.True(c.Binding.Startup.IsComplete);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Matches(@"(?m)^define internal ", ir);
         Assert.DoesNotMatch(@"(?m)^define (?!internal )", ir);
@@ -42,7 +42,7 @@ public class LibraryEmissionTest
     {
         var c = Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -56,7 +56,7 @@ public class LibraryEmissionTest
         c.Project.Directory = directory;
         try
         {
-            Assert.True(EmissionArtifacts.Publish(c, out var path, out var failure), failure);
+            Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
             using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
             var root = manifest.RootElement;
             Assert.Equal(testBuild ? "Application" : "Library", root.GetProperty("outputKind").GetString());

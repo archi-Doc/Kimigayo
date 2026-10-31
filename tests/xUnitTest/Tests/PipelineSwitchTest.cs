@@ -108,7 +108,7 @@ public sealed class PipelineSwitchTest
         var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "public func first() => ()\npublic func second() => ()\n";
         var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
-        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
+        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c));
         if (test)
         {
             c.Tests.Discover(c); // As Project does after acceptance.
@@ -125,9 +125,7 @@ public sealed class PipelineSwitchTest
         var items = set.Items.ToArray();
         Assert.Equal(generated, Enumerable.Range(0, items.Length).Where(set.IsGenerated).Select(x => items[x].Key.Body.Def.Decl?.Name ?? "top").Order());
 
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Null(failure);
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
     }
 
@@ -151,9 +149,8 @@ public sealed class PipelineSwitchTest
             using var writer = new StringWriter();
             Assert.False(c.Generate(writer));
             Assert.Empty(writer.ToString());
-            Assert.False(EmissionArtifacts.Publish(c, out var path, out var failure));
+            Assert.False(EmissionArtifacts.Publish(c, null, out var path));
             Assert.Null(path);
-            Assert.Null(failure);
             Assert.Empty(Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories));
             Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         }
@@ -180,7 +177,7 @@ public sealed class PipelineSwitchTest
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             Assert.Null(project.PrepareTests(TestContext.Current.CancellationToken));
             Assert.Contains("Unsupported_Kd\n --> main.kimi:3:12", console.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("InternalInvariant_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
         }
         finally
@@ -252,6 +249,22 @@ public sealed class PipelineSwitchTest
     // DECISIONS R5-M156 (superseding R3-1): every pipeline publishes the MIR's construction records, here the unbuilt tuple operator's
     // (PD30's (e) row), as the analysis's problems, control-flow Errors that reject the program and block generation; switching the
     // pipeline revokes the analysis and changes no record.
+    // DECISIONS R5-M165: the Emission partition is the latest generation request's: the gate's step-1 refusal clears an earlier request's
+    // record (here a publication failure's) and adds none.
+    [Fact]
+    public void AGateRefusalClearsAnEarlierEmissionRecord()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.False(c.Analyze().IsVerified);
+        c.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.ArtifactPublicationFailed_Kd, c.Project.FilePath, note: "earlier");
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+    }
+
     [Fact]
     public void EveryPipelinePublishesTheMirRecords()
     {
@@ -271,9 +284,8 @@ public sealed class PipelineSwitchTest
             c.ReportAnalysis();
             var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
             Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
-            Assert.False(c.WriteIr(TextWriter.Null, out var failure));
-            Assert.Contains("MIR", failure);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null)); // the gate's step 1: the MIR's record, which check published, adds no Emission record
+            Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         }
     }
 
@@ -308,7 +320,7 @@ public sealed class PipelineSwitchTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(
             "Hello.kimi", "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\npublic func main() => ()\n"));
-        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c));
         var loop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single();
         var program = c.BuildMir();
         foreach (var arm in loop.Iteration!.Match.Arms)
@@ -413,7 +425,7 @@ public sealed class PipelineSwitchTest
         c.Binding.ReportDiagnostics();
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         c.Binding.ReportStartupDiagnostics();
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         return (string.Join('\n', TestDiagnostics.Of(c).Select(static x => x.ToString())), CompilationTestHelper.WriteIr(c));
     }
@@ -430,7 +442,7 @@ public sealed class PipelineSwitchTest
         c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", "#Test\nfunc sample() => ()"));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckTestStartup().IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
         return c.Tests.ManifestFields;
     }

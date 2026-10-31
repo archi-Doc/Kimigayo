@@ -259,15 +259,6 @@ internal static class ElementAccess
     // Whether a borrowed path root is the reference operand of `root@follow`.
     internal static bool IsFollowedRoot(Koto root) => root.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed && ReferenceEquals(followed.Left, root);
 
-    // Whether a receiver reference lends a borrowed path root: the root's access Type, or for a followed root a reborrow of
-    // its referent that is shared or matches the root's exclusive capability.
-    internal static bool ReceiverMatches(BoundType? receiver, BoundType? access, Koto root)
-        => ReferenceEquals(receiver, access) ||
-            (receiver is { Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 } && access?.HandleMode is { } mode &&
-                (receiver.Semantics == SemanticsKind.ObjRef || mode.PayloadAuthority == LoanRequirement.Uniq) && ReferenceEquals(receiver.Components[0], access!.Components[0])) ||
-            (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
-                ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
-
     // SPEC 3.4.3, 4.7.1 (PLAN G59): the element of an Array, of a fixed array at a runtime index, or of either reached through a
     // reference, below which a stored Field, Tuple or literal fixed-array path selects a Place, such as `xs[i]` in `xs[i].inner.name`.
     // The element is borrowed through its own route and the static path through that borrow. Null for the element itself, a getter

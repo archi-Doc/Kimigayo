@@ -30,7 +30,7 @@ public class StoredReferenceResultBoundTest
     public void AResultBoundedByItsReceiverRuns(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("StoredReferenceResult" + name, source, string.Empty);
     }
 
@@ -38,8 +38,8 @@ public class StoredReferenceResultBoundTest
     public void TheReceiverStaysLentWhileTheResultLives()
     {
         var c = MinimalEmissionTest.Analyze(View + "    public func get(self: ref/Self) -> ref/i32 during self => self.view@follow@ref\nvar n = 7\nvar e = E.init(view: n@uniq)\nlet r = e.get()\ne.bump()\nrequire r == 7 else => $abort(\"aliased\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

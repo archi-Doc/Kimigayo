@@ -46,8 +46,9 @@
 // Shared; a raw parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is
-// a Value row only of an output that can hold a value of its Type where the call may write it (a raw layer stating an Origin or
-// `static` that agrees with it, Origins fitted, or an abstract part, at or below a position of the output's writable storage: a value
+// a Value row only of an output that can hold it where the call may write it (a raw layer stating an Origin or `static`, whatever its
+// pointee Type, or an abstract part where a callable the call may run may retain it there, DECISIONS BU-66, at or below a position of
+// the output's writable storage: a value
 // stored there brings its whole Type, every layer but a callable's, a struct's or enum's stored content included), of a result the call
 // forms within its storage (Raw.slice), or by the rules below; never of its own pointee, so a raw input may have both rows to one
 // output. A raw result layer with an Origin retains as that borrow would. A raw layer without an Origin that the call may write (SPEC

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Benchmark;
 
@@ -107,7 +108,10 @@ public class CompilerPipelineBenchmark
 
         // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage (DECISIONS R5-M94).
         Capture(5, timestamps, allocations);
-        this.Require(result.WriteIr(output, out var failure), failure);
+        var generated = result.Generate(output);
+        var failure = generated ? string.Empty : "Generation failed: " + string.Join(", ", result.Diagnostics
+            .Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics.Select(static x => x.Code));
+        this.Require(generated, failure);
         Capture(6, timestamps, allocations);
         return result;
     }
@@ -122,11 +126,11 @@ public class CompilerPipelineBenchmark
     }
 
     // A failure names its input, so a run that stops at one is identifiable without counting inputs.
-    private void Require(bool condition, string? failure)
+    private void Require(bool condition, string failure)
     {
         if (!condition)
         {
-            throw new InvalidOperationException($"size={this.Size}, shape={this.Shape}: {failure ?? "Compiler benchmark failed."}");
+            throw new InvalidOperationException($"size={this.Size}, shape={this.Shape}: {failure}");
         }
     }
 

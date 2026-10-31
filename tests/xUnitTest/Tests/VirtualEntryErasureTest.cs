@@ -27,7 +27,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     public void OverrideReceiverInheritsErasureWithoutAnOwnedTypePremise(string body)
     {
         var c = MinimalEmissionTest.Analyze(Source(body));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "ordinary");
         Assert.NotNull(use.CallOf());
         var site = body.Contains("@objref/Base", StringComparison.Ordinal)
@@ -36,7 +36,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         Assert.True(evidence.Entry!.IsOverride);
         Assert.Equal("Leaf", evidence.Source.Symbol!.Name);
         Assert.Equal("Base", evidence.Target.Symbol!.Name);
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         var source = Source("        return Base<T>.ordinary((self@objref/Middle<T>)@objref/Base<T>)")
             .Replace("struct Leaf<T> : Base<T>", "open struct Middle<U> : Base<U>\nstruct Leaf<T> : Middle<T>", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(2, conversions.Length);
         Assert.All(conversions, conversion =>
@@ -86,7 +86,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         var source = Source("        let first = self@objref/Middle<T>\n        let second = first\n        return second.ordinary()")
             .Replace("struct Leaf<T> : Base<T>", "open struct Middle<U> : Base<U>\nstruct Leaf<T> : Middle<T>", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.True(c.Binding.TryGetObjectErasure(call, out var evidence));
         Assert.Equal("Middle", evidence.Source.Symbol!.Name);
@@ -212,7 +212,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         var body = "        let a0 = self\n" + string.Join('\n', Enumerable.Range(1, 32).Select(i => $"        let a{i} = a{i - 1}")) +
             "\n        _ = a32.ordinary()\n        let f = func[a32]() -> i32 => a32.ordinary()\n        return f()";
         var c = MinimalEmissionTest.Analyze(Source(body));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 

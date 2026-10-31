@@ -17,7 +17,7 @@ public class ConditionalMemberAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(property, requirement, "public"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         AssertMember(c, property, false);
         var restored = CompilationTestHelper.Reload(c);
@@ -33,7 +33,7 @@ public class ConditionalMemberAccessBindingTest
     public void NarrowMemberDomainsCanPublishInternalPremises(bool property, string access)
     {
         var c = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", access));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertMember(c, property, true);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -47,7 +47,7 @@ public class ConditionalMemberAccessBindingTest
     {
         var source = Source(property, "([2 of Source.Hidden.Item], i32)", "public").Replace("internal contract Hidden", "public contract Hidden", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertMember(c, property, true);
     }
 
@@ -58,7 +58,7 @@ public class ConditionalMemberAccessBindingTest
     {
         var source = Source(property, "Hidden", "public").Replace("public struct S", "internal struct S", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertMember(c, property, true);
     }
 

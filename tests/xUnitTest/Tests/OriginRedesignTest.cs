@@ -151,7 +151,7 @@ public class OriginRedesignTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(valid == c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.Equal(valid, c.Validate(out _));
+        Assert.Equal(valid, c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -161,7 +161,7 @@ public class OriginRedesignTest
         var c = MinimalEmissionTest.Analyze("struct Cell\n    public var value: i32 = 0\n" +
             "func update(x: uniq/Cell during a, y: uniq/Cell during b)\n    origin a == b\n    x.value = 1\n    y.value = 2\n" +
             "var first = Cell.init()\nvar second = Cell.init()\nupdate(first@uniq, second@uniq)");
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
         var bindingBytes = AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -171,7 +171,7 @@ public class OriginRedesignTest
         });
         c.Binding.CheckStartup(OutputKind.Application);
         var ownershipBytes = AllocationMeasurement.Measure(() => c.Analyze());
-        var emissionBytes = AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _));
+        var emissionBytes = AllocationMeasurement.Measure(() => c.Generate(TextWriter.Null));
         // Binding retains a bounded 288 bytes per measured warm pass.
         Assert.True(
             bindingBytes <= AllocationMeasurement.MeasuredOperations * 288 && ownershipBytes == 0 && emissionBytes == 0,

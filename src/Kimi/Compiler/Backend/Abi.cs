@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Abi (IMPL 21.3.1, SPEC 22.6; plan P8; DECISIONS R5-M58): the physical signature of a closed function instance for every generator (PD2:
-// the old pool, the old generic and compiler entries, value calls and imports call it, never a copy).
+// Abi (IMPL 21.3.1, SPEC 22.6; plan P8; DECISIONS R5-M58): the physical signature of a closed function instance (PD2: code generation's
+// items, value calls and imports call it, never a copy).
 // Responsibility: the parameter order [environment] [ret] a0..an [context] [location, location_length]; under the internal convention
 // each parameter's kind (a string reference SharedReference, a slot Type OwnedSlot, else Value), the omission of zero-sized parameters,
 // the result slot (a slot Type of nonzero size, or a constructor's or destructor's) and the result Type (void for a slot Type, Unit or
@@ -10,15 +10,12 @@
 // Inputs: the compilation's Layout; the convention and flags; the closed result Type and the closed parameter Types in slot order, each
 // laid out by Layout (Ok); a C signature is one Binding validated (SPEC 22.6's table), whose every parameter has an argument
 // representation, and takes no flags. The kinds read the root Type predicates SlotTypes and ReferenceTypes.
-// Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: the old pool __kimi_f<n>, the old
-// imports their external symbol, ModuleCodegen its items); Matches, whether an existing FunctionAbi is that signature, so a caller
-// reuses it without allocating; HasResultSlot and ResultType, the internal convention's result rules over a record, which the old
-// pool's gate also answers with.
+// Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: ModuleCodegen its items, an
+// import its external symbol); Matches, whether an existing FunctionAbi is that signature, so a caller reuses it without allocating;
+// HasResultSlot and ResultType, the internal convention's result rules over a record.
 // Invariants: Of is a function of its inputs; Matches(Of(x), x) holds and allocates nothing.
-// Must not gate (the old pool keeps FunctionAbiPool.Supports until R6-gen) or map a Layout outcome other than Ok, flags under C or a C
-// parameter without an argument representation (broken contracts, which throw),
-// read syntax, Origins, HIR, MIR or the old Emission's scalar-value gate (WindowsLowering), name a function, port PreparedSlot (the
-// old default evaluators' kind), keep state or use LINQ.
+// Must not gate or map a Layout outcome other than Ok, flags under C or a C parameter without an argument representation (broken
+// contracts, which throw), read syntax, Origins, HIR or MIR, name a function, keep state or use LINQ.
 
 using System.Globalization;
 

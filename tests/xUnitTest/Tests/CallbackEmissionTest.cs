@@ -98,8 +98,8 @@ public class CallbackEmissionTest
     public void OptionCapturesAreEnvironmentBindings(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var failure), failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -126,7 +126,7 @@ public class CallbackEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -186,7 +186,7 @@ public class CallbackEmissionTest
         Assert.Equal("loan", loan.Role);
         Assert.StartsWith(retained, source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length), StringComparison.Ordinal);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -196,7 +196,7 @@ public class CallbackEmissionTest
         const string Source = "let n: i32 = 6\nlet f: () -> i32 = func [n] () => n\nf()";
         var c = MinimalEmissionTest.Analyze(Source);
         using var first = new StringWriter();
-        Assert.True(c.WriteIr(first, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(first), MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
@@ -212,7 +212,7 @@ public class CallbackEmissionTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var second = new StringWriter();
-        Assert.True(restored.WriteIr(second, out failure), MinimalEmissionTest.Describe(restored, failure));
+        Assert.True(restored.Generate(second), MinimalEmissionTest.Describe(restored));
         Assert.Equal(first.ToString(), second.ToString());
     }
 }

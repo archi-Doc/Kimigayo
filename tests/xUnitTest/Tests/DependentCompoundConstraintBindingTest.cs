@@ -104,7 +104,7 @@ public class DependentCompoundConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\n    Self is Copy\n    var values: [2 of T]");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

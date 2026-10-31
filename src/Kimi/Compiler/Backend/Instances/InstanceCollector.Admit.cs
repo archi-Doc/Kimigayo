@@ -101,7 +101,7 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3, 4.8: the item of a type-driven key (its kind, a property witness's Field and a shim's variant) requested at a site, admitted
-    // once per erased Type whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
+    // once per erased Type (the key's own when preset: a comparison item's node Type, DECISIONS R5-M166) whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
     // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
     // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose storage verdict the call's edge read
     // (Made), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. Past the depth limit
@@ -115,7 +115,7 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        key = key with { Type = this.types.Erase(type) };
+        key = key with { Type = key.Type ?? this.types.Erase(type) }; // A comparison item's is its node's (InstanceCollector.Compared).
         if (set.Find(key) is >= 0 and var found)
         {
             return found;

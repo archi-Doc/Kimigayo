@@ -73,7 +73,7 @@ public class ClosedConstraintLifecycleBindingTest
         Assert.False(property.IsVerified);
         Assert.Equal(BindingState.Unresolved, call.StateOf());
         AppendSourceConformance(c);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Certificate(c));
         Assert.True(property.IsVerified);
         Assert.NotNull(call.CallOf());

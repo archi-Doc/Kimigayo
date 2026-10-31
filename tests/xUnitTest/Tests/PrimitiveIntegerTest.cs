@@ -55,7 +55,7 @@ public class PrimitiveIntegerTest
     public void RejectsWhatTheRequirementDoesNotProve(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 10.2.2: a Type argument constrained to PrimitiveInteger is inferred as the referent, and the argument is read.
@@ -63,7 +63,7 @@ public class PrimitiveIntegerTest
     public void AReferenceArgumentInfersTheIntegerType()
     {
         var c = MinimalEmissionTest.Analyze("func keep<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value\nlet n = 1\nlet x: i32 = keep(n@ref)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class PrimitiveIntegerTest
         // pipeline, at the body's operation (DECISIONS R5-M54, R5-M156).
         const string Source = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("Unsupported_Kd value / 2", MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         Assert.False(c.Generate(TextWriter.Null));

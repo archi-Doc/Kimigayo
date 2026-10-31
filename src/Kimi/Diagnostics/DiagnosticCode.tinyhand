@@ -773,9 +773,9 @@
     Category="Language"
     Message="An outer closing delimiter cannot close an indented body on the same line"
 
-  + Name="GenerationFailed_Kd"
-    Category="Internal"
-    Message="LLVM artifact generation failed"
+  + Name="ArtifactPublicationFailed_Kd"
+    Category="Input"
+    Message="The build artifacts cannot be published"
 
   + Name="GenerationResourceLimit_Kd"
     Category="Resource"

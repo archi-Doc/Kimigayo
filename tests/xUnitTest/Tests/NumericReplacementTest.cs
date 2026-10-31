@@ -46,7 +46,7 @@ public class NumericReplacementTest
         Assert.Same(old.CodeContext, number.CodeContext);
         Assert.Equal(old.Span, number.Span);
         Assert.Equal(Literal, number.SourceSpelling.ToString());
-        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient));
         Assert.Equal(Literal, number.ToString());
     }
 
@@ -60,7 +60,7 @@ public class NumericReplacementTest
         var replacement = Variable(donor).InitializerKoto!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property, property.InitializerKoto!, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(property.SymbolOf()!.Property!.IsVerified);
     }
 
@@ -79,7 +79,7 @@ public class NumericReplacementTest
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var conversion = Assert.IsType<ConversionKoto>(variable.InitializerKoto);
         Assert.True(KotoHelper.Replace(conversion, conversion.Left, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         var ir = CompilationTestHelper.WriteIr(c);
@@ -104,7 +104,7 @@ public class NumericReplacementTest
         Assert.True(KotoHelper.Replace(variable, old, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral && x.Node.Span == old.Span);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

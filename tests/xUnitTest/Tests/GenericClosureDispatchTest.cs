@@ -16,10 +16,10 @@ public class GenericClosureDispatchTest
         ScalarEmissionTest.EmitFixture("GenericClosureDispatchSpecialization", Source, string.Empty);
     }
 
-    // DECISIONS R5-M34: a closure in a specialization of a generic struct's Type function is generic in the struct's slot (SPEC 6.1.3), while
-    // the old generator keeps generating it once, as before, until G7.
+    // DECISIONS R5-M34: a closure in a specialization of a generic struct's Type function is generic in the struct's slot (SPEC 6.1.3), and
+    // generation writes its instances.
     [Fact]
-    public void TheOldGeneratorKeepsAClosureInAContainerSpecializationClosed()
+    public void AClosureInAContainerSpecializationIsGenericInTheContainersSlot()
     {
         const string Source = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n" +
             "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n        let g = func [] (y: i32) -> i32 => y\n" +
@@ -27,7 +27,7 @@ public class GenericClosureDispatchTest
         var c = MinimalEmissionTest.Analyze(Source);
         var closure = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0).Key.Decl!;
         Assert.True(c.Types.Instantiates(closure));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -51,9 +51,9 @@ public class GenericClosureDispatchTest
     public void WarmRecursiveGenericClosurePlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Count + "require count(\"owned\", 4) == 5 else => $abort(\"warm\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

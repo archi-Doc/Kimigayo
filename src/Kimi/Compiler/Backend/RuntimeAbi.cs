@@ -4,10 +4,10 @@
 // string values and string handles, the static string release kind, the zero-sized buffer address, and the FunctionAbi of each
 // runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them.
 // Input: none; the entry symbol comes from WindowsProfile.
-// Output: the records, read by both generators and by LlvmModuleText's runtime splice.
+// Output: the records, read by code generation and by LlvmModuleText's runtime splice.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
 // RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once.
-// Must not take BoundType, a layout pool, EmissionModule, syntax or MIR types, or hold a per-generator record.
+// Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 namespace Kimi.Compiler.Backend;
 
@@ -68,7 +68,6 @@ internal static class RuntimeAbi
     // SPEC 4.9.5: an Array handle is {buffer, length, capacity}; construction zeroes it and destruction releases its buffer.
     internal static readonly AbiParameter[] ArrayHandleParameters = [new("ptr", "handle", AbiParameterKind.OwnedSlot, 0), Location, LocationLength];
     internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
 
     // IMPL 21.4.3: a heap block of a byte size, 16-aligned; an allocation failure Aborts at the location (an erased environment, SPEC 7.7.4).
@@ -97,7 +96,7 @@ internal static class RuntimeAbi
         [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
 
     // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them
-    // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes, written as a pair by both generators; DECISIONS R5-M92, R5-M145).
+    // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes, written as a pair; DECISIONS R5-M92, R5-M145).
     internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes", AbiParameterKind.Value, 0)]);
 
     internal static readonly FunctionAbi TransferBytes = new(

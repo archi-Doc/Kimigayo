@@ -42,7 +42,7 @@ public class CallSignatureFormationBindingTest
     public void ValidSignaturesRemainCallable(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value@move\n    func call(value: " + type + ") => take(value@move)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Call(c).CallOf());
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -51,7 +51,7 @@ public class CallSignatureFormationBindingTest
     public void GenericSignatureUsesItsDefinitionConstraints()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<U>(value: Box<U>)\n        U is i32\n        ()\n    func call(value: Box<i32>) => take(value@move)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Call(c).CallOf());
     }
 

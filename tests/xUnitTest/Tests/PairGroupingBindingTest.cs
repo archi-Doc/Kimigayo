@@ -133,7 +133,7 @@ public class PairGroupingBindingTest
     {
         var c = Parse("func identity<s/T>(value: s/(T)) -> s/(T) => value\nidentity(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -8,6 +8,10 @@ namespace XunitTest;
 
 public class GenericClosureIdentityTest
 {
+    // Two closures of equal result Type in one generic function, run under two instances (InstanceCollectorTest reads it too).
+    internal const string TwoClosures = "func pair<T>(value: T) -> i32\n    T is Copy\n    let first = func [] (x: T) -> i32 => 1\n    let second = func [] (x: T) -> i32 => 2\n" +
+        "    return first(value) * 10 + second(value)\nrequire pair(3) == 12 and pair(true) == 12 else => $abort(\"two closures\")";
+
     private const string Identity = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n    return action(value)\n";
 
     [Fact]
@@ -40,23 +44,19 @@ public class GenericClosureIdentityTest
         Assert.Empty(first.Components);
     }
 
-    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context, and the old
-    // generator's bridge keeps one call per closure, the same at every request, so each instance runs each closure's own body.
+    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context and keep their
+    // own closed Types, which key their instances, so each instance runs each closure's own body.
     [Fact]
     public void TwoClosuresOfOneInstanceKeepTheirOwnBodies()
     {
-        const string Source = "func pair<T>(value: T) -> i32\n    T is Copy\n    let first = func [] (x: T) -> i32 => 1\n    let second = func [] (x: T) -> i32 => 2\n" +
-            "    return first(value) * 10 + second(value)\nrequire pair(3) == 12 and pair(true) == 12 else => $abort(\"two closures\")";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(TwoClosures);
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var call = nodes.OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pair").CallOf()!;
         var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Binding.InstantiateStorageType(x.ClosureOf()!.EnvironmentType!, call)!).ToArray();
         Assert.Equal(2, closures.Length);
         Assert.Same(closures[0].ClosureContext, closures[1].ClosureContext);
         Assert.Same(c.Types.SubstOf(call), closures[0].ClosureContext);
-        Assert.NotSame(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[1]));
-        Assert.Same(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[0]));
-        ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", Source, string.Empty);
+        ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", TwoClosures, string.Empty);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -79,7 +79,7 @@ public class GenericClosureIdentityTest
     {
         var c = MinimalEmissionTest.Analyze(Identity + "let empty: [0 of i32] = []\n_ = identity(empty)\n_ = identity([1, 2])");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

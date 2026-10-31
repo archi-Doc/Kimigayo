@@ -36,8 +36,15 @@ public class ArchitectureRulesTest
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
+    // DECISIONS R5-M162 and R5-M163 (plan §4.9 row G10, §5.4 item 4): the old generator's components R6-gen deleted, their stems
+    // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
+    // pattern from matching its source.
+    private const string DeletedByR6Gen =
+        @"\b(?:BodyLowerin[g]|EmissionModul[e]|EmissionOpcod[e]|LlvmModuleWrite[r]|LlvmEmitte[r]|GenericStoragePla[n]|StaticScalarEntr[y]|" +
+        @"(?:Object|Virtual|Default)GenerationPla[n]|CompilerFunctionAdapter[s]|WindowsLowerin[g]|(?:Failed|Failure|Analyze)Instanc[e]\b)";
+
     [Theory]
-    [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 446)]
+    [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
     [InlineData("Advice in the diagnostic catalog", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"(?m)^\s*Advice=", 0)]
     [InlineData("Test reads and writes of Koto semantic slots", "tests/xUnitTest", "*.cs", @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|CallStorage|ClosureStorage|ConversionBinding|EntryCall|Iteration|IsDirectStorage|FillCount|SemanticsIndexed)\s*:", 13)]
@@ -51,16 +58,19 @@ public class ArchitectureRulesTest
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
     // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
-    // where no entry point carries it, until the stage that replaces it: dump goldens (R4), the MIR emission (R5, R6). R4-M13a: the
-    // control-flow structure is read only by LegacyRecords, and direct calls of the old control-flow entries cannot grow.
-    [InlineData("Test calls of the old analysis and generation entry points", "tests/xUnitTest", "*.cs", @"\.Ownership\.(?:Analyze|Result|ReportDiagnostics)\b|\.Emission\.(?:WriteIr|Validate)\b|\.Emission\.TryPrepare\(out _,", 0)]
+    // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: the control-flow structure is read
+    // only by LegacyRecords, and direct calls of the old control-flow entries cannot grow.
+    [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", @"\.Ownership\.(?:Analyze|Result|ReportDiagnostics)\b", 0)]
     [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Issues\b", 16)]
     [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Bodies\b", 30)]
     [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.ControlFlow\b", 1)]
     [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]
-    [InlineData("Test inspections of a prepared emission module (R5)", "tests/xUnitTest", "*.cs", @"\.Emission\.TryPrepare\(out (?!_,)", 0)]
-    [InlineData("Test reads of instance analysis (R5, R6)", "tests/xUnitTest", "*.cs", @"\b(?:Failed|Failure|Analyze)Instance\b", 0)]
-    [InlineData("Test reads of generation failure facts without an entry point", "tests/xUnitTest", "*.cs", @"\.Emission\.(?:FailureIsResourceLimit|ReportFailure)\b", 0)]
+    // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
+    // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
+    [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]
+    [InlineData("Benchmark references to R6-gen's deleted components", "src/Benchmark", "*.cs", DeletedByR6Gen, 0)]
+    [InlineData("Playground references to R6-gen's deleted components", "src/Playground", "*.cs", DeletedByR6Gen, 0)]
+    [InlineData("Test references to R6-gen's deleted components", "tests", "*.cs", DeletedByR6Gen, 0)]
     // DECISIONS R4-M136 (refining R4-M50, R4-M60): an OldRule test asserts its MIR target side through MirTargetSide. Without one now: A5-F8's
     // ContentUpdateTest.OldContentAndSlotViewsCannotSurviveReplacement, .ExclusiveContentChildrenBlockEveryUpdate and
     // .OldContentConflictExplainsTheCauseInEveryAdapter and DictionaryStoredReferenceTest.CompoundStoredReferencesOutliveTheContainer,
