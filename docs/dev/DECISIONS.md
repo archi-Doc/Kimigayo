@@ -5887,6 +5887,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: a Closure returned from a named function's call may keep the function's per-call atoms in its signature (design §3.1; no
     reproducer).
   - Numbering: R4-M159 was reserved for G273 by the planning session.
+  - Amendment (R4 agrees): Collect and Occurrences walk each shared part once (G309, bu90).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9006,7 +9007,15 @@ resumed by R4-M86 (2026-10-20).
     ReplaceHolder reads the holder bit: a part holding no `during self` layer is its own image (Rebuild of unchanged components returns
     the interned part), which replaces its copy of HoldsHolder's rule; a declaration writes the parts holding one inline (no Type
     argument or projection states `during self`, InvalidOriginBinding_Kd), so they form a tree of the text's size and need no table.
-  - Cost: with BU-64's, G309's three units together.
+    G273's walks (R4-M159; unit bu90) take `visitedParts` as well: ClosureType's Collect, its bound pass and its fill pass each a query
+    (a part met again adds no atom, so the distinct atoms keep their first-occurrence order), and ClosureArgumentVariance's Occurrences
+    with one state bit per polarity (Join is idempotent). The static Type relation reads a variance without a Binding, so Occurrences
+    takes the table of its definition's compilation's Binding, the table's one owner, whatever premises its caller reads. On dev
+    Collect took 24,580 / 393,220 / 6,291,460 calls per Bind on PLAN's `ref` form at n = 12 / 16 / 20; it takes 52 / 68 / 84.
+  - Cost: with BU-64's, G309's three units together. Pinned Bind A/B of bu82 merged with dev 06a74fe9d (b0fcb291d; BU's quiet slot,
+    2026-10-31, 7 rounds; `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\trim-report.md`): B/A' median 1.012-1.015 cold and
+    1.004-1.010 warm on Hello / Milestone 26 / Milestone 27, cold +45 KB, warm 0 B, above the 1.01 gate; the trim unit bu88 kept no
+    trim. The owner accepted the cost (2026-10-31, verbatim 「(a) Accept, fix, land」; PLAN G309).
   - Tests: TypeDagScalingTest's raw projection-chain rows (`AWrittenProjectionDagIsWalkedOncePerPart` at n = 40,
     `AWrittenTypeDagIsWalkedOncePerWrittenType` at n = 30) lose Explicit; `AHolderReadRebuildsOnlyThePartsHoldingTheLayer` (n = 40: an
     instance's holder Field at the end of the chain D_i, and a projection chain beside the layer). The summary's readers' verdicts are
@@ -9042,8 +9051,9 @@ resumed by R4-M86 (2026-10-20).
     +2,221 / +6,829 / +10,093 visits over the base level at n = 4 / 8 / 16 / 32 / 40, quadratic (Bind 61 ms at n = 40; dev 2,185 ms at
     n = 18). The rows below, this form's included, pass in milliseconds at n = 40.
   - Tests: TypeDagScalingTest `InstanceChainWalksAreLinearInDistinctParts`'s `ref` row (n = 40: the summary's readers, the published
-    result and a Closure with two captures as well) and `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); with
-    the table undone both exceed the runner's 120 s timeout. `AConformanceOverAProjectionDagFinishes` (n = 40, B2's conformance path;
+    result, a Closure with two captures and G273's walks, BU-63's Collect and Occurrences, as well) and
+    `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); with the table undone both exceed the runner's 120 s
+    timeout, as the `ref` row does with dev's Collect. `AConformanceOverAProjectionDagFinishes` (n = 40, B2's conformance path;
     G309-F1) bounds the open limit.
   - Cost of G309's three units (BU-63, BU-64; unpinned A/B from one folder, full JIT, A = dev 1f2d7dea6; two other sessions' heavy runs
     were registered, so no pinned timing): cold Bind +44,776 / +44,808 / +45,808 B and BuildMir +14,904 / +14,904 / +30,472 B on Hello /

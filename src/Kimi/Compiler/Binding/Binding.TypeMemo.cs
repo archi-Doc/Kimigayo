@@ -22,7 +22,8 @@ public sealed partial class Binding
 
     // The states in which a walk met a part, one bit per state (DECISIONS BU-63): the existence walks OperandContexts,
     // ContainsAssociatedProjection, DependentType, TypeAccessCovers, ProveTypeLengths, HasLocalRegion and HasRegionBounds, and the walks
-    // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises and AccumulateRequirements (a bit per polarity).
+    // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises, ClosureType's Collect, and AccumulateRequirements
+    // and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<byte> visitedParts = new();
 
     private sealed class TypeMemo<T>
