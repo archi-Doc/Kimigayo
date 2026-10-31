@@ -3,8 +3,8 @@
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
 // Output: its Problems for that version, which the analyses add through MirReport.
-// Runs them once per version, after build and validation, in a fixed order, one line per step (a body's steps 1 and 2 together); a step's
-// details are in the comment of the method that runs it or in its analysis's contract:
+// Runs them once per version, after build and validation, in a fixed order, one line per step (a judged body's steps 1 and 2 together,
+// another body's step 2 only); a step's details are in the comment of the method that runs it or in its analysis's contract:
 // 1. per judged body, A3;
 // 2. per body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;

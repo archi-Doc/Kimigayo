@@ -433,7 +433,9 @@ public sealed class MirAnalysisTest
     // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
     // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
     // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit and the C1-F4 view's findings
-    // included. Every unit changing A3 or A5 runs it.
+    // included. It reuses the compilation's TyCtxt, so MirOrigins.Findings adds again every finding TyCtxt collected, the first run's
+    // pass-walk findings included (none today): a pass-walk finding shows both in the program's records and here. Every unit changing A3 or
+    // A5 runs it.
     [Theory]
     [InlineData(WindowsProfile.Target)]
     public void TheLibraryHasNoAnalysisProblem(string target)
