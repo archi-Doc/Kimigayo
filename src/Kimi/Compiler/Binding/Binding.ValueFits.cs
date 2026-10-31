@@ -96,7 +96,7 @@ public sealed partial class Binding
             var b = expected.OriginArguments[i];
             if (!ReferenceEquals(a, b))
             {
-                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
+                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, OriginArgumentVariance(expected, i, this)));
             }
         }
 
