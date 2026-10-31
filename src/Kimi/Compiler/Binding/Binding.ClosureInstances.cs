@@ -124,50 +124,77 @@ public sealed partial class Binding
             => seen == OriginVariance.Unused || seen == variance ? variance : OriginVariance.Invariant;
     }
 
+    // PROTOTYPE G353 rev 2: the binder classes of R4-M159's one atom walk.
+    private static bool EnclosingAnonymous(BoundOrigin origin, Koto subject)
+        => origin.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Parameter &&
+            origin.Binder is FunctionKoto { IsAnonymous: true } binder && !ReferenceEquals(binder, subject) && Encloses(binder, subject);
+
+    private static bool EnclosingContainer(BoundOrigin origin, Koto subject)
+        => origin.Binder is DeclarationContainerKoto container && Encloses(container, subject);
+
+    private static bool Encloses(Koto ancestor, Koto node)
+    {
+        for (var current = node.Parent; current is not null; current = current.Parent)
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
     // arguments are each atom of another Closure (an enclosing one) the signature names, in first-occurrence order, raw layers and nested
     // arguments included. The bound pass and the fill pass are each one query of `visitedParts`, which meets each distinct part once: a part
     // met again adds no atom its first visit did not, so the order of first occurrence is kept (DECISIONS BU-63).
     private BoundType ClosureType(BindingSymbol symbol, FunctionKoto function, BoundType signature, ReadOnlySpan<BoundType> environment)
     {
-        var scratch = this.originScratch.Rent(Collect(signature, function, null, 0, this.visitedParts.Begin(this.storageVersion)));
+        var scratch = this.originScratch.Rent(this.FixedAtoms(signature, function, EnclosingAnonymous, null, 0, this.visitedParts.Begin(this.storageVersion)));
         try
         {
-            var count = Collect(signature, function, scratch, 0, this.visitedParts.Begin(this.storageVersion));
+            var count = this.FixedAtoms(signature, function, EnclosingAnonymous, scratch, 0, this.visitedParts.Begin(this.storageVersion));
             return this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, environment, originArguments: scratch.AsSpan(0, count));
         }
         finally
         {
             this.originScratch.Return(scratch, clearArray: true);
         }
+    }
 
-        // With no scratch, an upper bound: the candidate occurrences.
-        int Collect(BoundType type, FunctionKoto function, BoundOrigin[]? scratch, int count, uint query)
+    // R4-M159's atom walk: the atoms of `filter`'s binder class that a Type names, in first-occurrence order, raw layers and nested
+    // arguments included, and every Closure's call signature as its value reads it, at any depth. With no scratch, an upper bound.
+    private int FixedAtoms(BoundType type, Koto subject, Func<BoundOrigin, Koto, bool> filter, BoundOrigin[]? scratch, int count, uint query)
+    {
+        if (!type.CarriesAnyOrigin && !type.ContainsClosure)
         {
-            if (!type.CarriesAnyOrigin)
-            {
-                return count;
-            }
-
-            count = Add(OwnedOrigin(type), function, scratch, count);
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                count = Add(type.OriginArguments[i], function, scratch, count);
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                var part = type.Components[i];
-                if (part.CarriesAnyOrigin && this.FirstVisit(part, query))
-                {
-                    count = Collect(part, function, scratch, count, query);
-                }
-            }
-
             return count;
         }
 
-        static int Add(BoundOrigin? origin, FunctionKoto function, BoundOrigin[]? scratch, int count)
+        count = Add(OwnedOrigin(type), subject, filter, scratch, count);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            count = Add(type.OriginArguments[i], subject, filter, scratch, count);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            var part = type.Components[i];
+            if ((part.CarriesAnyOrigin || part.ContainsClosure) && this.FirstVisit(part, query))
+            {
+                count = this.FixedAtoms(part, subject, filter, scratch, count, query);
+            }
+        }
+
+        if (type.Kind == BoundTypeKind.Closure && this.ClosureSignature(type) is { } signature && this.FirstVisit(signature, query))
+        {
+            count = this.FixedAtoms(signature, subject, filter, scratch, count, query);
+        }
+
+        return count;
+
+        static int Add(BoundOrigin? origin, Koto subject, Func<BoundOrigin, Koto, bool> filter, BoundOrigin[]? scratch, int count)
         {
             if (origin is null)
             {
@@ -176,11 +203,10 @@ public sealed partial class Binding
 
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                count = Add(origin.Operands[i], function, scratch, count);
+                count = Add(origin.Operands[i], subject, filter, scratch, count);
             }
 
-            if (origin.Kind is not (OriginKind.Projection or OriginKind.Input or OriginKind.Parameter) ||
-                origin.Binder is not FunctionKoto { IsAnonymous: true } binder || ReferenceEquals(binder, function))
+            if (!filter(origin, subject))
             {
                 return count;
             }

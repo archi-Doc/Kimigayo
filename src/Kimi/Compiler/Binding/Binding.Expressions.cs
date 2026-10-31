@@ -762,6 +762,12 @@ public sealed partial class Binding
 
         if (symbol.Property is { } property)
         {
+            // PROTOTYPE G353 rev 2: SPEC 23.1.2: a use of a stored Property whose inferred Type the header refused rests on it.
+            if (this.refusedFieldsG353.Contains(property.Declaration) && property.Declaration.InitializerKoto is { } refused)
+            {
+                return this.CompleteDependent(node, refused);
+            }
+
             var target = Grouped(node);
             var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
             var write = assignment && target.Parent!.Akind == KotoKind.Equals;
