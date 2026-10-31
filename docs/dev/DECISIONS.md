@@ -9421,6 +9421,36 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: one walk over enclosing declarations only (B1: a contract reaching the use through a Type's premises); a repair ranging
     over every Origin (B2: an enclosing contract's clause cannot name a nested signature's own Origins).
 
+- **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
+  (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; design
+  `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g216a-p1\u16g3r-design.md`, R4's ACCEPT under C9-C11; the owner's
+  「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds publishes a part's relation to its call as one fact,
+  and no consumer infers that relation from BoundType or BindingState. G1b B4 (a consumer read
+  "awaits its call" from the raw record and BindingState) and the U1.6g3 stop (ConflictWaits read "its call completed parts" from
+  BoundType, HoldsCompletedPart, which a nested join's step 3 also satisfies during classification) share that cause: the relation was
+  inferred, not published.
+  - The fact: `CallRelation`, a [Flags] byte, the third column of the existing record, `ArgumentPart(Kind, Default, Relation)`, keyed
+    and cleared with the kind; no table. `Awaits`, per part: its producer recorded it as awaiting its call. `Taken`, on a call
+    argument's own record (created if absent, reading as an absent one): its call has selected and takes it.
+  - Writers, one per bit (both through the one `ref` accessor `PartRecord`): `RecordPart`, the producers' one writer, writes Awaits by
+    one row, every recorded kind awaits but Literal, and keeps Taken (ClassifiedByCall and DeferNestedCall re-record the probe while
+    DecideTaken decides it again: R4's C5). It replaces Awaits' kind list `not (Typed or Literal or Aggregate)`; no producer records
+    Typed or Aggregate, so the bit holds exactly where that test held. `SlotSolution.Default` records a Literal through RecordPart and
+    adds its default (R4's N5), so it keeps only Taken. `TakeArgument`, called only by CompleteWaiting at the head of its loop, before
+    IsWaiting, TakeWaiting and DecideTaken, writes Taken.
+  - Readers, one per bit: `Awaits(core, record)`, for AwaitsCall, AwaitedKind and KindOf: the bit while the core is unbound and has no
+    failure of its own. A join's step 3 may bind the part while its call classifies the argument (SPEC 14.9.2), so binding is not
+    completion. `TakenByCall`, for ConflictWaits: decision (i)'s premise, "the call has selected", replacing HoldsCompletedPart (its
+    BoundType walk and its copy of the awaiting kinds are deleted). Taken ends no Awaits: TryCandidate's re-check reads KindOf after
+    CompleteWaiting, so a taken Join argument stays Join, and a taken Literal or Typed argument does not start awaiting.
+  - ResultPropagation's `Completed` decided position waiting (a waited source whose parts are bound since, by its call or its join's
+    step 3), not a call relation: gated by Taken, 11 rows keep a lone PrerequisiteUnavailable_Kd (SPEC 23.1.2). U1.6g3b renames it
+    `BoundSince` under that contract (R4's C9: "complete" is the call's word). Deferred's `AwaitsFor || BoundSince` still reconstructs
+    position waiting from BoundType; that is R4's N4, PLAN G335's open issue (position waiting published once per join).
+  - Rejected: a side table read by one consumer (R4's U1.6g3 stop review, Q2); Taken per part (HoldsCompletedPart's walk again);
+    Taken ending Awaits (above); a Taken mark at a Case construction (InferPayloads binds its payloads at their Types, so ConflictWaits
+    is never reached there).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

@@ -416,7 +416,7 @@ public sealed partial class Binding
                 }
             }
             else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
-                !(target == SemanticsKind.Ref && this.KindOf(source) == ArgumentKind.Literal))
+                !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal))
             {
                 return false;
             }

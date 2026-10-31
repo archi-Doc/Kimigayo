@@ -100,17 +100,17 @@ public partial class OriginRelationDiagnosticTest
         }
     }
 
-    // R3-B2 (review 3): a `match` argument whose arm result uses the arm's pattern binding, at a value call (pb1b, pb1h; in a `let`, pb1g)
-    // and a named call (pb1e, in a `let`), and the named forms without an arm binding (pb1c) or over a bool (pb1d), is valid: the arm is
-    // bound in its own scope (SPEC 14.9.2) and the join waits for its call (SPEC 10.5.1). Dev accepts pb1b, pb1g and pb1h; the invalid
-    // twins are AFailingJoinArgumentIsALanguageError's pb1*_n rows.
+    // R3-B2 (review 3): a `match` argument whose arm result uses the arm's pattern binding, at a value call (pb1b; in a `let`, pb1g; pb1h_v
+    // over a by-value Subject) and a named call (pb1e, in a `let`), and the named forms without an arm binding (pb1c) or over a bool
+    // (pb1d), is valid: the arm is bound in its own scope (SPEC 14.9.2) and the join waits for its call (SPEC 10.5.1). Dev accepts pb1b
+    // and pb1g; the invalid twins are AFailingJoinArgumentIsALanguageError's pb1*_n rows and pb1h.
     [Theory]
     [InlineData("pb1b", PbValue + "    return g(match o\n        .Some(let x) => .Some(x)\n        .None => .None\n    )\n")]
     [InlineData("pb1c", PbH + PbOption + "    return h(match o\n        .Some(let x) => .Some(1)\n        .None => .None\n    )\n")]
     [InlineData("pb1d", PbH + "func k(c: bool) -> i32\n    return h(match c\n        true => .Some(1)\n        false => .None\n    )\n")]
     [InlineData("pb1e", PbH + PbOption + "    let r = h(match o\n        .Some(let x) => .Some(x)\n        .None => .None\n    )\n    return r\n")]
     [InlineData("pb1g", PbValue + "    let r = g(match o\n        .Some(let x) => .Some(x)\n        .None => .None\n    )\n    return r\n")]
-    [InlineData("pb1h", PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n")]
+    [InlineData("pb1h_v", PbValue + "    return g(match o@move\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n")]
     public void AMatchArgumentBindsItsArmInItsOwnScope(string form, string body)
         => AssertRecords(form, body, string.Empty, null);
 
@@ -139,14 +139,23 @@ public partial class OriginRelationDiagnosticTest
     // `let` (a mismatch, a wrong arity, an unresolved payload name, a value call, references, and anonymous functions, which fault on dev
     // too) keep their Language errors. SPEC 23.1.2 leaves dependent records implementation-defined, so the row requires the failing part's
     // record (`required`, `Code text`; empty: any record) and allows further records, never Unsupported_Kd or a fault of the check. b6fn's
-    // location is open: SPEC 10.5.4 lets an anonymous function's header filter candidates, which a join of them may or may not do.
+    // location is open: SPEC 10.5.4 lets an anonymous function's header filter candidates, which a join of them may or may not do. pb1h and
+    // pb1h_n: a bare Place Subject is borrowed (SPEC 15.1.6, 14.8.1: `x` is `ref/i32`), so the qualified `Option.Some(x)` keeps its own
+    // Type (10.5.1), which fits no candidate at either call kind (D1; R4, 2026-10-31).
     [Theory]
     [InlineData("pb1b_n", PbValue + "    return g(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n", "TypeMismatch_Kd .Some(x == 0)")]
     [InlineData("pb1c_n", PbH + PbOption + "    return h(match o\n        .Some(let x) => .Some(true)\n        .None => .None\n    )\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("pb1d_n", PbH + "func k(c: bool) -> i32\n    return h(match c\n        true => .Some(true)\n        false => .None\n    )\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("pb1e_n", PbH + PbOption + "    let r = h(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n    return r\n", "TypeMismatch_Kd .Some(x == 0)")]
     [InlineData("pb1g_n", PbValue + "    let r = g(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n    return r\n", "TypeMismatch_Kd .Some(x == 0)")]
-    [InlineData("pb1h_n", PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x == 0)\n        .None => .None\n    )\n", "TypeMismatch_Kd Option.Some(x == 0)")]
+    [InlineData(
+        "pb1h",
+        PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n",
+        "NoApplicableOverload_Kd g(match o")]
+    [InlineData(
+        "pb1h_n",
+        PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x == 0)\n        .None => .None\n    )\n",
+        "NoApplicableOverload_Kd g(match o")]
     [InlineData("b5g_n", RunG + "    return g(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5go_n", RunG + "    return g(if c => Option.None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5k_n", RefOne + RefThree + RunK + "    return k(if c => one else => three)\n", "TypeMismatch_Kd three")]

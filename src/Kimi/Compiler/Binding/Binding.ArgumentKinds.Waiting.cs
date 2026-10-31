@@ -12,7 +12,9 @@ namespace Kimi.Compiler;
 // the one test of F; they read a pattern and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case
 // construction (UnsolvedPayloadSlots) and the completions over a SlotSolution share them. Whether such an F is fixed with no outer
 // expectation, so that a nested call's or construction's result is typed without one, is FixesWithoutExpectation, read through
-// OpenWaitingSlots by both (DECISIONS BU-2, D4).
+// OpenWaitingSlots by both (DECISIONS BU-2, D4). The part path through the same forms is here too: PartCore, down to the part a form
+// delivers, the one key of a part's recorded kind (Binding.ArgumentKinds.cs); PartParent and PartHolder, up toward its argument, the
+// walk by which a part finds its argument probe (UnderArgumentProbe) and the result target its call completes it at (CallableTarget).
 public sealed partial class Binding
 {
     // A consumer of TakeWaiting: it takes each waiting callable at its position and slot F, and stops the walk by returning false.
@@ -39,18 +41,37 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // The result target at whose position its call completes a waiting callable, through the forms that deliver it and the aggregates
-    // whose parts TakeWaiting passes (CallableParts); null when there is none.
+    // The result target at whose position its call completes a waiting callable: the first result target on the part path (PartParent).
     private static Koto? CallableTarget(Koto node)
     {
         var source = node;
-        while (source.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), source) || CallableParts(parent) is not null))
+        while (PartHolder(source) is { } holder)
         {
-            source = parent;
+            source = holder;
         }
 
         return ResultTarget(source);
     }
+
+    // The part path, down (SPEC 10.5.1, 14.4, 14.9.1): the part a form delivers, through parentheses, a label and an expression body
+    // (DeliveredOperand), the one key of a part's recorded kind.
+    private static Koto PartCore(Koto node)
+    {
+        while (DeliveredOperand(node) is { } operand)
+        {
+            node = operand;
+        }
+
+        return node;
+    }
+
+    // The part path, up: the next node from a part toward its argument, the form that delivers it or the Tuple or array literal holding
+    // it (PartHolder), else the result target it is a source of (ResultTarget: a selection body, a transfer's operand, a `do` body).
+    private static Koto? PartParent(Koto node) => PartHolder(node) ?? ResultTarget(node);
+
+    // The form delivering the part or the aggregate whose part it is (CallableParts), or null.
+    private static Koto? PartHolder(Koto node)
+        => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || CallableParts(parent) is not null) ? parent : null;
 
     // Each waiting callable of the part at an F of the owner, in source order: the part itself, a part of its aggregate at that part's
     // position (CallableParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position
@@ -58,7 +79,7 @@ public sealed partial class Binding
     private bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
         where T : IWaitingTaker, allows ref struct
     {
-        if (IsWaitingCallable(part))
+        if (this.IsWaitingCallable(part))
         {
             return CallableSlotType(pattern, owner) is not { } slot || taker.Take(part, pattern, slot);
         }

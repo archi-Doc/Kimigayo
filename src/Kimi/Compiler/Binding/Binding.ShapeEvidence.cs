@@ -212,11 +212,7 @@ public sealed partial class Binding
                             actual = adapted;
                         }
 
-                        if (pattern.Kind == BoundTypeKind.Function)
-                        {
-                            actual = this.FunctionItemSignature(actual) ?? (BoundClosure.Of(actual) is { } closure ? closure.Signature : actual);
-                        }
-
+                        actual = this.SignatureAtFunction(pattern, actual);
                         CollectTypes(pattern, actual, false);
                         if (CallableSlotType(pattern, CallSlotOwner(function)) is not null &&
                             this.ExpectedCallSignature(function, pattern) is { } requiredSignature &&
@@ -233,7 +229,7 @@ public sealed partial class Binding
                         pattern = referent;
                     }
 
-                    if (source is TupleLiteralKoto tuple && pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count)
+                    if (source is TupleLiteralKoto tuple && TupleShapeAt(tuple, pattern))
                     {
                         for (var e = 0; e < tuple.Elements.Count; e++)
                         {

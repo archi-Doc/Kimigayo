@@ -198,7 +198,7 @@ public sealed partial class Binding
                 // parameter Type to rank. Select from ordinary inputs/defaults first; only the winner supplies a body context, even when
                 // the candidates' signatures differ. Slots acquired in different modes violate the parameter acquisition shape (SPEC
                 // 7.3.1), which the declarations report; such candidates select nothing.
-                comparable = ComparableCallableSlots(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride);
+                comparable = this.ComparableCallableSlots(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride);
                 break;
             }
         }

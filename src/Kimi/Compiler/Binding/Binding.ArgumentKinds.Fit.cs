@@ -7,17 +7,19 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
-    // operation that adapts it (unset when it does not fit, but for a literal's range shape). A waiting nested call is checked only by
-    // the selected candidate (Waiting); an anonymous function fits by its signature and a function group by conversion (SPEC 7.7.4). A
-    // Composite fits by its shape and parts; a Literal by its Type (SPEC 12.3), shared-borrowed at ref/T as an owner temporary; a typed
-    // part by erasure or the common adaptation, structurally (SPEC 15.6.1). Fitting publishes nothing.
+    // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
+    // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
+    // group (Reference) by conversion (SPEC 7.7.4). An Aggregate or Join fits by its shape and parts; a Literal by its Type (SPEC
+    // 12.3), shared-borrowed at ref/T as an owner temporary; a typed part by erasure or the common adaptation, structurally (SPEC
+    // 15.6.1). Fitting publishes nothing.
     private CandidateApplicability FitArgument(Koto part, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         var node = KotoHelper.UnwrapParentheses(part);
         operation = default;
-        switch (this.KindOf(node))
+        var kind = this.KindOf(node);
+        switch (kind)
         {
-            case ArgumentKind.Waiting when node is FunctionKoto closure:
+            case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -25,7 +27,7 @@ public sealed partial class Binding
 
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
-            case ArgumentKind.Waiting when IsWaitingFunctionReference(node):
+            case PartKind.Reference:
                 if (type.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(node, node.BoundSymbol!, type, scope))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -33,13 +35,13 @@ public sealed partial class Binding
 
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
-            case ArgumentKind.Waiting:
+            case PartKind.Aggregate or PartKind.Join:
+                return this.FitComposite(part, node, type, scope, out operation);
+            case PartKind.Literal:
+                return this.FitLiteral(part, node, type, scope, out operation);
+            case PartKind.Case or PartKind.Call when this.AwaitsCall(node):
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
                 return CandidateApplicability.Waiting;
-            case ArgumentKind.Composite:
-                return this.FitComposite(part, node, type, scope, out operation);
-            case ArgumentKind.Literal:
-                return this.FitLiteral(part, node, type, scope, out operation);
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
         }
@@ -76,7 +78,7 @@ public sealed partial class Binding
 
         if (source is TupleLiteralKoto tuple)
         {
-            if (expected.Kind != BoundTypeKind.Tuple || expected.Components.Count != tuple.Elements.Count)
+            if (!TupleShapeAt(tuple, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -93,12 +95,9 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (ControlFlowExpression(source) is { } join && this.KindOf(source) == ArgumentKind.Composite)
+        if (ControlFlowExpression(source) is { } join && this.KindOf(source) == PartKind.Join)
         {
-            // SPEC 10.5.1, 14.9.2 step 3 (DECISIONS BU-43): a join its call classifies fits by its results' late Type, waiting literals
-            // fitting as literals.
-            return this.LateTypeOf(join, expected) is { } late && this.FitsStructurallyAt(late, expected, source)
-                ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+            return this.FitsJoin(join, expected) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
 
         if (source is RangeKoto range && IsMixedRange(range))
@@ -136,6 +135,60 @@ public sealed partial class Binding
         return syntax.BoundType is not { } actual ? CandidateApplicability.Pending :
             ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable
             : CandidateApplicability.Inapplicable;
+    }
+
+    // SPEC 10.5.1, 10.5.4, 14.9.2 (DECISIONS BU-43): a join its call classifies fits position by position, each position taking the parts
+    // its sources hold there (PositionKind, ChildPositions), as its evidence does: a failed part fits every candidate (SPEC 23.1.2); a
+    // position that waits (no typed part, one awaiting its call) is checked by the selected candidate, only a waiting anonymous function's
+    // header filtering here; an Aggregate one by each part's shape and then its child positions; any other by each part's late Type
+    // (LateFits), which applies no late write: the writes the late fits record are cleared per candidate, as no reader applies them
+    // (TryPropagate computes its own).
+    private bool FitsJoin(Koto join, BoundType type)
+    {
+        this.lateWrites.Clear();
+        this.lateAdaptations.Clear();
+        var start = this.positionParts.Count;
+        this.AddResults(join);
+        var fits = this.FitsPosition(start, type);
+        this.ClosePosition(start);
+        return fits;
+    }
+
+    private bool FitsPosition(int start, BoundType type)
+    {
+        var end = this.positionParts.Count;
+        var kind = this.PositionKind(start, end, out _);
+        for (var i = start; i < end; i++)
+        {
+            var part = this.positionParts[i];
+            var fits = (kind, KotoHelper.UnwrapParentheses(part)) switch
+            {
+                _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
+                (PartKind.Call, FunctionKoto closure) => !this.AwaitsCall(closure) || this.ClosureSignatureFits(closure, type),
+                (PartKind.Call, _) => true,
+                (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),
+                (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
+                _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
+            };
+            if (!fits)
+            {
+                return false;
+            }
+        }
+
+        var children = kind == PartKind.Aggregate && this.PartsShape(start, end) is not DictionaryLiteralKoto ? this.ChildPositions(start, end) : 0;
+        for (var i = 0; i < children; i++)
+        {
+            var child = this.positionParts.Count;
+            var fits = this.AddChildPosition(start, end, i, type) is { } element && this.FitsPosition(child, element);
+            this.ClosePosition(child);
+            if (!fits)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)

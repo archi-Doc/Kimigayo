@@ -136,12 +136,6 @@ public sealed partial class Binding
         return created;
     }
 
-    private static bool IsWaitingFunctionReference(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is not FunctionKoto and { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function };
-
-    private static bool IsWaitingCallable(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true, BoundType: null } || IsWaitingFunctionReference(node);
-
     // A specialization supplies the selected Item's implementation, never an additional overload candidate.
     private static BindingSymbol? ReferenceCandidate(BindingSymbol? candidate)
     {

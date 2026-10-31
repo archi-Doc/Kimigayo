@@ -235,7 +235,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var node = KotoHelper.UnwrapParentheses(argument);
             operation = default;
-            if (!IsWaitingFunctionReference(node) && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
+            if (binding.KindOf(node) != PartKind.Reference && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
             {
                 return CandidateApplicability.Inapplicable;
             }

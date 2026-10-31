@@ -569,7 +569,7 @@ public sealed partial class Binding
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
             var literal = IsUnfittedLiteral(source);
-            var actual = this.BindNode(source, scope, literal ? LiteralInputType(parameter) : parameter);
+            var actual = this.CompleteValueCallPart(source, parameter, scope);
             if (actual is null || source.BindingState != BindingState.Resolved)
             {
                 Complete(call, null);

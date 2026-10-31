@@ -77,7 +77,7 @@ public sealed partial class Binding
             {
                 var source = arguments[i];
                 if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot ||
-                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasWaitingPart(source) ||
+                    binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
                     source.BoundType is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
@@ -178,16 +178,17 @@ public sealed partial class Binding
 
             var part = binding.positionParts[start];
             var node = KotoHelper.UnwrapParentheses(part);
-            if (node is FunctionKoto { IsAnonymous: true } closure)
+            var kind = binding.KindOf(node);
+            if (kind == PartKind.Function && node is FunctionKoto closure)
             {
                 return late || this.InferAnonymous(pattern, part, closure);
             }
 
-            switch (binding.KindOf(node))
+            switch (kind)
             {
-                case ArgumentKind.Composite:
+                case PartKind.Aggregate or PartKind.Join:
                     return this.InferComposite(pattern, start, end, late);
-                case ArgumentKind.Literal:
+                case PartKind.Literal:
                     return this.InferLiteral(pattern, node, late);
                 default:
                     if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
@@ -226,18 +227,7 @@ public sealed partial class Binding
             }
 
             var callee = actual;
-            if (pattern.Kind == BoundTypeKind.Function && binding.FunctionItemSignature(actual) is { } itemSignature)
-            {
-                actual = itemSignature;
-            }
-            else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
-                BoundClosure.Of(actual) is { } closure)
-            {
-                // SPEC 7.7.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
-                // its receiver and Owned conditions included, is judged once the call is selected.
-                actual = closure.Signature;
-            }
-
+            actual = binding.SignatureAtFunction(pattern, actual);
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
             var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
@@ -252,7 +242,7 @@ public sealed partial class Binding
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-            if (binding.WasWaitingPart(source))
+            if (binding.WasDeferred(source))
             {
                 return true;
             }
@@ -274,17 +264,18 @@ public sealed partial class Binding
 
         // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one at
         // its parts' common Type, which the join's step 2 forms (value reads included), in the early pass; a Literal one by its first
-        // literal's default in the late pass; a Composite one by its child positions; a Waiting one and one Never in every source none.
+        // literal's default in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none.
         private bool InferParts(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;
             switch (binding.PositionKind(start, end, out var type))
             {
-                case ArgumentKind.Composite:
+                case PartKind.Aggregate:
                     return this.InferComposite(pattern, start, end, late);
-                case ArgumentKind.Literal:
+                case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
-                case ArgumentKind.Typed when type is not null && !late:
+                case PartKind.Typed when type is not null && !late:
+                    type = binding.SignatureAtFunction(pattern, type); // As a typed argument's evidence (InferAdapted; U1.6g (c)).
                     binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
                     return binding.Infer(pattern, type, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
@@ -447,7 +438,7 @@ public sealed partial class Binding
             }
 
             var source = KotoHelper.UnwrapParentheses(binding.positionParts[start]);
-            if (binding.KindOf(source) == ArgumentKind.Literal)
+            if (binding.KindOf(source) == PartKind.Literal)
             {
                 return this.Default(source, binding.PartDefault(source, this.Scope), ref applied);
             }
@@ -465,13 +456,13 @@ public sealed partial class Binding
         }
 
         // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26): a join's Literal position takes its first literal's default, which each of its
-        // literals must fit (its own record otherwise); a Composite one defaults by its child positions; the others take none.
+        // literals must fit (its own record otherwise); an Aggregate one defaults by its child positions; the others take none.
         private readonly Koto? DefaultParts(int start, int end, BoundType pattern, SlotSet unsolved, ref bool applied)
         {
             var binding = this.Binding;
             switch (binding.PositionKind(start, end, out _))
             {
-                case ArgumentKind.Literal:
+                case PartKind.Literal:
                     var type = binding.PartDefault(binding.FirstLiteral(start, end), this.Scope);
                     Koto? misfit = null;
                     for (var i = start; i < end; i++)
@@ -480,7 +471,7 @@ public sealed partial class Binding
                     }
 
                     return misfit;
-                case ArgumentKind.Composite:
+                case PartKind.Aggregate:
                     return this.DefaultChildren(start, end, pattern, unsolved, ref applied);
                 default:
                     return null;
@@ -522,7 +513,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type);
+            ref var record = ref binding.RecordPart(literal, PartKind.Literal); // A Literal does not await its call (RecordPart's row).
+            record = record with { Default = type };
             applied = true;
             if (binding.FitsLiteralPart(literal, type, this.Scope))
             {
@@ -533,4 +525,11 @@ public sealed partial class Binding
             return literal;
         }
     }
+
+    // SPEC 7.7.4, 10.5: a Function Item or a concrete Closure meets a common Function Type pattern through its call signature, as
+    // evidence; the conversion itself, its receiver and Owned conditions included, is judged once the call is selected. Any other Type,
+    // or any Type at another pattern, as it is.
+    private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
+        => pattern.Kind != BoundTypeKind.Function ? actual
+            : this.FunctionItemSignature(actual) ?? BoundClosure.Of(actual)?.Signature ?? actual;
 }

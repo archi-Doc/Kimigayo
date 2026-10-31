@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 //   (Binding.ResultPropagation.Parts.cs) or, for a call's control-flow argument, the wait for the call that classifies it
 //   (AwaitsWithoutCandidate; DECISIONS BU-43), whose late fit takes a waiting literal and a waiting list or fill literal by the shape
 //   it constructs, writing nothing; an anonymous function among its results waits for the call, which completes it (TakeWaiting) and
-//   then decides the join part by part, the sources holding it waiting until then (Completed, DecideTaken); (5) the join's one
+//   then decides the join part by part, the sources holding it waiting until then (BoundSince, DecideTaken); (5) the join's one
 //   outcome (ResultContext.Outcome, DECISIONS BU-43), written once where it becomes true: Waiting; Conflict, its own record;
 //   Dependent, resting on its first failed part or on the join it waited for (Cause), with no record (SPEC 23.1.2); Decided. A part's
 //   failure is read from who decides it (PartFailed). A join tree (a join holding nested joins through its sources, the forms that
@@ -97,9 +97,10 @@ public sealed partial class Binding
         try
         {
             var complete = true;
+            var shaped = TupleShapeAt(tuple, expected);
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
+                var element = shaped ? expected!.Components[i] : null;
                 this.PropagateBound(tuple.Elements[i], element);
                 var type = this.BindNode(tuple.Elements[i], scope, element);
                 buffer[i] = type!;
@@ -115,15 +116,15 @@ public sealed partial class Binding
     }
 
     // What an expression awaits its position for (SPEC 14.9.2 step 3): the Type of a part of Type Never, the Type or default of a literal
-    // that waits unbound, the Type of an anonymous function that waits unbound for its call (SPEC 10.5.1; DECISIONS BU-43), or several;
-    // a literal or anonymous function bound once is decided.
+    // that waits unbound, the Type of a part that awaits its call (Call: AwaitsCall, whatever its kind; SPEC 10.5.1; DECISIONS BU-43), or
+    // several; a literal bound once, or a part its call completed, is decided.
     [Flags]
     private enum Awaiting : byte
     {
         None = 0,
         Never = 1,
         Literal = 2,
-        Callable = 4,
+        Call = 4,
     }
 
     // SPEC 14.9.2 step 3: whether an expression, bound or waiting, takes its position's Type once that is decided.
@@ -146,7 +147,7 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.PartsAwait(array.Elements),
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
-            FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } => Awaiting.Callable,
+            _ when this.AwaitsCall(node) => Awaiting.Call, // SPEC 10.5.1: a part its call completes takes the Type there.
             _ => node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) ? Awaiting.Literal : Awaiting.None,
         };
     }
@@ -176,7 +177,7 @@ public sealed partial class Binding
     private Awaiting PartAwaits(Koto part) => ReferenceEquals(part.BoundType, BoundType.Never) ? Awaiting.Never : this.AwaitsFor(part);
 
     // A result target awaits when it delivers a value and each of its value sources awaits, has Type Never, or waited and holds only
-    // what its call completed since (Completed), which awaits nothing but the join's decision.
+    // parts bound since (BoundSince), which await nothing but the join's decision.
     private Awaiting SourcesAwait(ResultContext context)
     {
         var awaiting = Awaiting.None;
@@ -189,12 +190,13 @@ public sealed partial class Binding
 
             if (context.Sources[i] is null)
             {
-                if (!this.Deferred(source))
+                var deferred = this.AwaitsFor(source); // Once per source: Deferred takes it rather than walking the source again.
+                if (!this.Deferred(source, deferred))
                 {
                     return Awaiting.None;
                 }
 
-                awaiting |= this.AwaitsFor(source);
+                awaiting |= deferred;
             }
             else if (!ReferenceEquals(context.Sources[i], BoundType.Never))
             {
@@ -212,13 +214,9 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 3, 4.3, 10.5.1, 12.3: an unfitted literal reached without an expected Type waits, unbound, while its position's Type
-    // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). An anonymous
-    // function that is a result of a call's control-flow argument, at a position its call completes (CallableTarget), waits for that call
-    // (SPEC 10.5.1: such an argument is Waiting; DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
+    // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting).
     private bool WaitsForPosition(Koto node, BoundType? expected)
-        => expected is null && node.BindingState == BindingState.Unvisited &&
-            (IsUnfittedLiteral(node) ? this.DecidedLater(node) :
-                node is FunctionKoto { IsAnonymous: true } && CallableTarget(node) is { } target && this.UnderArgumentProbe(target));
+        => expected is null && node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) && this.DecidedLater(node);
 
     // The result target to which the position an expression supplies belongs, or null. The one walk passes the forms that deliver it
     // (DeliveredOperand) and the Tuple, array (a fill's included, DECISIONS BU-43) and dictionary literals it is a part of; `collecting`
@@ -246,11 +244,16 @@ public sealed partial class Binding
                 (this.resultContexts.TryGetValue(target, out var context) && context.Collecting && context.Expected is null)
             : collecting;
 
-    // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position or holding what its call
-    // completed since (Completed), which it waits to take with the rest of its join (SPEC 14.9.2 steps 2-3; DECISIONS BU-43).
-    private bool Deferred(Koto source)
-        => source.BindingState is BindingState.Unvisited or BindingState.Unresolved && !this.PartFailed(source) &&
-            (this.AwaitsPosition(source) || this.Completed(source));
+    // A part that waited for its position's Type: unbound, not failed (PartFailed), and awaiting its position, holding only parts
+    // bound since, by its call or its join's step 3 (BoundSince), or a call the probe deferred (Call, SPEC 10.5.1), which it waits to
+    // take with the rest of its join (SPEC 14.9.2 steps 2-3; DECISIONS BU-43). This is position waiting, not a part's relation to its
+    // call (DECISIONS BU-74; its reconstruction from BoundType is PLAN G335's).
+    private bool Deferred(Koto source) => this.Deferred(source, null);
+
+    // The same with the source's Awaiting (AwaitsFor) when the caller already has it, so the source is not walked twice.
+    private bool Deferred(Koto source, Awaiting? awaits)
+        => !this.PartFailed(source) && (this.AwaitsCall(source) || (source.BindingState is BindingState.Unvisited or BindingState.Unresolved &&
+            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.BoundSince(source))));
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
@@ -324,24 +327,25 @@ public sealed partial class Binding
         return part.BoundType is null && !this.IsWaitingPart(part) && this.HasFailureCauses(part);
     }
 
-    // SPEC 10.5.1 (DECISIONS BU-43): whether a source that waited was completed since by its call (TakeWaiting), through the forms that
-    // made its anonymous functions wait (CallableTarget): bound, a form that delivers one, an aggregate each of whose parts at least one
-    // (CallableParts) was, or a waiting result target each of whose waited sources was.
-    private bool Completed(Koto source)
+    // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
+    // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
+    // delivers one, an aggregate each of whose parts at least one (CallableParts) was, or a waiting result target each of whose waited
+    // sources was. Position waiting (Deferred), not a call relation: it holds before any selection.
+    private bool BoundSince(Koto source)
     {
         if (DeliveredOperand(source) is { } operand)
         {
-            return this.Completed(operand);
+            return this.BoundSince(operand);
         }
 
         if (this.WaitingResult(source) is not { } context)
         {
-            return source.BoundType is not null || (CallableParts(source) is { Count: > 0 } parts && this.AllCompleted(parts));
+            return source.BoundType is not null || (CallableParts(source) is { Count: > 0 } parts && this.AllBoundSince(parts));
         }
 
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.Completed(waited))
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.BoundSince(waited))
             {
                 return false;
             }
@@ -350,11 +354,11 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool AllCompleted(List<Koto> parts)
+    private bool AllBoundSince(List<Koto> parts)
     {
         foreach (var part in parts)
         {
-            if (!this.Completed(part))
+            if (!this.BoundSince(part))
             {
                 return false;
             }
@@ -376,12 +380,13 @@ public sealed partial class Binding
                 : this.BindNode(join, this.ConstraintScope(join), null) is not null);
 
     // SPEC 14.9.2 (DECISIONS BU-43): a result target that waited for its position is decided when its position binds it, honouring
-    // the outcome it has: judged by its root as a Conflict, it binds its waited sources with no Type and fails at itself, its own
-    // record; as Dependent, it binds them and rests on its cause. Still Waiting, bound with no Type by the pass of the join it waited
-    // for (PositionTarget) once that join failed, it rests on that join's record or cause (SPEC 23.1.2: the root judged its parts).
+    // the outcome it has: judged by its root as a Conflict, it binds its waited sources at the Type its position decided (none without
+    // one) and fails at itself, its own record; as Dependent, it binds them so and rests on its cause (SPEC 23.1.2: their own records
+    // are independent of it). Still Waiting, bound with no Type by the pass of the join it waited for (PositionTarget) once that join
+    // failed, it rests on that join's record or cause (SPEC 23.1.2: the root judged its parts).
     // Otherwise its sources take the Type the position supplies, as a Target Result Type fixed by an outer expectation, or, without
-    // one, it decides as a root (DecideResult); one its call bound meanwhile supplies the Type it took, and one holding what its call
-    // completed is Deferred (Completed).
+    // one, it decides as a root (DecideResult); a source bound meanwhile, whoever bound it, supplies the Type it took, and one holding
+    // parts bound since is Deferred (BoundSince).
     private BoundType? DecideWaiting(Koto node, ResultContext context, BoundType? expected)
     {
         if (context.Outcome == JoinOutcome.Waiting && expected is null && this.PositionTarget(node, out _) is { } position &&
@@ -392,7 +397,7 @@ public sealed partial class Binding
 
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
-            this.BindWaitedSources(node, context, null);
+            this.BindWaitedSources(node, context, ResultExpectation(node, expected));
             return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependent(node, context.Cause!);
         }
 
@@ -429,10 +434,16 @@ public sealed partial class Binding
             waited |= context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source);
         }
 
-        this.JudgeNested(node, context);
+        // A join its position decides later is judged with its root's tree, once: the root's JudgeNested judges the held tree in
+        // post-order, an inner conflict still the innermost join's record (DecideWaiting's Conflict row); it judges only itself here.
+        var later = waited && DeliversResult(node) && this.DecidedLater(node);
+        if (!later)
+        {
+            this.JudgeNested(node, context);
+        }
+
         var common = this.JudgeOwn(node, context, out var shape, out var defaults);
-        if (context.Outcome == JoinOutcome.Undecided &&
-            ((waited && DeliversResult(node) && this.DecidedLater(node)) || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
+        if (context.Outcome == JoinOutcome.Undecided && (later || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
         {
             context.Outcome = JoinOutcome.Waiting;
             return true;
@@ -493,16 +504,27 @@ public sealed partial class Binding
         return awaiting;
     }
 
-    // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. At `type`, the
-    // Target Result Type the join decided: a source that waited unbound is bound at it, which checks its literals, and fits it; a bound
-    // one that awaits takes it when its late Type fits. With no Type, the join having failed (Conflict, Dependent) or formed nothing: a
-    // waited source holding a literal takes its defaults, and one holding a join that waited (HoldsWaitedResult) is bound so that the
-    // join honours its outcome (DecideWaiting); under a failed join, a source holding neither rests on the join's record or cause
-    // (CompleteDependent). The first misfit is returned.
+    // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. Step 3 at every
+    // position comes first when a Type is decided and the join has not failed (BindStepThree); the loop is that walk's Literal, Call and
+    // whole-aggregate row, not a second binder: a source the walk bound waits no more, and an aggregate source adapts the parts it bound
+    // to its element Type. At `type`, the Target Result Type the join or its position decided (a failed join's too): a source that
+    // waited unbound is bound at it, which checks its literals, and fits it; a bound one that awaits, or does not fit as it is, takes it
+    // when its late Type fits (U1.6g (b)), a bound one that does not await failing at itself otherwise (the join resting on it). With no
+    // Type, the join having failed (Conflict, Dependent) or formed nothing: a waited source holding a literal takes its defaults, and
+    // one holding a join that waited (HoldsWaitedResult) is bound so that the join honours its outcome (DecideWaiting); under a failed
+    // join, a source holding neither rests on the join's record or cause (CompleteDependent). The first misfit is returned.
     private BoundType? BindWaitedSources(Koto node, ResultContext context, BoundType? type)
     {
         BoundType? failed = null;
         var rests = context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent;
+        if (type is not null && !rests)
+        {
+            var start = this.positionParts.Count;
+            this.AddResults(node);
+            this.BindStepThree(start, this.positionParts.Count, type);
+            this.ClosePosition(start);
+        }
+
         for (var i = 0; i < context.Sources.Count; i++)
         {
             if (context.SourceNodes[i] is not { } source || ReferenceEquals(context.Sources[i], BoundType.Never))
@@ -512,7 +534,9 @@ public sealed partial class Binding
 
             var waited = context.Sources[i] is null;
             var held = waited && this.HoldsWaitedResult(source);
-            if (waited ? !held && !this.Deferred(source) : type is null || !this.AwaitsPosition(source))
+            var awaits = !waited && type is not null && this.AwaitsPosition(source);
+            var fit = default(ComparisonFailure);
+            if (waited ? !held && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node, out fit)))
             {
                 continue;
             }
@@ -520,7 +544,14 @@ public sealed partial class Binding
             bool fits;
             if (!waited)
             {
+                // U1.6g (b), SPEC 7.7.4, 23.1.2: a bound part that does not fit takes the Type through its late adaptation (an Item by
+                // erasure); one that cannot is its own record, at the part, on which the join rests, as a waited part's misfit is.
                 fits = this.TryPropagate(source, type!, node);
+                if (!fits && !awaits && !rests)
+                {
+                    this.FailMismatch(source, source, context.Sources[i]!, type!, fit);
+                    context.RestOn(source);
+                }
             }
             else if (type is not null)
             {
@@ -542,6 +573,45 @@ public sealed partial class Binding
         }
 
         return failed;
+    }
+
+    // SPEC 10.5.1, 14.9.2 step 3 at every position (U1.6g2): the join's own position (depth 0) and each child position of its Tuple and
+    // array results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take its typed parts' common Type, with no
+    // call; at depth 0 that is DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no
+    // part (Never or failed parts only), and a waiting part there is a broken contract. Aggregate: each child position at its element of
+    // `target`. The sources are then bound at `target` as wholes (BindWaitedSources), each aggregate adapting its bound parts to its
+    // element Type (7.7.4, per element).
+    private void BindStepThree(int start, int end, BoundType? target)
+    {
+        switch (this.PositionKind(start, end, out var common))
+        {
+            case PartKind.Typed:
+                for (var i = start; i < end; i++)
+                {
+                    if (this.positionParts[i] is { BoundType: null } part && this.Deferred(part))
+                    {
+                        _ = common is null ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, common);
+                    }
+                }
+
+                return;
+            case PartKind.Aggregate when this.PartsShape(start, end) is not DictionaryLiteralKoto:
+                for (int i = 0, count = this.ChildPositions(start, end); i < count; i++)
+                {
+                    var child = this.positionParts.Count;
+                    var element = this.AddChildPosition(start, end, i, target);
+                    this.BindStepThree(child, this.positionParts.Count, element);
+                    this.ClosePosition(child);
+                }
+
+                return;
+            case PartKind.Aggregate: // A Dictionary, taken whole (BU-43): its source's binding at `target`, BindWaitedSources' loop.
+            case PartKind.Literal: // Its literals take `target` with their sources, BindWaitedSources' loop.
+            case PartKind.Call: // Its parts await the call, which binds them at its candidate's Type (CompleteArguments, the loop).
+                return;
+            default:
+                throw new InvalidOperationException("A position is Typed, Aggregate, Literal or Call (PositionKind).");
+        }
     }
 
     // SPEC 14.9.2 step 3: the Type an expression that awaits takes at `target`; null when it cannot take it.
@@ -631,7 +701,7 @@ public sealed partial class Binding
             return target; // SPEC 3.8: a Never expression fits; the literal around it takes its position's Type.
         }
 
-        if (!this.AwaitsPosition(node) && !this.Deferred(node))
+        if (!this.AwaitsCall(node) && !this.AwaitsPosition(node) && !this.Deferred(node))
         {
             return this.LateAdaptation(node, target); // A bound part; one holding what its call completed is formed from its parts below.
         }
@@ -641,13 +711,16 @@ public sealed partial class Binding
             return this.LateWrite(node, this.LateType(operand, target));
         }
 
+        var kind = this.KindOf(node);
         var late = node switch
         {
             TupleLiteralKoto tuple => this.LateTupleType(tuple, target),
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            FunctionKoto { IsAnonymous: true } closure => this.ClosureSignatureFits(closure, target) ? target : null, // One waiting for its call.
+            _ when kind is PartKind.Function or PartKind.Case => // One waiting for its call, fitted as an argument by its header
+                this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
+            _ when kind is PartKind.Call or PartKind.Reference => target, // Completed by its call at this position's Type (SPEC 10.1).
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 
@@ -689,7 +762,7 @@ public sealed partial class Binding
 
     private BoundType? LateTupleType(TupleLiteralKoto tuple, BoundType target)
     {
-        if (target.Kind != BoundTypeKind.Tuple || target.Components.Count != tuple.Elements.Count)
+        if (!TupleShapeAt(tuple, target))
         {
             return null;
         }
@@ -720,8 +793,7 @@ public sealed partial class Binding
     // array of its count, a fill a fixed array of its length (SPEC 4.3.1, 4.3.3; DECISIONS BU-43).
     private BoundType? LateArrayType(ArrayLiteralKoto array, BoundType target)
     {
-        if (target.Components.Count != 1 ||
-            (array.BoundType is { Kind: BoundTypeKind.FixedArray } own ? !SameArrayShape(own, target) : !this.ConstructsAt(array, target)))
+        if (!this.ArrayShapeAt(array, target))
         {
             return null;
         }
@@ -736,6 +808,11 @@ public sealed partial class Binding
 
         return target;
     }
+
+    // SPEC 4.3: whether an array literal has the target's shape: its own fixed array's, or the one it constructs there (ConstructsAt).
+    private bool ArrayShapeAt(ArrayLiteralKoto array, BoundType target)
+        => target.Components.Count == 1 &&
+            (array.BoundType is { Kind: BoundTypeKind.FixedArray } own ? SameArrayShape(own, target) : this.ConstructsAt(array, target));
 
     // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3).
     private bool ConstructsAt(ArrayLiteralKoto array, BoundType target)

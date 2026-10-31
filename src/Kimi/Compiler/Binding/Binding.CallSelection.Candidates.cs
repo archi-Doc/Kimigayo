@@ -223,8 +223,9 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var part = call.ArgumentNodes[i];
-                contextualInputs |= this.KindOf(part) == ArgumentKind.Composite;
-                contextualCallables |= KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(part);
+                var kind = this.KindOf(part);
+                contextualInputs |= kind is PartKind.Aggregate or PartKind.Join;
+                contextualCallables |= kind is PartKind.Function or PartKind.Reference;
                 var type = function.Parameters[mapping[i]].Type.BoundType;
                 if (type is null)
                 {
@@ -333,8 +334,9 @@ public sealed partial class Binding
                 for (var i = 0; i < call.ArgumentNodes.Count; i++)
                 {
                     var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
-                    if (argument is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(argument) ? pass != ordinaryPasses :
-                        pass == ordinaryPasses || (contextualInputs && (this.KindOf(argument) == ArgumentKind.Composite) != (pass == 1)))
+                    var kind = this.KindOf(argument);
+                    if (kind is PartKind.Function or PartKind.Reference ? pass != ordinaryPasses :
+                        pass == ordinaryPasses || (contextualInputs && (kind is PartKind.Aggregate or PartKind.Join) != (pass == 1)))
                     {
                         continue;
                     }
@@ -343,7 +345,7 @@ public sealed partial class Binding
                     if (type is null)
                     {
                         var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-                        if (IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
+                        if (this.IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
                             arguments[ContainerSlot(solution.SlotOwner, slotType.Symbol!)] is null)
                         {
                             BoundType? signature = null;
@@ -379,14 +381,14 @@ public sealed partial class Binding
                         // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
-                            if (this.KindOf(argument) != ArgumentKind.Literal &&
+                            if (this.KindOf(argument) != PartKind.Literal &&
                                 MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument)
+                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument)
                                     ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))

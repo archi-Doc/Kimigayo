@@ -172,14 +172,15 @@ public sealed partial class Binding
                     var argument = call.ArgumentNodes[i];
                     var inner = KotoHelper.UnwrapParentheses(argument);
                     var pattern = selected.Parameters[mapping[i]].Type.BoundType!;
-                    var signature = IsWaitingCallable(inner) ? this.ExpectedCallSignature(selected, pattern) : null;
+                    var kind = this.KindOf(inner);
+                    var signature = this.IsWaitingCallable(inner) ? this.ExpectedCallSignature(selected, pattern) : null;
                     var holds = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } && MentionsSlots(signature, CallSlotOwner(selected), firstSlot);
                     if (holds && waiting is null)
                     {
                         waiting = argument;
                     }
 
-                    if (inner is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
+                    if (kind == PartKind.Function && this.AwaitsCall(inner) && inner is FunctionKoto closure)
                     {
                         var parameters = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } ? this.CallType(signature.Components[0], selected, slots, scope, self, origins, inputs, declaringType, lengths) : null;
                         var result = parameters is null ? null : this.CallType(signature!.Components[1], selected, slots, scope, self, origins, inputs, declaringType, lengths);
@@ -203,7 +204,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (IsWaitingFunctionReference(inner))
+                    if (kind == PartKind.Reference)
                     {
                         if (holds && ReferenceEquals(waiting, argument))
                         {
