@@ -14575,8 +14575,11 @@ structure is recorded here by the unit that first implements it.
     refused one requester at the boundary). The refusal is part of the key's one admission decision, the shape of Layout's `limited`:
     a key refused for growth, the per-identity count or the height cap enters `refused` (cleared per run) when its one record is made,
     at the first request in admission order, and a later request finds it after `Find` and is refused without a record. Row:
-    `GrowthStopsAtItsSite("requested")`. Rejected: suppressing duplicate records afterwards (a second decision of the same key).
+    `GrowthStopsAtItsSite("requested")`. A key refused first stays refused for every later requester, the same rule as admission (the
+    first admitter's chain decides); a growth refusal is order-dependent as admission is, which moves only where the record sits (G153's
+    class). Rejected: suppressing duplicate records afterwards (a second decision of the same key).
   - Amended (U2's review, B1 and B2): the height row's nest holds `Option<obj/T>`, so Layout's inline depth cannot refuse it first
     (without the cap it has no record); the breadth row asserts its 1,024 `Nest` glue items. Admission walks only for an identity with an
     admitted item (none can be above otherwise) and counts each step in `Work`, so `AChainWithoutGrowthScalesLinearly` observes the walk
-    (the 800-function chain walks nothing); O(W·n) stays the recorded worst case.
+    (the 800-function chain walks nothing); O(W·n) stays the recorded worst case, reached by an identity whose earlier items lie off
+    the chain (e.g. two parallel chains of the same definitions), which no row covers yet.
