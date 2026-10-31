@@ -110,7 +110,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         c.Bind();
         Assert.False(c.Binding.TryGetObjectErasure(call, out _));
         c.Binding.ReportDiagnostics();
-        Assert.Equal("alias.ordinary()", Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenConstraint_Kd").Text);
+        Assert.Equal("alias.ordinary()", Assert.Single(TestDiagnostics.Of(c, call.CodeContext.SourceDocument!), x => x.Code == "UnprovenConstraint_Kd").Text);
     }
 
     [Fact]

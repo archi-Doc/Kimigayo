@@ -924,8 +924,8 @@ public class ParserRegressionTest
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
-        Assert.Contains(TestDiagnostics.Of(restored), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
+        Assert.Contains(TestDiagnostics.Of(compilation, restoredFunction.CodeContext.SourceDocument!), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredGroup = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restoredFunction.Body!.Items));
         Assert.Empty(restoredGroup.ChildNodes);
     }
