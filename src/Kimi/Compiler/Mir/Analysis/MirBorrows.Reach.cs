@@ -276,7 +276,8 @@ internal sealed partial class MirBorrows
         this.Step(); // Written is idempotent, so a Shared id stepped from again writes nothing more.
         for (var i = 0; i < this.targets.Count; i++)
         {
-            var (kind, held) = (this.writingKind[this.targets[i]], state[this.targets[i]]);
+            var kind = this.writingKind[this.targets[i]];
+            var held = state[this.targets[i]];
             limited |= kind == MirWrites.Limit;
             if (kind == MirWrites.Through)
             {

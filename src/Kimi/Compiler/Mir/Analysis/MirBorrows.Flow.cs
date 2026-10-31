@@ -122,7 +122,8 @@ internal sealed partial class MirBorrows
         this.Refs(pointer);
         foreach (var target in this.targets)
         {
-            this.AddSlot(target, this.Arrive(target, receiving, false, through, value), this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
+            var arrived = this.Arrive(target, receiving, false, through, value);
+            this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
     }
 

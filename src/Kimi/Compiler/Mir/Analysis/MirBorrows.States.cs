@@ -15,8 +15,8 @@ namespace Kimi.Compiler.Mir;
 // Must not number elements or keep a set in another form (MirLoanSets), or branch a reader's facts on the part an element is in.
 internal sealed partial class MirBorrows
 {
-    private int[] steppedBy = []; // By Shared set: the walk level that read it (Steps).
-    private int stepping; // The current walk's base level, even; level + 1 reads a set's indirect form (Steps).
+    private long[] steppedBy = []; // By Shared set: the walk level that read it (Steps).
+    private long stepping; // The walk's base level, even (level + 1: a set's indirect form; Steps); never reset, so a long (an int wraps at 2^30 walks).
     private (int Instance, int Via, int Count)[] scannedBy = []; // By Shared set: the pass instance that read it, its first via, the vias.
     private int instance; // The gather's pass instances (Pass).
 
