@@ -267,19 +267,31 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*.ll", SearchOption.AllDirectories));
     }
 
-    // DECISIONS R5-M165: generation into the publication's output separates the output's failure from a broken contract of code
-    // generation, by the exception's kind. A writer stands in for both: no test input makes code generation's own checks throw, so the
-    // contract side is shown on the narrowest function that maps it (an ArgumentException, as LlvmConstantPool's checks throw).
+    // DECISIONS R5-M169 (G330): while code generation writes the publication's output, only the output's I/O failure is publication's
+    // (ArtifactPublicationFailed_Kd with its cause); every other exception is left unclassified, the same instance, with no record, for the
+    // command's fault path. A writer throws each kind: no test input makes code generation's own checks throw.
     [Theory]
-    [InlineData(true, nameof(DiagnosticCode.ArtifactPublicationFailed_Kd))]
-    [InlineData(false, nameof(DiagnosticCode.InternalInvariant_Kd))]
-    public void GenerationIntoTheOutputSeparatesOutputFromContractFailures(bool output, string code)
+    [InlineData(typeof(IOException), true)]
+    [InlineData(typeof(UnauthorizedAccessException), true)]
+    [InlineData(typeof(InvalidOperationException), false)]
+    [InlineData(typeof(KeyNotFoundException), false)]
+    [InlineData(typeof(IndexOutOfRangeException), false)]
+    [InlineData(typeof(ArgumentException), false)]
+    [InlineData(typeof(InvalidDataException), false)]
+    public void GenerationIntoTheOutputRecordsOnlyTheOutputsFailure(Type kind, bool output)
     {
         var c = this.Create();
-        using var writer = new FailingWriter(output ? new IOException("disk full") : new ArgumentException("broken contract"));
-        Assert.False(EmissionArtifacts.GenerateInto(c, writer));
-        var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
-        Assert.Equal((code, output ? DiagnosticCategory.Input : DiagnosticCategory.Internal), (record.Code, record.Category));
+        var failure = (Exception)Activator.CreateInstance(kind, "failure")!;
+        using var writer = new FailingWriter(failure);
+        if (output)
+        {
+            Assert.False(EmissionArtifacts.GenerateInto(c, writer));
+            Assert.Equal("failure", PublicationFailure(c));
+            return;
+        }
+
+        Assert.Same(failure, Assert.Throws(kind, () => EmissionArtifacts.GenerateInto(c, writer)));
+        Assert.Empty(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
     }
 
     [Fact]
