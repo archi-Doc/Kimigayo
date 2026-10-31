@@ -9345,29 +9345,36 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-71 Binding publishes each interned Type's height, `BoundType.Height`, and each substitution's, `Subst.Height`** (2026-10-31; PLAN
   G332, unit bu91; the owner approved G332 and this entry together, verbatim 「まとめて承認します」, relayed by R5; BU's design, and
-  main's decision (A) on the children after the implementer found that the brief's two lists differed) SPEC-neutral: a measure of the
-  Type term, which no language rule reads.
-  - Representation: one int per BoundType, set in its constructor from its children's heights beside the other subtree summaries, and
-    one per Subst, set when TyCtxt interns it; no walk. A leaf (a Primitive, the wrapping Scalar included, a struct without arguments, a
-    Type parameter) is 0; any other Type is 1 + the greatest height of its children, the parts its identity holds as Types: its
-    components (Type arguments, Tuple components, an element, a referent or pointee, a Function Type's inputs and result, a Closure's
-    environment) and a Closure's whole ClosureContext, one child whose height is the Subst's: the greatest over its Types, Self and
-    Declaring, 0 for none. Lengths and Origins are no Types and no children.
+  main's decision (A) on the children after the implementer found that the brief's two lists differed; R5's review REVISE B1, n1-n3)
+  SPEC-neutral: a measure of the Type term, which no language rule reads.
+  - Representation: one int per BoundType, set in its constructor from its children's heights beside the other subtree summaries; no
+    walk. A leaf (a Primitive, the wrapping Scalar included, a struct without arguments, a Type parameter) is 0; any other Type is 1 + the
+    greatest height of its children, the parts its identity holds as Types: its components (Type arguments, Tuple components, a fixed
+    array's element, a referent or pointee, a Function Type's inputs and result, a function item's Type arguments, a projection's self
+    and Contract Type, a Closure's environment) and a Closure's whole ClosureContext, one child of height `Subst.Height`: computed on
+    read as the greatest height over its Types, Self and Declaring (one read each), 0 for none. Lengths and Origins are no Types and no
+    children. So a Closure with no environment is 0 without a context and 1 under an identity context (one binding only leaves).
   - Reason: G332's recurrence rule asks whether a key's Type grows (type-driven keys stop past height 128, a body counts a generation
     only on substitution-height growth). The collector lacked the fact; its owner publishes it (AGENTS), with no collector table.
+  - One fact, one owner: Binding's growth guards read it. `Binding.CapabilityTypeDepth` and its memo table `capabilityTypeDepths` are
+    deleted; the capability proof's growth step (BU-22) and the component summary's re-entry test (SPEC 8.3.3) compare `Height`. The
+    old depth was the components-only height + 1, so it differs only on a Closure's context; the related classes and the diagnostic
+    snapshot are unchanged. `OwnershipAnalysis.TypeDepth`, the old Analysis's copy, goes with that Analysis at R6-check (D5 freeze).
   - Two facts, two child lists: ContainsParameter, ContainsPairLayer and HasAbstractPart read only BU-60's held instance, since they ask
     what a substitution may rewrite and the walks rewrite only that instance, keeping a context a function's instance made (R5-M36,
     ClosePart). Height measures the term as interned, whose identity holds the whole context: a capture-free Closure in g<T> has no
     components, yet its instances' heights follow T. Those three summaries are unchanged.
-  - Readers: G332's collector (R5); R4's G349 and BU's G309-R may read it later.
-  - Cost: BoundType stays 112 B (its data grows 91 → 95 B inside the same 8-byte-aligned slot), a Subst grows 72 → 80 B. Cold Bind
-    +0 B on Hello and Milestone 26 (Bind interns 1,626 / 1,642 Types and no Subst there), BuildMir +1,888 / +2,040 B (236 / 255 Substs),
-    warm Bind 0 B (a probe, byte-exact). One `Math.Max` per component at interning; no timing for one int.
-  - Tests: `TyCtxtTest.ATypesHeightIsOneAboveItsHighestComponent` (leaves, one level, nesting, a Function Type) and
-    `AClosuresHeightCountsItsContext` (the g<T> instances, a Field initializer's Closure one above its held instance and above its
-    signature, an obj/-recursive non-regular instance stepped three times).
+  - Readers: G332's collector (R5) and Binding's two growth guards; R4's G349 and BU's G309-R may read it later.
+  - Cost: BoundType stays 112 B (its data grows 91 → 95 B inside the same 8-byte-aligned slot), a Subst is unchanged (72 B). A/B
+    probe from one build each, byte-exact: cold Bind −88 B on Hello and Milestone 26 (the deleted table's empty Dictionary), BuildMir
+    +0 B, warm Bind 0 B. One `Math.Max` per component at interning; no timing for one int.
+  - Tests (`TyCtxtTest`): `ATypesHeightIsOneAboveItsHighestComponent` (12 rows: leaves; Option, Tuple, ref, raw, rc, a fixed array of
+    length 64; nesting; a Function Type; an abstract projection with its Contract Type), `AClosuresHeightCountsItsContext` (a Closure
+    with no context at 0, the g<T> instances, a Field initializer's Closure one above its held instance and above its signature, an
+    obj/-recursive non-regular instance stepped three times) and `AFunctionItemAndASubstitutionCountTheirTypes` (a Subst's Self).
   - Rejected: the held instance alone as a Closure's child (option B: a key holding a capture-free Closure would never pass 128 however
-    its instance grows, leaving only the per-definition limit); a table in the collector (a consumer computing its owner's fact).
+    its instance grows, leaving only the per-definition limit); a table in the collector (a consumer computing its owner's fact); a
+    stored Subst height (+8 B per Subst, BuildMir +1.9 / +2.0 KB, for a read that costs one load per bound Type).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

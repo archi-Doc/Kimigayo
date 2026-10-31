@@ -1152,7 +1152,8 @@ public sealed class TyCtxtTest
     }
 
     // DECISIONS BU-71: a Type's height is 0 for a leaf (a Primitive, a struct without arguments, a Type parameter), else 1 + the greatest
-    // height of its components: Type arguments, Tuple components, a borrow's referent, a Function Type's inputs and result.
+    // height of its components: Type arguments, Tuple components, a fixed array's element (its length is no child), a referent or pointee,
+    // a Function Type's inputs and result, a projection's self and Contract Type.
     [Theory]
     [InlineData("i32", 0)]
     [InlineData("S", 0)]
@@ -1160,11 +1161,15 @@ public sealed class TyCtxtTest
     [InlineData("Option<i32>", 1)]
     [InlineData("(i32, i64)", 1)]
     [InlineData("ref/i32", 1)]
+    [InlineData("raw/i32", 1)]
+    [InlineData("rc/S", 1)]
+    [InlineData("[64 of i32]", 1)]
     [InlineData("Option<(i32, Option<i64>)>", 3)]
     [InlineData("(i32) -> bool", 2)]
+    [InlineData("T.(Addable<i32>).Output", 2)]
     public void ATypesHeightIsOneAboveItsHighestComponent(string type, int height)
     {
-        var c = MinimalEmissionTest.Analyze($"struct S\n    public var x: i32\nfunc probe<T>(x: {type}) => ()\n");
+        var c = MinimalEmissionTest.Analyze($"struct S\n    public var x: i32\nfunc probe<T>(x: {type}) -> i32\n    T is Addable<i32>\n    return 0\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         Assert.Equal(height, probe.Parameters[0].Type.TypeOf()!.Height);
@@ -1185,6 +1190,7 @@ public sealed class TyCtxtTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var g = KotoTree.Walk(nodes.OfType<FunctionKoto>().Single(static x => x.Name == "g")).OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
         var closure = g.ClosureOf()!;
+        Assert.Equal((null, 0), (closure.EnvironmentType!.ClosureContext, closure.EnvironmentType.Height));
         var instances = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "g")
             .Select(x => c.Binding.InstantiateStorageType(closure.EnvironmentType!, x!)!).ToArray();
         Assert.All(instances, static x => Assert.True(x.Components.Count == 0 && x.Height == x.ClosureContext!.Height + 1));
@@ -1207,6 +1213,18 @@ public sealed class TyCtxtTest
         Assert.Equal([1, 2, 3, 4], heights);
 
         static BoundType Local(MirBody body, string name) => body.Locals.ToArray().Single(x => x.Name == name).Type!;
+    }
+
+    // DECISIONS BU-71: a function item's components are its Type arguments, and a substitution's height counts its Self.
+    [Fact]
+    public void AFunctionItemAndASubstitutionCountTheirTypes()
+    {
+        var c = MinimalEmissionTest.Analyze("func make<T>() -> i32 => 1\nlet f = make<(i32, (i32, i64))>\nrequire f() == 1 else => $abort(\"make\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var item = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
+        var tall = Assert.Single(item.Components);
+        var subst = c.Types.Synthesized(item.Symbol!, tall, BoundType.I32);
+        Assert.Equal((3, 2, tall, 2), (item.Height, tall.Height, subst.Self, subst.Height));
     }
 
     // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in

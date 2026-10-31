@@ -453,7 +453,7 @@ public sealed partial class Binding
         foreach (var outer in this.resolvingSteps)
         {
             if (ReferenceEquals(outer.Symbol, step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
-                this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
+                root.Height > outer.Components[0].Height)
             {
                 // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: the conformance
                 // uses itself, which has its own record. Error, resting on the stored Type, never a cap.
