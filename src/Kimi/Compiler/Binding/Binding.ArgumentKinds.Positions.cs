@@ -16,10 +16,11 @@ namespace Kimi.Compiler;
 //   position (14.9.2 step 2, AddPartsAt). AddResultPart forms every part of a child position (Never dropped, the forms that deliver it
 //   passed, a waiting join flattened). A position of several parts has one kind (PositionKind), typed first
 //   (SPEC 14.9.2 step 2): Typed at its typed parts' common Type (one evidence) whatever else it holds, its literals and the parts
-//   awaiting their call beside them taking it (step 3); only a position with no typed part, and so no candidate, waits (Call) when a
-//   part awaits its call; then Aggregate when its parts are aggregates, Literal when only literals remain; with no part (Never in every
-//   source, or only failed parts) it is Typed with no Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2
-//   U3's D6). A failed part takes no part in the kind and fits every candidate (SPEC 23.1.2), as in the join's own formation. Every
+//   awaiting their call beside them taking it (step 3); a position whose typed parts have no common Type waits (Call; U1.6g (a)), and
+//   one with no typed part, and so no candidate, waits (Call) when a part awaits its call; then Aggregate when its parts are
+//   aggregates, Literal when only literals remain; with no part (Never in every source, or only failed parts) it is Typed with no
+//   Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2 U3's D6). A failed part takes no part in the kind and fits every
+//   candidate (SPEC 23.1.2), as in the join's own formation. Every
 //   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
 //   positions and the parameter Type at each; PositionKind.
@@ -37,7 +38,7 @@ public sealed partial class Binding
 
     private static BoundType? ChildPattern(Koto shape, int index, BoundType? pattern) => shape switch
     {
-        TupleLiteralKoto tuple => TupleShapeAt(tuple, pattern) ? pattern!.Components[index] : null,
+        TupleLiteralKoto tuple => TupleShapeAt(tuple, pattern) && index < tuple.Elements.Count ? pattern!.Components[index] : null,
         ArrayLiteralKoto => pattern is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray } ? pattern.Components[0] : null,
         _ => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
     };
@@ -114,13 +115,13 @@ public sealed partial class Binding
         return pattern;
     }
 
-    // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for an array without one, a
-    // Dictionary's keys or values.
+    // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for a Tuple or array without
+    // one (Tuple results of other lengths wait under U1.6g (a) and fail their shape per candidate), a Dictionary's keys or values.
     private void AddIndexedChild(Koto part, int index)
     {
         switch (part)
         {
-            case TupleLiteralKoto tuple:
+            case TupleLiteralKoto tuple when index < tuple.Elements.Count:
                 this.AddResultPart(tuple.Elements[index]);
                 break;
             case ArrayLiteralKoto array when index < array.Elements.Count:
@@ -142,7 +143,8 @@ public sealed partial class Binding
         => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
 
     // The kind of a position of several parts, a join's, typed first (SPEC 14.9.2 step 2): Typed at the common Type of its typed parts,
-    // whatever else it holds, or with no Type when it has no other part; with no typed part, Call when a part awaits its call
+    // whatever else it holds, or with no Type when it has no part; Call when its typed parts have no common Type (U1.6g (a)) or, with
+    // no typed part, when a part awaits its call
     // (AwaitsCall), then Aggregate when its parts are aggregates, then Literal when only literals remain. A failed part (PartFailed)
     // takes no part in the kind, as in the join's own formation (CommonTypeByParts; SPEC 23.1.2): it supplies no Type, and it is no
     // literal, aggregate or waiting part.
@@ -164,12 +166,13 @@ public sealed partial class Binding
             }
         }
 
-        if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), out var typed)) is not null || typed)
+        if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), out var typed)) is not null)
         {
             return PartKind.Typed;
         }
 
-        return (waits, literal) switch
+        // SPEC 10.5.1, 14.9.2 step 2 (U1.6g (a)): typed parts with no common Type fix no Type without the call: the position waits.
+        return (waits || typed, literal) switch
         {
             (true, _) => PartKind.Call,
             _ when this.PartsShape(start, end) is not null => PartKind.Aggregate,

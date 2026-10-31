@@ -37,6 +37,12 @@ public partial class OriginRelationDiagnosticTest
 
     private const string FScalars = "func f(x: i64) -> i32 => 0\nfunc f(x: bool) -> i32 => 1\n";
 
+    private const string FI64 = "func f(x: i64) -> i32 => 0\n";
+
+    private const string FTuple = "func f(x: (i64, i32)) -> i32 => 0\n";
+
+    private const string KXB = "func k(c: bool, x: i64, b: bool) -> i32\n";
+
     private const string D2Join = "(if c => (identity(1), 2) else => (x, 3))";
 
     private const string FPairs = "func f(x: i64, y: i32) -> i32 => 0\nfunc f(x: bool, y: i32) -> i32 => 1\n";
@@ -165,8 +171,8 @@ public partial class OriginRelationDiagnosticTest
     // D2 (R4's U1.5 design review 2): a position with a typed part is typed at its typed parts' common Type whatever else it holds, and
     // the waiting `identity(1)` beside `x` takes it (SPEC 14.9.2 steps 2-3), at a join's child position (d2, its `match` d2_m, d2_lit3)
     // as at its root (d2_root) and as an element (d2_elem); so it is evidence for a slot (d2_g; d2_g_t writes it), and with no candidate
-    // of that Type the call has none (d2_n). U1.6 (R4's U1.5 check B3): typed parts that conflict at a position are the join's own record,
-    // on which the call rests with none of its own (e4; SPEC 14.9.2 step 2, 23.1.2).
+    // of that Type the call has none (d2_n). U1.6g (a): typed parts that conflict at a position fix no Type without the call, so the
+    // position waits and no candidate is best (e4; SPEC 10.5.1, 10.4; it was the join's own record under BU-43, U1.6).
     [Theory]
     [InlineData("U1.5", "d2", IdentityT + FTuples + KX + "    return f" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_m", IdentityT + FTuples + KX + "    return f(match c\n        true => (identity(1), 2)\n        false => (x, 3)\n    )\n", "")]
@@ -176,7 +182,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "d2_g", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_g_t", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g<i64>" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
-    [InlineData("U1.6", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "TypeMismatch_Kd match c")]
+    [InlineData("U1.6g", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "AmbiguousBinding_Kd f(match c")]
     public void ATypedPartGivesItsPositionItsType(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
@@ -188,6 +194,23 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6", "n3_v", IdentityT + "func g(x: [2 of i64]) -> i32 => 0\n" + KX + "    let h = g\n    return h(" + N3Join + ")\n", "NoApplicableOverload_Kd h(" + N3Join + ")")]
     [InlineData("U1.6", "n3_arr", IdentityT + "func f(x: Array<i64>) -> i32 => 0\n" + KX + "    return f(" + N3Join + ")\n", "")]
     public void ATypedArraySourceTypesItsJoinAsAWhole(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // U1.6g (a) and (b) (SPEC 10.5.1, 14.9.2 step 2; supersedes BU-43's "fails at once" for call arguments): typed parts with no common
+    // Type fix no complete Type without the call, so a call argument holding them waits. No candidate is best with two (sc_ov, and the
+    // Tuple results sc_tov; 10.4); one candidate completes it at its Type, where a typed source that does not fit is its own record (sc_fi,
+    // sc_elem, and the value call sc_h; 23.1.2), a Tuple source that awaits its position still the join's (sc_tfi), and Tuple results of
+    // another length fit no candidate (sc_len; 10.5.1's last paragraph). Outside a call argument the conflict is the join's (sc_let).
+    [Theory]
+    [InlineData("U1.6g", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "AmbiguousBinding_Kd f(if c => x else => b)")]
+    [InlineData("U1.6g", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "TypeMismatch_Kd b")]
+    [InlineData("U1.6g", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "TypeMismatch_Kd b")]
+    [InlineData("U1.6g", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "TypeMismatch_Kd b")]
+    [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "AmbiguousBinding_Kd f(if c => (x, 1) else => (b, 2))")]
+    [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "TypeMismatch_Kd if c => (x, 1) else => (b, 2)")]
+    [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
+    [InlineData("U1.6g", "sc_let", KXB + "    let v = if c => x else => b\n    return 0\n", "TypeMismatch_Kd if c => x else => b")]
+    public void TypedPartsInConflictAtACallArgumentWaitForTheCall(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // U1.6f (the owner, 2026-10-31, reading I): a join's array results are classified per index at every number of sources (SPEC
