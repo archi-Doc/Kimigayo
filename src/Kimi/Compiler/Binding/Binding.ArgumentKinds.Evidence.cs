@@ -227,18 +227,7 @@ public sealed partial class Binding
             }
 
             var callee = actual;
-            if (pattern.Kind == BoundTypeKind.Function && binding.FunctionItemSignature(actual) is { } itemSignature)
-            {
-                actual = itemSignature;
-            }
-            else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
-                BoundClosure.Of(actual) is { } closure)
-            {
-                // SPEC 7.7.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
-                // its receiver and Owned conditions included, is judged once the call is selected.
-                actual = closure.Signature;
-            }
-
+            actual = binding.SignatureAtFunction(pattern, actual);
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
             var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
@@ -286,6 +275,7 @@ public sealed partial class Binding
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
+                    type = binding.SignatureAtFunction(pattern, type); // As a typed argument's evidence (InferAdapted; U1.6g (c)).
                     binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
                     return binding.Infer(pattern, type, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
@@ -534,4 +524,11 @@ public sealed partial class Binding
             return literal;
         }
     }
+
+    // SPEC 7.7.4, 10.5: a Function Item or a concrete Closure meets a common Function Type pattern through its call signature, as
+    // evidence; the conversion itself, its receiver and Owned conditions included, is judged once the call is selected. Any other Type,
+    // or any Type at another pattern, as it is.
+    private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
+        => pattern.Kind != BoundTypeKind.Function ? actual
+            : this.FunctionItemSignature(actual) ?? BoundClosure.Of(actual)?.Signature ?? actual;
 }

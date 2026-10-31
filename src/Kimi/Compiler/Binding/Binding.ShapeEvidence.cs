@@ -212,11 +212,7 @@ public sealed partial class Binding
                             actual = adapted;
                         }
 
-                        if (pattern.Kind == BoundTypeKind.Function)
-                        {
-                            actual = this.FunctionItemSignature(actual) ?? (BoundClosure.Of(actual) is { } closure ? closure.Signature : actual);
-                        }
-
+                        actual = this.SignatureAtFunction(pattern, actual);
                         CollectTypes(pattern, actual, false);
                         if (CallableSlotType(pattern, CallSlotOwner(function)) is not null &&
                             this.ExpectedCallSignature(function, pattern) is { } requiredSignature &&
