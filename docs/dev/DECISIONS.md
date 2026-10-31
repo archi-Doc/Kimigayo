@@ -8896,36 +8896,56 @@ resumed by R4-M86 (2026-10-20).
     (R5-M155 (c)).
 
 - **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
-  its Type's instance, by substitution, staged where that instance has an Origin position** (2026-10-30; PLAN G300, unit bu77; design
-  `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g300\design.md` rounds 1-3 and the owner's round 4, 「すべて推奨どおり」; R5's collector
-  review ACCEPT) SPEC 6.1.3, 6.3.3. Meets R5-M157's removal condition in part.
+  its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
+  bu77; rewritten 2026-10-31, unit bu89; PLAN G300; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g300\design.md` rounds 1-4 and
+  `design-r5.md`, ACCEPTED by BU and R5 before code; the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」) SPEC 3,
+  6.1.3, 6.3.3. Meets R5-M157's removal condition in part.
   - View: `TyCtxt.EnclosingDeclaration` (renamed from EnclosingFunction, with R5's consent for the collector's one call and comments)
     gives the declaration whose instance the code at a scope holds: a named function, an accessor's executing function (bu60), and for
     code in a container outside every body (a Field's or static's initializer) the container. A member or top-level declaration holds
     none. bu63's base calls and ObjectViews read it unchanged (a Type matches neither of their patterns).
-  - Representation: the Closure Type's existing ClosureContext holds `TyCtxt.HeldContext(c, I)`, a substitution whose target is the closure
-    and whose declaring Type is the instance I; BoundType counts I's parameters, pair layers and abstract parts (`TyCtxt.HeldType`).
-  - One producer, `Binding.HeldContext`: I is D's identity substituted by the reader's environment Type (StoredType), substitution alone,
-    never a storage query (KeptType runs inside storage walks). `KeptType` closes a stored part's Closures under its owner (a new
-    `ContainsClosure` summary gates it); `StorageInstance` closes the rest under the instance's declaring Type. A Closure stays without a
-    context only where the reader is D's identity. A group has none.
-  - SubstituteTypeCore, ContractTypeCore, SubstituteIdentity and CaseType rewrite I with the Closure Type, so a projection keeps one key.
-  - Staged gate: an instance whose erased form has an Origin position (a borrow, Slice, handle or raw layer, or an Origin argument, static
-    included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance) gets the closure's own identity as its context. The
-    collector reports it as the EnclosingInstance gap at each site, through CarriesInstance's first branch, exactly where dev does.
+  - Representation: the Closure Type's existing ClosureContext holds a substitution whose target is the closure and whose declaring Type
+    is the instance I, erased; BoundType counts I's parameters, pair layers and abstract parts (`TyCtxt.HeldType`), not its Origins.
+  - One producer, `TyCtxt.HeldContext(c, I)`: none where Erase(I) is Erase(SelfType(D)), D = EnclosingDeclaration(c) (the identity test,
+    so every read in D's own frame keeps D's identity), else the context holding Erase(I). It is a function of Erase(I) alone, so it drops
+    nothing a reader reads, and every order of steps reaching one closed, normalized instance gives one context. Its callers: the closing
+    step (`ClosePartCore`, I being the environment's image of D's identity, `EnvironmentInstance`, substitution alone, never a storage
+    query) and the five structural walks, SubstituteTypeCore, ContractTypeCore, SubstituteIdentity, CaseType and CompletedParts, which
+    map I as a part and give it back through the producer. KeptType substitutes, completes, then closes a stored part's Closures under its
+    owner (a `ContainsClosure` summary gates it); StorageInstance closes the rest under the instance's declaring Type, last. A group
+    has none.
+  - The owner's (a), read: one lossless producer on Erase(I); every instance Type a reader or the collector reads ends with the closing
+    step; the walks re-intern through the producer. The literal "formed only by the closing step" would need an ordering rule across
+    about 70 callers (CaseType in Semantics adaptations, SubstituteIdentity in proofs, about 50 ContractType callers), which is not local.
+    The identity test commutes with substitution only through the closing step: a walk whose binder is D leaves a null context null.
+  - Readers' view, `TyCtxt.ClosureInstance`: the context, except a held instance with an Origin position (a borrow, Slice, handle or raw
+    layer, or an Origin argument, static included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance), which is closed
+    in no instance. ClosureSignature (ClosureDefinitionSignature), ClosureEnvironment and SubstOfClosure read it; every other
+    ClosureContext read is interning, equality or Retains' memo key. SubstOfClosure gives the closure's own identity there, so the
+    collector reports the EnclosingInstance gap at each site through CarriesInstance's first branch, exactly where dev does, until PLAN
+    G300's per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
+  - Exception to KD3 (the collector's representative erased only into its key) and to TyCtxt.Instances' rule against proving on erased
+    values: a held closure item's representative carries an erased declaring Type; the collector reads no Origin of it (R5 consents).
+  - N6 resolved: Box<ref/i32> and Box<ref/i64> are two instances, so two Closure Types (SPEC 3, one Concrete Closure Type per expression
+    and instantiation): `TypeMismatch_Kd` where one is assigned to the other, an independent error dev masked. N5: a group static's
+    Closure call keeps one collector record where dev had two (Binding's Unsupported_Kd at the access stays); its fix is R5's collector
+    change.
   - Rejected: (b-i), the read's Origins in the Closure Type's Origin arguments. A Type's Origin arguments are its symbol's declared ones
     (the old analysis's SupportsType, Aliases, BoundContracts, MemberLookup, ResultSurvey, AggregateLayout and 13 `Schema.Origins[i]`
     reads assume it). (b-ii), opening I's Origin positions per use in ClosureSignature: it threads a use through ClosureSignature's 8 sites
     and TryCallable's 16 callers and instantiates D's Origin premises per use, a separate design step (PLAN G300). Reader Origins kept
-    in I (round 2): two reads of one instance differ only in I's Origins and the modulo-Origins relations reject them.
-  - N6: Box<ref/i32> and Box<ref/i64> share one Closure Type and one ClosureErasure key (the closure's identity), sound only while the gap
-    stands, until per-use opening. N5: a group static's Closure call keeps one collector record where dev had two (Binding's
-    Unsupported_Kd at the access stays); its fix is R5's collector change.
+    in I (round 2): two reads of one instance differ only in I's Origins and the modulo-Origins relations reject them. A staged context
+    (round 4, the closure's identity for an instance with an Origin position): lossy, so a walk could not decide again after
+    normalization (B5 (b)), and its identity test by reference missed D's identity read through another path (B5 (a)). Formation in the
+    closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the capture
+    storage (`Binding.Closures.cs`).
   - Tests: InstanceCollectorTest's R5-M157 rows flipped (one item per instance, a function in an initializer R5-M43's gap at its call),
-    a read through another instance, and `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records);
-    TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and `AFieldInitializersClosureHoldsItsOwnersInstance`;
-    GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another instance, erased, a generic function, a nested Type, a base
-    Field, a projection, a signature naming T, a forwarded holder), each observing T.
+    a read through another instance, `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records) and
+    `OneInstanceModuloOriginsHasOneClosureType` (D's own instance joined and assigned through another path: dev's records; two instances:
+    TypeMismatch_Kd; erased reads: the gap at each); TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and
+    `AFieldInitializersClosureHoldsItsOwnersInstance`; GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another
+    instance, erased, a generic function, a nested Type, a base Field, a projection, also joined through R{o}.Item, a signature naming T,
+    a forwarded holder), each observing T.
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:

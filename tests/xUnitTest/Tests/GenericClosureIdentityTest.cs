@@ -81,6 +81,16 @@ public class GenericClosureIdentityTest
             ]
         },
         {
+            "ProjectionJoin",
+            [
+                .. TaggedBox, "contract HasItem", "    associate Item", "struct R {o}", "    Self is HasItem", "    associate HasItem.Item is A",
+                "    let r: ref/i32 during o", "    public init(r: ref/i32 during o) => self.r = r", "struct Holder<S>", "    S is HasItem",
+                "    S.(HasItem).Item is Tag", "    public var g = Box<S.Item>.init().n", "    public init() => ()", "func pick(c: bool, x: ref/i32) -> isize",
+                "    let g = if c => Holder<R>.init().g else => Box<A>.init().n", "    return g()", "let x = 1",
+                "require pick(true, x@ref) == 1 and pick(false, x@ref) == 1 else => $abort(\"projection join\")", "Console.writeLine(\"ok\")",
+            ]
+        },
+        {
             "Signature",
             [
                 "struct Box<T>", "    T is Copy", "    public var f = func [] (x: T) -> T => x", "    public init() => ()",
@@ -160,7 +170,8 @@ public class GenericClosureIdentityTest
     // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60, PLAN G300): a Closure in a generic struct's Field initializer holds its Type's instance, wherever
     // it is read: through another instance in a member (Box<W<T>> in Box<T>'s, Box<B> in Box<A>'s, stored locally or erased), through
     // a generic function's Box<U>, a nested Type's Outer<T>.Inner<B> in Outer's and Inner's members, a derived Type's base Field, a
-    // projection's Box<S.Item> beside Box<A>, at the top level with a signature naming T, and in a function its holder's generic caller
+    // projection's Box<S.Item> beside Box<A>, also joined with it through R{o}.Item, one instance modulo Origins (before: TypeMismatch_Kd,
+    // the context formed before the projection completed), at the top level with a signature naming T, and in a function its holder's generic caller
     // passes on. Each run observes T, so another instance's body would abort (before: the EnclosingInstance gap, wrong code or
     // CheckFaulted_Kd under the first designs).
     [Theory]

@@ -449,7 +449,7 @@ public sealed record BoundType
         }
 
         // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
-        // of the Type, open when that instance is; it carries no Origin (Binding.HeldContext).
+        // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
         if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
         {
             parameter |= held.containsParameter;

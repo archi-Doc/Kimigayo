@@ -199,8 +199,9 @@ public sealed partial class Binding
 
     // SPEC 6.1.3, 6.3.3: each closure without a context gets the instance of the declaration whose instance it holds
     // (TyCtxt.EnclosingDeclaration), when the inputs carry it: a function's is the instance when that is its binder, its conforming Self
-    // included (DECISIONS R5-M36), its result there the failure check; a Type's is its identity's image in the environment Type, an instance
-    // of it or of a declaration it encloses (HeldContext; BU-60); a group has none (its statics are R5-M82's gap).
+    // included (DECISIONS R5-M36), its result there the failure check; a Type's is what the one producer (TyCtxt.HeldContext; BU-60) makes
+    // of its identity's image in the environment Type, an instance of it or of a declaration it encloses (EnvironmentInstance); a group has
+    // none (its statics are R5-M82's gap).
     private BoundType? Close(BoundType type, Subst? instance, BoundType? environment)
         => this.ClosePart(type, instance, environment, this.closedParts.Begin(this.storageVersion));
 
@@ -250,8 +251,8 @@ public sealed partial class Binding
 
                         context = instance;
                         break;
-                    case { Kind: BindingSymbolKind.Type } declaration when environment is not null:
-                        context = this.HeldContext(symbol, declaration, environment);
+                    case { Kind: BindingSymbolKind.Type } declaration when this.EnvironmentInstance(declaration, environment) is { } held:
+                        context = this.types.HeldContext(symbol, held);
                         break;
                 }
             }
@@ -264,23 +265,10 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS BU-60: the instance of a Type `declaration` an environment Type is or encloses, the declaration's identity substituted by
-    // the environment's arguments (StoredType), as a held closure's context (HeldContext); none where that leaves the identity (the
-    // environment is the identity, or no instance of the declaration).
-    private Subst? HeldContext(BindingSymbol closure, BindingSymbol declaration, BoundType environment)
-    {
-        var identity = this.SelfType(declaration);
-        return environment.Symbol is not null && this.StoredType(identity, environment) is { } held && !ReferenceEquals(held, identity)
-            ? this.HeldContext(closure, held) : null;
-    }
-
-    // DECISIONS BU-60: the one producer of a held closure's context: the Type instance it belongs to (TyCtxt.HeldContext). An instance
-    // whose erased form has an Origin position (a borrow, Slice, handle or raw layer, or an Origin argument, static included), a fact every
-    // owner of that instance shares, is staged: the context is the closure's own identity, closed in no instance, which the instance
-    // collector reports as the EnclosingInstance gap at each site requesting its body, as before this rule, until a use opens the
-    // instance's Origin positions (PLAN G300).
-    private Subst HeldContext(BindingSymbol closure, BoundType held)
-        => TyCtxt.HasOriginPosition(held) ? this.types.Identity(closure.Declaration) : this.types.HeldContext(closure, held);
+    // DECISIONS BU-60: the instance of a Type `declaration` an environment Type is or encloses, by substitution alone: the declaration's
+    // identity substituted by the environment's arguments (StoredType), which the producer (TyCtxt.HeldContext) makes a context or none.
+    private BoundType? EnvironmentInstance(BindingSymbol declaration, BoundType? environment)
+        => environment is { Symbol: not null } ? this.StoredType(this.SelfType(declaration), environment) : null;
 
     // A Closure Type with another context (DECISIONS BU-60: the Type instance a held context holds, which substitution rewrites), every
     // other part kept.

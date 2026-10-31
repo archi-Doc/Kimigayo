@@ -1125,9 +1125,11 @@ public sealed class TyCtxtTest
         static string Initialized(Koto node) => node is VariableKoto variable ? variable.NameKoto.IdentifierName : Initialized(node.Parent!);
     }
 
-    // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60): a Field initializer's Closure read through an owner holds the owner's instance as its context's
-    // declaring Type, by substitution: one Closure Type for every read of one instance, another for another instance. An owner instance
-    // whose erased form has an Origin position, static or not, gives the Closure its own identity, closed in no instance (PLAN G300).
+    // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60): a Field initializer's Closure read through an owner holds the owner's instance modulo Origins as
+    // its context's declaring Type, by substitution: one Closure Type for every read of one instance, another for another instance. An
+    // owner instance whose erased form has an Origin position, static or not, is held erased, and its readers see no instance
+    // (ClosureInstance): the Closure's body is its own identity, closed in no instance (PLAN G300). The owner's (a) (2026-10-31): the
+    // context is formed from the closed instance modulo Origins, and the gate is the readers' view, not a staged context.
     [Fact]
     public void AFieldInitializersClosureHoldsItsOwnersInstance()
     {
@@ -1141,8 +1143,12 @@ public sealed class TyCtxtTest
         Assert.Same(types[0], types[2]);
         Assert.NotSame(types[0], types[1]);
         Assert.Equal(["Box<i32>", "Box<i64>"], types[..2].Select(x => TyCtxt.Name(x.ClosureContext!.Declaring!)));
-        Assert.All(types[3..], x => Assert.True(x.ClosureContext is { IsIdentity: true } context && ReferenceEquals(context.Target, x.Symbol)));
         Assert.Same(types[3], types[4]);
+        var held = TyCtxt.HeldType(types[3])!;
+        Assert.Same(c.Types.Erase(held), held);
+        Assert.Equal("Box<ref/i32>", TyCtxt.Name(held));
+        Assert.Null(TyCtxt.ClosureInstance(types[3]));
+        Assert.True(c.Types.SubstOfClosure(types[3]) is { IsIdentity: true } context && ReferenceEquals(context.Target, types[3].Symbol));
     }
 
     // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in

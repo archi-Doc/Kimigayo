@@ -411,7 +411,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            context = ReferenceEquals(image, held) ? context : this.HeldContext(type.Symbol!, image);
+            context = ReferenceEquals(image, held) ? context : this.types.HeldContext(type.Symbol!, image);
         }
 
         if (type.Components.Count == 0 && type.LengthArguments.Length == 0 && !type.CarriesOrigin)

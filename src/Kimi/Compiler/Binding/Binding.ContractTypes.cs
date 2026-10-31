@@ -67,7 +67,7 @@ public sealed partial class Binding
             {
                 // DECISIONS BU-60: the Type instance a closure's context holds is normalized with the Closure Type.
                 var image = this.ContractType(held, scope, self, normalize);
-                result = ReferenceEquals(image, held) ? result : this.WithContext(result, this.HeldContext(type.Symbol!, image));
+                result = ReferenceEquals(image, held) ? result : this.WithContext(result, this.types.HeldContext(type.Symbol!, image));
             }
 
             if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))

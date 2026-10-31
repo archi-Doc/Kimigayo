@@ -17,7 +17,9 @@
 // unused one (SPEC 6.1.3). A specialization declares no slot (SPEC 8.13.1), so one in a generic container, and every declaration nested in
 // it, is generic in the container's slots, its instance key holding the container's arguments (SPEC 8.13.3). Origin slots never count.
 // Must not: decide by syntax what a declaration's schema publishes, write any state other than its memos and the interning, or prove
-// anything on an erased value (proofs read Origins; an instance's proofs run on its representative).
+// anything on an erased value (proofs read Origins; an instance's proofs run on its representative). One exception (DECISIONS BU-60): a
+// held closure's context holds its Type's instance erased (HeldContext), so a held closure item's representative carries an erased
+// declaring Type, of which no reader reads an Origin.
 
 using Kimi.Compiler.Parsing;
 

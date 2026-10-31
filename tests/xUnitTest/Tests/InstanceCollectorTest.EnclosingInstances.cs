@@ -62,6 +62,38 @@ public sealed partial class InstanceCollectorTest
 
     // A Closure passing its T through, and two owners whose erased instance, Box<ref/i32>, has an Origin position: one static, one not.
     private const string Pass = "func [] (x: T) -> T => x";
+    private const string PassBox = "struct Box<T>\n    T is Copy\n    public var v: T\n    public var f = " + Pass + "\n    public init(v: T) => self.v = v\n";
+
+    // Box<T> with a Closure naming T, and GV<T>{o}'s member reading its own instance's and another owner's Closure.
+    private const string SizedBox = "struct Box<T>\n    public var n = " + Sized + "\n    public init() => ()\n";
+    private const string SelfOwner = "struct GV<T> {o}\n    T is Copy\n    let r: ref/i32 during o\n    public var n = " + Sized +
+        "\n    public init(r: ref/i32 during o) => self.r = r\n    public func pick(self: ref/Self, c: bool, x: ref/i32) -> isize\n        let other = GV<T>.init(x)\n";
+
+    private const string UseSelf = "\nfunc use(x: ref/i32) -> isize\n    let v = GV<i64>.init(x)\n    return v.pick(true, x)\nConsole.writeLine(\"ok\")\n";
+
+    // The form, the program and its records.
+    public static TheoryData<string, string, string> OneInstanceCases => new()
+    {
+        { "self joined", $"{SelfOwner}        let g = if c => self.n else => other.n\n        return g(){UseSelf}", $"Unsupported_Kd {Sized}; UninitializedPlace_Kd let g = if c => self.n else => other.n; Unsupported_Kd self.n; Unsupported_Kd g()" },
+        { "self assigned", $"{SelfOwner}        var g = self.n\n        g = other.n\n        return g(){UseSelf}", $"Unsupported_Kd {Sized}; Unsupported_Kd self.n; Unsupported_Kd g()" },
+        {
+            "holder in the owner's frame",
+            $"{SizedBox}    public func pick(self: ref/Self, c: bool) -> isize\n        let h = Holder<T>.init()\n        let g = if c => self.n else => h.g\n" +
+                "        return g()\nstruct Holder<U>\n    public var g = Box<U>.init().n\n    public init() => ()\nlet k = Box<i64>.init().pick(true)\n",
+            "UninitializedPlace_Kd let g = if c => self.n else => h.g; Unsupported_Kd self.n"
+        },
+        {
+            "two instances",
+            $"{PassBox}func two(x: ref/i32, w: ref/i64) -> ()\n    let a = Box<ref/i32>.init(v: x)\n    let b = Box<ref/i64>.init(v: w)\n    var g = a.f\n    g = b.f\n    return\nConsole.writeLine(\"ok\")\n",
+            $"Unsupported_Kd {Pass}; TypeMismatch_Kd b.f"
+        },
+        {
+            "two instances erased",
+            $"{SizedBox}func use(y: ref/i32, z: ref/i64) -> isize\n    let a = Box<ref/i32>.init()\n    let b = Box<ref/i64>.init()\n" +
+                "    let ea: () -> isize = a.n\n    let eb: () -> isize = b.n\n    return ea() + eb()\nConsole.writeLine(\"ok\")\n",
+            $"Unsupported_Kd {Sized}; Unsupported_Kd a.n; Unsupported_Kd b.n"
+        },
+    };
 
     // SPEC 6.1.3, 6.3.3, 8.13.3 (DECISIONS R5-M43, R5-M157, BU-60): an instance of a definition generic in its context holds the instance it
     // instantiates in. A Closure in a generic struct's Field initializer (also a nested struct's), wherever it is made, called, erased or
@@ -87,7 +119,7 @@ public sealed partial class InstanceCollectorTest
         string Text(Koto node) => source.Substring(node.Span.Start, node.Span.Length);
     }
 
-    // DECISIONS BU-60 (PLAN G300's staged gate): whether an owner instance's erased form has an Origin position is one fact for every owner
+    // DECISIONS BU-60 (PLAN G300's gate, the readers' view): whether an owner instance's erased form has an Origin position is one fact for every owner
     // of that instance, a static-only one included, so Box<ref/i32 during static> and Box<ref/i32> both stay the EnclosingInstance gap. The
     // check reports the records dev reports: the gap at the literal, also for a joined or assigned read (before: TypeMismatch_Kd, the
     // static-only owner closed apart), and beside it Binding's own record at a call whose signature names T.
@@ -95,14 +127,23 @@ public sealed partial class InstanceCollectorTest
     [InlineData("let g = if c => bs.f else => bx.f", "Unsupported_Kd " + Pass)]
     [InlineData("var g = bx.f\n    g = bs.f", "Unsupported_Kd " + Pass)]
     [InlineData("let g = bs.f\n    _ = g(s)", "Unsupported_Kd " + Pass + "; NoApplicableOverload_Kd g(s)")]
-    public void AnOwnerWithAnOriginPositionStaysTheGap(string body, string records)
-    {
-        var source = Staged(body);
-        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
-    }
+    public void AnOwnerWithAnOriginPositionStaysTheGap(string body, string records) => Assert.Equal(records, CheckRecords(Staged(body)));
+
+    // SPEC 3, 6.1.3 (DECISIONS BU-60, the owner's (a)): one producer forms a held closure's context from the instance modulo Origins, none
+    // in the owner's own frame (the identity test), so every read of one instance has one Closure Type and two instances never share one.
+    // In GV<T>{o}'s member, self.n and GV<T>.init(x).n, and in Box<T>'s, self.n and Holder<T>.g (Box<U>.init().n), join or assign as one
+    // Type: dev's records (before: TypeMismatch_Kd hiding them). Box<ref/i32> and Box<ref/i64> are two instances (SPEC 3's Concrete Closure
+    // Type): TypeMismatch_Kd at the assignment beside the gap (before: none, one shared Type), and each erased read is the gap at its read.
+    [Theory]
+    [MemberData(nameof(OneInstanceCases))]
+    public void OneInstanceModuloOriginsHasOneClosureType(string form, string source, string records)
+        => Assert.True(CheckRecords(source) is var actual && actual == records, $"{form}: {actual}");
 
     private static string Staged(string body)
-        => $"struct Box<T>\n    T is Copy\n    public var v: T\n    public var f = {Pass}\n    public init(v: T) => self.v = v\n" +
-            "func pick(c: bool, s: ref/i32 during static, x: ref/i32) -> i32\n    let bs = Box<ref/i32 during static>.init(v: s)\n" +
+        => $"{PassBox}func pick(c: bool, s: ref/i32 during static, x: ref/i32) -> i32\n    let bs = Box<ref/i32 during static>.init(v: s)\n" +
             $"    let bx = Box<ref/i32>.init(v: x)\n    {body}\n    return 1\nConsole.writeLine(\"ok\")\n";
+
+    // The check's records: code and source text, joined by "; ".
+    private static string CheckRecords(string source)
+        => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }
