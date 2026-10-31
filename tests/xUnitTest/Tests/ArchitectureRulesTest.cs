@@ -111,6 +111,11 @@ public class ArchitectureRulesTest
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
+    // PLAN G347: every allocation window of the tests is AllocationMeasurement's (Measure, or MeasureOnce for one run that cannot repeat),
+    // which retires the thread's allocation context first; a window that reads the thread's counter itself can be charged a runtime
+    // pause's unused context tail (up to ~8 KB) under load. Benchmarks (src/Benchmark) are not tests. A letter in brackets keeps the
+    // pattern from matching its source.
+    [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=4")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

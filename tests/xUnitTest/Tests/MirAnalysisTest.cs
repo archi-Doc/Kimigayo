@@ -497,9 +497,8 @@ public sealed class MirAnalysisTest
         for (var i = 0; i < sizes.Length; i++)
         {
             var c = MirBuildTest.Compile(RequireEnds(sizes[i]));
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var program = c.BuildMir();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            MirProgram program = null!;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => program = c.BuildMir());
             work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
             var problems = program.Problems.All.ToArray();
             Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, ulong.MaxValue), (x.Code, x.Views)));
