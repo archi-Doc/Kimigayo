@@ -14183,18 +14183,22 @@ structure is recorded here by the unit that first implements it.
        the raw reports; A = `acc2f12ad`, the old generator's default, B = `8d93fec57`, both run from one folder, CPU 2 pinned at High
        priority, tiering off, 5 interleaved rounds, each report's compiler id checked; times are the median of the rounds' sample
        medians). The MIR side, BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against
-       the old Analyze and Emission (A's stages 4 to 6): 87-136 ms against 1.1-62 ms on the Scalar and Branching inputs and Generic 1,
-       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 315, 470
-       and 947 ms against 733, 1,521 and 3,106 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 30.7-47.0 MB against
-       0.5-37.4 MB on the small inputs; 91, 151 and 270 MB against 209, 405 and 802 MB. The whole default build (A's total without its
-       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+72 to +120 ms) on the small inputs, 0.65,
-       0.51 and 0.47 on Generic 32, 64 and 128 (593, 907 and 1,598 ms against 919, 1,763 and 3,422 ms). Cold collection is equal within
+       the old Analyze and Emission (A's stages 4 to 6): 11.0-17.0 ms against 0.13-7.8 ms on the Scalar and Branching inputs and Generic 1,
+       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 39.4, 58.7
+       and 118.4 ms against 91.7, 190.1 and 388.3 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 3.8-5.9 MB against
+       0.06-4.7 MB on the small inputs; 11.4, 18.8 and 33.7 MB against 26.1, 50.6 and 100.2 MB. The whole default build (A's total without its
+       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+9.0 to +15.0 ms) on the small inputs, 0.65,
+       0.51 and 0.47 on Generic 32, 64 and 128 (74.1, 113.4 and 199.8 ms against 114.8, 220.3 and 427.7 ms). Cold collection is equal within
        2.5 % (B/A 0.98-1.02; bytes and items equal; Generic 128: 25.5 ms and 7.9 MB on both). Check cost against G2's head `90697ecfa`
        (its default configuration; R5-M156's measurement): a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1
        and 157.4 ms against 34.4, 94.2 and 154.7) and 61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.00 to
        +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms, the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on
        both, cold +21 KB (Hello) and +17 KB (Milestone26). The owner accepted the fresh small-build cost, verbatim
        「(a) 受け入れる」 (2026-10-31); its fixed cost's measured breakdown is R5's next unit (PLAN G337).
+       Corrected 2026-10-31 (G337's census): the first summary took each sample's ticks and bytes, which cover the report's 8
+       iterations, as one iteration, so the owner was shown each absolute figure 8 times too large (+72 to +120 ms); the figures
+       above are per iteration (`summarize-p3.py` fixed; the first output kept as `summary-output-uncorrected-x8.txt`); every ratio
+       and the owner's answer stand.
     7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
        `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
        `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
