@@ -91,7 +91,7 @@ public sealed partial class Binding
         {
             if (!this.ErasesToFunction(use, selected, required))
             {
-                return this.FailMismatch(use, use, selected, required);
+                return this.FailMismatch(use, use, selected, required, default);
             }
 
             use.ErasedFunctionType = required;

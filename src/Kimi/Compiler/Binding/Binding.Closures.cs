@@ -133,7 +133,7 @@ public sealed partial class Binding
         {
             // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
             // anonymous function as found.
-            return this.RecordMismatch(function, function, "an anonymous function", expected);
+            return this.RecordMismatch(function, function, "an anonymous function", expected, ComparisonFailure.Shape);
         }
 
         var restated = this.ClosureExpectation(function, expected);
@@ -141,7 +141,7 @@ public sealed partial class Binding
         var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
         if (function.Parameters.Count != count)
         {
-            return this.RecordMismatch(function, function, function.Parameters.Count == 1 ? "an anonymous function with 1 parameter" : $"an anonymous function with {function.Parameters.Count} parameters", expected);
+            return this.RecordMismatch(function, function, function.Parameters.Count == 1 ? "an anonymous function with 1 parameter" : $"an anonymous function with {function.Parameters.Count} parameters", expected, ComparisonFailure.Shape);
         }
 
         var scope = this.scopes[function];
@@ -166,7 +166,7 @@ public sealed partial class Binding
             }
 
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
+            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected, default);
         }
         finally
         {

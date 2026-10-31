@@ -310,7 +310,7 @@ public sealed partial class Binding
                 : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
                 !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
-                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
+                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out _)))
             {
                 return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
             }
@@ -548,7 +548,7 @@ public sealed partial class Binding
         {
             if (!ReferenceEquals(source.Underlying, target.Underlying))
             {
-                return this.FailMismatch(conversion, conversion, source, target);
+                return this.FailMismatch(conversion, conversion, source, target, ComparisonFailure.Shape);
             }
 
             conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
@@ -596,7 +596,7 @@ public sealed partial class Binding
         if (!ReferenceEquals(source, target) && source.Semantics == SemanticsKind.Owner && target.Semantics == SemanticsKind.Owner &&
             ((source.Kind == BoundTypeKind.Primitive) != (target.Kind == BoundTypeKind.Primitive) || (IsPositionOrRangeType(source) && IsPositionOrRangeType(target))))
         {
-            return this.FailMismatch(conversion, conversion, source, target);
+            return this.FailMismatch(conversion, conversion, source, target, ComparisonFailure.Shape);
         }
 
         // SPEC 13.5.3: an owned target never extracts its Core through a safe reference (only the value read of a read Type does,

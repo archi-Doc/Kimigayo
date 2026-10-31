@@ -524,7 +524,7 @@ public sealed partial class Binding
             }
             else if (type is not null)
             {
-                fits = this.BindWaiting(source, type) is { } bound && this.FitsTypeAt(bound, type, node);
+                fits = this.BindWaiting(source, type) is { } bound && this.FitsTypeAt(bound, type, node, out _);
             }
             else if (!rests || held || this.SuppliesDefault(source))
             {
@@ -555,7 +555,7 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`.
     private bool TryPropagate(Koto node, BoundType target, Koto use)
     {
-        if (this.LateTypeOf(node, target) is not { } late || !this.FitsTypeAt(late, target, use))
+        if (this.LateTypeOf(node, target) is not { } late || !this.FitsTypeAt(late, target, use, out _))
         {
             return false;
         }
@@ -769,7 +769,7 @@ public sealed partial class Binding
         return target;
     }
 
-    private bool LateFits(Koto part, BoundType target) => this.LateType(part, target) is { } late && this.FitsTypeAt(late, target, part);
+    private bool LateFits(Koto part, BoundType target) => this.LateType(part, target) is { } late && this.FitsTypeAt(late, target, part, out _);
 
     // SPEC 14.9.2: nested results propagate the same way; each value source of an awaiting result target takes the target Type.
     private BoundType? LateResultType(Koto node, BoundType target)
@@ -778,7 +778,7 @@ public sealed partial class Binding
         for (var i = 0; i < context.Sources.Count; i++)
         {
             if (!ReferenceEquals(context.Sources[i], BoundType.Never) &&
-                (this.LateType(context.SourceNodes[i]!, target) is not { } source || !this.FitsTypeAt(source, target, node)))
+                (this.LateType(context.SourceNodes[i]!, target) is not { } source || !this.FitsTypeAt(source, target, node, out _)))
             {
                 return null;
             }

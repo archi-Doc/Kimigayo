@@ -310,6 +310,7 @@ public sealed partial class Binding
         }
 
         BoundType? failed = null;
+        var failure = default(ComparisonFailure);
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
@@ -324,10 +325,14 @@ public sealed partial class Binding
             // is the explained one. A regional target records source edges; fixed and omitted targets keep their immediate/collecting fit.
             for (var i = 0; i < types.Count; i++)
             {
-                if (!(HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node) : this.FitsTypeAt(types[i], common, node)))
+                ComparisonFailure fit;
+                if (!(HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
                 {
                     context.Conflict();
-                    failed ??= types[i];
+                    if (failed is null)
+                    {
+                        (failed, failure) = (types[i], fit);
+                    }
                 }
             }
         }
@@ -342,7 +347,7 @@ public sealed partial class Binding
         types.Clear();
         if (context.Outcome == JoinOutcome.Conflict)
         {
-            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common) : this.Fail(node, BindingFailure.TypeMismatch);
+            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure) : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
         if (context.Outcome == JoinOutcome.Dependent)

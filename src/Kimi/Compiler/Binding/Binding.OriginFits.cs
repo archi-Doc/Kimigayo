@@ -112,7 +112,7 @@ public sealed partial class Binding
 
         if (this.RecordOriginChains(node, at, this.formingBody, expected, recorded, cause))
         {
-            _ = this.CheckTypeUse(actual, expected, node);
+            _ = this.CheckTypeUse(actual, expected, node, out _);
         }
 
         return true;

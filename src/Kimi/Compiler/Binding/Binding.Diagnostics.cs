@@ -391,9 +391,10 @@ public sealed partial class Binding
     /// <param name="at">The smallest syntax that shows the mismatch, such as the value.</param>
     /// <param name="actual">The value's Type.</param>
     /// <param name="expected">The expected Type.</param>
+    /// <param name="failure">The failure of the comparison that decided, or <see cref="ComparisonFailure.Shape"/> for a description.</param>
     /// <returns><see langword="null"/>.</returns>
-    private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected)
-        => this.RecordMismatch(node, at, actual, expected);
+    private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
+        => this.RecordMismatch(node, at, actual, expected, failure);
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
     // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
@@ -427,7 +428,10 @@ public sealed partial class Binding
         return false;
     }
 
-    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
+    // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
+    // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
+    // position is its relation record (RecordOriginFitFailure), which must find it; any other failure is a Type mismatch.
+    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
         if (expected is BoundType { Kind: BoundTypeKind.Function } owner && actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
@@ -436,9 +440,16 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is
-        // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
+        var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        if (failure.IsCondition && storage)
+        {
+            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure));
+        }
+
+        // Transitional until G216 (a) U2.1 e2 and f: the erasure judgment of a Closure or Function Item and an Item's solve give no fact
+        // yet (the fit root sees only the erased value's shape, or Kind None), so their conversion's record is still explained here.
+        if ((failure.Kind == ComparisonFailureKind.None || actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem }) &&
+            expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
             this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
             (implementation.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(implementation, signature, required, at, node)
             : this.ConversionContractFailure(signature, required, own, at, node)) is { } contract)
@@ -447,8 +458,7 @@ public sealed partial class Binding
         }
 
         // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
-        if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
-            this.RecordOriginFitFailure(node, at, actualType, expectedType))
+        if (storage && this.RecordOriginFitFailure(node, at, (BoundType)actual, (BoundType)expected))
         {
             return null;
         }

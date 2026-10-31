@@ -261,9 +261,9 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
-                if (!this.FitsTypeAt(result, expected, use) && !this.CheckLocalTypeUse(result, expected, use))
+                if (!this.FitsTypeAt(result, expected, use, out var failure) && !this.CheckLocalTypeUse(result, expected, use))
                 {
-                    return this.RecordMismatch(use, use, result, expected);
+                    return this.RecordMismatch(use, use, result, expected, failure);
                 }
             }
 
@@ -468,9 +468,11 @@ public sealed partial class Binding
             }
 
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+            var failure = default(ComparisonFailure);
+
             // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source) &&
+                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source, out failure) &&
                 !this.CheckLocalTypeUse(adapted, type, source)))
             {
                 if (this.acquisitionFailure is { } acquisition)
@@ -479,7 +481,7 @@ public sealed partial class Binding
                 }
                 else if (FitsStructurally(adapted, type))
                 {
-                    this.RecordMismatch(source, source, adapted, type);
+                    this.RecordMismatch(source, source, adapted, type, failure);
                     Complete(use, null);
                 }
                 else

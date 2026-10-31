@@ -76,6 +76,30 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.7, 15.6.1, 23.1: the one record of a whole-contract comparison that failed in a condition, from the failure its walk found:
+    // the member from the nearest comparison ("the 1st parameter's 1st parameter's well-formedness"), with both ends instantiated under
+    // the comparison.
+    private OriginContractFact ContractFact(Koto at, in ComparisonFailure failure)
+    {
+        var member = string.Empty;
+        for (var depth = failure.Depth - 1; depth >= 0; depth--)
+        {
+            var step = (byte)(failure.Path >> (8 * depth));
+            member += (member.Length == 0 ? "the " : "'s ") + (step == ComparisonFailure.ResultStep ? "result" : $"{Ordinal(step)} parameter");
+        }
+
+        var instance = failure.Instance;
+        if (failure.Kind == ComparisonFailureKind.WellFormedness)
+        {
+            var part = failure.Part < 0 ? "result's well-formedness" : $"{Ordinal(failure.Part + 1)} parameter's well-formedness";
+            return new(at, (member.Length == 0 ? "the " : member + "'s ") + part, this.Instantiated(failure.Longer!, instance), this.Instantiated(failure.Shorter!, instance), false);
+        }
+
+        return new(at, member, instance.Instantiate(failure.Longer!), instance.Instantiate(failure.Shorter!), failure.Equality);
+
+        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
     // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
     // entry and related there.

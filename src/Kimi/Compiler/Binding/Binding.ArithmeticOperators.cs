@@ -148,8 +148,9 @@ public sealed partial class Binding
             else
             {
                 var destination = this.PropertyUpdateDestination(binary.Left) ?? left;
-                result = destination is not null && this.FitsTypeAt(plan.Call.BoundType!, destination, binary)
-                    ? Complete(binary, BoundType.Unit) : this.FailMismatch(binary, binary, plan.Call.BoundType!, destination!);
+                var failure = ComparisonFailure.Shape;
+                result = destination is not null && this.FitsTypeAt(plan.Call.BoundType!, destination, binary, out failure)
+                    ? Complete(binary, BoundType.Unit) : this.FailMismatch(binary, binary, plan.Call.BoundType!, destination!, failure);
             }
         }
         else

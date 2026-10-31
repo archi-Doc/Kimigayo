@@ -316,7 +316,7 @@ public sealed partial class Binding
         var common = established is null ? actual : this.CommonOriginType(established, actual);
         if (common is null)
         {
-            this.FailMismatch(source, source, actual, established!);
+            this.FailMismatch(source, source, actual, established!, ComparisonFailure.Shape);
             return false;
         }
 
@@ -415,7 +415,7 @@ public sealed partial class Binding
         var common = established is null ? actual : this.CommonOriginType(established, actual);
         if (common is null)
         {
-            this.FailMismatch(source, source, actual, established!);
+            this.FailMismatch(source, source, actual, established!, ComparisonFailure.Shape);
             failed = source;
             return false;
         }

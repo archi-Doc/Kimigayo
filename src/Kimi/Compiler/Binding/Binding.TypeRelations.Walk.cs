@@ -9,12 +9,58 @@ namespace Kimi.Compiler;
 //   (FunctionFits), whose implementation conditions it judges at every nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
-// - Outputs: whether the relation holds.
+// - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
+//   reader that records the failure takes from the walk that decided.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
-//   inputs, its result, then the implementation's own well-formedness.
-// - Prohibitions: a mode that changes what the relation is goes into the query, never into a parameter of one entry.
+//   inputs, its result, then the implementation's own well-formedness. The walk stops at its first failure, which is the one record of
+//   a whole-contract comparison (SPEC 15.6.1).
+// - Prohibitions: no reader walks a relation again to explain it; a mode that changes what the relation is goes into the query, never
+//   into a parameter of one entry.
 public sealed partial class Binding
 {
+    // What failed where a relation does not hold (SPEC 10.7, 15.6.1); the closed rows of ComparisonFailure.Kind.
+    internal enum ComparisonFailureKind : byte
+    {
+        // The relation holds.
+        None,
+
+        // The structural part (SPEC 15.6.1: the only Type mismatch).
+        Shape,
+
+        // A plain Origin position, outside every Callable comparison.
+        Position,
+
+        // A member's Origin position inside a Callable comparison.
+        Origin,
+
+        // The implementation's own well-formedness, its Part-th input's or (Part -1) its result's (the owner's (a)).
+        WellFormedness,
+    }
+
+    // SPEC 10.7, 15.6.1, 23.1: the first failure of one walk, where the walk found it: the failing condition (Kind, Part), its ends as
+    // written with the comparison that instantiates them, and the members from the nearest Callable comparison (Path, one byte per member,
+    // the outermost highest: a parameter n + 1, the result ResultStep; Depth saturates at 8).
+    internal readonly record struct ComparisonFailure(ComparisonFailureKind Kind, BoundOrigin? Longer, BoundOrigin? Shorter, bool Equality, CallableInstance Instance)
+    {
+        internal const byte ResultStep = 0xFF;
+
+        // The failure of a site whose expected Type is a description or whose Types differ in their shape.
+        internal static readonly ComparisonFailure Shape = new(ComparisonFailureKind.Shape, null, null, false, default);
+
+        internal int Part { get; init; }
+
+        internal ulong Path { get; init; }
+
+        internal byte Depth { get; init; }
+
+        // Whether it fails a condition of a whole-contract comparison (SPEC 15.6.1): Proof class, one UnprovenOriginContract_Kd at the value.
+        internal bool IsCondition => this.Kind is ComparisonFailureKind.Origin or ComparisonFailureKind.WellFormedness;
+
+        // The failure as the enclosing comparison sees it: within its member `step`.
+        internal ComparisonFailure Within(byte step) => this.Depth == 8 ? this :
+            this with { Path = this.Path | ((ulong)step << (8 * this.Depth)), Depth = (byte)(this.Depth + 1) };
+    }
+
     // Which Origin bindings a relation walk compares: every one (Judged), none outside Function Types (Structural, SPEC 15.6.1), or
     // none at all (Everywhere, SPEC 10.4 step 2, since Origin bindings never rank candidates).
     private enum OriginPart : byte
@@ -24,12 +70,13 @@ public sealed partial class Binding
         Everywhere,
     }
 
-    // One walk of the relation with its query (see the file contract).
+    // One walk of the relation with its query and its result (see the file contract).
     private struct RelationWalk
     {
         private readonly Binding? binding;
         private readonly Koto? use;
         private OriginPart part;
+        private ComparisonFailure failure;
 
         internal RelationWalk(Binding? binding, Koto? use, OriginPart part)
         {
@@ -37,6 +84,9 @@ public sealed partial class Binding
             this.use = use;
             this.part = part;
         }
+
+        // The first failure of the walk's last false answer.
+        internal readonly ComparisonFailure Failure => this.failure;
 
         // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
         // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
@@ -49,14 +99,9 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive)
+            if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
             {
-                return false;
-            }
-
-            if (!SameShape(actual, expected))
-            {
-                return false;
+                return this.Fail(ComparisonFailure.Shape);
             }
 
             var structural = this.part != OriginPart.Judged;
@@ -67,10 +112,15 @@ public sealed partial class Binding
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use) : 0;
-            if (outer == OuterOriginFit.Mismatch || (outer == OuterOriginFit.Relation && !structural &&
-                (!this.OriginFits(longer, shorter, instance, condition) || (invariant && !this.OriginFits(shorter, longer, instance, condition)))))
+            if (outer == OuterOriginFit.Mismatch)
             {
-                return false;
+                return this.Fail(ComparisonFailure.Shape);
+            }
+
+            if (outer == OuterOriginFit.Relation && !structural &&
+                (!this.OriginFits(longer, shorter, instance, condition) || (invariant && !this.OriginFits(shorter, longer, instance, condition))))
+            {
+                return this.Fail(OriginFailure(longer, shorter, invariant, instance));
             }
 
             for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -83,11 +133,11 @@ public sealed partial class Binding
                 }
 
                 var variance = actual.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
-                if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
-                    !this.OriginFits(a, b, instance) || !this.OriginFits(b, a, instance) :
+                var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
+                if (both ? !this.OriginFits(a, b, instance) || !this.OriginFits(b, a, instance) :
                     variance == OriginVariance.Covariant ? !this.OriginFits(a, b, instance) : !this.OriginFits(b, a, instance))
                 {
-                    return false;
+                    return this.Fail(variance == OriginVariance.Contravariant && !both ? OriginFailure(b, a, false, instance) : OriginFailure(a, b, both, instance));
                 }
             }
 
@@ -132,6 +182,16 @@ public sealed partial class Binding
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
+        // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one.
+        private static ComparisonFailure OriginFailure(BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance)
+            => new(instance.Expected is null ? ComparisonFailureKind.Position : ComparisonFailureKind.Origin, longer, shorter, equality, instance);
+
+        private bool Fail(in ComparisonFailure failure)
+        {
+            this.failure = failure;
+            return false;
+        }
+
         private readonly bool OriginFits(BoundOrigin a, BoundOrigin b, in CallableInstance instance, ulong condition = 0)
             => instance.Actual is not null ? InstanceOutlives(a, b, instance, this.binding, this.use, 0) :
                 this.binding is null ? OriginOutlives(a, b) : this.binding.FitOrigin(a, b, this.use!, instance, condition);
@@ -149,16 +209,21 @@ public sealed partial class Binding
             if (!ReferenceEquals(actualInputs, expectedInputs) &&
                 (actualInputs.Kind != expectedInputs.Kind || actualInputs.Components.Count != expectedInputs.Components.Count))
             {
-                return false;
+                return this.Fail(ComparisonFailure.Shape);
             }
 
             var outer = this.part;
             var everywhere = outer == OriginPart.Everywhere;
             this.part = everywhere ? OriginPart.Everywhere : OriginPart.Judged;
-            var fits = this.MembersFit(actual, expected, invariant, instance) &&
-                (this.binding is null || everywhere || this.binding.FailedSignatureWellFormedness(actual, instance, this.use!) is null);
+            var fits = this.MembersFit(actual, expected, invariant, instance);
             this.part = outer;
-            return fits;
+            if (!fits || this.binding is null || everywhere || this.binding.FailedSignatureWellFormedness(actual, instance, this.use!) is not { } formed)
+            {
+                return fits;
+            }
+
+            var part = formed.Part < actualInputs.Components.Count ? formed.Part : -1;
+            return this.Fail(new ComparisonFailure(ComparisonFailureKind.WellFormedness, formed.Longer, formed.Shorter, false, instance) { Part = part });
         }
 
         private bool MembersFit(BoundType actual, BoundType expected, bool invariant, in CallableInstance instance)
@@ -170,11 +235,12 @@ public sealed partial class Binding
                 var input = actualInputs.Components[i];
                 if (!this.Fits(expectedInputs.Components[i], input, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance))
                 {
-                    return false;
+                    return this.Fail(this.failure.Within((byte)(i + 1)));
                 }
             }
 
-            return this.Fits(actual.Components[1], expected.Components[1], invariant, instance: instance);
+            return this.Fits(actual.Components[1], expected.Components[1], invariant, instance: instance) ||
+                this.Fail(this.failure.Within(ComparisonFailure.ResultStep));
         }
     }
 }

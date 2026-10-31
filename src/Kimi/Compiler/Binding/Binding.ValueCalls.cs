@@ -547,7 +547,7 @@ public sealed partial class Binding
                     this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
                 if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter.Semantics) &&
-                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!))
+                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!, out _))
                 {
                     return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }

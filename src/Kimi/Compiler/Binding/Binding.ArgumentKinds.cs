@@ -190,7 +190,7 @@ public sealed partial class Binding
     {
         if (!this.ErasesToFunction(part, actual, erased))
         {
-            this.RecordMismatch(part, part, actual, erased);
+            this.RecordMismatch(part, part, actual, erased, default);
             return false;
         }
 

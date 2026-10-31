@@ -11,7 +11,9 @@ namespace Kimi.Compiler;
 //   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
-// - Outputs: the verdict; CheckTypeUse records the obligations of a fit whose structure holds.
+// - Outputs: the verdict and, for FitsType, FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
+//   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
+//   holds.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type).
 // - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsStructuralSubtype, IsSubtypeAt), not these.
@@ -21,20 +23,33 @@ public sealed partial class Binding
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
     /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected)
-        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected);
+    public static bool FitsType(BoundType actual, BoundType expected) => FitsType(actual, expected, out _);
+
+    // FitsType with the walk's first failure.
+    internal static bool FitsType(BoundType actual, BoundType expected, out ComparisonFailure failure)
+    {
+        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var fits = NeverFits(actual) || walk.Fits(actual, expected);
+        failure = walk.Failure;
+        return fits;
+    }
 
     // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
     // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
     internal static bool FitsStructurally(BoundType actual, BoundType expected)
         => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Structural).Fits(actual, expected);
 
-    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected);
+    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        var walk = new RelationWalk(this, use, OriginPart.Judged);
+        var fits = NeverFits(actual) || walk.Fits(actual, expected);
+        failure = walk.Failure;
+        return fits;
+    }
 
     // Lowering rechecks the already verified contract without adding constraints or reopening inference.
     internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
-        => this.FitsTypeAt(actual, expected, use) || ((actual.CarriesAnyOrigin || expected.CarriesAnyOrigin) &&
+        => this.FitsTypeAt(actual, expected, use, out _) || ((actual.CarriesAnyOrigin || expected.CarriesAnyOrigin) &&
             this.FitsStructurallyAt(actual, expected, use) &&
             new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Verified).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is null);
 
@@ -48,10 +63,12 @@ public sealed partial class Binding
     // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
     // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
     // itself, RelationWalk forms none), so the entries appended before it returns are exactly this fit's.
-    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
+    // `failure` is the failure of the walk at which the fit failed: the root's, or a component's that the obligations could not take.
+    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         var pending = this.pendingRelations.Count;
-        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant);
+        failure = default;
+        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant, ref failure);
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
@@ -63,13 +80,16 @@ public sealed partial class Binding
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as RelationWalk composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,
     // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity)
+    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref ComparisonFailure failure)
     {
         // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
-        if ((polarity == OriginVariance.Contravariant ?
-                new RelationWalk(this, use, OriginPart.Judged).Fits(expected, actual) :
-                new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected, polarity == OriginVariance.Invariant)) &&
-            !HasLocalRegion(actual) && !HasLocalRegion(expected))
+        var walk = new RelationWalk(this, use, OriginPart.Judged);
+        var fits = polarity == OriginVariance.Contravariant ? walk.Fits(expected, actual) : walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        if (!fits)
+        {
+            failure = walk.Failure;
+        }
+        else if (!HasLocalRegion(actual) && !HasLocalRegion(expected))
         {
             return true;
         }
@@ -107,7 +127,7 @@ public sealed partial class Binding
         {
             if (IsInvariantLayer(actual, this))
             {
-                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant))
+                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref failure))
                 {
                     return false;
                 }
@@ -117,7 +137,7 @@ public sealed partial class Binding
 
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position)))
+            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref failure))
             {
                 return false;
             }

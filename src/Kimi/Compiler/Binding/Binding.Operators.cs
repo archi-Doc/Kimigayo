@@ -124,9 +124,9 @@ public sealed partial class Binding
                 }
 
                 // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
-                if (this.PropertyUpdateDestination(unary.Operand) is { } written && !this.FitsTypeAt(operand, written, unary))
+                if (this.PropertyUpdateDestination(unary.Operand) is { } written && !this.FitsTypeAt(operand, written, unary, out var failure))
                 {
-                    return this.FailMismatch(unary, unary.Operand, operand, written);
+                    return this.FailMismatch(unary, unary.Operand, operand, written, failure);
                 }
 
                 // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
@@ -268,9 +268,9 @@ public sealed partial class Binding
             return false;
         }
 
-        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination && !this.FitsTypeAt(left, destination, binary))
+        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination && !this.FitsTypeAt(left, destination, binary, out var failure))
         {
-            this.FailMismatch(binary, binary.Left, left, destination);
+            this.FailMismatch(binary, binary.Left, left, destination, failure);
             return false;
         }
 
@@ -301,20 +301,20 @@ public sealed partial class Binding
 
         if (operation is KotoKind.And or KotoKind.Or)
         {
-            return !Compatible(left, BoundType.Boolean) ? this.FailMismatch(binary, binary.Left, left, BoundType.Boolean)
-                : !Compatible(right, BoundType.Boolean) ? this.FailMismatch(binary, binary.Right, right, BoundType.Boolean)
+            return !Compatible(left, BoundType.Boolean) ? this.FailMismatch(binary, binary.Left, left, BoundType.Boolean, ComparisonFailure.Shape)
+                : !Compatible(right, BoundType.Boolean) ? this.FailMismatch(binary, binary.Right, right, BoundType.Boolean, ComparisonFailure.Shape)
                 : Complete(binary, BoundType.Boolean);
         }
 
         if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
         {
             return ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)
-                ? Complete(binary, result) : this.FailMismatch(binary, binary.Right, right, BoundType.ISize);
+                ? Complete(binary, result) : this.FailMismatch(binary, binary.Right, right, BoundType.ISize, ComparisonFailure.Shape);
         }
 
-        if (!this.FitsTypeAt(right, left, binary) && !this.CheckLocalTypeUse(right, left, binary.Right))
+        if (!this.FitsTypeAt(right, left, binary, out var fit) && !this.CheckLocalTypeUse(right, left, binary.Right))
         {
-            return this.FailMismatch(binary, binary.Right, right, left);
+            return this.FailMismatch(binary, binary.Right, right, left, fit);
         }
 
         if (binary.Akind == KotoKind.Equals)
