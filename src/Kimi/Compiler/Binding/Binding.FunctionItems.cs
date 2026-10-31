@@ -523,7 +523,8 @@ public sealed partial class Binding
 
     private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
     {
-        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
+        // A Callable clause proven Unknown with its U fact is the shared path's record (FailUnprovenConstraint, census #25).
+        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !(proof == ConstraintProof.Unknown && ReferenceEquals(this.unknownRead?.Clause, clause)))
         {
             var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
             // A refuted clause, then the first Unknown one, is the reported cause.

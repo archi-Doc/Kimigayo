@@ -531,6 +531,7 @@ public sealed partial class Binding
         }
 
         var count = function.GenericArguments.Count;
+        var outer = this.BeginProof(); // A reference's applicability is one judgment, whose U fact its record reads (design-r2 Amendment 5).
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count), failureUse: failureUse);
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, failureUse), true);
         proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
@@ -558,7 +559,7 @@ public sealed partial class Binding
             }
         }
 
-        return proof;
+        return this.EndProof(outer, proof);
 
         ConstraintProof Formed(BoundType? written)
             => written is not null && this.MemberType(written, container) is { } member &&
