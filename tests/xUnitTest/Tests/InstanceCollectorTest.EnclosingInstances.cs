@@ -134,6 +134,18 @@ public sealed partial class InstanceCollectorTest
     [InlineData("let g = bs.f\n    _ = g(s)", "Unsupported_Kd " + Pass + "; NoApplicableOverload_Kd g(s)")]
     public void AnOwnerWithAnOriginPositionStaysTheGap(string body, string records) => Assert.Equal(records, CheckRecords(OriginPositionOwners(body)));
 
+    // DECISIONS R5-M157, BU-60 (N5): a generic container's group has no instance (its statics' storage is keyed by their symbols, X33 (a),
+    // R5-M82), so its static's Closure was closed in no instance and its body is requested in the Closure's own identity: the
+    // EnclosingInstance gap at the call, beside the static-storage gap at the declaration and Binding's record at the access, whether or
+    // not the body names a slot (before: admitted under the group's open identity, the call's record lost).
+    [Theory]
+    [InlineData(Four)]
+    [InlineData(Sized)]
+    public void AGroupStaticsClosureIsTheGap(string closure)
+        => Assert.Equal(
+            $"Unsupported_Kd let s = {closure}; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()",
+            CheckRecords($"struct Box<T>\n    public init() => ()\n    public group G\n        public let s = {closure}\nlet n = Box<i32>.G.s()\n"));
+
     // SPEC 3, 6.1.3 (DECISIONS BU-60, the owner's (a)): one producer forms a held closure's context from the instance modulo Origins, none
     // in the owner's own frame (the identity test), so every read of one instance has one Closure Type and two instances never share one.
     // In GV<T>{o}'s member, self.n and GV<T>.init(x).n, and in Box<T>'s, self.n and Holder<T>.g (Box<U>.init().n), join or assign as one

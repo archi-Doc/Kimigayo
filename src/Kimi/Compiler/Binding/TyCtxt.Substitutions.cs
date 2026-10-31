@@ -65,9 +65,10 @@ internal sealed partial class TyCtxt
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it as its readers see it (ClosureInstance); a
-    // closure no instance closed is in the identity of the declaration whose instance it holds (EnclosingDeclaration), else in its own, as
-    // a held instance its readers do not see is (DECISIONS BU-60). The closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63,
-    // R4-M152).
+    // closure no instance closed is in the identity of the declaration whose instance it holds (EnclosingDeclaration), a function or a
+    // Type, else in its own, as a held instance its readers do not see is (DECISIONS BU-60) and a generic container's group static is,
+    // whose group has no instance (R5-M82, X33 (a)), so the instance collector reports either as the EnclosingInstance gap (R5-M157). The
+    // closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63, R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
     {
         if (closure is not { Symbol: { Declaration: FunctionKoto { ClosureDefinition: not null } } symbol })
@@ -80,7 +81,8 @@ internal sealed partial class TyCtxt
             return instance;
         }
 
-        var frame = closure.ClosureContext is null ? this.EnclosingDeclaration(symbol) ?? symbol : symbol;
+        var frame = closure.ClosureContext is null &&
+            this.EnclosingDeclaration(symbol) is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Type } enclosing ? enclosing : symbol;
         return this.Identity(frame.Declaration);
     }
 

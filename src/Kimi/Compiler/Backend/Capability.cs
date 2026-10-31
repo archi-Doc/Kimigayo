@@ -5,9 +5,10 @@
 // the capability check of COMPILER_ARCHITECTURE's closed vocabularies, which the instance collector reads, at the definition stage (A3b) and
 // per instance.
 // Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
-// a nested function called without its enclosing instance (until PLAN G149; a Field initializer's Closure or a function declared in it
-// until TyCtxt.EnclosingDeclaration gives it its declaring Type, DECISIONS R5-M157), and of a requirement call whose inherited witness cannot
-// preserve its receiver (OCC-X, DECISIONS R5-M67), and of a requirement call or Item whose witness has no MIR body (DECISIONS R5-M146);
+// a nested function called without its enclosing instance (until PLAN G149) or a Closure no instance closed (a held instance with an Origin
+// position until PLAN G300's per-use opening, a generic container's group static until P42; DECISIONS R5-M157, BU-60), and of a
+// requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67), and of a requirement call or Item whose
+// witness has no MIR body (DECISIONS R5-M146);
 // the declaration row of a static whose storage P42 has not brought, a generic
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
@@ -30,10 +31,11 @@ internal enum CapabilityGap : byte
 
     // A function nested in a body (a block of a generic function, a function nested in one, a method or a specialization of a generic
     // container) called by a substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC
-    // 8.13.3; DECISIONS R5-M40, R5-M43); and a Closure in a generic container's Field initializer, or a function declared in it, whose
-    // substitution binds none of the container's slots (DECISIONS R5-M157), until TyCtxt.EnclosingDeclaration gives every nested definition
-    // the declaration whose instance it holds, a Field initializer's its declaring Type (BU's fact, PLAN G300).
-    [Transitional("R7", Reason = "G149: the enclosing-instance chain in a call's Subst (PD27 list, R5-M146); G300: BU's Binding rule ends R5-M157's interim.")]
+    // 8.13.3; DECISIONS R5-M40, R5-M43), a function declared in a Field initializer or a getter included; and a Closure that no instance
+    // closed, so its body is requested in its own identity (TyCtxt.SubstOfClosure; DECISIONS R5-M157, BU-60): one in a Field or static
+    // initializer whose held instance has an Origin position (TyCtxt.ClosureInstance), until PLAN G300's per-use opening, and one in a
+    // generic container's group static, whose group has no instance (R5-M82's static-storage row, X33 (a)), until P42 keys that storage.
+    [Transitional("R7", Reason = "G149: a call's enclosing-instance chain (PD27, R5-M146); G300: Origin-carrying owners opened per use; P42: group statics.")]
     EnclosingInstance,
 
     // A requirement call whose witness is inherited and takes a receiver, which lends only its base prefix and so preserves no exclusive
