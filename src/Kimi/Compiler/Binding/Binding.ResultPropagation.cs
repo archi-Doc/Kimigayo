@@ -378,9 +378,10 @@ public sealed partial class Binding
                 : this.BindNode(join, this.ConstraintScope(join), null) is not null);
 
     // SPEC 14.9.2 (DECISIONS BU-43): a result target that waited for its position is decided when its position binds it, honouring
-    // the outcome it has: judged by its root as a Conflict, it binds its waited sources with no Type and fails at itself, its own
-    // record; as Dependent, it binds them and rests on its cause. Still Waiting, bound with no Type by the pass of the join it waited
-    // for (PositionTarget) once that join failed, it rests on that join's record or cause (SPEC 23.1.2: the root judged its parts).
+    // the outcome it has: judged by its root as a Conflict, it binds its waited sources at the Type its position decided (none without
+    // one) and fails at itself, its own record; as Dependent, it binds them so and rests on its cause (SPEC 23.1.2: their own records
+    // are independent of it). Still Waiting, bound with no Type by the pass of the join it waited for (PositionTarget) once that join
+    // failed, it rests on that join's record or cause (SPEC 23.1.2: the root judged its parts).
     // Otherwise its sources take the Type the position supplies, as a Target Result Type fixed by an outer expectation, or, without
     // one, it decides as a root (DecideResult); one its call bound meanwhile supplies the Type it took, and one holding what its call
     // completed is Deferred (Completed).
@@ -394,7 +395,7 @@ public sealed partial class Binding
 
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
-            this.BindWaitedSources(node, context, null);
+            this.BindWaitedSources(node, context, ResultExpectation(node, expected));
             return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependent(node, context.Cause!);
         }
 
@@ -502,11 +503,11 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. At `type`, the
-    // Target Result Type the join decided: a source that waited unbound is bound at it, which checks its literals, and fits it; a bound
-    // one that awaits takes it when its late Type fits. With no Type, the join having failed (Conflict, Dependent) or formed nothing: a
-    // waited source holding a literal takes its defaults, and one holding a join that waited (HoldsWaitedResult) is bound so that the
-    // join honours its outcome (DecideWaiting); under a failed join, a source holding neither rests on the join's record or cause
-    // (CompleteDependent). The first misfit is returned.
+    // Target Result Type the join or its position decided (a failed join's too): a source that waited unbound is bound at it, which
+    // checks its literals, and fits it; a bound one that awaits takes it when its late Type fits. With no Type, the join having failed
+    // (Conflict, Dependent) or formed nothing: a waited source holding a literal takes its defaults, and one holding a join that waited
+    // (HoldsWaitedResult) is bound so that the join honours its outcome (DecideWaiting); under a failed join, a source holding neither
+    // rests on the join's record or cause (CompleteDependent). The first misfit is returned.
     private BoundType? BindWaitedSources(Koto node, ResultContext context, BoundType? type)
     {
         BoundType? failed = null;

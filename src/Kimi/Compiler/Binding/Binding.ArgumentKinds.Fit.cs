@@ -138,10 +138,11 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 10.5.4, 14.9.2 (DECISIONS BU-43): a join its call classifies fits position by position, each position taking the parts
-    // its sources hold there (PositionKind, ChildPositions), as its evidence does: a position that waits (no typed part, one awaiting its
-    // call) is checked by the selected candidate, only a waiting anonymous function's header filtering here; an Aggregate one by each
-    // part's shape and then its child positions; any other by each part's late Type (LateFits), which applies no late write: the writes
-    // the late fits record are cleared per candidate, as no reader applies them (TryPropagate computes its own).
+    // its sources hold there (PositionKind, ChildPositions), as its evidence does: a failed part fits every candidate (SPEC 23.1.2); a
+    // position that waits (no typed part, one awaiting its call) is checked by the selected candidate, only a waiting anonymous function's
+    // header filtering here; an Aggregate one by each part's shape and then its child positions; any other by each part's late Type
+    // (LateFits), which applies no late write: the writes the late fits record are cleared per candidate, as no reader applies them
+    // (TryPropagate computes its own).
     private bool FitsJoin(Koto join, BoundType type)
     {
         this.lateWrites.Clear();
@@ -162,6 +163,7 @@ public sealed partial class Binding
             var part = this.positionParts[i];
             var fits = (kind, KotoHelper.UnwrapParentheses(part)) switch
             {
+                _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
                 (PartKind.Call, FunctionKoto closure) => !this.AwaitsCall(closure) || this.ClosureSignatureFits(closure, type),
                 (PartKind.Call, _) => true,
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),

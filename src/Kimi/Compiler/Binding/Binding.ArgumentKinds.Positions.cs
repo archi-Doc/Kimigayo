@@ -14,10 +14,11 @@ namespace Kimi.Compiler;
 //   child positions are formed part by part (SPEC 14.9.2). AddResultPart forms every part of a child position (Never dropped, the
 //   forms that deliver it passed, a waiting join flattened). A position of several parts has one kind (PositionKind), typed first
 //   (SPEC 14.9.2 step 2): Typed at its typed parts' common Type (one evidence) whatever else it holds, its literals and the parts
-//   awaiting their call beside them taking it (step 3), or with no Type when a part failed; only a position with no typed part, and so
-//   no candidate, waits (Call) when a part awaits its call; then Aggregate when its parts are aggregates, Literal when only literals
-//   remain; with no part (Never in every source) it is Typed with no Type: no evidence, and no Type at a slot that takes the whole
-//   (SPEC 10.8, BU-2 U3's D6). Every reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
+//   awaiting their call beside them taking it (step 3); only a position with no typed part, and so no candidate, waits (Call) when a
+//   part awaits its call; then Aggregate when its parts are aggregates, Literal when only literals remain; with no part (Never in every
+//   source, or only failed parts) it is Typed with no Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2
+//   U3's D6). A failed part takes no part in the kind and fits every candidate (SPEC 23.1.2), as in the join's own formation. Every
+//   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
 //   positions and the parameter Type at each; PositionKind.
 // - Invariants: a walk removes the parts it appended before it returns, so nested walks share the list; a position's parts end where
@@ -100,8 +101,10 @@ public sealed partial class Binding
         => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
 
     // The kind of a position of several parts, a join's, typed first (SPEC 14.9.2 step 2): Typed at the common Type of its typed parts,
-    // whatever else it holds, or with no Type when a part failed or it has no part; with no typed part, Call when a part awaits its call
-    // (AwaitsCall), then Aggregate when its parts are aggregates, then Literal when only literals remain.
+    // whatever else it holds, or with no Type when it has no other part; with no typed part, Call when a part awaits its call
+    // (AwaitsCall), then Aggregate when its parts are aggregates, then Literal when only literals remain. A failed part (PartFailed)
+    // takes no part in the kind, as in the join's own formation (CommonTypeByParts; SPEC 23.1.2): it supplies no Type, and it is no
+    // literal, aggregate or waiting part.
     private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;
@@ -117,10 +120,6 @@ public sealed partial class Binding
             else if (!this.IsAggregatePart(part) && this.AwaitsCall(part))
             {
                 waits = true;
-            }
-            else if (!this.IsAggregatePart(part) && this.PartFailed(part))
-            {
-                return PartKind.Typed; // A failed part gives no Type.
             }
         }
 

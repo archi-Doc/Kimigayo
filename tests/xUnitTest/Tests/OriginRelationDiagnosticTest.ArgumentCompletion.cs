@@ -43,6 +43,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string GBool = "func g(x: bool) -> i32 => 0\n";
 
+    private const string GOptions = "func g(x: Array<Option<bool>>) -> i32 => 0\n";
+
     private const string Pick = "func pick<T>(x: T, y: T) -> T => x@move\n";
 
     private const string BoxInit = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n";
@@ -245,6 +247,29 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6", "nd1v", IdentityT + "func f(x: i64) -> i32 => 0\n" + KD + "    let h = f\n    return h" + NdJoin + "\n")]
     public void ANestedJoinOfDeferredCallsAwaitsItsPosition(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
+
+    // N1 (BU's U1.6 survivors design 1, G340): a failed part takes no part in its position's kind and fits every candidate (SPEC
+    // 23.1.2), so a name that fails at a waiting position adds no record at the call: at the join's own position (n1), as an element
+    // (f2), at a child position (e3) and in a labeled `do` (dl1). A failed join that waited binds its other sources at the Type its
+    // position decided, so their own records stand beside the name's (g026, g196), as in their twins without it (g026_fix, g196_fix).
+    // Open, the G340 remainder: a slot or an ambiguity that only the failed part could decide is dependent too, but these still give
+    // AmbiguousBinding_Kd with two candidates (n1_ov, f2_ov, e3_ov, g238) and UnboundTypeArgument_Kd at a generic callee (g028).
+    [Theory]
+    [InlineData("U1.6", "n1", IdentityT + "func f(x: i64) -> i32 => 0\n" + KHead + "    return f(if c => undefinedName else => identity(1))\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "f2", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "e3", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f(if c => (identity(1), 2) else => (undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "dl1", IdentityT + "func f(x: i64) -> i32 => 0\n" + KHead + "    return f(label s: do\n        if c => exit to s undefinedName\n        exit to s identity(1)\n    )\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "g026", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => undefinedName else => identity(4)))\n", "NoApplicableOverload_Kd identity(4); NoApplicableOverload_Kd identity(7); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "g026_fix", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => true else => identity(4)))\n", "NoApplicableOverload_Kd identity(4); NoApplicableOverload_Kd identity(7)")]
+    [InlineData("U1.6", "g196", IdentityT + GOptions + KD + "    return g([if c => (if d => undefinedName else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "g196_fix", IdentityT + GOptions + KD + "    return g([if c => (if d => .None else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8")]
+    [InlineData("open", "n1_ov", IdentityT + FScalars + KHead + "    return f(if c => undefinedName else => identity(1))\n", "AmbiguousBinding_Kd f(if c => undefinedName else => identity(1)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("open", "f2_ov", IdentityT + FTuples + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "AmbiguousBinding_Kd f((if c => identity(1) else => undefinedName, 3)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("open", "e3_ov", IdentityT + FTuples + KHead + "    return f(if c => (identity(1), 2) else => (undefinedName, 3))\n", "AmbiguousBinding_Kd f(if c => (identity(1), 2) else => (undefinedName, 3)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("open", "g028", IdentityT + "func g<T>(x: (T, i32)) -> i32 => 0\n" + KD + "    return g((if c => .None else if d => undefinedName else => identity(.Some(3)), 3))\n", "UnboundTypeArgument_Kd g((if c => .None else if d => undefinedName else => identity(.Some(3)), 3)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("open", "g238", IdentityT + "func f(x: (Option<i64>, i32)) -> i32 => 0\nfunc f(x: (Option<bool>, i32)) -> i32 => 1\n" + KD + "    return f((if c => (if d => .None else => identity(.Some(4))) else => undefinedName, 3))\n", "AmbiguousBinding_Kd f((if c => (if d => .None else => identity(.Some(4))) else => undefinedName, 3)); UnresolvedBinding_Kd undefinedName")]
+    public void AFailedPartTakesNoPartInItsPosition(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid
     // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4); with
