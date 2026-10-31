@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43; R5 package F 4.11, K 4.1, X8, X26, X40): whether a definition's
-// body is checked once and generated per closed substitution (Instantiates), the null rule of instance keys, the function whose body holds
-// a scope, whose instance a nested definition's instance holds and whose self a direct base call uses (EnclosingFunction), whether a
-// function's calls dispatch (Dispatches), and the Origin-erased form of a Type and a substitution (Erase), the one identity of instance
-// keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3).
+// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43, BU-60; R5 package F 4.11, K 4.1, X8, X26, X40): whether a
+// definition's body is checked once and generated per closed substitution (Instantiates), the null rule of instance keys, the declaration
+// whose instance the code at a scope holds, which a nested definition's instance holds and whose self a direct base call uses
+// (EnclosingDeclaration), whether a function's calls dispatch (Dispatches), and the Origin-erased form of a Type and a substitution (Erase),
+// the one identity of instance keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3), with whether that form has an Origin position
+// (HasOriginPosition).
 // Input: a definition's BindingSymbol (a named or anonymous function, an accessor's executing function, a property) once the pass has bound
-// its schemas, or for EnclosingFunction a scope; for Erase, an interned Type or substitution. Output: whether a definition instantiates,
+// its schemas, or for EnclosingDeclaration a scope; for Erase, an interned Type or substitution. Output: whether a definition instantiates,
 // kept across passes with no edit and discarded at an edit (Binding.Invalidate); an interned erased value, memoized like the interning.
 // Erase: every Origin becomes static (a reference's or a Slice's, written or inferred, every Origin argument and every Origin binding of a
 // substitution or closure context) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self and
@@ -16,7 +17,9 @@
 // unused one (SPEC 6.1.3). A specialization declares no slot (SPEC 8.13.1), so one in a generic container, and every declaration nested in
 // it, is generic in the container's slots, its instance key holding the container's arguments (SPEC 8.13.3). Origin slots never count.
 // Must not: decide by syntax what a declaration's schema publishes, write any state other than its memos and the interning, or prove
-// anything on an erased value (proofs read Origins; an instance's proofs run on its representative).
+// anything on an erased value (proofs read Origins; an instance's proofs run on its representative). One exception (DECISIONS BU-60): a
+// held closure's context holds its Type's instance erased (HeldContext), so a held closure item's representative carries an erased
+// declaring Type, of which no reader reads an Origin.
 
 using Kimi.Compiler.Parsing;
 
@@ -31,6 +34,27 @@ internal sealed partial class TyCtxt
     private readonly Dictionary<BoundType, BoundType> erasedTypes = new();
     private readonly Dictionary<Subst, Subst> erasedSubsts = new();
     private BoundOrigin[] statics = []; // Every entry is BoundOrigin.Static.
+
+    // DECISIONS BU-60: whether a Type's erased form has an Origin position, a fact every Type that erases alike shares: a layer whose Origin
+    // erases (HasOwnOrigin), a raw layer (which the erased form leaves stating none) or an Origin argument, in it or a part. Erase keeps
+    // every position, so the Type itself answers.
+    internal static bool HasOriginPosition(BoundType type)
+    {
+        if (HasOwnOrigin(type) || type.Semantics == SemanticsKind.Raw || type.OriginArguments.Count != 0)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (HasOriginPosition(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 6.1.3, 8.15.1: whether a body keyed by the definition is generated per closed substitution of its own and its enclosing
     // declarations' slots rather than once.
@@ -61,11 +85,13 @@ internal sealed partial class TyCtxt
         return erased;
     }
 
-    // The named function whose body holds a scope, through anonymous functions and blocks: the first named function on its scope chain, or
-    // in a custom accessor's body the accessor's executing function (SPEC 11.3), the definition its body is keyed by; null for a scope in a
-    // container outside every body. Lexical self and the lexical declaring struct of a direct base call are this function's (SPEC 6.4.4;
-    // an instance accessor's body is a derived instance body, DECISIONS BU-53).
-    internal BindingSymbol? EnclosingFunction(BindingScope? scope)
+    // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60): the nearest declaration enclosing a scope that has an instance, whose instance an instance of the
+    // code there holds, through anonymous functions and blocks: a named function, the definition its body is keyed by; in a custom
+    // accessor's body the accessor's executing function (SPEC 11.3); for code in a container outside every body (a Field's or a static's
+    // initializer, which every constructor runs under the Type's premises) the container, the declaring Type; null in a module's root.
+    // Lexical self and the lexical declaring struct of a direct base call are a function's answer (SPEC 6.4.4; an instance accessor's body
+    // is a derived instance body, DECISIONS BU-53); a Type has neither.
+    internal BindingSymbol? EnclosingDeclaration(BindingScope? scope)
     {
         for (; scope is not null; scope = scope.Parent)
         {
@@ -75,18 +101,20 @@ internal sealed partial class TyCtxt
                     return function.BoundSymbol;
                 case PropertyAccessorKoto accessor:
                     return CallPlan.Accessor(accessor);
-                case DeclarationContainerKoto:
-                    return null;
+                case DeclarationContainerKoto container:
+                    return container.BoundSymbol;
             }
         }
 
         return null;
     }
 
-    // The function whose body declares a definition, the scope declaring it: null for a member or a top-level declaration. An instance of a
-    // nested definition holds that function's instance (SPEC 6.1.3, 9.3): the instance collector requires its substitution to carry it, and
-    // a Closure takes it as its context (SubstOfClosure, Binding.ClosePart).
-    internal BindingSymbol? EnclosingFunction(BindingSymbol definition) => this.EnclosingFunction(definition.Scope);
+    // The declaration whose instance a definition's instance holds (SPEC 6.1.3, 9.3): that of the scope declaring it; null for a member or a
+    // top-level declaration, a definition other than a Closure that a container declares, whose own substitution is its instance. The
+    // instance collector requires a nested definition's substitution to carry it, and a Closure takes it as its context (ClosureContext).
+    internal BindingSymbol? EnclosingDeclaration(BindingSymbol definition)
+        => definition.Scope.Owner is DeclarationContainerKoto && definition.Declaration is not FunctionKoto { IsAnonymous: true }
+            ? null : this.EnclosingDeclaration(definition.Scope);
 
     // SPEC 6.4.6, 8.4: whether a call of a function dispatches (CallPlan.KindOf), a requirement to the witness of its conforming Type and a
     // virtual slot to the override its receiver's Type selects, so that no one body is the target of the function's Item (K6 and K8 resolve
