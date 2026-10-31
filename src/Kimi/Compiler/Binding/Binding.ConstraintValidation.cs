@@ -589,30 +589,36 @@ public sealed partial class Binding
         else if (proof == ConstraintProof.Unknown)
         {
             // The provisional pass can gain bindings/conformance evidence across the Mod boundary; it leaves the U fact to its frame's
-            // end. The final record is the one record after a Callable clause's proof (census #25): with the proof's U fact, the clause
-            // and its comparison's failing condition (design-r2 Amendments 4 and 5); without one, the Constraint alone.
+            // end.
             if (mode == BindingMode.Final)
             {
-                var fact = this.TakeFailedCause().Fact;
-                if (fact is not null && fact.Epoch != this.frameEpoch)
-                {
-                    this.Fail(use, BindingFailure.Internal); // A foreign fact is a broken contract.
-                }
-                else if (fact is { Clause: { } clause } && fact.Failure.IsCondition)
-                {
-                    var contract = this.ContractFact(use, fact.Failure, use);
-                    this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, new(use, clause, fact.Subject, contract));
-                }
-                else
-                {
-                    this.Fail(use, BindingFailure.UnprovenConstraint);
-                }
+                this.FailUnprovenConstraint(use, unresolved: false);
             }
             else if (use.BindingState != BindingState.Invalid)
             {
                 use.BindingState = BindingState.Unresolved;
             }
         }
+    }
+
+    // The one record of a Constraint proven Unknown (census #25): with the proof's U fact, the clause and its comparison's failing
+    // condition (design-r2 Amendments 4 and 5); without one, the Constraint alone; a foreign fact is a broken contract. RequireConstraint
+    // and the direct sites that settle a clause list themselves (Enums, Specializations) record through it.
+    private BoundType? FailUnprovenConstraint(Koto use, bool unresolved)
+    {
+        var fact = this.TakeFailedCause().Fact;
+        if (fact is not null && fact.Epoch != this.frameEpoch)
+        {
+            return this.Fail(use, BindingFailure.Internal);
+        }
+
+        if (fact is not { Clause: { } clause } || !fact.Failure.IsCondition)
+        {
+            return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
+        }
+
+        var record = new CallableConstraintFact(use, clause, fact.Subject, this.ContractFact(use, fact.Failure, use));
+        return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
 
     // A proof of a proposition, settled where it is no longer combined (EndProof).

@@ -94,6 +94,29 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "apply(f@ref)"), (error.Code, Text(source, error.Span)));
     }
 
+    // SPEC 8.3, 15.6.1 (G216 (a) U2.1 f2-3, census #25): a written Type whose Callable clause is Unknown only in the Origin part is the
+    // Constraint's one record at that Type, from its proof's own U fact (design-r2 Amendments 4 and 5): the clause and the member; the twin
+    // binds F to a signature that fits.
+    [Theory]
+    [InlineData("(ref/i32 during static) -> i32", true)]
+    [InlineData("(ref/i32) -> i32", false)]
+    public void AWrittenTypesCallableClauseIsRecordedFromItsProof(string argument, bool fails)
+    {
+        var use = $"H<{argument}>";
+        var source = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public init() => ()\nfunc use(h: ref/" + use + ") -> i32 => 0\npublic func main() => ()\n";
+        var result = DiagnosticCorpus.Check(source);
+        if (!fails)
+        {
+            Assert.True(result.Accepted);
+            return;
+        }
+
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), DiagnosticCategory.Proof, use), (error.Code, error.Category, Text(source, error.Span)));
+        Assert.Equal(["subject", "constraint", "member", "relation", "longer", "shorter"], error.Reason!.Select(static x => x.Name));
+        Assert.Equal(["F is Callable<(ref/i32) -> i32>", "the 1st parameter", "outlives", "ref/i32", "static"], error.Reason!.Skip(1).Select(static x => x.Value));
+    }
+
     // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.
     [Fact]
     public void EveryOutputCarriesTheCallableRecord()
