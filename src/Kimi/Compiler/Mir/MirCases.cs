@@ -158,6 +158,21 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
+    /// <summary>Gets the Type below a callee's parameter under a call's substitution in the selected view (SPEC 4.9.6), what a published
+    /// row runs on or destroys, which A4 and A5 read: the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance,
+    /// DECISIONS R4-M139), Rejected storage included.</summary>
+    /// <param name="callee">The callee.</param>
+    /// <param name="subst">The call's substitution.</param>
+    /// <param name="slot">The parameter's slot.</param>
+    /// <returns>The Type below its layer; null where the substitution does not instantiate it or its storage is a Limit.</returns>
+    internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
+    {
+        var declared = TyCtxt.Signature(callee, null, slot, out _);
+        var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
+        _ = TyCtxt.Layer(parameter is null ? null : this.Type(parameter), out var below, out _);
+        return below;
+    }
+
     /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5): the Place it applies to itself
     /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
     /// case Type of the step's Type either way.</summary>

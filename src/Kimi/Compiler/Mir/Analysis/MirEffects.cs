@@ -188,18 +188,18 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             if (row.Runs is { } requirement)
             {
-                this.Item(this.Below(symbol, subst, row.On), Requires, requirement);
+                this.Item(cases.Below(symbol, subst, row.On), Requires, requirement);
             }
 
             if (row.Destroys >= 0)
             {
-                this.Item(this.Below(symbol, subst, row.Destroys), Drop);
+                this.Item(cases.Below(symbol, subst, row.Destroys), Drop);
             }
 
             if (row.Calls >= 0)
             {
                 // SPEC 4.9.6, 8.11.4: the row's Callable input, called through a shared borrow of the actual argument and then destroyed.
-                var callable = this.Below(symbol, subst, row.Calls);
+                var callable = cases.Below(symbol, subst, row.Calls);
                 this.Item(callable, Shared);
                 this.Item(callable, Drop);
             }
@@ -263,17 +263,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             default:
                 throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
         }
-    }
-
-    // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
-    // destroys: the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139), Rejected storage included;
-    // null where the substitution does not instantiate it or its storage is a Limit.
-    private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
-    {
-        var declared = TyCtxt.Signature(callee, null, slot, out _);
-        var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
-        _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
-        return below;
     }
 
     // SPEC 8.11.3 rule 1: a call the caller's premises bound may destroy each value moved into it.

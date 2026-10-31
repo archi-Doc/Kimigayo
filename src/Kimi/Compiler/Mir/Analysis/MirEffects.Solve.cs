@@ -252,17 +252,17 @@ internal sealed partial class MirEffects
         {
             if (row.Runs is { } requirement)
             {
-                this.Process(this.Below(symbol, subst, row.On), Requires, requirement);
+                this.Process(cases.Below(symbol, subst, row.On), Requires, requirement);
             }
 
             if (row.Destroys >= 0)
             {
-                this.Process(this.Below(symbol, subst, row.Destroys), Drop);
+                this.Process(cases.Below(symbol, subst, row.Destroys), Drop);
             }
 
             if (row.Calls >= 0)
             {
-                var callable = this.Below(symbol, subst, row.Calls); // SPEC 4.9.6, 8.11.4: its Callable input, called then destroyed.
+                var callable = cases.Below(symbol, subst, row.Calls); // SPEC 4.9.6, 8.11.4: its Callable input, called then destroyed.
                 this.Process(callable, Shared);
                 this.Process(callable, Drop);
             }

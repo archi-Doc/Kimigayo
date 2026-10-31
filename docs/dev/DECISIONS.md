@@ -5910,6 +5910,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `InternalInvariant_Kd` at the Drop (BU-47's contract). Staging, removal unit U1c: an abstract part not proven Copy composes nothing.
     Rejected: I (a third classification, a mode parameter), B (Binding publishing per-Type rows), C (lowering drops to calls), R
     (joining the parts' retentions: A5 would derive a retention).
+  - Published destroying calls and C3's guard (U1b-2): after a call's own stores, a published row's `Destroys` composes the rows of
+    the Type below that parameter (`MirCases.Below`, now shared by A4 and A5) through the call's own reading of the argument (a
+    borrow's value; a by-value argument's operand Place). C3's guard is deleted (supersedes R4-M143 in part; its removal condition
+    met except the narrowed branch): every referent store reaches refs(S) alone, except the staging where the referent observes only
+    through an abstract part not proven Copy (R4-M147's branch: W kept, a Loan or address past refs(S) a located `Unsupported_Kd`).
+    A referent past the walk's bound at a non-destroying referent store no longer limits; a destroying call's Deep part keeps its
+    depth limit through the rows (R4-M153). G338 is independent (a seed choice entering the same closures; needs Binding's fact).
+  - Open (candidate's implementation, 2026-10-31): V16 `DestructionsWorkStaysLinearInTheirNumber` fails (Work grows faster than
+    linearly with N writers storing into one slot); `TheOuterReplacementCasesKeepTheirVerdicts` gains an error at c80's
+    `var slot2 = z@uniq` (an rc payload's drop row's Reached entry stores the receiver's chain into slot2), outside rows.md.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

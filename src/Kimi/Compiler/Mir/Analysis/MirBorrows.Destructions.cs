@@ -8,7 +8,9 @@ namespace Kimi.Compiler.Mir;
 // `drop` it runs, whose `self` is a `uniq/Self` receiver referring to the destroyed part. At a Drop, each part A2 publishes it destroys in
 // the view (MirDropTable.Destroyed) composes the rows of its case Type (Rows): the destruction walk classified once by MirTypes
 // (MirTypes.Destroys), a declared drop Binding's drop rows (TyCtxt.Retains over the destructor and the part's Synthesized Subst), an
-// erased destruction TyCtxt.RetainsErasedDestruction, a Sealed handle's payload walked on, a release nothing.
+// erased destruction TyCtxt.RetainsErasedDestruction, a Sealed handle's payload walked on, a release nothing. At a published destroying
+// call (SPEC 4.9.6: TyCtxt.Published's Destroys), after the call's own stores, the rows of the Type below the destroyed parameter
+// (MirCases.Below), through the call's own reading of that argument: a borrow's value, a by-value argument's operand Place.
 // Input: the state before the Drop, its terminator and block, whether the checks replay runs; the rows memo (MirBorrows.Accesses'
 // destructions, per definition and program version).
 // Output: the Drop's entries: through each row's outputs, into each holder W reaches from the receiver's seed, the record of the storage
@@ -31,39 +33,72 @@ internal sealed partial class MirBorrows
     private int dropSeed; // The seed holder, -1 for a pointer seed (dropPointer).
     private int dropPointer;
     private bool dropWhole;
+    private bool seedWhole; // Whether the seed holder is a whole root (Destination's whole).
 
     // A Drop (SPEC 15.6.4): the rows of each part A2 publishes it destroys, applied through the receiver's seed on the state before it.
-    private void Destroying(ulong[] state, in MirTerminator drop, int block, bool checks)
+    private void ComposeDrop(ulong[] state, in MirTerminator drop, int block, bool checks)
     {
         this.destroyedParts.Clear();
         var parts = new Parts(this);
         this.program.Drops.Destroyed(this.body, block, this.view, cases.Type(this.body.TypeOf(drop.Place)!), flow, ref parts);
-        if (this.destroyedParts.Count == 0)
+        if (this.destroyedParts.Count == 0 || !this.Seed(state, this.Destination(state, drop.Place)))
         {
             return;
         }
 
-        var (inline, slot, whole, pointer, _) = this.Destination(state, drop.Place);
-        if (inline && (slot < 0 || (int)state[slot] is 0 || (int)state[slot] == this.escapedSet))
-        {
-            return; // No holder, or one whose drops can store only E's own content (the skip).
-        }
-
-        (this.dropSeed, this.dropPointer, this.dropChain) = (inline ? slot : -1, pointer, -1);
         foreach (var (type, depth) in this.destroyedParts)
         {
-            var (start, count) = this.Rows(type);
-            for (var r = start; r < start + count; r++)
-            {
-                var (retention, own) = this.destroyingRows[r];
-                this.dropWhole = inline && whole && depth == 0 && own;
-                this.Compose(state, drop.Place.Root, type, retention, checks);
-            }
+            this.Compose(state, drop.Place.Root, type, depth, checks);
+        }
+    }
+
+    // A published destroying call (SPEC 4.9.6, 15.6.4; rule 3): the rows of the Type below its destroyed parameter, read as the call reads
+    // that argument on the state before it: a borrow's value (refs(S)), a by-value argument's operand Place (insertOrReplace's key).
+    private void ComposeCleanup(ulong[] state, in MirTerminator call, bool checks)
+    {
+        if (call.Callee is not { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } symbol } || types.Published(symbol) is not { Destroys: >= 0 } row ||
+            cases.Below(symbol, call.Callee.Subst, row.Destroys) is not { } type)
+        {
+            return;
+        }
+
+        var position = MirCallee.Position(symbol, row.Destroys);
+        var operand = this.body.Operands[call.Start + position];
+        var at = Borrows(this.TypeOf(operand)) ? (false, -1, false, this.argValues[position], 0)
+            : operand.Kind == MirOperandKind.Const ? (true, -1, false, 0, 0) : this.Destination(state, operand.Place);
+        if (this.Seed(state, at))
+        {
+            this.Compose(state, operand.Kind == MirOperandKind.Const ? -1 : operand.Place.Root, type, 0, checks);
+        }
+    }
+
+    // The receiver's seed (rule 2): an inline Place's holder or a pointer's value; false where there is no holder, or one whose drops can
+    // store only E's own content (it holds nothing or only {Φ_E}: the skip).
+    private bool Seed(ulong[] state, (bool Inline, int Slot, bool Whole, int Pointer, int Through) at)
+    {
+        if (at.Inline && (at.Slot < 0 || (int)state[at.Slot] is 0 || (int)state[at.Slot] == this.escapedSet))
+        {
+            return false;
+        }
+
+        (this.dropSeed, this.dropPointer, this.dropChain, this.seedWhole) = (at.Inline ? at.Slot : -1, at.Pointer, -1, at.Whole);
+        return true;
+    }
+
+    // The rows of one destroyed part at its depth below the Place, each applied through the seed.
+    private void Compose(ulong[] state, int root, BoundType type, int depth, bool checks)
+    {
+        var (start, count) = this.Rows(type);
+        for (var r = start; r < start + count; r++)
+        {
+            var (retention, own) = this.destroyingRows[r];
+            this.dropWhole = this.dropSeed >= 0 && this.seedWhole && depth == 0 && own;
+            this.Apply(state, root, type, retention, checks);
         }
     }
 
     // One row of a destruction: its Limit as a call's (R4-M51), else each output's store from the seed (W) by its records.
-    private void Compose(ulong[] state, int root, BoundType part, CallRetention retention, bool checks)
+    private void Apply(ulong[] state, int root, BoundType part, CallRetention retention, bool checks)
     {
         if (retention.IsLimit)
         {

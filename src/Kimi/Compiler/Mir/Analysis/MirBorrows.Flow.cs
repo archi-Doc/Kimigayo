@@ -35,7 +35,7 @@ internal sealed partial class MirBorrows
             }
             else if (data.Terminator.Kind == MirTerminatorKind.Drop)
             {
-                this.Destroying(state, data.Terminator, block, checks); // MirBorrows.Destructions (SPEC 15.6.4).
+                this.ComposeDrop(state, data.Terminator, block, checks); // MirBorrows.Destructions (SPEC 15.6.4).
             }
 
             return;
