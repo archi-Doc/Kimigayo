@@ -8927,7 +8927,8 @@ resumed by R4-M86 (2026-10-20).
   - Readers' view, `TyCtxt.ClosureInstance`: the context, except a held instance with an Origin position (a borrow, Slice, handle or raw
     layer, or an Origin argument, static included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance), which is closed
     in no instance. ClosureSignature (ClosureDefinitionSignature), ClosureEnvironment and SubstOfClosure read it; every other
-    ClosureContext read is interning, equality or Retains' memo key. SubstOfClosure gives the closure's own identity there, so the
+    ClosureContext read is interning, equality, Erase, Retains' memo key or HoverBuilder's key. SubstOfClosure gives the closure's
+    own identity there, so the
     collector reports the EnclosingInstance gap at each site through CarriesInstance's first branch, exactly where dev does, until PLAN
     G300's per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
   - Exception to KD3 (the collector's representative erased only into its key) and to TyCtxt.Instances' rule against proving on erased

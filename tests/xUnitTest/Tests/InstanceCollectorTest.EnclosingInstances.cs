@@ -52,8 +52,8 @@ public sealed partial class InstanceCollectorTest
         { "closed struct", $"{ClosedField}{Init}let a = Box.init()\n", 1, string.Empty },
         { "no definition", $"{FieldHead}{Capacity}{Init}{Built}", 0, string.Empty },
         { "stored, read through another instance", $"struct Box<T>\n    var f = {Sized}{Init}{Cross}", 2, string.Empty },
-        { "owners with an Origin position, joined", Staged("let g = if c => bs.f else => bx.f"), 0, $"Unsupported_Kd {Pass}" },
-        { "owners with an Origin position, assigned", Staged("var g = bx.f\n    g = bs.f"), 0, $"Unsupported_Kd {Pass}" },
+        { "owners with an Origin position, joined", OriginPositionOwners("let g = if c => bs.f else => bx.f"), 0, $"Unsupported_Kd {Pass}" },
+        { "owners with an Origin position, assigned", OriginPositionOwners("var g = bx.f\n    g = bs.f"), 0, $"Unsupported_Kd {Pass}" },
         { "a function's Closure in a held context", Program(GenericClosureIdentityTest.HeldContext), 4, string.Empty },
         { "the same with an Origin parameter", Program(GenericClosureIdentityTest.HeldContextRef), 4, string.Empty },
         { "a held context in a held context", Program(GenericClosureIdentityTest.HeldContextNested), 6, string.Empty },
@@ -132,7 +132,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("let g = if c => bs.f else => bx.f", "Unsupported_Kd " + Pass)]
     [InlineData("var g = bx.f\n    g = bs.f", "Unsupported_Kd " + Pass)]
     [InlineData("let g = bs.f\n    _ = g(s)", "Unsupported_Kd " + Pass + "; NoApplicableOverload_Kd g(s)")]
-    public void AnOwnerWithAnOriginPositionStaysTheGap(string body, string records) => Assert.Equal(records, CheckRecords(Staged(body)));
+    public void AnOwnerWithAnOriginPositionStaysTheGap(string body, string records) => Assert.Equal(records, CheckRecords(OriginPositionOwners(body)));
 
     // SPEC 3, 6.1.3 (DECISIONS BU-60, the owner's (a)): one producer forms a held closure's context from the instance modulo Origins, none
     // in the owner's own frame (the identity test), so every read of one instance has one Closure Type and two instances never share one.
@@ -144,7 +144,7 @@ public sealed partial class InstanceCollectorTest
     public void OneInstanceModuloOriginsHasOneClosureType(string form, string source, string records)
         => Assert.True(CheckRecords(source) is var actual && actual == records, $"{form}: {actual}");
 
-    private static string Staged(string body)
+    private static string OriginPositionOwners(string body)
         => $"{PassBox}func pick(c: bool, s: ref/i32 during static, x: ref/i32) -> i32\n    let bs = Box<ref/i32 during static>.init(v: s)\n" +
             $"    let bx = Box<ref/i32>.init(v: x)\n    {body}\n    return 1\nConsole.writeLine(\"ok\")\n";
 

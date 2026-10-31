@@ -69,9 +69,20 @@ internal sealed partial class TyCtxt
     // a held instance its readers do not see is (DECISIONS BU-60). The closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63,
     // R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
-        => closure is { Symbol: { Declaration: FunctionKoto { ClosureDefinition: not null } } symbol }
-            ? ClosureInstance(closure) ?? this.Identity((closure.ClosureContext is null ? this.EnclosingDeclaration(symbol) ?? symbol : symbol).Declaration)
-            : null;
+    {
+        if (closure is not { Symbol: { Declaration: FunctionKoto { ClosureDefinition: not null } } symbol })
+        {
+            return null;
+        }
+
+        if (ClosureInstance(closure) is { } instance)
+        {
+            return instance;
+        }
+
+        var frame = closure.ClosureContext is null ? this.EnclosingDeclaration(symbol) ?? symbol : symbol;
+        return this.Identity(frame.Declaration);
+    }
 
     // DECISIONS BU-60: the one producer of the context of a closure a Type's instance holds (a Field initializer's): the instance modulo
     // Origins (Erase), as the declaring Type of a substitution whose target is the closure itself; none where it is the erased identity of
