@@ -5745,6 +5745,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     when that verdict is the clause's outcome; a composite whose parts settle as separate judgments holds it across them
     (`HoldClause`, as `HoldUnknown`), a candidate trial keeps it (`trialClause`), frames drop it as they drop the U fact; no decision
     reads it. Its readers come with G352 (selection's `CandidateConstraintFailure`) and G351 (r2-5).
+  - G351 closed (U2.1 r2-5, 2026-10-31; BU's B1): a function reference's, a selection's pending candidate's and an overloaded
+    reference's Constraint records have one owner by meaning and one channel per node, RequireConstraint's shared path
+    (`Binding.ConstraintValidation.Records.cs`: `RequireClauses`, `FailClauseRecord`, `ReportClauseConstraint`), made from the one
+    clause fact after the proof (a Callable clause proven Unknown with its U fact names its member); no record is made during a proof.
+    `referenceConstraints`, `RecordReferenceConstraint` and `ReportReferenceConstraint` are deleted, with the `failureUse` parameter.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.

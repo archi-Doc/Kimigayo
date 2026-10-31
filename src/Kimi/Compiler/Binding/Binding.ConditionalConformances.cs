@@ -453,7 +453,7 @@ public sealed partial class Binding
         return this.ProveConditionalPremises(path.Premises, path.Type.Declaration, type, scope);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope, Koto? failureUse = null)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope)
     {
         if (premises is null)
         {
@@ -474,11 +474,6 @@ public sealed partial class Binding
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
             var limit = this.limitRead;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
-            if (bound is not null && failureUse is not null)
-            {
-                this.RecordReferenceConstraint(failureUse, condition, bound, proof);
-            }
-
             if (proof != ConstraintProof.Proven)
             {
                 var onLimit = proof == ConstraintProof.Unknown && this.limitRead is not null && !ReferenceEquals(this.limitRead, limit);

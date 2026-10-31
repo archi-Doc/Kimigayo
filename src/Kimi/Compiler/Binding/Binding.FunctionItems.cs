@@ -8,7 +8,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, CallPlan> functionItemContexts = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, ReferenceConstraintFailure>? referenceConstraints;
 
     private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
 
@@ -289,10 +288,10 @@ public sealed partial class Binding
 
         var container = this.ReferenceContainer(use, symbol);
         this.failedCause = null;
-        var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container, failureUse: use);
+        var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container);
         if (proof != ConstraintProof.Proven)
         {
-            this.RequireConstraint(use, proof, this.capabilityMode);
+            this.RequireClauses(use, proof, this.capabilityMode);
             return null;
         }
 
@@ -408,10 +407,10 @@ public sealed partial class Binding
 
             var container = this.ReferenceContainer(use, selected);
             this.failedCause = null;
-            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths, use);
+            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths);
             if (proof != ConstraintProof.Proven)
             {
-                this.RequireConstraint(use, proof, this.capabilityMode);
+                this.RequireClauses(use, proof, this.capabilityMode);
                 return null;
             }
 
@@ -519,37 +518,5 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(components, clearArray: true);
         }
-    }
-
-    // A Callable clause proven Unknown with its proof's U fact is RequireConstraint's record (FailUnprovenConstraint, census #25).
-    // Staged (U2.1 f2-4): referenceConstraints' Refuted, fact-less and pending outcomes route through RequireConstraint; then its record
-    // path is deleted (PLAN, U2.1 f2-4's follow-up).
-    private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
-    {
-        var shared = proof == ConstraintProof.Unknown && this.unknownRead is { Failure.IsCondition: true } fact && ReferenceEquals(fact.Clause, clause);
-        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !shared)
-        {
-            var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
-            // A refuted clause, then the first Unknown one, is the reported cause.
-            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted))
-            {
-                failures[use] = new(clause, constraint, proof);
-            }
-        }
-    }
-
-    private void ReportReferenceConstraint(Koto use, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var call = fact.Declaration is not null;
-        var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
-        var subject = ClauseSubject(fact.Constraint) is { } type ? DiagnosticTypeName(type) : null;
-        var clause = fact.Clause.ToString();
-        var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
-        use.Report(
-            requirement,
-            code,
-            evidence: subject is null ? null : [subject, member, clause],
-            note: $"{(call ? "Call" : "Function Item")} {member} requires {clause}; this condition {outcome}" + (subject is null ? " under the supplied bindings" : $" for {subject}"),
-            related: [("constraint", fact.Clause, call ? "required by the called declaration" : "required by the referenced declaration")]);
     }
 }

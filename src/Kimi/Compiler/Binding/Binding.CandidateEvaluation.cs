@@ -230,7 +230,7 @@ public sealed partial class Binding
     private BoundType? FailPendingConstraint(InvocationKoto call, ReferenceConstraintFailure fact)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+        return this.FailClauseRecord(call, fact, unresolved: true);
     }
 
     // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking

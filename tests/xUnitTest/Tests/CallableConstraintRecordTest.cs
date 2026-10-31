@@ -114,6 +114,22 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.True(DiagnosticCorpus.Check(fits).Accepted);
     }
 
+    // SPEC 8.3, 23.1.2 (G216 (a) U2.1 r2-5, G351, BU's B1): a reference's Constraint record has one channel, from the one clause fact at
+    // the clause list's combined verdict: the first Unknown clause F, whose U fact gives the member, also when a later clause is Unknown
+    // (G, another Callable clause; T, an Owned clause without a U fact). Before, the later clause's record replaced F's.
+    [Theory]
+    [InlineData("    G is Callable<(ref/i32) -> i32>\n", "(ref/i32 during static) -> i32")]
+    [InlineData("    G is Owned\n", "T")]
+    public void AReferencesRecordIsItsFirstClauseAtTheVerdict(string second, string argument)
+    {
+        var use = $"pick<(ref/i32 during static) -> i32, {argument}>";
+        var source = "func pick<F, G>() -> i32\n    F is Callable<(ref/i32) -> i32>\n" + second + "    return 0\n" +
+            "func use<T>(x: T) -> i32\n    let p = " + use + "\n    return 0\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), DiagnosticCategory.Proof, use), (error.Code, error.Category, Text(source, error.Span)));
+        Assert.Equal(["F is Callable<(ref/i32) -> i32>", "the 1st parameter", "outlives", "ref/i32", "static"], error.Reason!.Skip(1).Select(static x => x.Value));
+    }
+
     // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.
     [Fact]
     public void EveryOutputCarriesTheCallableRecord()

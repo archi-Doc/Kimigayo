@@ -629,7 +629,7 @@ public sealed partial class Binding
         this.referenceSlotFacts?.Clear();
         this.erasureSignatures?.Clear();
         this.callableConstraints?.Clear();
-        this.referenceConstraints?.Clear();
+        this.clauseConstraints?.Clear();
         this.operatorOperands?.Clear();
         this.arithmeticConformanceFailures?.Clear();
         this.arithmeticSelectionFailures?.Clear();

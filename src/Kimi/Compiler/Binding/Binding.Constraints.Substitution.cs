@@ -40,7 +40,7 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null, Koto? failureUse = null)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null)
     {
         var outer = this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
@@ -89,11 +89,6 @@ public sealed partial class Binding
             else if (this.unknownRead is { } fact && !ReferenceEquals(fact, unknown))
             {
                 fact.Clause = constraint; // The outermost clause list's stamp is the last (design-r2 Amendment 4).
-            }
-
-            if (failureUse is not null)
-            {
-                this.RecordReferenceConstraint(failureUse, constraint, substituted, proof);
             }
 
             var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
