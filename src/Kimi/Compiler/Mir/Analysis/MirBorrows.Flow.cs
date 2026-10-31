@@ -33,6 +33,10 @@ internal sealed partial class MirBorrows
             {
                 this.Call(state, data.Terminator, checks);
             }
+            else if (data.Terminator.Kind == MirTerminatorKind.Drop)
+            {
+                this.Destroying(state, data.Terminator, block, checks); // MirBorrows.Destructions (SPEC 15.6.4).
+            }
 
             return;
         }
@@ -93,17 +97,10 @@ internal sealed partial class MirBorrows
     // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
-        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
-        }
-
         var receiving = this.wCount == 0 ? null : cases.Type(this.body.TypeOf(place)!); // Rule W's receiving part (MirBorrows.Causes).
-        if (last < 0)
+        var (inline, slot, whole, pointer, through) = this.Destination(state, place);
+        if (inline)
         {
-            var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
-            var whole = count == 0 && place.Root >= 0;
             if (slot >= 0)
             {
                 var (arrived, issued) = (this.Arrive(slot, receiving, whole, 0, value), this.Arrive(slot, receiving, whole, 0, own));
@@ -113,14 +110,32 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (layer, parents) = this.Prefix(state, place.Root, last);
-        var pointer = this.PointerOf(place.Root, layer, parents, last); // What its last Deref goes through.
-        var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
         this.Refs(pointer);
         foreach (var target in this.targets)
         {
             this.AddSlot(target, this.Arrive(target, receiving, false, through, value), this.Arrive(target, receiving, false, through, own), Joined, issue);
         }
+    }
+
+    // The holders a store into a Place writes (P1, P10), which a destruction's receiver also refers to (MirBorrows.Destructions): an
+    // inline Place's root slot (E for a static; below 0 for a root that holds no Loan), whole for a whole root; past its last Deref the
+    // value its last Deref goes through (pointer), and that value again where the Place is the whole referent (rule W's write-through).
+    private (bool Inline, int Slot, bool Whole, int Pointer, int Through) Destination(ulong[] state, MirPlace place)
+    {
+        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
+        for (var i = 0; i < count; i++)
+        {
+            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
+        }
+
+        if (last < 0)
+        {
+            return (true, place.Root < 0 ? Escaped : this.slots[place.Root], count == 0 && place.Root >= 0, 0, 0);
+        }
+
+        var (layer, parents) = this.Prefix(state, place.Root, last);
+        var pointer = this.PointerOf(place.Root, layer, parents, last);
+        return (false, -1, false, pointer, last == count - 1 ? pointer : 0);
     }
 
     // A Move of a whole root empties it.

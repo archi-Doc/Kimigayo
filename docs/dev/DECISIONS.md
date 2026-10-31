@@ -5899,6 +5899,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     nothing; a runtime Drop without a group its Place's case Type at depth 0); A4's private reading (`MirEffects.Dropped`,
     `Destroyed`, `Covers`) moved there unchanged in meaning (responsibility A4 → A2). Code generation's own reading
     (`FunctionCodegen.Drops`, flag tests and glue) is another contract and stays.
+  - A5's reach split (U1a-2): seeds (the holders a set names; a destroyed Place's holder) and closures (`Closing`/`Closure` for a
+    chain, `Walking`/`Passes` for W); the Call path is routed through the set seeds.
+  - The rule (U1b-1, `MirBorrows.Destructions.cs`): at each Drop, each part A2 publishes composes the rows of its case Type, classified
+    once (a declared drop `TyCtxt.Retains(destructor, Synthesized(destructor, part, []))`, an erased destruction
+    `RetainsErasedDestruction`, a Sealed payload walked on), memoized with the observation per case Type (one pooled list). The receiver
+    is one seed, the Place's holders as Store's destination gives them (`Destination`, shared with Store): Content the read through it,
+    Chain its closure; no Loan is issued (A1 rejected: +6.5-8.3 % Work); every row reads the state before the Drop (one application);
+    a seed holder holding nothing or only {Φ_E} composes nothing. A row's Limit is a call's (R4-M51); a Value row at the receiver is
+    `InternalInvariant_Kd` at the Drop (BU-47's contract). Staging, removal unit U1c: an abstract part not proven Copy composes nothing.
+    Rejected: I (a third classification, a mode parameter), B (Binding publishing per-Type rows), C (lowering drops to calls), R
+    (joining the parts' retentions: A5 would derive a retention).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

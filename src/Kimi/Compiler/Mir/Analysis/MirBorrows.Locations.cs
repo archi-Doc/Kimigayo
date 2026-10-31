@@ -71,12 +71,12 @@ internal sealed partial class MirBorrows
             this.Limit(this.Subject(at), (this.limit ? MirOutcome.Limit : MirOutcome.None).Join(deep ? MirOutcome.Deep : MirOutcome.None));
         }
 
-        (this.limit, this.deep) = (false, false);
-
-        if (terminator && this.Broken(this.body.Blocks[block].Terminator))
+        if (terminator && (this.Broken(this.body.Blocks[block].Terminator) || this.brokenDrop))
         {
-            this.Internal(at); // G136 (R4-M148).
+            this.Internal(at); // G136 (R4-M148); a destruction's Value row at its receiver (BU-47, MirBorrows.Destructions).
         }
+
+        (this.limit, this.deep, this.brokenDrop) = (false, false, false);
 
         this.Activations(at);
         this.Departures(at, accessed);

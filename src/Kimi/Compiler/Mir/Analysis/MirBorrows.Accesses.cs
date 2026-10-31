@@ -13,7 +13,8 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<BoundType, byte> entered = new(ReferenceEqualityComparer.Instance); // Observation's scratch.
-    private readonly Dictionary<BoundType, MirOutcome> destructions = new(ReferenceEqualityComparer.Instance); // Destruction's, by case Type.
+    // Destruction's and MirBorrows.Destructions' memo, by case Type: its observation and its rows' range in destroyingRows.
+    private readonly Dictionary<BoundType, (MirOutcome Observation, int Start, int Count)> destructions = new(ReferenceEqualityComparer.Instance);
     private (BindingSymbol? Definition, ulong Version) destructionsOf; // The definition and program version the destructions are for.
     private Access[] accesses = [];
     private int accessCount;
@@ -71,18 +72,7 @@ internal sealed partial class MirBorrows
     // and Sealed proofs).
     private AccessKind Destruction(BoundType type, out bool unproven)
     {
-        if (this.destructionsOf != (this.body.Key.Decl, this.program.Version))
-        {
-            this.destructionsOf = (this.body.Key.Decl, this.program.Version);
-            this.destructions.Clear();
-        }
-
-        ref var observation = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
-        if (!known)
-        {
-            observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.entered);
-        }
-
+        var observation = this.Destructed(type).Observation;
         unproven = observation.IsLimit;
         if (observation.IsDeep)
         {
@@ -90,6 +80,29 @@ internal sealed partial class MirBorrows
         }
 
         return observation.IsNone ? AccessKind.Destroy : AccessKind.Observe;
+    }
+
+    // A destroyed case Type's memo entry for the body's definition and the program version, made once: its observation
+    // (MirTypes.Observation, which reads the definition's Copy and Sealed proofs) and its rows (MirBorrows.Destructions' Collect, which
+    // reads the definition's retention), over one pooled list cleared with the memo.
+    private ref readonly (MirOutcome Observation, int Start, int Count) Destructed(BoundType type)
+    {
+        if (this.destructionsOf != (this.body.Key.Decl, this.program.Version))
+        {
+            this.destructionsOf = (this.body.Key.Decl, this.program.Version);
+            this.destructions.Clear();
+            this.destroyingRows.Clear();
+        }
+
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
+        if (!known)
+        {
+            var (observation, start) = (MirTypes.Observation(type, types, this.body.Key.Decl, this.entered), this.destroyingRows.Count);
+            this.Collect(type);
+            entry = (observation, start, this.destroyingRows.Count - start);
+        }
+
+        return ref entry;
     }
 
     // A Ref's access: a unique one borrows exclusively, the destroying reservation reads its target (A3 4's destroying(site)), another
