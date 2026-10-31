@@ -248,7 +248,7 @@ public sealed partial class Binding
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
-                ? this.Binding.ErasureSignatureFits(actual, type, node) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+                ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
 
         // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
         private readonly bool InfersConstruction(out Koto? target)

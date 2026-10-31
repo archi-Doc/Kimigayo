@@ -281,19 +281,35 @@ public sealed partial class Binding
     // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits under its conditions
     // (CallableSignatureFits), its minimum receiver is Shared and its complete environment is Owned. Initializations, returns and call
     // arguments share this judgment.
+    // A condition that fails is the conversion's one record at `node`, made here from the judgment's failure (RecordsCondition).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
-        => (actual.Kind == BoundTypeKind.Closure
-            ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && this.ClosureSignature(actual) is { } signature &&
-                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out _)
-            : this.ErasureSignatureFits(actual, expected, node)) &&
-            this.ProveOwned(actual, node) == ConstraintProof.Proven;
+    {
+        var failure = default(ComparisonFailure);
+        var signature = actual.Kind == BoundTypeKind.Closure ? this.ClosureSignature(actual) : this.FunctionItemSignature(actual);
+        if (actual.Kind == BoundTypeKind.Closure
+            ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && signature is not null &&
+                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
+            : this.ErasureSignatureFits(actual, expected, node, out failure))
+        {
+            return this.ProveOwned(actual, node) == ConstraintProof.Proven;
+        }
+
+        // SPEC 15.2.3: an environment that is not Owned is the conversion's record first (RecordMismatch's Constraint record).
+        _ = signature is not null && this.ProveOwned(actual, node) == ConstraintProof.Proven && this.RecordsCondition(node, failure, signature, expected);
+        return false;
+    }
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
-    // 353a12e81).
+    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition (ErasesToFunction) is the value's failure.
     private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
     {
+        if (node.BindingFailure == BindingFailure.OriginContract)
+        {
+            return true;
+        }
+
         if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.Function || ReferenceEquals(actual, expected) ||
             !ReferenceTypes.StorageMatches(expected, actual) || this.CheckTypeUse(actual, expected, node, out var failure) || !failure.IsCondition)
         {
@@ -308,12 +324,15 @@ public sealed partial class Binding
     // environment and a Closure's Origin conditions are judged after selection, at the argument (SPEC 15.6.1), and a failure there never
     // selects another candidate. A Function Item's Origin conditions belong to its signature, proven from the required contract at `use`
     // (SPEC 15.3.7).
-    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
-        => expected.Kind == BoundTypeKind.Function &&
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        failure = default;
+        return expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
-            this.ItemContractFits(actual, signature, expected, use, out _)) ||
+            this.ItemContractFits(actual, signature, expected, use, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out _)));
+            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out failure)));
+    }
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its

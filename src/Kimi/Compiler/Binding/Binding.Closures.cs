@@ -2,7 +2,7 @@
 
 // Closure literals (SPEC 7.7, 10.5, 10.8, 15.3.4): an anonymous function bound as a Closure value.
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
-//   binder; ClosureSignatureFits, InstantiatesPerCallInput, FailClosureHeader; a written result rebound per fixed context,
+//   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
 //   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
 //   (BindConcreteClosure); a Closure argument bound under a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers).
@@ -50,14 +50,6 @@ public sealed partial class Binding
 
     // Set only while TryCandidate asks whether a rejected candidate applies once its closure argument's minimum receiver is permitted.
     private bool permitClosureReceivers;
-
-    // SPEC 3, 10.7, 10.8: a written input that the anonymous function binds per call fits an expected input over any other Origin
-    // with the same referent, fixed or an open region, by instantiating that call-time Origin; the header is compatible, not equal.
-    private static bool InstantiatesPerCallInput(BoundType written, BoundType expected, FunctionKoto function, int position)
-        => written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
-            ReferenceEquals(origin.Binder, function) && origin.Slot == position &&
-            expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
-            ReferenceEquals(expected.Components[0], written.Components[0]);
 
     // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
@@ -125,8 +117,8 @@ public sealed partial class Binding
         }
     }
 
-    // The anonymous function's header as written, with omitted parts taken from the fixed signature, is the found Type; a
-    // different parameter count is stated by its count.
+    // The anonymous function's header as written, with omitted parts taken from the fixed signature, is the found Type of a structural
+    // mismatch (ClosureSignatureFits); a different parameter count is stated by its count.
     private BoundType? FailClosureHeader(FunctionKoto function, BoundType expected)
     {
         if (expected.Kind != BoundTypeKind.Function)
@@ -166,7 +158,8 @@ public sealed partial class Binding
             }
 
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected, default);
+            var header = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
+            return this.FailMismatch(function, function, header, expected, ComparisonFailure.Shape);
         }
         finally
         {
@@ -174,6 +167,10 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.5.4, 15.6.1 (design-r2 Amendment 3): the written header against a fixed signature, by its structural part only (Origins
+    // treated as equal): a Function Type of its arity whose written parameter and result Types agree in structure. Their Origins are the
+    // conversion's, judged once by erasure (SPEC 7.7.4, ErasesToFunction) after the closure binds under its written header, and never
+    // select a candidate.
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
     {
         if (expected.Kind != BoundTypeKind.Function)
@@ -199,13 +196,14 @@ public sealed partial class Binding
             }
 
             var type = this.BindType(function.Parameters[i].Type, scope);
-            if (type is null || !(ReferenceEquals(type, inputs.Components[i]) || InstantiatesPerCallInput(type, inputs.Components[i], function, i)))
+            if (!ReferenceTypes.StorageMatches(inputs.Components[i], type))
             {
                 return false;
             }
         }
 
-        return openResult || function.ReturnType is null || ReferenceEquals(this.ClosureResultType(function, inputs, scope), expected.Components[1]);
+        return openResult || function.ReturnType is null ||
+            ReferenceTypes.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
     }
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)

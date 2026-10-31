@@ -7,9 +7,10 @@ namespace Kimi.Compiler;
 
 // The records of a failed common Function conversion (SPEC 7.7.4, 10.7, 15.2.3), a part of the diagnostics adapter.
 // - Responsibility: the Note that says why a Function Item, Closure or Function value does not convert to the expected Function Type
-//   (ClosureConversionNote), and an Owned failure's Constraint record (ReportOwnedConversion).
-// - Inputs: the mismatch's Types and the Owned fact (OwnedConversionFact); the conversion rules are judged in Binding.FunctionTypes and
-//   Binding.OwnedConversions.
+//   (ClosureConversionNote), an Owned failure's Constraint record (ReportOwnedConversion), and a failed condition's one record from the
+//   comparison's own failure (ContractFact, RecordsCondition).
+// - Inputs: the mismatch's Types, the comparison's ComparisonFailure and the Owned fact (OwnedConversionFact); the conversion rules are
+//   judged in Binding.FunctionTypes and Binding.OwnedConversions.
 // - Outputs: the Note text, and the Owned record with its evidence alternative.
 // - Invariants: a record is made only for a conversion that already failed.
 // - Prohibitions: no new judgment of the conversion. ClosureConversionNote still compares the signatures again (CallableSignatureFits,
@@ -108,6 +109,20 @@ public sealed partial class Binding
         return new(at, member, instance.Instantiate(failure.Longer!), instance.Instantiate(failure.Shorter!), failure.Equality);
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // SPEC 10.7, 15.6.1: whether a failed comparison of `implementation` with `required` is that comparison's one record at `node`, which
+    // it then is: a condition, with the comparison's structure holding (a structural difference is a Type mismatch, even where the walk
+    // met an Origin first).
+    private bool RecordsCondition(Koto node, in ComparisonFailure failure, BoundType implementation, BoundType required)
+    {
+        if (!failure.IsCondition || !ReferenceTypes.StorageMatches(required, implementation))
+        {
+            return false;
+        }
+
+        this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
+        return true;
     }
 
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
