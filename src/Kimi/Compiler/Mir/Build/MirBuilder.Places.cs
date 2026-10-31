@@ -171,14 +171,32 @@ internal sealed partial class MirBuilder
             ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
     }
 
-    // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner), or the value derived from the error
-    // of one that has no Place (Stored).
+    // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp
+    // whose site names only the receiver's root, a part built already, never the node's syntax (R5-M63, R5-M84): the located Unsupported
+    // of a Place whose Type stores no such Field or has none (a Place of a Type parameter an identity premise makes a struct, SPEC 8.2.3),
+    // or the value derived from the error of a Field Binding formed no stored Type for (Stored; SPEC 23.1.2).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
-        var type = this.body.TypeOf(receiver);
-        var owner = type is null ? null : AdtDef.FieldOwner(type, field);
-        return owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place
-            ? place : this.Unsupported(node, owner is not null);
+        var owner = this.body.TypeOf(receiver) is { } type ? AdtDef.FieldOwner(type, field) : null;
+        if (owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place)
+        {
+            return place;
+        }
+
+        var temp = this.Temp(TypeOf(node), node);
+        this.opaqueTemps.Add(temp.Root);
+        this.roots.Clear();
+        this.roots.Add(receiver.Root);
+        if (owner is null)
+        {
+            this.Unsupported(node, temp, node);
+        }
+        else
+        {
+            this.Site(node, temp, Completes(node));
+        }
+
+        return temp;
     }
 
     // The Place of the stored Field at an own index of the layer `depth` Base steps up from a struct Place (the receiver's
