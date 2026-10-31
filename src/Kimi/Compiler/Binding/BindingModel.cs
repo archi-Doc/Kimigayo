@@ -742,6 +742,10 @@ internal enum ReferenceSlotFailure : byte
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
+// SPEC 23.1.2: a record of a node beyond its first, of either Origin kind: a failed chain of an Origin relation (Relation) or a failed
+// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind.
+internal readonly record struct OriginRecord(OriginRelationFact? Relation, OriginContractFact? Contract);
+
 // SPEC 15.2.3, 23.1: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
 // which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
 // capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a

@@ -880,6 +880,7 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
         {
             ReportOriginContract(issue.Node, contract, requirement, issue.Code);
+            this.ReportMoreCallRelations(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
         {
