@@ -1449,6 +1449,8 @@ public sealed partial class Binding
                 {
                     arithmetic.Active = false;
                 }
+
+                ClearIdentityPremise(binary);
             }
 
             if (node is UnaryKoto { ArithmeticStorage: { } unaryArithmetic })

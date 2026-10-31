@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -89,6 +90,57 @@ public class TypeIdentityTest
         var c = CompilationTestHelper.ParseSuccess("func same<A, B, C>(b: B) -> C\n    A is B\n    A is C\n    return b@move\n()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // SPEC 8.2.3, DECISIONS BU-72: a member or element access whose receiver's Type, through its Semantics layers, is a Type parameter
+    // that the premises make a complete Type publishes that identity, which a warm rebind publishes again; an access without an identity
+    // premise, or whose receiver's Type has the parameter only inside it, publishes none.
+    [Theory]
+    [InlineData("func f<T>(s: ref/T) -> i32\n    T is Pair\n    return s.a", "s.a", BoundTypeKind.Nominal)]
+    [InlineData("func f<T>(s: T) -> i32\n    T is Pair\n    return (s).a", "(s).a", BoundTypeKind.Nominal)]
+    [InlineData("func f<T, U>(s: ref/T) -> i32\n    T is U\n    U is Pair\n    return s.a", "s.a", BoundTypeKind.Nominal)]
+    [InlineData("func f<T>(s: ref/T, i: isize) -> i32\n    T is Array<Pair>\n    return s[i].a", "s[i]", BoundTypeKind.Array)]
+    [InlineData("func f<T>(s: ref/T) -> i32\n    T is (Pair, i32)\n    return s.0.a", "s.0", BoundTypeKind.Tuple)]
+    [InlineData("func f(s: ref/Pair) -> i32\n    return s.a", "s.a", null)]
+    [InlineData("contract Pick\n    func pick(self: ref/Self) -> bool\nfunc f<T>(s: ref/T) -> bool\n    T is Pick\n    return s.pick()", "s.pick", null)]
+    [InlineData("func f<T>(xs: ref/Array<T>, i: isize) -> i32\n    T is Pair\n    return xs[i].a", "xs[i]", null)]
+    [InlineData("func f<T>(xs: ref/Array<T>, i: isize) -> i32\n    T is Pair\n    return xs[i].a", "xs[i].a", null)]
+    public void AnAccessPublishesTheIdentityItsReceiverWasResolvedThrough(string source, string access, BoundTypeKind? identical)
+    {
+        var c = CompilationTestHelper.BindSuccess("struct Pair\n    public var a: i32 = 1\n    public init() => ()\n" + source + "\n()");
+        var node = (BinaryKoto)KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is MemberAccessKoto or IndexKoto && x.ToString() == access);
+        var premise = HirTables.IdentityPremise(node);
+        if (identical is null)
+        {
+            Assert.Null(premise);
+            return;
+        }
+
+        var receiver = HirTables.Meaning(KotoHelper.UnwrapParentheses(node.Left)) as BoundType;
+        while (receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
+        {
+            receiver = receiver.Components[0];
+        }
+
+        Assert.Equal(ConstraintKind.TypeIdentity, premise?.Kind);
+        Assert.Equal((BoundTypeKind.Parameter, "T"), (premise!.Subject!.Kind, premise.Subject.Name));
+        Assert.Equal(identical, premise.RequiredType!.Kind);
+        Assert.Same(receiver, premise.RequiredType);
+        Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
+        Assert.Same(premise, HirTables.IdentityPremise(node));
+    }
+
+    // DECISIONS BU-72: a warm rebind publishes an access's identity premise again without allocating, a chain's derived one included.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindRepublishesAnAccesssIdentityWithoutAllocating()
+    {
+        var c = CompilationTestHelper.BindSuccess(
+            "struct Pair\n    public var a: i32 = 1\n    public init() => ()\n" +
+            "func f<T, U>(s: ref/T, i: isize) -> i32\n    T is U\n    U is Array<Pair>\n    return s[i].a\n()");
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is IndexKoto && x.ToString() == "s[i]");
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.Equal(BoundTypeKind.Array, HirTables.IdentityPremise(node)?.RequiredType?.Kind);
     }
 
     [Fact]
