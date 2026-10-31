@@ -29,6 +29,16 @@ public partial class OriginRelationDiagnosticTest
 
     private const string RunG2 = "func run2(g: ((i32) -> i32, i32) -> i32) -> i32\n";
 
+    private const string IdentityT = "func identity<T>(v: T) -> T => v@move\n";
+
+    private const string FTuples = "func f(x: (i64, i32)) -> i32 => 0\nfunc f(x: (bool, i32)) -> i32 => 1\n";
+
+    private const string KX = "func k(c: bool, x: i64) -> i32\n";
+
+    private const string FScalars = "func f(x: i64) -> i32 => 0\nfunc f(x: bool) -> i32 => 1\n";
+
+    private const string D2Join = "(if c => (identity(1), 2) else => (x, 3))";
+
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
     // (`h(a)` and a value call `h(a)` give NoApplicableOverload_Kd at the call); its twins pass sources of the parameter Type.
@@ -120,6 +130,22 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "pn1", CallAction + "func run2() -> i32\n" + EnvClosure + "    return call(f, 1)\n", "UnsatisfiedConstraint_Kd f")]
     [InlineData("U1.5", "pn2", CallAction + "func run2() -> i32\n" + VarClosure + "    return call(f, 1)\n", "TypeMismatch_Kd f")]
     public void AClosureIsErasedAtAValueCallAsAtANamedCall(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // D2 (R4's U1.5 design review 2): a position with a typed part is typed at its typed parts' common Type whatever else it holds, and
+    // the waiting `identity(1)` beside `x` takes it (SPEC 14.9.2 steps 2-3), at a join's child position (d2, its `match` d2_m, d2_lit3)
+    // as at its root (d2_root) and as an element (d2_elem); so it is evidence for a slot (d2_g; d2_g_t writes it), and with no candidate
+    // of that Type the call has none (d2_n).
+    [Theory]
+    [InlineData("U1.5", "d2", IdentityT + FTuples + KX + "    return f" + D2Join + "\n", "")]
+    [InlineData("U1.5", "d2_m", IdentityT + FTuples + KX + "    return f(match c\n        true => (identity(1), 2)\n        false => (x, 3)\n    )\n", "")]
+    [InlineData("U1.5", "d2_lit3", IdentityT + FTuples + KX + "    return f(if c => (identity(1), 2) else => (if c => x else => 5, 3))\n", "")]
+    [InlineData("U1.5", "d2_root", IdentityT + FScalars + KX + "    return f(if c => identity(1) else => x)\n", "")]
+    [InlineData("U1.5", "d2_elem", IdentityT + FTuples + KX + "    return f((if c => identity(1) else => x, 2))\n", "")]
+    [InlineData("U1.5", "d2_g", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g" + D2Join + "\n", "")]
+    [InlineData("U1.5", "d2_g_t", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g<i64>" + D2Join + "\n", "")]
+    [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
+    public void ATypedPartGivesItsPositionItsType(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid

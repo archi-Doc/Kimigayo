@@ -11,10 +11,12 @@ namespace Kimi.Compiler;
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
-//   child positions are formed part by part (SPEC 14.9.2). A position of several parts has one kind (PositionKind): Call when a
-//   part waits, Typed at its typed parts' common Type (one evidence), Aggregate when its parts are aggregates, Literal when only
-//   literals remain; with no part (Never in every source) it is Typed with no Type: no evidence, and no Type at a slot that takes the
-//   whole (SPEC 10.8, BU-2 U3's D6).
+//   child positions are formed part by part (SPEC 14.9.2). A position of several parts has one kind (PositionKind), typed first
+//   (SPEC 14.9.2 step 2): Typed at its typed parts' common Type (one evidence) whatever else it holds, its literals and the parts
+//   awaiting their call beside them taking it (step 3), or with no Type when a part failed; only a position with no typed part, and so
+//   no candidate, waits (Call) when a part awaits its call; then Aggregate when its parts are aggregates, Literal when only literals
+//   remain; with no part (Never in every source) it is Typed with no Type: no evidence, and no Type at a slot that takes the whole
+//   (SPEC 10.8, BU-2 U3's D6). Every reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
 //   positions and the parameter Type at each; PositionKind.
 // - Invariants: a walk removes the parts it appended before it returns, so nested walks share the list; a position's parts end where
@@ -91,13 +93,14 @@ public sealed partial class Binding
     private Koto? ComposedJoin(Koto part)
         => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
 
-    // The kind of a position of several parts, a join's: Call when a part awaits its call (AwaitsCall), Typed at the common Type of its
-    // typed parts (literals of it beside them), Aggregate when its parts are aggregates, Literal when only literals remain; with no part,
-    // Typed with no Type.
+    // The kind of a position of several parts, a join's, typed first (SPEC 14.9.2 step 2): Typed at the common Type of its typed parts,
+    // whatever else it holds, or with no Type when a part failed or it has no part; with no typed part, Call when a part awaits its call
+    // (AwaitsCall), then Aggregate when its parts are aggregates, then Literal when only literals remain.
     private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;
         var literal = false;
+        var waits = false;
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
@@ -107,7 +110,7 @@ public sealed partial class Binding
             }
             else if (!this.IsAggregatePart(part) && this.AwaitsCall(part))
             {
-                return PartKind.Call;
+                waits = true;
             }
             else if (!this.IsAggregatePart(part) && this.PartFailed(part))
             {
@@ -120,7 +123,13 @@ public sealed partial class Binding
             return PartKind.Typed;
         }
 
-        return this.PartsShape(start, end) is not null ? PartKind.Aggregate : literal ? PartKind.Literal : PartKind.Typed;
+        return (waits, literal) switch
+        {
+            (true, _) => PartKind.Call,
+            _ when this.PartsShape(start, end) is not null => PartKind.Aggregate,
+            (_, true) => PartKind.Literal,
+            _ => PartKind.Typed,
+        };
     }
 
     // The first literal part of [start, end), whose default a Literal position takes (SPEC 10.5.1, 10.2.1).
