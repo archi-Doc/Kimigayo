@@ -350,6 +350,27 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument) and completed at its
+    // known parameter Type with no selection probe, since a value call has one candidate: a Typed part keeps its own Type, which the
+    // call adapts; every other part is bound at the parameter Type, a Literal at its literal input Type. Null when it fails.
+    private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
+    {
+        var literal = IsUnfittedLiteral(part);
+        if (!this.PrepareArgument(part, scope, null, callableContext: true))
+        {
+            return null;
+        }
+
+        if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)
+        {
+            return this.BindNode(part, scope, literal ? LiteralInputType(parameter) : parameter);
+        }
+
+        // SPEC 7.7.4: a Closure or Function Item completed at a Function Type is converted to it, as at a named call (ErasePart).
+        return typed.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && parameter.Kind == BoundTypeKind.Function &&
+            this.ErasesToFunction(part, typed, parameter) ? (this.ErasePart(part, typed, parameter) ? parameter : null) : typed;
+    }
+
     // Independent argument evidence is prepared once for named and constraint-based calls.
     private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
     {
