@@ -35,6 +35,11 @@ public sealed partial class Binding
 
         // The implementation's own well-formedness, its Part-th input's or (Part -1) its result's (the owner's (a)).
         WellFormedness,
+
+        // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
+        // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
+        // the plain position's search records it (design-r2 Amendment 1, A1).
+        Limit,
     }
 
     // SPEC 10.7, 15.6.1, 23.1: the first failure of one walk, where the walk found it: the failing condition (Kind, Part), its ends as
@@ -120,7 +125,7 @@ public sealed partial class Binding
             if (outer == OuterOriginFit.Relation && !structural &&
                 (!this.OriginFits(longer, shorter, instance, condition) || (invariant && !this.OriginFits(shorter, longer, instance, condition))))
             {
-                return this.Fail(OriginFailure(longer, shorter, invariant, instance));
+                return this.Fail(this.OriginFailure(longer, shorter, invariant, instance));
             }
 
             for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -137,7 +142,7 @@ public sealed partial class Binding
                 if (both ? !this.OriginFits(a, b, instance) || !this.OriginFits(b, a, instance) :
                     variance == OriginVariance.Covariant ? !this.OriginFits(a, b, instance) : !this.OriginFits(b, a, instance))
                 {
-                    return this.Fail(variance == OriginVariance.Contravariant && !both ? OriginFailure(b, a, false, instance) : OriginFailure(a, b, both, instance));
+                    return this.Fail(variance == OriginVariance.Contravariant && !both ? this.OriginFailure(b, a, false, instance) : this.OriginFailure(a, b, both, instance));
                 }
             }
 
@@ -182,9 +187,21 @@ public sealed partial class Binding
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
-        // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one.
-        private static ComparisonFailure OriginFailure(BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance)
-            => new(instance.Expected is null ? ComparisonFailureKind.Position : ComparisonFailureKind.Origin, longer, shorter, equality, instance);
+        // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
+        // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an
+        // inferred or body-local region) is the located limit.
+        private readonly ComparisonFailure OriginFailure(BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance)
+        {
+            var kind = instance.Expected is null ? ComparisonFailureKind.Position : ComparisonFailureKind.Origin;
+            var (a, b) = instance.Actual is null ? (longer, shorter) : (instance.Instantiate(longer), instance.Instantiate(shorter));
+            if (kind == ComparisonFailureKind.Origin && this.binding is { } judge && this.use is { } at &&
+                judge.JudgeOriginRelation(a, b, at, judge.formingBody) is not (OriginJudgment.Refuted or OriginJudgment.Unknown))
+            {
+                kind = ComparisonFailureKind.Limit;
+            }
+
+            return new(kind, longer, shorter, equality, instance);
+        }
 
         private bool Fail(in ComparisonFailure failure)
         {
