@@ -8,7 +8,7 @@
 // whose parameters its text names, and whether it copies its payload by memcpy (Copies), a Sealed handle's direct release
 // (ObjectRuntime.Handles.cs), and the facts a caller of the runtime reads: the signatures of its Type test (Supports), its retains
 // (Clone) and its releases (Release), a factory's control value (InitialControl), the payload's offset in an object (PayloadOffset) and the
-// virtual table's in a descriptor (TableOffset). Both generators write objects through it (PD2: promoted, never copied). Runtime
+// virtual table's in a descriptor (TableOffset). Code generation writes objects through it (PD2: promoted, never copied). Runtime
 // identity is the module's Type token (PD17); no Runtime Type key text is written (DECISIONS R5-M110).
 // Input: a writer; per object its ObjectCreation row; for a factory's signature the object's number, its payload's representation and
 // the payload parameter's kind; for a Sealed handle's release its ObjectCountingStep (BoundType.HandleMode's) and the symbol of the

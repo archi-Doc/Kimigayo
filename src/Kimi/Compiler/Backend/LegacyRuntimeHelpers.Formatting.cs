@@ -293,7 +293,7 @@ internal static partial class LegacyRuntimeHelpers
         string? text = null;
         foreach (var name in new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" })
         {
-            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name + ".ll.in")!;
+            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + name + ".ll.in")!;
             using var reader = new StreamReader(resource);
             var part = reader.ReadToEnd();
             text = text is null ? part : text + "\n" + part;

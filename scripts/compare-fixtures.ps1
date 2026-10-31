@@ -125,10 +125,10 @@ if ($differingNative.Count -gt 0) {
     foreach ($item in $differingNative) { $text.Add("  $($item.fixture): $(if ($item.baseline) { $item.baseline } else { 'not run' }) -> $(if ($item.candidate) { $item.candidate } else { 'not run' })") }
 }
 if ($O2Metrics) {
-    # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes in both generators: the runtime template's, each
+    # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes: the runtime template's, each
     # named on the line before its body's entry: label, by a define line or by the {{name}} marker ExpandRuntime replaces with
     # that definition. Every other define is a generated body.
-    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Emission/WindowsRuntime.ll.in'))
+    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Backend/WindowsRuntime.ll.in'))
     $runtime = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     for ($i = 1; $i -lt $template.Count; $i++) {
         if ($template[$i] -ceq 'entry:') { $null = $runtime.Add(($template[$i - 1] -creplace '^\{\{(.+)\}\}$|^[^@]*@([^(]+)\(.*$', '$1$2')) }
@@ -174,7 +174,7 @@ if ($O2Metrics) {
     function Add-Counts($sum, $counts) {
         foreach ($count in @('instructions', 'blocks')) { $sum[$count] += $counts[$count]; $sum.runtime[$count] += $counts.runtime[$count]; $sum.bodies[$count] += $counts.bodies[$count] }
     }
-    # Fixtures rank by the growth of their generated bodies: the runtime helpers are the same text in both generators.
+    # Fixtures rank by the growth of their generated bodies: the runtime helpers are the same text in both runs.
     foreach ($fixture in $nativeFixtures) {
         $before = $baseRun.o2[$fixture]
         $after = $candidateRun.o2[$fixture]

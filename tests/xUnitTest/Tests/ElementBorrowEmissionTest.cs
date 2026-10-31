@@ -132,8 +132,7 @@ public class ElementBorrowEmissionTest
         => ScalarEmissionTest.EmitFixture("ElementBorrowPlace" + name, source, stdout);
 
     // SPEC 4.7.1, 3.1.3 (DECISIONS R5-M159): an element whose key diverges, which has its element Type, or a part of it, is never borrowed
-    // or changed as a call's exclusive input: a `@uniq` argument, a `uniq/Self` receiver, an intrinsic's input; run under MIR code
-    // generation in every run (the old generator refuses each, GenerationFailed_Kd; STATUS).
+    // or changed as a call's exclusive input: a `@uniq` argument, a `uniq/Self` receiver, an intrinsic's input.
     [Theory]
     [InlineData("Argument", "bump(a[(return 42)]@uniq)")]
     [InlineData("Receiver", "b[(return 42)].inc()")]

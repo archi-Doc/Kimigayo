@@ -123,8 +123,8 @@ public class StringEmissionTest
     }
 
     // Audits the destructions of the module's string constants (count, and optionally order, per text). A constant is found by its bytes
-    // among the definitions of the audited text itself, which either generator writes through LlvmConstantPool, so the audit holds for
-    // both; a text the module defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
+    // among the definitions of the audited text itself, which code generation writes through LlvmConstantPool; a text the module
+    // defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
     internal static void WriteAuditedFixture(string name, string ir, string stdout, string destructions, int exit = 0, string? stderr = null, int[]? order = null)
     {
         var constants = new Dictionary<string, string>(StringComparer.Ordinal);

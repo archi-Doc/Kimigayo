@@ -16,7 +16,7 @@ is outside timing.
 | 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48) |
 | 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; on every pipeline it reuses stage 3's MIR and checked set, memoized, and keeps them for generation |
 | 5 | `EmissionLowering` | empty: the collector lays out every by-value use in stage 3 (the old generator's lowering until R6-gen's G4) |
-| 6 | `LlvmIrWriting` | `Compilation.WriteIr`, the generation entry (gate, output roots and `ModuleCodegen`) |
+| 6 | `LlvmIrWriting` | `Compilation.Generate`, the generation entry (gate, output roots and `ModuleCodegen`) |
 
 Every operation creates a new `Compilation` and runs these stages exactly once in
 order. Stage 3 builds, validates and analyzes the MIR and collects its checked set
@@ -113,8 +113,8 @@ dotnet restore Kimigayo.slnx
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --compiler-pipeline-check
 ```
 
-The check runs every input repeatedly. It verifies nonempty IR from stage 6, the public
-`Compilation.WriteIr`, its agreement with uninstrumented fresh compilation, monotonic boundaries
+The check runs every input repeatedly. It verifies nonempty IR from stage 6,
+`Compilation.Generate`, its agreement with uninstrumented fresh compilation, monotonic boundaries
 and conservation of stage time/allocation totals. It has no timing thresholds. Save output under `artifacts/verify/`.
 
 ## Measurement
