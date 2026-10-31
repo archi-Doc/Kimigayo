@@ -389,7 +389,7 @@ public sealed partial class Binding
                 if (shape.HasUnresolvedParents)
                 {
                     var previous = contract.BindingState;
-                    this.RequireConstraint(contract, ConstraintProof.Unknown, mode);
+                    this.RequireUnproven(contract, mode);
                     changed |= previous != contract.BindingState;
                 }
 
@@ -406,7 +406,7 @@ public sealed partial class Binding
                     if (UnresolvedTypeDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
-                        this.RequireConstraint(contract, ConstraintProof.Unknown, mode);
+                        this.RequireUnproven(contract, mode);
                         changed |= previous != contract.BindingState;
                     }
                 }
@@ -586,27 +586,37 @@ public sealed partial class Binding
         {
             this.Fail(use, BindingFailure.UnsatisfiedConstraint);
         }
+        else if (proof == ConstraintProof.Unknown && mode == BindingMode.Final)
+        {
+            this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: false);
+        }
         else if (proof == ConstraintProof.Unknown)
         {
-            // The provisional pass can gain bindings/conformance evidence across the Mod boundary; it leaves the U fact to its frame's
-            // end.
-            if (mode == BindingMode.Final)
-            {
-                this.FailUnprovenConstraint(use, unresolved: false);
-            }
-            else if (use.BindingState != BindingState.Invalid)
-            {
-                use.BindingState = BindingState.Unresolved;
-            }
+            this.RequireUnproven(use, mode); // The provisional pass leaves the U fact to the next judgment.
         }
     }
 
-    // The one record of a Constraint proven Unknown (census #25): with the proof's U fact, the clause and its comparison's failing
-    // condition (design-r2 Amendments 4 and 5); without one, the Constraint alone; a foreign fact is a broken contract. RequireConstraint
-    // and the direct sites that settle a clause list themselves (Enums, Specializations) record through it.
-    private BoundType? FailUnprovenConstraint(Koto use, bool unresolved)
+    // An Unknown Constraint that no judgment of its own proved (an unresolved parent; r2-6, BU's P1) takes no proof's fact: the final
+    // pass records the Constraint alone; the provisional pass, which can gain bindings/conformance evidence across the Mod boundary,
+    // only marks the use unresolved.
+    private void RequireUnproven(Koto use, BindingMode mode)
     {
-        var fact = this.TakeFailedCause().Fact;
+        if (mode == BindingMode.Final)
+        {
+            this.FailUnprovenConstraint(use, null, unresolved: false);
+        }
+        else if (use.BindingState != BindingState.Invalid)
+        {
+            use.BindingState = BindingState.Unresolved;
+        }
+    }
+
+    // The one record of a Constraint proven Unknown (census #25): with the U fact its judgment left (TakeUnknownFact), the clause and its
+    // comparison's failing condition (design-r2 Amendments 4 and 5); without one, the Constraint alone; a foreign fact is a broken
+    // contract. RequireConstraint, RequireUnproven and the direct sites that settle a clause list themselves (Enums, Specializations)
+    // record through it.
+    private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved)
+    {
         if (fact is not null && fact.Epoch != this.frameEpoch)
         {
             return this.Fail(use, BindingFailure.Internal);

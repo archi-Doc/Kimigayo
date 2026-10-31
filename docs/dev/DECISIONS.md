@@ -5750,6 +5750,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`Binding.ConstraintValidation.Records.cs`: `RequireClauses`, `FailClauseRecord`, `ReportClauseConstraint`), made from the one
     clause fact after the proof (a Callable clause proven Unknown with its U fact names its member); no record is made during a proof.
     `referenceConstraints`, `RecordReferenceConstraint` and `ReportReferenceConstraint` are deleted, with the `failureUse` parameter.
+  - Channel hygiene (U2.1 r2-6, 2026-10-31; BU's census check C5-C7 and design review P1-P2, the planning amendment G352-N1): a
+    candidate trial's frame is `TryCandidate`'s (`OpenTrial`, `CloseTrial`): a trial owns no earlier trial's fact, hands its own to the
+    enclosing frame (a selection's, `EvaluateCallCandidates`, which reads them per candidate) and drops them with none; a judgment drops
+    the facts the last one left untaken (`BeginProof`); an Unknown's consumer takes the U fact alone (`TakeUnknownFact`, formerly
+    `HoldUnknown`), and a Constraint no judgment of its own proved takes none (`RequireUnproven`); the clause fact's consumer reads it
+    at depth 0 in its own frame (`TakeClauseFact`, otherwise `InternalInvariant_Kd`); epochs are `long`. No proof decision reads a
+    carried fact; record selection does.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.

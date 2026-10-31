@@ -47,6 +47,7 @@ public sealed partial class Binding
         this.acquisitionFailure = null;
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentEvidence = false;
+        var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         try
         {
             var result = this.TryCandidateCore(
@@ -77,6 +78,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.CloseTrial(enclosing);
             this.ReturnSlotSet(this.invariantSlots);
             this.invariantSlots = saved;
             this.activeInferenceFunction = savedInferenceFunction;

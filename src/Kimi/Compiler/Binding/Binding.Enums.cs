@@ -277,7 +277,7 @@ public sealed partial class Binding
             var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
             if (proof != ConstraintProof.Proven)
             {
-                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, unresolved: true)
+                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)
                     : this.Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
             }
 

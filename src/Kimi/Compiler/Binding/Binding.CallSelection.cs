@@ -50,6 +50,7 @@ public sealed partial class Binding
     private void EvaluateCallCandidates(ref CallEvaluation evaluation, in CallCandidates candidates)
     {
         this.candidateTrials++;
+        var selection = this.OpenFrame(); // Each trial hands its facts to the selection, which reads them per candidate (r2-6).
         try
         {
             foreach (var candidate in candidates)
@@ -59,6 +60,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.CloseFrame(selection);
             this.candidateTrials--;
         }
     }
@@ -91,7 +93,6 @@ public sealed partial class Binding
         var independentRejection = false;
         var premiseUnknown = false;
         ReferenceConstraintFailure? rejectedConstraint = null;
-        var trial = -1;
         // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
         var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
         if (accessible)
@@ -103,7 +104,6 @@ public sealed partial class Binding
             }
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
-            trial = this.OpenFrame(); // A candidate trial is a frame (design-r2 Amendment 5).
             state = this.TryCandidate(
                 this.Solution(evaluation, function, declaringType),
                 evaluation.ExplicitLengths,
@@ -142,11 +142,6 @@ public sealed partial class Binding
             evaluation.PremisesOnly &= premiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
             evaluation.ConstraintFailure ??= rejectedConstraint;
-        }
-
-        if (trial >= 0)
-        {
-            this.CloseFrame(trial);
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;
