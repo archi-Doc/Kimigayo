@@ -229,9 +229,9 @@ public sealed partial class Binding
             result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
             if (target.Origin is not null)
             {
-                if (!this.CheckTypeUse(result, target, conversion, out _))
+                if (!this.CheckTypeUse(result, target, conversion, out var failure))
                 {
-                    return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                    return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure) : this.Fail(conversion, BindingFailure.InvalidAssignment);
                 }
 
                 result = target;

@@ -288,6 +288,22 @@ public sealed partial class Binding
             : this.ErasureSignatureFits(actual, expected, node)) &&
             this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
+    // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
+    // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
+    // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
+    // 353a12e81).
+    private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
+    {
+        if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.Function || ReferenceEquals(actual, expected) ||
+            !ReferenceTypes.StorageMatches(expected, actual) || this.CheckTypeUse(actual, expected, node, out var failure) || !failure.IsCondition)
+        {
+            return false; // A limit (design-r2 A1) or a plain position stays the enclosing fit's record (S3Demo: at the declaration).
+        }
+
+        this.FailMismatch(node, node, actual, expected, failure);
+        return true;
+    }
+
     // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver, the Owned
     // environment and a Closure's Origin conditions are judged after selection, at the argument (SPEC 15.6.1), and a failure there never
     // selects another candidate. A Function Item's Origin conditions belong to its signature, proven from the required contract at `use`

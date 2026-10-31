@@ -255,10 +255,12 @@ public sealed partial class Binding
             var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch.
+                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch; a Function
+                // component's failed contract is the construction's contract record, whose fact its walk gives (RecordMismatch).
                 if (!FitsStructurally(result, expected))
                 {
-                    return this.Fail(use, BindingFailure.TypeMismatch);
+                    return !this.FitsTypeAt(result, expected, use, out var contract) && contract.IsCondition
+                        ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
                 if (!this.FitsTypeAt(result, expected, use, out var failure) && !this.CheckLocalTypeUse(result, expected, use))
@@ -479,7 +481,7 @@ public sealed partial class Binding
                 {
                     this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object);
                 }
-                else if (FitsStructurally(adapted, type))
+                else if (failure.IsCondition || FitsStructurally(adapted, type))
                 {
                     this.RecordMismatch(source, source, adapted, type, failure);
                     Complete(use, null);

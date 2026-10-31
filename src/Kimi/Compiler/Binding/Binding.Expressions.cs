@@ -267,6 +267,11 @@ public sealed partial class Binding
             return expected;
         }
 
+        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        {
+            return null;
+        }
+
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
         // reference is Reborrowed (SPEC 3.5.1, 10.2.2), as at a bare acquisition position.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null &&

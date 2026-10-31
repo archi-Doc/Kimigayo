@@ -305,14 +305,16 @@ public sealed partial class Binding
             }
 
             BoundType adapted;
+            var failure = default(ComparisonFailure);
             var fits = pattern.IsObjectBorrow
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
                 !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
-                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out _)))
+                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
             {
-                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
+                return failure.IsCondition ? this.RecordMismatch(conversion, conversion, adapted, pattern, failure)
+                    : this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
             }
 
             var result = pattern.Origin is null ? adapted : pattern;

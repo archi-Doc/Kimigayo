@@ -547,9 +547,18 @@ public sealed partial class Binding
                     this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
                 if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter.Semantics) &&
-                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!, out _))
+                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!, out var failure))
                 {
-                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    // SPEC 15.6.1, 23.1.2: a fit whose structure holds, or a Closure's or Function Item's erasure, is the argument's own record
+                    // (RecordMismatch), and the call rests on it.
+                    if (failure.Kind == ComparisonFailureKind.Shape &&
+                        !(instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function))
+                    {
+                        return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    }
+
+                    this.RecordMismatch(operations[i].Source!, operations[i].Source!, instantiated[i], parameter, failure);
+                    return this.CompleteDependent(call, operations[i].Source!);
                 }
 
                 instantiated[i] = parameter;
