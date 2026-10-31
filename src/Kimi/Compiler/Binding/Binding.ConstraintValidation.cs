@@ -15,17 +15,6 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
 
-    // The first cause a check's Error rests on (ICheckCause): a conformance resting on its specification, or one limited by OCC-X outside
-    // conformance verification (ResolveConformance), or what a settled proof rested on (EndProof). A consumer clears it before its proof
-    // and takes it after (TakeFailedCause); each pass starts with it clear.
-    private ICheckCause? failedCause;
-
-    // The proof in progress (DECISIONS BU-22, N3-1): the first limit (L, an Unknown resting on a located Unsupported_Kd) and the first
-    // Error cause it read, of which a proof scope keeps the one its own answer rests on (BeginProof, EndProof).
-    private ICheckCause? limitRead;
-    private ICheckCause? errorRead;
-    private int proofNesting;
-
     // Conformance verifications and agreements in progress; inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
 
@@ -616,81 +605,6 @@ public sealed partial class Binding
     {
         var outer = this.BeginProof();
         return this.EndProof(outer, this.ProveProposition(proposition, scope));
-    }
-
-    // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request.
-    private (ICheckCause? Limit, ICheckCause? Error) BeginProof()
-    {
-        var outer = (this.limitRead, this.errorRead);
-        this.limitRead = null;
-        this.errorRead = null;
-        this.proofNesting++;
-        return outer;
-    }
-
-    // SPEC 8.3.3, 23.1.1, 23.1.2 (DECISIONS BU-22): closes a proof scope with its answer. Inside another scope or the capability engine,
-    // the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is no longer combined,
-    // an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes it (TakeFailedCause),
-    // which publishes a site.
-    private ConstraintProof EndProof((ICheckCause? Limit, ICheckCause? Error) outer, ConstraintProof proof)
-    {
-        this.proofNesting--;
-        var cause = this.ProofCause(proof);
-        this.limitRead = outer.Limit;
-        this.errorRead = outer.Error;
-        if (this.proofNesting != 0 || this.capabilityConsumer is not null)
-        {
-            return this.ReadVerdict(proof, cause);
-        }
-
-        if (cause is null)
-        {
-            return proof;
-        }
-
-        this.failedCause ??= cause;
-        return ConstraintProof.Error;
-    }
-
-    // The cause the answer of the proof scope in progress rests on: an Unknown's limit, an Error's cause (EndProof).
-    private ICheckCause? ProofCause(ConstraintProof proof)
-        => proof switch { ConstraintProof.Unknown => this.limitRead, ConstraintProof.Error => this.errorRead, _ => null };
-
-    // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit, an Error's cause.
-    private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause)
-    {
-        if (proof == ConstraintProof.Unknown)
-        {
-            this.limitRead ??= cause;
-        }
-        else if (proof == ConstraintProof.Error)
-        {
-            this.errorRead ??= cause;
-        }
-
-        return proof;
-    }
-
-    private void ClearProofScopes()
-    {
-        this.failedCause = null;
-        this.limitRead = null;
-        this.errorRead = null;
-        this.proofNesting = 0;
-    }
-
-    // SPEC 23.1.2: the Use of the cause that the Error a check just consumed rests on; a limit a failing check needs is published by
-    // Binding.Check.
-    private Koto? TakeFailedCause()
-    {
-        if (this.failedCause is not { } cause)
-        {
-            return null;
-        }
-
-        this.failedCause = null;
-        cause.Rest();
-        return cause.Use;
     }
 
     // SPEC 23.1.1: each conformance limit a failing check rested on, reported once at its location: an inherited conformance limited by
