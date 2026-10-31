@@ -239,6 +239,18 @@ internal sealed partial class TyCtxt
         return scratch.AsSpan(0, length);
     }
 
+    // DECISIONS BU-71: a substitution's height, the greatest height of the Types it binds (its Types, Self and Declaring), 0 for none.
+    private static int Height(BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types)
+    {
+        var height = Math.Max(self?.Height ?? 0, declaring?.Height ?? 0);
+        foreach (var type in types)
+        {
+            height = Math.Max(height, type?.Height ?? 0);
+        }
+
+        return height;
+    }
+
     // SPEC 8.13.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
     // binder has no length slot) or one per slot of the Types.
     private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
@@ -287,7 +299,8 @@ internal sealed partial class TyCtxt
             this.substs.Add(key, bucket = new(1));
         }
 
-        var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
+        var height = Height(self, declaring, types);
+        var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray(), height);
         bucket.Add(created);
         return created;
     }
@@ -296,7 +309,15 @@ internal sealed partial class TyCtxt
 /// <summary>The substitution of a binder's generic slots that a selected call, an instantiated closure or a function item makes: its Type
 /// and length arguments (a pair slot holds the whole Type), the conforming Type of a requirement, the Type declaring a member of a generic
 /// container and the principal Origin substitution the selection committed. <see cref="TyCtxt"/> interns it, so identity is equality.</summary>
-internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? declaring, BoundType?[] types, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs)
+internal sealed class Subst(
+    BindingSymbol target,
+    BoundType? self,
+    BoundType? declaring,
+    BoundType?[] types,
+    BoundLength?[] lengths,
+    BoundOrigin[] origins,
+    BoundOrigin[] inputs,
+    int height)
 {
     // The symbol whose slots it binds: a call's callee as its selection names it (an instantiated witness of a declaration too), or the
     // function enclosing a closure.
@@ -319,6 +340,10 @@ internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? de
 
     // The input Origins in parameter-slot order.
     internal ReadOnlySpan<BoundOrigin> Inputs => inputs;
+
+    // DECISIONS BU-71: the greatest height of the Types it binds (BoundType.Height of its Types, Self and Declaring), 0 for none, set when it
+    // is interned; a Closure Type's height counts it as one child.
+    internal int Height => height;
 
     // Binds nothing: the binder's own body.
     internal bool IsIdentity => self is null && declaring is null && types.Length + origins.Length + inputs.Length == 0;

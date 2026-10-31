@@ -1151,6 +1151,64 @@ public sealed class TyCtxtTest
         Assert.True(c.Types.SubstOfClosure(types[3]) is { IsIdentity: true } context && ReferenceEquals(context.Target, types[3].Symbol));
     }
 
+    // DECISIONS BU-71: a Type's height is 0 for a leaf (a Primitive, a struct without arguments, a Type parameter), else 1 + the greatest
+    // height of its components: Type arguments, Tuple components, a borrow's referent, a Function Type's inputs and result.
+    [Theory]
+    [InlineData("i32", 0)]
+    [InlineData("S", 0)]
+    [InlineData("T", 0)]
+    [InlineData("Option<i32>", 1)]
+    [InlineData("(i32, i64)", 1)]
+    [InlineData("ref/i32", 1)]
+    [InlineData("Option<(i32, Option<i64>)>", 3)]
+    [InlineData("(i32) -> bool", 2)]
+    public void ATypesHeightIsOneAboveItsHighestComponent(string type, int height)
+    {
+        var c = MinimalEmissionTest.Analyze($"struct S\n    public var x: i32\nfunc probe<T>(x: {type}) => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        Assert.Equal(height, probe.Parameters[0].Type.TypeOf()!.Height);
+    }
+
+    // DECISIONS BU-71: a Closure Type's height counts its whole context as one child: a capture-free Closure in g<T> has no components, yet
+    // its instances' heights follow T (an instance context, R5-M36), and a Field initializer's Closure stands one above the instance it holds
+    // (BU-60), above its signature. An obj/-recursive non-regular instance grows one level per step through its Field.
+    [Fact]
+    public void AClosuresHeightCountsItsContext()
+    {
+        const string Source = "func g<T>() -> isize\n    let c = func [] () -> isize => 1\n    return c()\n" +
+            "struct Box<T>\n    public var f = func [] () -> isize => 4\n    public init() => ()\nstruct N<X>\n    public var next: Option<obj/N<(X, X)>>\n" +
+            "func reads(n: N<i32>) -> isize\n    let a = Box<i32>.init().f\n    let b = Box<(i32, (i32, i64))>.init().f\n" +
+            "    return g<i32>() + g<(i32, (i32, i64))>()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var g = KotoTree.Walk(nodes.OfType<FunctionKoto>().Single(static x => x.Name == "g")).OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
+        var closure = g.ClosureOf()!;
+        var instances = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "g")
+            .Select(x => c.Binding.InstantiateStorageType(closure.EnvironmentType!, x!)!).ToArray();
+        Assert.All(instances, static x => Assert.True(x.Components.Count == 0 && x.Height == x.ClosureContext!.Height + 1));
+        Assert.Equal([1, 3], instances.Select(static x => x.Height));
+        var reads = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "reads");
+        BoundType[] held = [Local(reads, "a"), Local(reads, "b")];
+        Assert.Equal([2, 4], held.Select(static x => x.Height));
+        Assert.All(held, static x => Assert.Equal(TyCtxt.HeldType(x)!.Height + 1, x.Height));
+        Assert.Equal(1, c.Binding.ClosureSignature(held[1])!.Height);
+        var n = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "reads").Parameters[0].Type.TypeOf()!;
+        var heights = new List<int> { n.Height };
+        for (var step = 0; step < 3; step++)
+        {
+            var next = AdtDef.FieldType(n, 0)!;
+            n = next.Components[0].Components[0];
+            Assert.Equal(n.Height + 2, next.Height);
+            heights.Add(n.Height);
+        }
+
+        Assert.Equal([1, 2, 3, 4], heights);
+
+        static BoundType Local(MirBody body, string name) => body.Locals.ToArray().Single(x => x.Name == name).Type!;
+    }
+
     // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in
     // Origins only have one erased substitution, and every Type of the callee's body and closure, the closure's context included, erases
     // alike in their instances; erasing is idempotent and keeps a Type without Origins; a binder that does not instantiate has none.
