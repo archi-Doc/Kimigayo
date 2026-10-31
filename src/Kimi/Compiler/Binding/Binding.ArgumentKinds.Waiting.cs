@@ -12,7 +12,9 @@ namespace Kimi.Compiler;
 // the one test of F; they read a pattern and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case
 // construction (UnsolvedPayloadSlots) and the completions over a SlotSolution share them. Whether such an F is fixed with no outer
 // expectation, so that a nested call's or construction's result is typed without one, is FixesWithoutExpectation, read through
-// OpenWaitingSlots by both (DECISIONS BU-2, D4).
+// OpenWaitingSlots by both (DECISIONS BU-2, D4). The part path through the same forms is here too: PartCore, down to the part a form
+// delivers, the one key of a part's recorded kind (Binding.ArgumentKinds.cs); PartParent and PartHolder, up toward its argument, the
+// walk by which a part finds its argument probe (UnderArgumentProbe) and the result target its call completes it at (CallableTarget).
 public sealed partial class Binding
 {
     // A consumer of TakeWaiting: it takes each waiting callable at its position and slot F, and stops the walk by returning false.

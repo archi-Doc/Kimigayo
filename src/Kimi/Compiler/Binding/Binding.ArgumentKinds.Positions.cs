@@ -91,9 +91,9 @@ public sealed partial class Binding
     private Koto? ComposedJoin(Koto part)
         => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
 
-    // The kind of a position of several parts, a join's: Call when a part waits for its call (read from its BindingState until U1.2; see
-    // ArgumentKinds' temporary note), Typed at the common Type of its typed parts (literals of it beside them), Aggregate when its parts
-    // are aggregates, Literal when only literals remain; with no part, Typed with no Type.
+    // The kind of a position of several parts, a join's: Call when a part awaits its call (AwaitsCall), Typed at the common Type of its
+    // typed parts (literals of it beside them), Aggregate when its parts are aggregates, Literal when only literals remain; with no part,
+    // Typed with no Type.
     private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;

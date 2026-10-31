@@ -85,9 +85,6 @@ public sealed partial class Binding
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
 
-    // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
-    // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
-    // (DECISIONS BU-19, BU-55).
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
     {
@@ -102,6 +99,9 @@ public sealed partial class Binding
         return null;
     }
 
+    // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
+    // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
+    // (DECISIONS BU-19, BU-55).
     private bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false, bool includeOrigins = true)
     {
         var query = this.visitedParts.Begin(this.storageVersion);
