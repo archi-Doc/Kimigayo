@@ -443,15 +443,16 @@ public sealed class MirInitTest(ITestOutputHelper output)
             var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            flow.Begin(body);
-            moves.Build(body, flow);
-            drops.Begin(body, sink);
-            cases.Select(body, 0);
-            Assert.True(init.Run(body, 0, sink.Problems));
-            drops.Judge(0);
-            drops.End();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
+            {
+                flow.Begin(body);
+                moves.Build(body, flow);
+                drops.Begin(body, sink);
+                cases.Select(body, 0);
+                Assert.True(init.Run(body, 0, sink.Problems));
+                drops.Judge(0);
+                drops.End();
+            });
             Assert.Equal(0, sink.Problems.All.Length);
             arena[i] = ArenaWords(body, flow, moves);
         }

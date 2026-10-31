@@ -53,6 +53,30 @@ public class AllocationMeasurementTest
     public void DetectsAllocatingWork()
         => Assert.True(AllocationMeasurement.Measure(() => GC.KeepAlive(new byte[128])) >= 128 * AllocationMeasurement.MeasuredOperations);
 
+    // MeasureOnce runs its operation exactly once, on the calling thread, and reports that run's allocation: none here.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void MeasureOnceRunsOnceOnTheCallingThread()
+    {
+        var callingThread = Environment.CurrentManagedThreadId;
+        var calls = 0;
+        var onCaller = true;
+        var bytes = AllocationMeasurement.MeasureOnce(() =>
+        {
+            onCaller &= Environment.CurrentManagedThreadId == callingThread;
+            calls++;
+        });
+        Assert.True(onCaller);
+        Assert.Equal(1, calls);
+        Assert.Equal(0, bytes);
+    }
+
+    // A byte[128] is 152 bytes on a 64-bit runtime (header, method table and length, then the elements).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void MeasureOnceDetectsAllocatingWork()
+        => Assert.True(AllocationMeasurement.MeasureOnce(() => GC.KeepAlive(new byte[128])) >= 152);
+
     // Allocating in exactly the warm-up operations measures nothing, and allocating in the first measured operation
     // is measured: together they fix the split of the window.
     [Trait("Purpose", "Allocation")]
