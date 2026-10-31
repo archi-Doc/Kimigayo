@@ -504,7 +504,8 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. At `type`, the
     // Target Result Type the join or its position decided (a failed join's too): a source that waited unbound is bound at it, which
-    // checks its literals, and fits it; a bound one that awaits takes it when its late Type fits. With no Type, the join having failed
+    // checks its literals, and fits it; a bound one that awaits, or does not fit as it is, takes it when its late Type fits (U1.6g (b)),
+    // a bound one that does not await failing at itself otherwise (the join resting on it). With no Type, the join having failed
     // (Conflict, Dependent) or formed nothing: a waited source holding a literal takes its defaults, and one holding a join that waited
     // (HoldsWaitedResult) is bound so that the join honours its outcome (DecideWaiting); under a failed join, a source holding neither
     // rests on the join's record or cause (CompleteDependent). The first misfit is returned.
@@ -521,7 +522,8 @@ public sealed partial class Binding
 
             var waited = context.Sources[i] is null;
             var held = waited && this.HoldsWaitedResult(source);
-            if (waited ? !held && !this.Deferred(source) : type is null || !this.AwaitsPosition(source))
+            var awaits = !waited && type is not null && this.AwaitsPosition(source);
+            if (waited ? !held && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node)))
             {
                 continue;
             }
@@ -529,7 +531,14 @@ public sealed partial class Binding
             bool fits;
             if (!waited)
             {
+                // U1.6g (b), SPEC 7.7.4, 23.1.2: a bound part that does not fit takes the Type through its late adaptation (an Item by
+                // erasure); one that cannot is its own record, at the part, on which the join rests, as a waited part's misfit is.
                 fits = this.TryPropagate(source, type!, node);
+                if (!fits && !awaits && !rests)
+                {
+                    this.FailMismatch(source, source, context.Sources[i]!, type!);
+                    context.RestOn(source);
+                }
             }
             else if (type is not null)
             {

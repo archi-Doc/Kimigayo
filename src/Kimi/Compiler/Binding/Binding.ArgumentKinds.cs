@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs). Function: an anonymous function. Reference: a function reference that needs S, or a function
+//   (Binding.ArgumentKinds.Positions.cs), and one whose typed parts have no common Type (ConflictWaits, U1.6g). Function: an anonymous
+//   function. Reference: a function reference that needs S, or a function
 //   name at a result of the probe's control flow (P2), unless every such result is the same declaration that needs no S, which P4
 //   binds as its Function Item (BindAgreeingReferences). Case: a contextual `.Case(...)` (it resolves only in its expected enum).
 //   Call: a nested call or construction the argument probe deferred.
@@ -38,7 +39,7 @@ namespace Kimi.Compiler;
 // - Invariants: a recorded part (ArgumentPart: its kind and a Literal's default) is keyed by its core's syntax identity (PartCore,
 //   SourceRef) and lives for one pass; a producer records every part that awaits its call and a Literal control-flow part: P1
 //   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function or Case result (AwaitsCallAtResult) or a Reference one
-//   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall) a Join, and the operand probe
+//   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
 //   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
@@ -204,6 +205,67 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // SPEC 10.5.1, 14.9.2 step 2 (U1.6g (a); supersedes BU-43's "fails it at once" for call arguments): a join under the argument probe
+    // that classifies its call's argument, whose typed parts have no common Type, fixes no complete Type without its call's expectation,
+    // so it waits: P4 records it as a Join, which its call completes at the selected candidate's Type, an enclosing join holding it as
+    // a waiting source. Once its call has completed parts of the argument (DecideTaken), the call has selected and no expectation is
+    // left to wait for (the owner's answer, 2026-10-31: (i)); there, as outside a call argument, the conflict is the join's own record.
+    private bool ConflictWaits(Koto join)
+    {
+        if (!this.UnderArgumentProbe(join) || this.HoldsCompletedPart(this.argumentProbe!))
+        {
+            return false;
+        }
+
+        this.RecordPart(join, PartKind.Join);
+        return true;
+    }
+
+    // Whether a part holds one its call completed (TakeWaiting): a part its producer recorded as awaiting its call, other than a Join,
+    // bound since, reached through the forms that deliver it, the parts of Tuple, array and Dictionary literals and the value sources
+    // of result targets. While its call classifies the argument, no such part is bound.
+    private bool HoldsCompletedPart(Koto part)
+    {
+        if (DeliveredOperand(part) is { } operand)
+        {
+            return this.HoldsCompletedPart(operand);
+        }
+
+        if (part.BoundType is not null && this.RecordedPart(part).Kind is PartKind.Function or PartKind.Case or PartKind.Reference or PartKind.Call)
+        {
+            return true;
+        }
+
+        var holds = false;
+        switch (part)
+        {
+            case TupleLiteralKoto or ArrayLiteralKoto:
+                foreach (var element in CallableParts(part)!)
+                {
+                    holds |= this.HoldsCompletedPart(element);
+                }
+
+                return holds;
+            case DictionaryLiteralKoto dictionary:
+                foreach (var entry in dictionary.Entries)
+                {
+                    holds |= this.HoldsCompletedPart(entry.Key) || this.HoldsCompletedPart(entry.Value);
+                }
+
+                return holds;
+            default:
+                if (DeliversResult(part) && this.resultContexts.TryGetValue(part, out var context))
+                {
+                    foreach (var source in context.SourceNodes)
+                    {
+                        holds |= source is not null && this.HoldsCompletedPart(source);
+                    }
+                }
+
+                return holds;
+        }
     }
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other
