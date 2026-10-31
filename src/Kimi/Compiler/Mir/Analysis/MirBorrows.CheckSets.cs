@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 // live), in passes: the live holders (Based); the location's stores into a holder live after it or made live by the closure, or into E,
 // and E5's seeds (Stored); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
 // (Seeded); then each operand's value in operand order, so a Loan keeps the first operand that reaches it, and each operand's root in
-// reverse, so it keeps the last. A pass scans a holder's state once and a value it takes once per holder it is found under (a later take
+// reverse, so it keeps the last. A pass scans a holder's state once (its Shared set until two vias read it, MirBorrows.States' Scanned)
+// and a value it takes once per holder it is found under (a later take
 // tags nothing more; Took finds it by scanning the values taken under that holder at the location, so a take costs that list's length),
 // and the location's entries are listed by holder, so a holder's lookup reads only its own entries (E13 (5)); each access then scans its
 // root's Loans. After every pass, the drop tier (DECISIONS R4-M153): from each holder live after the location only through its drop slot
@@ -309,7 +310,7 @@ internal sealed partial class MirBorrows
         return slot + 1;
     }
 
-    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex) = (pass, index);
+    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex, this.instance) = (pass, index, this.instance + 1);
 
     // A holder reached at the check: in the Based and Stored passes, the drop tier's included, its stores count, and its state is read where
     // the pass reads it first (a Based read stands for every pass, a Valued one for the later operands and a Rooted one for the earlier).
@@ -346,7 +347,7 @@ internal sealed partial class MirBorrows
         {
             var slot = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
-            this.Scan(state[slot], slot);
+            this.Scan(this.Scanned(state[slot], slot), slot);
             this.Work++;
         }
     }
