@@ -391,9 +391,10 @@ public sealed record BoundType
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
+    private readonly bool containsClosure;
     private readonly bool hasAbstractPart;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
     {
         this.Name = name;
         this.Kind = kind;
@@ -412,6 +413,7 @@ public sealed record BoundType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
+        this.ClosureContext = closureContext;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
         this.underlying = this;
 
@@ -424,6 +426,7 @@ public sealed record BoundType
         var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
+        var closure = kind == BoundTypeKind.Closure;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -432,6 +435,7 @@ public sealed record BoundType
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
+            closure |= components[i].containsClosure;
             abstractPart |= components[i].hasAbstractPart;
         }
 
@@ -444,8 +448,18 @@ public sealed record BoundType
             parameter |= argument is { IsConstant: false };
         }
 
+        // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
+        // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
+        if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
+        {
+            parameter |= held.containsParameter;
+            pair |= held.containsPairLayer;
+            abstractPart |= held.hasAbstractPart;
+        }
+
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
+        this.containsClosure = closure;
         this.hasAbstractPart = abstractPart;
     }
 
@@ -536,8 +550,8 @@ public sealed record BoundType
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
-    // closures, even when none of its slots occupy capture storage.
-    internal Subst? ClosureContext { get; init; }
+    // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
+    internal Subst? ClosureContext { get; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
@@ -574,6 +588,9 @@ public sealed record BoundType
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
     /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
+    internal bool ContainsClosure => this.containsClosure;
 
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;

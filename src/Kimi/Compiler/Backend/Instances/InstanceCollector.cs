@@ -56,7 +56,7 @@
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
 // (CarriesInstance: a nested function's enclosing instance, DECISIONS R5-M43; a Field initializer's Closure or a function declared in it,
-// whose binder declares no slot and whose substitution binds no Self or declaring Type, R5-M157, until TyCtxt.EnclosingFunction gives
+// whose binder declares no slot and whose substitution binds no Self or declaring Type, R5-M157, until TyCtxt.EnclosingDeclaration gives
 // every nested definition the declaration whose instance it holds, BU's fact), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors

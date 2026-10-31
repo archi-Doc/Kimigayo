@@ -128,7 +128,7 @@ internal static class CollectionCostMeasurements
     private static Collections Operation(string source)
     {
         var c = Checked(source);
-        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build());
+        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(), c.SourceModules.Length);
         Require(program.Records.Count == 0 && program.Findings.Count == 0, "MIR construction or validation failed.");
         Layout[] layouts = [c.Layout, new Layout(), c.Layout];
         var (ticks, bytes) = (new long[layouts.Length], new long[layouts.Length]);

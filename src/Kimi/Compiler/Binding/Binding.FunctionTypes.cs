@@ -305,7 +305,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
+            if (this.HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
                 !this.ProvesInputPremises(parameter, parameters.Components[i], use))
             {
                 return false;
@@ -322,7 +322,7 @@ public sealed partial class Binding
 
         return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
             symbol.Type is { } result && Bound(result) is { } boundResult &&
-            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
+            !this.HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
             this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
             this.ProvesResultPremises(function, result, use);
 

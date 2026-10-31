@@ -57,11 +57,13 @@ public sealed partial class Binding
     // reads a call in the definition's world).
     internal BoundType? ClosureDefinitionSignature(BoundType type)
         => BoundClosure.Of(type) is { } closure
-            ? type.ClosureContext is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
+            ? TyCtxt.ClosureInstance(type) is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
     // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal
-    // occurrences keep their variance, different ones are invariant.
+    // occurrences keep their variance, different ones are invariant. One query of `visitedParts` meets each distinct part once per
+    // polarity (a state bit per polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The
+    // table is the definition's compilation's Binding's, whether or not the caller reads premises (`binding`).
     private static OriginVariance ClosureArgumentVariance(BoundType type, int index, Binding? binding)
     {
         if (BoundClosure.Of(type) is not { Signature: { } signature, EnvironmentType: { } definition } || index >= definition.OriginArguments.Count)
@@ -69,10 +71,12 @@ public sealed partial class Binding
             return OriginVariance.Invariant;
         }
 
-        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused);
+        var owner = type.Symbol!.Declaration!.CodeContext.Compilation.Binding;
+        var query = owner.visitedParts.Begin(owner.storageVersion);
+        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused, owner, query);
         return variance == OriginVariance.Unused ? OriginVariance.Invariant : variance;
 
-        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen)
+        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
         {
             if (!type.CarriesAnyOrigin)
             {
@@ -87,7 +91,12 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                seen = Occurrences(type.Components[i], atom, ComposeVariance(polarity, ComponentVariance(type, i, binding)), binding, seen);
+                var part = type.Components[i];
+                var position = ComposeVariance(polarity, ComponentVariance(type, i, binding));
+                if (part.CarriesAnyOrigin && owner.FirstVisit(part, query, (byte)(1 << (int)position)))
+                {
+                    seen = Occurrences(part, atom, position, binding, seen, owner, query);
+                }
             }
 
             return seen;
@@ -117,13 +126,14 @@ public sealed partial class Binding
 
     // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
     // arguments are each atom of another Closure (an enclosing one) the signature names, in first-occurrence order, raw layers and nested
-    // arguments included.
+    // arguments included. The bound pass and the fill pass are each one query of `visitedParts`, which meets each distinct part once: a part
+    // met again adds no atom its first visit did not, so the order of first occurrence is kept (DECISIONS BU-63).
     private BoundType ClosureType(BindingSymbol symbol, FunctionKoto function, BoundType signature, ReadOnlySpan<BoundType> environment)
     {
-        var scratch = this.originScratch.Rent(Collect(signature, function, null, 0));
+        var scratch = this.originScratch.Rent(Collect(signature, function, null, 0, this.visitedParts.Begin(this.storageVersion)));
         try
         {
-            var count = Collect(signature, function, scratch, 0);
+            var count = Collect(signature, function, scratch, 0, this.visitedParts.Begin(this.storageVersion));
             return this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, environment, originArguments: scratch.AsSpan(0, count));
         }
         finally
@@ -132,7 +142,7 @@ public sealed partial class Binding
         }
 
         // With no scratch, an upper bound: the candidate occurrences.
-        static int Collect(BoundType type, FunctionKoto function, BoundOrigin[]? scratch, int count)
+        int Collect(BoundType type, FunctionKoto function, BoundOrigin[]? scratch, int count, uint query)
         {
             if (!type.CarriesAnyOrigin)
             {
@@ -147,7 +157,11 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                count = Collect(type.Components[i], function, scratch, count);
+                var part = type.Components[i];
+                if (part.CarriesAnyOrigin && this.FirstVisit(part, query))
+                {
+                    count = Collect(part, function, scratch, count, query);
+                }
             }
 
             return count;
@@ -188,29 +202,42 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it: each closure whose enclosing function is its binder
-    // (TyCtxt.EnclosingFunction) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36). One call is one
-    // query of the closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure
-    // signature's own instantiation begins its own query.
-    private BoundType? CloseClosureTypes(BoundType type, Subst instance) => this.ClosePart(type, instance, this.closedParts.Begin(this.storageVersion));
+    // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it (Close). One call is one query of the closing table,
+    // its inputs fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure signature's own instantiation begins
+    // its own query.
+    private BoundType? CloseClosureTypes(BoundType type, Subst instance) => this.Close(type, instance, instance.Declaring);
 
-    private BoundType? ClosePart(BoundType type, Subst instance, uint query)
+    // DECISIONS BU-60: the closures a kept part of an owner's instance holds, closed by substitution alone (KeptType runs inside storage
+    // walks, so this never queries storage).
+    private BoundType? CloseHeldClosures(BoundType type, BoundType owner) => this.Close(type, null, owner);
+
+    // SPEC 6.1.3, 6.3.3: each closure without a context gets the instance of the declaration whose instance it holds
+    // (TyCtxt.EnclosingDeclaration), when the inputs carry it: a function's is the instance when that is its binder, its conforming Self
+    // included (DECISIONS R5-M36), its result there the failure check; a Type's is what the one producer (TyCtxt.HeldContext; BU-60) makes
+    // of its identity's image in the environment Type, an instance of it or of a declaration it encloses (EnvironmentInstance), the instance
+    // closed first in the same query; a group has none (its statics are R5-M82's gap). A held context is closed again: its instance closed
+    // in this query and given back through the producer (DECISIONS BU-60), so a held instance inside a held context is closed per instance.
+    // A Type without a Closure, and a Closure whose context a function's instance made (closed with its parts by that instance), are kept.
+    private BoundType? Close(BoundType type, Subst? instance, BoundType? environment)
+        => this.ClosePart(type, instance, environment, this.closedParts.Begin(this.storageVersion));
+
+    private BoundType? ClosePart(BoundType type, Subst? instance, BoundType? environment, uint query)
     {
-        if (type.ClosureContext is not null || (type.Components.Count == 0 && type.Kind != BoundTypeKind.Closure))
+        if (!type.ContainsClosure || (type.ClosureContext is not null && TyCtxt.HeldType(type) is null))
         {
             return type;
         }
 
         if (!this.closedParts.TryGet(type, query, out var closed))
         {
-            closed = this.ClosePartCore(type, instance, query);
+            closed = this.ClosePartCore(type, instance, environment, query);
             this.closedParts.Set(type, query, closed);
         }
 
         return closed;
     }
 
-    private BoundType? ClosePartCore(BoundType type, Subst instance, uint query)
+    private BoundType? ClosePartCore(BoundType type, Subst? instance, BoundType? environment, uint query)
     {
         var scratch = this.RentTypes(type.Components.Count);
         try
@@ -218,7 +245,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (this.ClosePart(type.Components[i], instance, query) is not { } part)
+                if (this.ClosePart(type.Components[i], instance, environment, query) is not { } part)
                 {
                     return null;
                 }
@@ -227,26 +254,50 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(part, type.Components[i]);
             }
 
-            Subst? context = null;
-            if (BoundClosure.Of(type) is { } closure && type.Symbol is { } symbol && this.types.Instantiates(symbol) &&
-                ReferenceEquals(this.types.EnclosingFunction(symbol), instance.Target))
+            var context = type.ClosureContext;
+            if (BoundClosure.Of(type) is { } closure && type.Symbol is { } symbol && this.types.Instantiates(symbol))
             {
-                // The closure's result in the instance is the failure check.
-                if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
+                switch (this.types.EnclosingDeclaration(symbol))
                 {
-                    return null;
-                }
+                    case { Declaration: FunctionKoto } function when instance is not null && ReferenceEquals(function, instance.Target):
+                        if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
+                        {
+                            return null;
+                        }
 
-                context = instance;
+                        context = instance;
+                        break;
+                    case { Kind: BindingSymbolKind.Type } declaration
+                        when (TyCtxt.HeldType(type) ?? this.EnvironmentInstance(declaration, environment)) is { } held:
+                        if (this.ClosePart(held, instance, environment, query) is not { } closed)
+                        {
+                            return null;
+                        }
+
+                        context = this.types.HeldContext(symbol, closed);
+                        break;
+                }
             }
 
-            return changed || context is not null
-                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin ?? type.RawOrigin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments)
-                : type;
+            return changed || !ReferenceEquals(context, type.ClosureContext) ? this.WithContext(type, scratch.AsSpan(0, type.Components.Count), context) : type;
         }
         finally
         {
             this.typeScratch.Return(scratch, clearArray: true);
         }
     }
+
+    // DECISIONS BU-60: the instance of a Type `declaration` an environment Type is or encloses, by substitution alone: the declaration's
+    // identity substituted by the environment's arguments (StoredType), which the producer (TyCtxt.HeldContext) makes a context or none.
+    private BoundType? EnvironmentInstance(BindingSymbol declaration, BoundType? environment)
+        => environment is { Symbol: not null } ? this.StoredType(this.SelfType(declaration), environment) : null;
+
+    // A Closure Type with another context (DECISIONS BU-60: the Type instance a held context holds, which substitution rewrites), every
+    // other part kept.
+    private BoundType WithContext(BoundType type, Subst? context)
+        => ReferenceEquals(context, type.ClosureContext) ? type : this.WithContext(type, (BoundType[])type.Components, context);
+
+    // The Type with these components and this closure context, every other part kept.
+    private BoundType WithContext(BoundType type, ReadOnlySpan<BoundType> components, Subst? context)
+        => this.types.Intern(type.Kind, type.Symbol, type.Semantics, components, type.Length, type.Origin ?? type.RawOrigin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments);
 }

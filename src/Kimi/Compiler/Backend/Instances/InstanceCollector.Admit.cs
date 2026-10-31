@@ -41,10 +41,10 @@ internal sealed partial class InstanceCollector
     // its binder's own slots (their bindings closing the body is Instantiable's contract), a Self or a declaring Type. A binder declaring no
     // slot of its own (its schema) whose substitution binds no Self and no declaring Type is a definition whose enclosing instance Binding
     // does not publish: a Field initializer's Closure (TyCtxt.SubstOfClosure's identity) or a function declared in it (an accessor's
-    // definitions have their executing function). Removal condition of that branch: TyCtxt.EnclosingFunction gives every nested definition
+    // definitions have their executing function). Removal condition of that branch: TyCtxt.EnclosingDeclaration gives every nested definition
     // the declaration whose instance it holds, a Field initializer's its declaring Type (BU's fact).
     private bool CarriesInstance(Subst subst, BindingSymbol definition)
-        => this.types.EnclosingFunction(definition) is { } enclosing
+        => this.types.EnclosingDeclaration(definition) is { } enclosing
             ? !this.types.Instantiates(enclosing) || Carries(subst, enclosing)
             : subst.Self is not null || subst.Declaring is not null || subst.Target.Schema is { GenericSlots.Count: > 0 };
 

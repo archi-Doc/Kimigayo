@@ -72,14 +72,17 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
-            if (!changed)
+            // DECISIONS BU-60: the Type instance a closure's context holds is substituted with the Closure Type.
+            var context = TyCtxt.HeldType(type) is { } held && this.SubstituteIdentity(held, scope, parametersOnly) is var image && !ReferenceEquals(image, held)
+                ? this.types.HeldContext(type.Symbol!, image) : type.ClosureContext;
+            if (!changed && ReferenceEquals(context, type.ClosureContext))
             {
                 return type;
             }
 
             // A substituted struct or enum is another Type: its stored fields and cases follow the substitution, as for the
             // declared Types whose storage is prepared, so a field of it keeps the substituted Type (SPEC 8.2).
-            var substituted = this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments);
+            var substituted = this.WithContext(this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments), context);
             this.PrepareTypeStorage(substituted);
             return substituted;
         }

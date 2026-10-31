@@ -183,9 +183,11 @@ public sealed class TyCtxtTest
         "struct Fixed\n    public var value: i32\n    public computed current: i32\n        get() -> i32 => self.value\n    public init(value: i32) => self.value = value\n" +
         "group Limits\n    public let limit: i32 = seed()\n    public func seed() -> i32 => 3\n";
 
-    // Nested definitions in a generic struct's getter (a function, a Closure and a function in it) and setter, in its method, and a Closure
-    // in a static's initializer.
-    private const string EnclosingSource = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n" +
+    // Nested definitions in a generic struct's Field initializer (a Closure and a function in it), getter (a function, a Closure and a
+    // function in it) and setter, in its method, and a Closure in a static's initializer.
+    private const string EnclosingSource = "struct Box<T>\n    T is Copy\n    public var value: T\n" +
+        "    public var count: isize = (func [] () -> isize\n        func size() -> isize => 2\n        return size()\n    )()\n" +
+        "    public init(value: T) => self.value = value\n" +
         "    public computed got: T\n        get() -> T\n            func inner(z: T) -> T => z\n            let keep = func [] (y: T) -> T\n" +
         "                func deep(w: T) -> T => w\n                return deep(y)\n            return keep(inner(self.value))\n" +
         "        set(value: T) -> ()\n            func store(z: T) -> T => z\n            self.value = store(value)\n" +
@@ -1088,36 +1090,65 @@ public sealed class TyCtxtTest
         static FunctionKoto Enclosing(Koto node) => node as FunctionKoto ?? Enclosing(node.Parent!);
     }
 
-    // SPEC 6.1.3, 9.3, 11.3 (PLAN G157 (49)): the function whose instance a nested definition's instance holds is the named function whose
-    // body declares it, through Closures and blocks, and in an accessor's body the accessor's executing function, which keys its body:
-    // the getter's for a function, a Closure and a function in a Closure there, the setter's for its function (before: none, so the
-    // collector's EnclosingInstance check never saw them); a method's for its function. A member, an accessor, a top-level function and a
-    // static's initializer, with a Closure in it, are declared in a container, so none.
+    // SPEC 6.1.3, 6.3.3, 9.3, 11.3 (PLAN G157 (49), G300; DECISIONS BU-60): the declaration whose instance a nested definition's instance
+    // holds is the named function whose body declares it, through Closures and blocks, and in an accessor's body the accessor's executing
+    // function, which keys its body: the getter's for a function, a Closure and a function in a Closure there, the setter's for its
+    // function; a method's for its function. Code in a container outside every body belongs to the container: a Field initializer's
+    // Closure and a function in it hold the declaring Type's instance (before: none), a group static's Closure its group's. A member, an
+    // accessor, a top-level function and a static's initializer are declared by a container, so none.
     [Fact]
-    public void EnclosingFunctionIsTheFunctionWhoseBodyDeclaresTheDefinition()
+    public void EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds()
     {
         var c = MinimalEmissionTest.Analyze(EnclosingSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         string[] expected =
         [
             "Fn init none", "Getter got.Get none", "Fn inner got.Get", "Closure keep got.Get", "Fn deep got.Get", "Setter got.Set none",
-            "Fn store got.Set", "Fn get none", "Fn local get", "StaticInit limit none", "Closure limit none", "Fn outer none",
+            "Fn store got.Set", "Fn get none", "Fn local get", "StaticInit limit none", "Closure limit Limits", "Fn outer none",
+            "Closure count Box", "Fn size Box",
         ];
         var keys = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null && x.Source.Module == 0).Select(static x => x.Key);
         var actual = keys.Select(x => $"{x.Kind} {Label(x.Decl!.Declaration)} {Enclosing(x.Decl!)}");
         Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
 
-        string Enclosing(BindingSymbol definition) => c.Types.EnclosingFunction(definition) is { } function ? Label(function.Declaration) : "none";
+        string Enclosing(BindingSymbol definition) => c.Types.EnclosingDeclaration(definition) is { } declaration ? Label(declaration.Declaration) : "none";
 
-        // A Closure is labeled by the local or static it initializes.
+        // A Closure is labeled by the local, Field or static it initializes, a container by its name.
         static string Label(Koto declaration) => declaration switch
         {
             FunctionKoto { IsAnonymous: true } closure => Initialized(closure.Parent!),
             FunctionKoto function => function.Name,
+            DeclarationContainerKoto container => container.Name,
             _ => ((VariableKoto)declaration).NameKoto.IdentifierName,
         };
 
         static string Initialized(Koto node) => node is VariableKoto variable ? variable.NameKoto.IdentifierName : Initialized(node.Parent!);
+    }
+
+    // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60): a Field initializer's Closure read through an owner holds the owner's instance modulo Origins as
+    // its context's declaring Type, by substitution: one Closure Type for every read of one instance, another for another instance. An
+    // owner instance whose erased form has an Origin position, static or not, is held erased, and its readers see no instance
+    // (ClosureInstance): the Closure's body is its own identity, closed in no instance (PLAN G300). The owner's (a) (2026-10-31): the
+    // context is formed from the closed instance modulo Origins, and the gate is the readers' view, not a staged context.
+    [Fact]
+    public void AFieldInitializersClosureHoldsItsOwnersInstance()
+    {
+        const string Source = "struct Box<T>\n    public var f = func [] () -> isize => 4\n    public init() => ()\n" +
+            "func reads(s: ref/i32 during static, x: ref/i32) -> isize\n    let a = Box<i32>.init().f\n    let b = Box<i64>.init().f\n" +
+            "    let c = Box<i32>.init().f\n    let d = Box<ref/i32 during static>.init().f\n    let e = Box<ref/i32>.init().f\n    return 0\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "reads");
+        var types = "abcde".Select(name => body.Locals[Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Name == name.ToString())].Type!).ToArray();
+        Assert.Same(types[0], types[2]);
+        Assert.NotSame(types[0], types[1]);
+        Assert.Equal(["Box<i32>", "Box<i64>"], types[..2].Select(x => TyCtxt.Name(x.ClosureContext!.Declaring!)));
+        Assert.Same(types[3], types[4]);
+        var held = TyCtxt.HeldType(types[3])!;
+        Assert.Same(c.Types.Erase(held), held);
+        Assert.Equal("Box<ref/i32>", TyCtxt.Name(held));
+        Assert.Null(TyCtxt.ClosureInstance(types[3]));
+        Assert.True(c.Types.SubstOfClosure(types[3]) is { IsIdentity: true } context && ReferenceEquals(context.Target, types[3].Symbol));
     }
 
     // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in

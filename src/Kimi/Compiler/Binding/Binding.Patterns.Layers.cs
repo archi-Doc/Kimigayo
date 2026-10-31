@@ -77,7 +77,7 @@ public sealed partial class Binding
     // else through the Subject's path (ReadHolder); null after a located Unsupported_Kd at `node`.
     private BoundType? PayloadRead(BoundType stored, BoundMatch plan, in PatternReach reach, Koto node)
     {
-        if (reach.Access == PatternAccessMode.Owned || !HoldsHolder(stored))
+        if (reach.Access == PatternAccessMode.Owned || !this.HoldsHolder(stored))
         {
             return this.ReadHolder(stored, plan.Syntax.Expression, node);
         }

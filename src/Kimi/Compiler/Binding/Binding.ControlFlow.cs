@@ -324,7 +324,7 @@ public sealed partial class Binding
             // is the explained one. A regional target records source edges; fixed and omitted targets keep their immediate/collecting fit.
             for (var i = 0; i < types.Count; i++)
             {
-                if (!(HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node) : this.FitsTypeAt(types[i], common, node)))
+                if (!(this.HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node) : this.FitsTypeAt(types[i], common, node)))
                 {
                     context.Conflict();
                     failed ??= types[i];

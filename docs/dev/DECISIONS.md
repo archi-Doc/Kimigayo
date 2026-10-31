@@ -5887,6 +5887,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: a Closure returned from a named function's call may keep the function's per-call atoms in its signature (design §3.1; no
     reproducer).
   - Numbering: R4-M159 was reserved for G273 by the planning session.
+  - Amendment (R4 agrees): Collect and Occurrences walk each shared part once (G309, bu90).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6674,7 +6675,8 @@ resumed by R4-M86 (2026-10-20).
   open parts, so the table is still needed); a memo across queries (one `Apply` still walks its DAG as a tree); a cap on a Type's
   tree size (narrows accepted programs); waiting for R6 and R7; a per-query `Clear` (very many small substitution queries would pay
   the table's capacity); one stamp shared by nested calls through a field (exact only if every nested call closes in the same
-  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape).
+  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape;
+  superseded by BU-64, a per-query table).
   U2, the old analysis, under the owner's D5 exception of 2026-10-21 (the owner's choice 「例外を認める (推奨)」: performance fixes of
   its walks W1 and W5 with identical verdicts, the Origin-carrying shared Tuples of letr included; nothing else of the frozen path;
   they go with the old analysis at R6-check): `CleanupObservesBorrows` keeps one query per Place, its source and context fixed; its
@@ -8895,6 +8897,64 @@ resumed by R4-M86 (2026-10-20).
     re-running the conformance proof at the capture (a consumer re-running a check); Binding's null for a rejected projection
     (R5-M155 (c)).
 
+- **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
+  its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
+  bu77; rewritten 2026-10-31, unit bu89; PLAN G300; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g300\design.md` rounds 1-4 and
+  `design-r5.md`, ACCEPTED by BU and R5 before code; the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」) SPEC 3,
+  6.1.3, 6.3.3. Meets R5-M157's removal condition in part.
+  - View: `TyCtxt.EnclosingDeclaration` (renamed from EnclosingFunction, with R5's consent for the collector's one call and comments)
+    gives the declaration whose instance the code at a scope holds: a named function, an accessor's executing function (bu60), and for
+    code in a container outside every body (a Field's or static's initializer) the container. A member or top-level declaration holds
+    none. bu63's base calls and ObjectViews read it unchanged (a Type matches neither of their patterns).
+  - Representation: the Closure Type's existing ClosureContext holds a substitution whose target is the closure and whose declaring Type
+    is the instance I, erased; BoundType counts I's parameters, pair layers and abstract parts (`TyCtxt.HeldType`), not its Origins.
+  - One producer, `TyCtxt.HeldContext(c, I)`: none where Erase(I) is Erase(SelfType(D)), D = EnclosingDeclaration(c) (the identity test,
+    so every read in D's own frame keeps D's identity), else the context holding Erase(I). It is a function of Erase(I) alone, so it drops
+    nothing a reader reads, and every order of steps reaching one closed, normalized instance gives one context. Its callers: the closing
+    step (`ClosePartCore`, I being the environment's image of D's identity, `EnvironmentInstance`, substitution alone, never a storage
+    query) and the five structural walks, SubstituteTypeCore, ContractTypeCore, SubstituteIdentity, CaseType and CompletedParts, which
+    map I as a part and give it back through the producer. KeptType substitutes, completes, then closes a stored part's Closures under its
+    owner (a `ContainsClosure` summary gates it); StorageInstance closes the rest under the instance's declaring Type, last. A group
+    has none.
+  - One closing step (R5's B1): ClosePart keeps a Type without a Closure and a Closure whose context a function's instance made (closed
+    with its parts by that instance, R5-M36); a held context is closed again, its instance (its own, else the environment's image)
+    closed in the same query (BU-19's memo covers it), then given to the producer. In `outer[A]`, `Holder<C>`'s held Closure gets
+    `Holder<C{outer[A]}>`: one key per instance of `outer`, a closed representative (before: InternalInvariant_Kd).
+  - The owner's (a), read: one lossless producer on Erase(I); every instance Type a reader or the collector reads ends with the closing
+    step; the walks re-intern through the producer. The literal "formed only by the closing step" would need an ordering rule across
+    about 70 callers (CaseType in Semantics adaptations, SubstituteIdentity in proofs, about 50 ContractType callers), which is not local.
+    The identity test commutes with substitution only through the closing step: a walk whose binder is D leaves a null context null.
+  - Readers' view, `TyCtxt.ClosureInstance`: the context, except a held instance with an Origin position (a borrow, Slice, handle or raw
+    layer, or an Origin argument, static included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance), which is closed
+    in no instance. ClosureSignature (ClosureDefinitionSignature), ClosureEnvironment and SubstOfClosure read it; every other
+    ClosureContext read is interning, equality, Erase, Retains' memo key or HoverBuilder's key. SubstOfClosure gives the closure's
+    own identity there, so the
+    collector reports the EnclosingInstance gap at each site through CarriesInstance's first branch, exactly where dev does, until PLAN
+    G300's per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
+  - Exception to KD3 (the collector's representative erased only into its key) and to TyCtxt.Instances' rule against proving on erased
+    values: a held closure item's representative carries an erased declaring Type; the collector reads no Origin of it (R5 consents).
+  - N6 resolved: Box<ref/i32> and Box<ref/i64> are two instances, so two Closure Types (SPEC 3, one Concrete Closure Type per expression
+    and instantiation): `TypeMismatch_Kd` where one is assigned to the other, an independent error dev masked. N5: a group static's
+    Closure call keeps one collector record where dev had two (Binding's Unsupported_Kd at the access stays); its fix is R5's collector
+    change.
+  - Rejected: (b-i), the read's Origins in the Closure Type's Origin arguments. A Type's Origin arguments are its symbol's declared ones
+    (the old analysis's SupportsType, Aliases, BoundContracts, MemberLookup, ResultSurvey, AggregateLayout and 13 `Schema.Origins[i]`
+    reads assume it). (b-ii), opening I's Origin positions per use in ClosureSignature: it threads a use through ClosureSignature's 8 sites
+    and TryCallable's 16 callers and instantiates D's Origin premises per use, a separate design step (PLAN G300). Reader Origins kept
+    in I (round 2): two reads of one instance differ only in I's Origins and the modulo-Origins relations reject them. A staged context
+    (round 4, the closure's identity for an instance with an Origin position): lossy, so a walk could not decide again after
+    normalization (B5 (b)), and its identity test by reference missed D's identity read through another path (B5 (a)). Formation in the
+    closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the capture
+    storage (`Binding.Closures.cs`).
+  - Tests: InstanceCollectorTest's R5-M157 rows flipped (one item per instance, a function in an initializer R5-M43's gap at its call),
+    a read through another instance, held contexts holding a function's Closure (also with an Origin parameter, and inside a second held
+    context: one item per instance), `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records) and
+    `OneInstanceModuloOriginsHasOneClosureType` (D's own instance joined and assigned through another path: dev's records; two instances:
+    TypeMismatch_Kd; erased reads: the gap at each); TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and
+    `AFieldInitializersClosureHoldsItsOwnersInstance`; GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another
+    instance, erased, a generic function, a nested Type, a base Field, a projection, also joined through R{o}.Item, a signature naming T,
+    a forwarded holder, the three held contexts of a function's Closure), each observing T.
+
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
   the premise contract's second reader, the fit judge's dependence query) (2026-10-30; PLAN G206 (7),
@@ -8953,6 +9013,115 @@ resumed by R4-M86 (2026-10-20).
     copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
+
+- **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
+  them read it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` and
+  `design-r1.md`, design review 1 REVISE (B1: the summary as BoundType fields; B2: ReplaceHolder), re-check ACCEPT) SPEC 3.8, R4's V16:
+  a walk's work is linear in the distinct parts of an interned Type. This entry makes the walks it names so (the summary's readers and
+  the walks taking BU-19's tables, below); it does not make every Origin walk linear (Open, below).
+  - Census (BU-55's instrumentation, with root entries told apart from entries once per visit of an outer walk; `g309\census\`): on
+    `D1<ref/i32 during a>` (a member path, a generic callee, `T is Copy`, called Closures) at n = 16 the root walks HasUnsubstitutedOrigin
+    (688,997 visits), HasUnsubstitutedInput, CallAtomsOf and ResultFixedForCall's FixedType (about 98,300 each) grow as 2^n; FixedType
+    asks ContainsOrigin and ProveCopy once per Origin position (ContainsOrigin 524,288 visits, OperandContexts 1.69 M through the Copy
+    proofs). A Closure with two captures (`func [v, u] () => v`, u `during b`) makes ContainsOrigin 4^n (201 M visits, Bind 7.1 s at n =
+    14). On BU-58's projection chains with raw leaves HoldsHolder takes 131,247 visits at n = 16.
+  - The summary (`Binding.OriginSummaries`): per interned Type the Origin expression nodes its parts' Origins and Origin arguments state
+    (Nodes) and those its raw layers state (RawNodes), each distinct, a meet node and its operands included, in the order a walk of the
+    parts meets them first (own Origin, Origin arguments, then each component's), and the holder bit (a `during self` layer inline: the
+    layer, or a Tuple or fixed array with a component holding one). It is formed on its first read from the components' summaries; a Type
+    without CarriesAnyOrigin has the empty summary and no entry; an array equal element by element to a component's is that component's.
+  - Readers, each a loop over the nodes with its own per-node test, a meet node passed over where the walk recursed into its operands
+    (Meet's operands are atoms): HasUnsubstitutedOrigin (both roles), HasUnsubstitutedInput, HasEnvironmentOrigin, CallAtomsOf (CallAtomOf
+    per node), ResultFixedForCall (its FixedOrigin per node), FixedInBody, MentionsOrigin (also Binding's two ContainsOrigin calls:
+    FixedOrigin's capture test and OriginDiagnostics), HoldsHolder (its six sites and NonNullAtLayers). Each becomes an instance member.
+    ∃, ∀ and ∪ folds of a pure per-node test are equal over the set of nodes, and the first-visit order keeps ResultFixedForCall's Copy
+    proofs in dev's order, repeats removed. BU-24's raw-role sites (ArchitectureRulesTest) follow the reads: HasUnsubstitutedOrigin's
+    (ContractCalls) and HoldsHolder's (RawOrigins.Holder) move to the summary, two sites out and two in (OriginSummaries).
+  - Stay walks (the sweep of BU-19's ungated Origin walks): ContainsOrigin's static walk for the old analysis's three calls, marked
+    `[Transitional("R6-check")]` (PLAN G309's residue; the Origin-expression overload it calls is Binding's own since G306 and stays);
+    StaticOnly and OverInputs, reached from the static Type relation (`PerCallShape`) without a Binding; OriginInheritance's local
+    MentionsOrigin, which compares whole expressions, not meet operands; FirstUnownedOrigin (a depth bound, a Function stop, components
+    before arguments); HasLocalRegion, CarrierOf and RegionBoundsPart, which stop at Function and FunctionItem parts (HasLocalRegion takes
+    BU-55's table in G309's next unit).
+  - Open (implementation review 1's B1, 2026-10-31; PLAN G309, its unit G309-R): the sweep missed walks that still take 2^n on an
+    Origin-carrying projection-chain DAG under a written borrow layer, CHAIN = `Dup<…Dup<ref/i32 during static>.Item…>.Item`: `let y:
+    ref/CHAIN = x` (Bind 15.6 s at n = 22), `func p(x: ref/CHAIN)` (5.7 s at n = 26) and `r<T>(x: ref/Dup<…T…>.Item)` called at `ref/i32
+    during static` (6.5 s at n = 22), through RetainInnerOutlives, RewriteOrigins (ResolveOrigin and TyCtxt.Intern per visit),
+    AddTypeClauseObligations, LocalOrigins' Match, and CallSlots' Infer with its proofs and OperandContexts per visit. Not a regression:
+    dev is as slow or slower on these forms.
+  - Not a shared representation (B1): BoundType's fields, constructor and interning are unchanged; the table is private to Binding, keyed
+    by identity as TypeMemo is, derived only from fields BoundType holds, and read by no other phase. BU-19's rejection of new BoundType
+    summaries and BU-58's of a BoundType bit stand. Nor is it BU-19's rejected "memo across queries (one `Apply` still walks its DAG as a
+    tree)": no query input enters a summary, which is built components-first through the table, so no walk of a DAG as a tree remains.
+    A summary is a function of its Type alone (an interned Type and its Origins never change; a test that reads a binding state, such as
+    PendingAtom or BorrowCondition, runs when a walk reads the nodes), so the table is never cleared, as interning is not (Binding's
+    constructor creates its TyCtxt), and a warm pass allocates nothing.
+  - The walks no summary answers take BU-19's tables, each entry call a query (G309's second unit): HasLocalRegion on `visitedParts`, as
+    RegionBoundsPart is; AddStoredPremises on `visitedParts` (a revisit adds the same premise edges, which the closure reaches anyway);
+    AccumulateRequirements on `visitedParts` with one state bit per polarity (a revisit at a met polarity repeats joins and keepers,
+    duplicates only, and a join a revisit would have made after a slot it reads changed is made when the declaration is visited again,
+    its self-edge queueing it, so the least fixed point is the same); and the leaf rewrites SubstituteStoredOrigins, WithoutUnstated and
+    PublishedResult on `rewrittenParts`, with WithoutRawOrigins and WithUnstatedOrigins (none calls a user of the table while it walks).
+    ReplaceHolder reads the holder bit: a part holding no `during self` layer is its own image (Rebuild of unchanged components returns
+    the interned part), which replaces its copy of HoldsHolder's rule; a declaration writes the parts holding one inline (no Type
+    argument or projection states `during self`, InvalidOriginBinding_Kd), so they form a tree of the text's size and need no table.
+    G273's walks (R4-M159; unit bu90) take `visitedParts` as well: ClosureType's Collect, its bound pass and its fill pass each a query
+    (a part met again adds no atom, so the distinct atoms keep their first-occurrence order), and ClosureArgumentVariance's Occurrences
+    with one state bit per polarity (Join is idempotent). The static Type relation reads a variance without a Binding, so Occurrences
+    takes the table of its definition's compilation's Binding, the table's one owner, whatever premises its caller reads. On dev
+    Collect took 24,580 / 393,220 / 6,291,460 calls per Bind on PLAN's `ref` form at n = 12 / 16 / 20; it takes 52 / 68 / 84.
+  - Cost: with BU-64's, G309's three units together. Pinned Bind A/B of bu82 merged with dev 06a74fe9d (b0fcb291d; BU's quiet slot,
+    2026-10-31, 7 rounds; `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\trim-report.md`): B/A' median 1.012-1.015 cold and
+    1.004-1.010 warm on Hello / Milestone 26 / Milestone 27, cold +45 KB, warm 0 B, above the 1.01 gate; the trim unit bu88 kept no
+    trim. The owner accepted the cost (2026-10-31, verbatim 「(a) Accept, fix, land」; PLAN G309).
+  - Tests: TypeDagScalingTest's raw projection-chain rows (`AWrittenProjectionDagIsWalkedOncePerPart` at n = 40,
+    `AWrittenTypeDagIsWalkedOncePerWrittenType` at n = 30) lose Explicit; `AHolderReadRebuildsOnlyThePartsHoldingTheLayer` (n = 40: an
+    instance's holder Field at the end of the chain D_i, and a projection chain beside the layer). The summary's readers' verdicts are
+    dev's (diagnostic snapshot and Unit runs on both pipelines).
+
+- **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of a
+  table for it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` item 4,
+  design review 1 (its prototype found 0 mismatches in 8,721,555 memo-versus-tree root checks over 847 focused tests and the census
+  forms) and re-check ACCEPT) SPEC 8.2, 8.4; R4's V16.
+  - Census: on `D1<ref/i32 during a>` ContractType/ContractTypeCore took 3,453,264 visits at n = 16 in Bind (7,035 root calls:
+    candidates, adaptations, constraint instantiations) and 4,231,059 in BuildMir (through TyCtxt.Instance -> Binding.StorageInstance
+    and TyCtxt.Retains), ApplyContractEnvironment once per ContractTypeCore visit. On a projection chain over a Type parameter in a
+    generic body (the guard path) the review counted 11,868 / 18,012 / 42,588 / 140,892 ContractTypeCore visits at n = 8 to 14.
+  - The rule: one outermost ContractType call is a query of `contractParts` (BU-19's TypeMemo), its scope, Self, normalize flag,
+    activeRequirementContract and normalizingAssociated's set fixed. ContractTypeCore's component loop continues it (ContractPart), a
+    component with components recorded (BU-55: a leaf is cheaper to rewrite again, a root is met once). The normalizations under a
+    guard push (ProjectionSpecification, the specified Type's and a Type-identity fact's ContractType) enter afresh: nested queries.
+    The associated collection's batch keeps its place at every call (BatchedContractType).
+  - BU-19's rejection re-examined. Its text: "a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the
+    gate suffices on every shape)". Neither reason holds. (i) The guard's set changes only by a push after a part's component loop,
+    popped before that part returns, and what runs under the push is a nested query; so within one query the set is the one the query
+    began with, and an answer is a function of the part and the query's fixed inputs. The writers of activeRequirementContract and
+    collectingAssociated (call binding, associated inference) restore them and run inside no query's component walk. A memo across
+    queries stays rejected. (ii) The gate passes every Origin-carrying part (the census above). This supersedes that clause of BU-19;
+    the rest of BU-19 stands.
+  - Exact as SubstituteType's table is: each answer is the one the recursion gives (the review's prototype compared them root by root),
+    and a nested query can only evict outer entries, which are then recomputed.
+  - Open limit (N2): ApplyContractEnvironment runs once per distinct part, and under a conformance path each run is a StoredType query
+    over the part's subtree; the guard path runs one nested query per normalized level. Both stay O(sum of subtree sizes), quadratic in
+    distinct parts (the review's prototype: +50 / +58 / +66 ContractTypeCore visits per +2), short of BU-55's linear rule. A conformance
+    path reaches a shared part (implementation review 1's B2): `contract Get<T>` requiring `func get(self: ref/Self, x:
+    ref/Dup<…T…>.Item)`, conformed by `struct X<U>` with `Self is Get<U>` and the matching `get`; SubstituteTypeCore takes +445 / +877 /
+    +2,221 / +6,829 / +10,093 visits over the base level at n = 4 / 8 / 16 / 32 / 40, quadratic (Bind 61 ms at n = 40; dev 2,185 ms at
+    n = 18). The rows below, this form's included, pass in milliseconds at n = 40.
+  - Tests: TypeDagScalingTest `InstanceChainWalksAreLinearInDistinctParts`'s `ref` row (n = 40: the summary's readers, the published
+    result, a Closure with two captures and G273's walks, BU-63's Collect and Occurrences, as well) and
+    `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); with the table undone both exceed the runner's 120 s
+    timeout, as the `ref` row does with dev's Collect. `AConformanceOverAProjectionDagFinishes` (n = 40, B2's conformance path;
+    G309-F1) bounds the open limit.
+  - Cost of G309's three units (BU-63, BU-64; unpinned A/B from one folder, full JIT, A = dev 1f2d7dea6; two other sessions' heavy runs
+    were registered, so no pinned timing): cold Bind +44,776 / +44,808 / +45,808 B and BuildMir +14,904 / +14,904 / +30,472 B on Hello /
+    Milestone 26 / Milestone 27, the heap with the compilation alive +35,024 / +35,032 / +45,504 B, warm Bind 0 B. Entries after
+    Bind: originSummaries 142 / 143 / 175 (12,224 / 12,256 / 13,256 B, byte-exact), contractParts 159 / 159 / 176, rewrittenParts
+    121 / 121 / 143, visitedParts 161 / 161 / 181 (dev 159 / 159 / 178); BuildMir in the same pass raises contractParts to 287 / 287 /
+    341 (431 slots) and rewrittenParts to 155 / 155 / 221, its +14.9 / +14.9 / +30.5 KB (implementation review 1's N2). Recording a query's root too gave 737 / 743 / 833 contractParts
+    entries and +93 KB cold Bind on Hello, so roots are not recorded. Cold Bind (one run each after a warm-up): PLAN's `ref` form 49 /
+    150 / 2,457 ms at n = 12 / 16 / 20 on dev, 14 to 17 ms up to n = 40; the two-capture form 206 ms / 3.3 s / 73.6 s at n = 12 / 14 /
+    16 on dev, 19 ms at n = 40; the raw chain (`during s`) 12.2 s at n = 24 on dev, 14 ms at n = 40.
 
 - **BU-65 A declaration's finite inline storage is judged on per-node summaries by Tarjan over the edges the walks discover**
   (2026-10-30; PLAN G310, unit bu76; designs `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g310\design.md`, `design-r1.md`,
@@ -13743,6 +13912,9 @@ structure is recorded here by the unit that first implements it.
     erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
     a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
     closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
+  - Amended by BU-60 (bu77): the removal condition is partly met. Owners whose erased instance has an Origin position remain the
+    EnclosingInstance gap, as do group statics, until G300's per-use opening; they reach CarriesInstance's first branch, so the else
+    branch's deletion stays R5's.
 - **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
   §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
   - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and
@@ -14183,18 +14355,22 @@ structure is recorded here by the unit that first implements it.
        the raw reports; A = `acc2f12ad`, the old generator's default, B = `8d93fec57`, both run from one folder, CPU 2 pinned at High
        priority, tiering off, 5 interleaved rounds, each report's compiler id checked; times are the median of the rounds' sample
        medians). The MIR side, BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against
-       the old Analyze and Emission (A's stages 4 to 6): 87-136 ms against 1.1-62 ms on the Scalar and Branching inputs and Generic 1,
-       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 315, 470
-       and 947 ms against 733, 1,521 and 3,106 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 30.7-47.0 MB against
-       0.5-37.4 MB on the small inputs; 91, 151 and 270 MB against 209, 405 and 802 MB. The whole default build (A's total without its
-       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+72 to +120 ms) on the small inputs, 0.65,
-       0.51 and 0.47 on Generic 32, 64 and 128 (593, 907 and 1,598 ms against 919, 1,763 and 3,422 ms). Cold collection is equal within
+       the old Analyze and Emission (A's stages 4 to 6): 11.0-17.0 ms against 0.13-7.8 ms on the Scalar and Branching inputs and Generic 1,
+       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 39.4, 58.7
+       and 118.4 ms against 91.7, 190.1 and 388.3 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 3.8-5.9 MB against
+       0.06-4.7 MB on the small inputs; 11.4, 18.8 and 33.7 MB against 26.1, 50.6 and 100.2 MB. The whole default build (A's total without its
+       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+9.0 to +15.0 ms) on the small inputs, 0.65,
+       0.51 and 0.47 on Generic 32, 64 and 128 (74.1, 113.4 and 199.8 ms against 114.8, 220.3 and 427.7 ms). Cold collection is equal within
        2.5 % (B/A 0.98-1.02; bytes and items equal; Generic 128: 25.5 ms and 7.9 MB on both). Check cost against G2's head `90697ecfa`
        (its default configuration; R5-M156's measurement): a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1
        and 157.4 ms against 34.4, 94.2 and 154.7) and 61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.00 to
        +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms, the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on
        both, cold +21 KB (Hello) and +17 KB (Milestone26). The owner accepted the fresh small-build cost, verbatim
        「(a) 受け入れる」 (2026-10-31); its fixed cost's measured breakdown is R5's next unit (PLAN G337).
+       Corrected 2026-10-31 (G337's census): the first summary took each sample's ticks and bytes, which cover the report's 8
+       iterations, as one iteration, so the owner was shown each absolute figure 8 times too large (+72 to +120 ms); the figures
+       above are per iteration (`summarize-p3.py` fixed; the first output kept as `summary-output-uncorrected-x8.txt`); every ratio
+       and the owner's answer stand.
     7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
        `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
        `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
@@ -14215,3 +14391,38 @@ structure is recorded here by the unit that first implements it.
     `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G336).
   - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
     R5-M163 (the folder).
+- **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, R5; PLAN G337, design
+  `draft/Sketches/R5/G337-design.md` §7 (`bde706c59`); R4, which owns `Mir/Analysis`, agreed to O1 under its hold, accepted §7 with five
+  conditions and reviews the A3/A5 side; the owner's G337 acceptance 「(a) 受け入れる」; under R4-M1, R4-M2a and R5-M156)
+  - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's (PLAN10-P3's
+    `--compiler-pipeline` figures are per 8 compilations: per compilation stage 3 is 12.7 ms of Scalar 1's 30.1 ms); A3 and A5 over them
+    are 39-42 % of it, while nothing reads a library body's A3 or A5 result (A5 reads A4's keys, A4 no A5 fact, code generation A2's tables).
+  - Input rule: `MirAnalysis.Run(program, rootModules)`, the range required: steps 1 (A3) and 4 (A5: the Origin judgment, the Loans and
+    their block order and move paths) judge the bodies with `Source.Module < rootModules`, the range Compilation already passes to
+    `InstanceCollector.Run`; steps 2 (block order, move paths, A1, A2, A4's local facts) and 3 (A4 over the program) visit every body, since
+    A4 composes library callees' local facts and code generation reads A2's tables of generated library bodies, so no step reads a fact step
+    2 did not produce. Every caller passes `SourceModules.Length` (`Compilation.BuildMir`, `MirInitTest`, `CollectionCostMeasurements`).
+  - Invariant: a body outside the root range is built from its library definition alone (`MirBuilder` builds one body per definition from
+    its own syntax; an instance is the collector's replay of it; a library Closure captures library locals; SPEC 18: the library names no
+    program module). A builder change that builds a library-owned body from program facts (a per-instance or specialized body, R8's
+    monomorphization included) must place it in the root range or end this rule.
+  - Precondition, measured over 134 programs (`tests/milestones`, `tests/mir`, `docs/examples`, `src/Benchmark/Kimi`), every step on every
+    body: 215 library bodies each; no program declaration named by a library body; no problem, record or finding at a library site; the
+    library MIR identical but for two synthesized location ids in Milestone27 and Milestone30 (`SourceRef.Of` numbers a synthesized node on
+    its first use, in an order the program can change; A3 and A5 read an id only as a subject); 117 program constructors, none with a
+    library layer.
+  - Findings: `TyCtxt.OriginFindings` holds (a) the pass walk's findings over every obligation (`Binding.OriginRows.cs:122-147`: rows formed
+    with no body, BU-26, and case masks), which do not depend on the views read and are unchanged by this rule, and (b) each view's findings
+    at its first read by step 4 (`Binding.OriginRows.Atoms.cs:108`, `:120`), keyed by `MirDefKey.Body`, at that view's own or its layer's
+    rows. A view's layer is its constructor's own struct (`LayerOf`, `Binding.ExecutableBodies.cs:53`: the constructor's scope owner);
+    fragments never merge across Kotonoha libraries (SPEC 6.1.2) and a conformance block declares no constructor (SPEC 8.8.1), so a program
+    view never reads a library layer's rows. No program body's finding depends on reading a library view; the library views' findings move
+    to the library check.
+  - Library check: `MirAnalysisTest.TheLibraryHasNoAnalysisProblem(target)`, one row per target, runs the driver with the library as a root
+    module and fails on any library construction record, validator finding or analysis problem, A1's arena limit and the C1-F4 view's
+    findings included: a library defect is a compiler-test failure, not a user record (acceptable at H3 and after: the library ships with
+    the compiler). Every unit changing A3 or A5 runs it (G264 U1's candidates, G338); `MirAnalysis`'s contract header names it.
+  - Rejected: a syntax test in `MirAnalysis`; a per-body library flag (a second copy of the module order); skipping A1, A2 or A4 too, which
+    A4 and code generation read; an optional or defaulted range.
+  - Saving per compilation (indicative, unpinned): 39-42 % of stage 3, about 5 ms of the pinned 12.7 ms on Scalar 1, 0.64-0.77 MB cold, the
+    same time per warm rebuild; G337's O1-M retakes it pinned, and O2 (library bodies built on demand) follows that measurement.

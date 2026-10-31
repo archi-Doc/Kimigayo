@@ -5,14 +5,20 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Owns a Type's Contract environment rewrite (ContractType): a Contract's Self replaced by the conforming Type, a bound Contract
-// reference's arguments substituted, and completed associated identities normalized in a scope, without member selection. Reads the
-// conformance tables and the scope's facts; publishes nothing.
+// reference's arguments substituted, and completed associated identities normalized in a scope, without member selection, each distinct
+// part once per call (contractParts). Reads the conformance tables and the scope's facts; publishes nothing.
 public sealed partial class Binding
 {
+    // The images of ContractType's queries (DECISIONS BU-64): one outermost call is a query, its scope, Self, normalize flag,
+    // activeRequirementContract and normalizingAssociated's set fixed, so each distinct part is rewritten once per query. The set changes
+    // only by a push after a part's components are rewritten, popped before that part returns, and what runs under the push enters
+    // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
+    private readonly TypeMemo<BoundType> contractParts = new();
+
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
-    /// (DECISIONS BU-19).</remarks>
+    /// (DECISIONS BU-19). Any other part is rewritten once per call (contractParts, DECISIONS BU-64).</remarks>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
     {
         if (!type.HasAbstractPart && !type.CarriesOrigin)
@@ -20,23 +26,54 @@ public sealed partial class Binding
             return type;
         }
 
-        if (this.collectingAssociated is not { } batch)
+        var query = this.contractParts.Begin(this.storageVersion);
+        return this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
+    }
+
+    // A component of a query: the associated collection's batch answers it where one is open (unchanged); otherwise a component with
+    // components is recorded, a leaf being cheaper to rewrite again than to record and a query's root met once (DECISIONS BU-55).
+    private BoundType ContractPart(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    {
+        if (!type.HasAbstractPart && !type.CarriesOrigin)
         {
-            return this.ContractTypeCore(type, scope, self, normalize);
+            return type;
         }
 
+        if (this.collectingAssociated is not null)
+        {
+            return this.BatchedContractType(type, scope, self, normalize, query);
+        }
+
+        if (type.Components.Count == 0)
+        {
+            return this.ContractTypeCore(type, scope, self, normalize, query);
+        }
+
+        if (!this.contractParts.TryGet(type, query, out var image))
+        {
+            image = this.ContractTypeCore(type, scope, self, normalize, query);
+            this.contractParts.Set(type, query, image);
+        }
+
+        return image;
+    }
+
+    // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch).
+    private BoundType BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    {
+        var batch = this.collectingAssociated!;
         var key = (type, scope, self, normalize, this.activeRequirementContract);
         if (batch.Normalized.TryGetValue(key, out var known))
         {
             return known;
         }
 
-        var result = this.ContractTypeCore(type, scope, self, normalize);
+        var result = this.ContractTypeCore(type, scope, self, normalize, query);
         batch.Normalized[key] = result;
         return result;
     }
 
-    private BoundType ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize)
+    private BoundType ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         type = this.ApplyContractEnvironment(type, scope);
         if (this.activeRequirementContract is { } bound)
@@ -58,11 +95,18 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components![i] = this.ContractType(type.Components[i], scope, self, normalize);
+                components![i] = this.ContractPart(type.Components[i], scope, self, normalize, query);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
             var result = changed ? this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments) : type;
+            if (TyCtxt.HeldType(type) is { } held)
+            {
+                // DECISIONS BU-60: the Type instance a closure's context holds is normalized with the Closure Type.
+                var image = this.ContractType(held, scope, self, normalize);
+                result = ReferenceEquals(image, held) ? result : this.WithContext(result, this.types.HeldContext(type.Symbol!, image));
+            }
+
             if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
             {
                 return result;

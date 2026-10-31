@@ -415,7 +415,12 @@ public sealed partial class Binding
     // Every Origin stored in `type` outlives the node `shorter`; with `result`, Origins inside a nested Function Type are not stored.
     // `condition` is the Semantics case of the storage itself; a pair layer's own slot, the implicit `o` of an original `s/T` included
     // (SPEC 8.1.1), is stored only in its binder's borrow cases, while its target is stored in every case (SPEC 15.6.5).
+    // Each distinct part is visited once per call (DECISIONS BU-19, PLAN G309): a revisit adds the same edges, which the closure reaches
+    // anyway.
     private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition = 0)
+        => this.StoredPremisePart(environment, type, shorter, rule, result, condition, this.visitedParts.Begin(this.storageVersion));
+
+    private void StoredPremisePart(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition, uint query)
     {
         if ((result && type.Kind == BoundTypeKind.Function) || !type.StoresOrigin)
         {
@@ -434,7 +439,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddStoredPremises(environment, type.Components[i], shorter, rule, result, condition);
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.StoredPremisePart(environment, type.Components[i], shorter, rule, result, condition, query);
+            }
         }
     }
 
