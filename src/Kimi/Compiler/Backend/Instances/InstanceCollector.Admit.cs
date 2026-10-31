@@ -85,13 +85,18 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
+        if (this.refused.Contains(key))
+        {
+            return -1; // Refused once, with its one record (DECISIONS R5-M170).
+        }
+
         var representative = erased is null ? null : subst;
         if (representative is not null && !this.Instantiable(target, representative, site))
         {
             return -1;
         }
 
-        if (!this.Grows(parent, (MonoKind.Body, target.Key), representative?.Height ?? 0, site, out var growth))
+        if (!this.Grows(parent, key, (MonoKind.Body, target.Key), representative?.Height ?? 0, site, out var growth))
         {
             return -1;
         }
@@ -125,8 +130,14 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
+        if (this.refused.Contains(key))
+        {
+            return -1; // Refused once, with its one record (DECISIONS R5-M170).
+        }
+
         if (type.Height > HeightLimit)
         {
+            this.refused.Add(key);
             this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
@@ -138,7 +149,7 @@ internal sealed partial class InstanceCollector
 
         var growth = new Growth(0, 0, this.Above(parent));
         if (key.Kind == MonoKind.DropGlue && Declaration(type) is { } declaration &&
-            !this.Grows(parent, (MonoKind.DropGlue, new(declaration, default)), type.Height, site, out growth))
+            !this.Grows(parent, key, (MonoKind.DropGlue, new(declaration, default)), type.Height, site, out growth))
         {
             return -1;
         }
@@ -180,6 +191,11 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
+        if (this.refused.Contains(key))
+        {
+            return -1; // Refused once, with its one record (DECISIONS R5-M170).
+        }
+
         var laidOut = true;
         for (var i = 0; i < collection.Components.Count; i++)
         {
@@ -191,7 +207,7 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        if (!this.Grows(parent, (MonoKind.LegacyRow, key.Body.Def), subst?.Height ?? 0, site, out var growth))
+        if (!this.Grows(parent, key, (MonoKind.LegacyRow, key.Body.Def), subst?.Height ?? 0, site, out var growth))
         {
             return -1;
         }
@@ -241,8 +257,9 @@ internal sealed partial class InstanceCollector
     // generation, one more when the key's height passes that item's peak (growth; both saturate at 255, past which no growth is seen and
     // SetLimit stops the identity), else the same (a repeat at a height already reached);
     // none within the Window is the first generation. Past GrowthLimit generations, or past SetLimit items of the identity, it is
-    // GenerationResourceLimit_Kd at the requesting site; else the identity counts the item.
-    private bool Grows(int parent, (MonoKind Kind, MirDefKey Definition) identity, int height, SourceRef site, out Growth growth)
+    // GenerationResourceLimit_Kd at the requesting site, the key's one record: the key is refused (refused), so a later request of it is
+    // refused without a record; else the identity counts the item.
+    private bool Grows(int parent, in MonoKey key, (MonoKind Kind, MirDefKey Definition) identity, int height, SourceRef site, out Growth growth)
     {
         var items = this.Set.Items;
         var above = this.Above(parent);
@@ -261,6 +278,7 @@ internal sealed partial class InstanceCollector
         this.counts.TryGetValue(identity, out var count);
         if (growth.Generation > GrowthLimit || count >= SetLimit)
         {
+            this.refused.Add(key);
             this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return false;
         }

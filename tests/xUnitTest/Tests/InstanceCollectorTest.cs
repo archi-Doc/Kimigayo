@@ -719,8 +719,11 @@ public sealed partial class InstanceCollectorTest
     // a non-regular value behind an object handle, its drop glue at the destroyed local (beside the creating call's storage-nesting gap,
     // PLAN G128); a drop glue cycle through 130 structs growing once per lap; a written nest of 130 behind a handle, past the height cap
     // of 128; a branching non-regular Type, at the 1,025th glue item of its declaration; and the Known limit, growth written into a chain
-    // of distinct functions (each adding Option), at its 17th generation, though nothing recurs.
+    // of distinct functions (each adding Option), at its 17th generation, though nothing recurs. A refused key is refused once: a
+    // destructor creating a growing object requests its glue key from the creation, the descriptor and the local's handle glue, one record
+    // at the first request.
     [Theory]
+    [InlineData("requested", "GenerationResourceLimit_Kd Expanding<Marker<T>>.init()")]
     [InlineData("mutual", "GenerationResourceLimit_Kd f(value@move, n)")]
     [InlineData("handle", "Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()")]
     [InlineData("cycle", "GenerationResourceLimit_Kd let v: Option<obj/C1<i32>> = .None")]
@@ -731,7 +734,9 @@ public sealed partial class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(shape switch
         {
-            "mutual" => "func f<T>(value: T, n: i32) -> i32\n    require n > 0 else => return 0\n    return g<Option<T>>(.Some(value@move), n - 1)\n" +
+            "requested" => "struct Marker<T>\nstruct Expanding<T>\n    drop\n        let next = Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())\n" +
+                "let root = Expanding<i32>.init()\n",
+            "mutual" =>"func f<T>(value: T, n: i32) -> i32\n    require n > 0 else => return 0\n    return g<Option<T>>(.Some(value@move), n - 1)\n" +
                 "func g<T>(value: T, n: i32) -> i32 => h(value@move, n)\nfunc h<T>(value: T, n: i32) -> i32 => f(value@move, n)\n" +
                 "func start() -> i32 => f(1, 3)\n",
             "handle" => "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" +

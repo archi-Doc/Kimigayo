@@ -14568,3 +14568,10 @@ structure is recorded here by the unit that first implements it.
     and 65 (its storage-nesting gap); `GrowthStopsAtItsSite` (a mutual cycle, a non-regular value behind a handle, the 130-struct
     cycle, a written nest of 130 past the height cap, a branching non-regular Type at the 1,025th glue item, and the Known limit's
     written growth, each at its site); `AChainWithoutGrowthScalesLinearly` (200, 400, 800 functions: items and Work in proportion).
+  - Amended (U1's defect, batch 76's Session): a refused key was not remembered, so each request of it recorded at its own site
+    (`GenericObjectFactoryTest.FactoriesKeepDestructorExpansionBounded`: a destructor creating `Expanding<Marker<T>>` requests that
+    Type's glue key from the creation, the object descriptor and the local's handle glue, three records for one cause; the depth had
+    refused one requester at the boundary). The refusal is part of the key's one admission decision, the shape of Layout's `limited`:
+    a key refused for growth, the per-identity count or the height cap enters `refused` (cleared per run) when its one record is made,
+    at the first request in admission order, and a later request finds it after `Find` and is refused without a record. Row:
+    `GrowthStopsAtItsSite("requested")`. Rejected: suppressing duplicate records afterwards (a second decision of the same key).

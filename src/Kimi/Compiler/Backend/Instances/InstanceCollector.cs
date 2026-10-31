@@ -88,6 +88,7 @@ internal sealed partial class InstanceCollector
     private readonly MirCases cases;
     private readonly Layout layout;
     private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
+    private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
@@ -126,6 +127,7 @@ internal sealed partial class InstanceCollector
         set.Clear(program.Version);
         this.counts.Clear();
         this.limited.Clear();
+        this.refused.Clear();
         (this.rootModules, this.Work) = (rootModules, 0);
         if (program.Findings.Count > 0)
         {
