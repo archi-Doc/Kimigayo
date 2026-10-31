@@ -216,7 +216,8 @@ public class ComponentSummaryTest
     // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and check
     // meets the existing generation limits with it, as with any value of that Type, on every pipeline (DECISIONS R5-M156): each call
     // requesting an instance over Chain<i32>, whose storage walk passes Binding's bound, is the capability table's storage-nesting gap
-    // (PLAN G128, PD30's (e) row), and the value's Type is past the layout depth limit (R5-M44); the acceptance change adds no runtime form.
+    // (PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle, Chain<(T, T)> at each step, so the collector
+    // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form.
     [Fact]
     public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
