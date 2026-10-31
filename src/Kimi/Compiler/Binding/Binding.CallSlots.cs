@@ -219,7 +219,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual) ?? previous;
+                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous;
                     }
 
                     return true;
@@ -235,7 +235,7 @@ public sealed partial class Binding
                     return true;
                 }
 
-                if (commonOrigins && this.CommonOriginType(previous, actual) is { } common)
+                if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
                     arguments[slot] = common;
                     return true;

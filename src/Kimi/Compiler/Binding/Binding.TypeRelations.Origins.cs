@@ -10,8 +10,12 @@ public sealed partial class Binding
 {
     // Only Origin restriction is inferred here. No Core conversion or common base search is
     // introduced; every invariant position stays identical and both inputs must fit the result.
-    internal BoundType? CommonOriginType(BoundType left, BoundType right)
+    // SPEC 14.9.2, 15.6.1: a search that fails gives its failure, the only record of a failed common Type: Shape for a structural difference,
+    // else the first position whose Origins have no common Origin (a presence difference at a pair layer relates its slots, an invariant
+    // position or Origin argument its Origins), whose relation the fit's record judges.
+    internal BoundType? CommonOriginType(BoundType left, BoundType right, out ComparisonFailure failure)
     {
+        failure = default;
         if (ReferenceEquals(left, right))
         {
             return left;
@@ -19,8 +23,15 @@ public sealed partial class Binding
 
         if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
             !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
-            left.OriginArguments.Count != right.OriginArguments.Count || ((left.Origin is null) != (right.Origin is null) && !InactiveOuterOrigin(left, this, null)))
+            left.OriginArguments.Count != right.OriginArguments.Count)
         {
+            failure = ComparisonFailure.Shape;
+            return null;
+        }
+
+        if ((left.Origin is null) != (right.Origin is null) && !InactiveOuterOrigin(left, this, null))
+        {
+            failure = Unmet(this.OuterOrigin(right), this.OuterOrigin(left));
             return null;
         }
 
@@ -33,8 +44,10 @@ public sealed partial class Binding
                 var covariant = !IsInvariantLayer(left, this) &&
                     !(left.Kind == BoundTypeKind.Function && i == 0) &&
                     (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
-                if ((covariant ? this.CommonOriginType(left.Components[i], right.Components[i]) : ReferenceEquals(left.Components[i], right.Components[i]) ? left.Components[i] : null) is not { } part)
+                var (l, r) = (left.Components[i], right.Components[i]);
+                if ((covariant ? this.CommonOriginType(l, r, out failure) : ReferenceEquals(l, r) ? l : null) is not { } part)
                 {
+                    failure = covariant ? failure : ReferenceTypes.StorageMatches(l, r) ? Unmet(null, null) : ComparisonFailure.Shape;
                     return null;
                 }
 
@@ -45,6 +58,7 @@ public sealed partial class Binding
             {
                 if (!ReferenceEquals(left.OriginArguments[i], right.OriginArguments[i]) && left.Symbol?.Schema?.Origins[i].Variance != OriginVariance.Covariant)
                 {
+                    failure = Unmet(right.OriginArguments[i], left.OriginArguments[i]);
                     return null;
                 }
 
@@ -59,13 +73,21 @@ public sealed partial class Binding
             }
 
             var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
-            return IsSubtype(left, result) && IsSubtype(right, result) ? result : null;
+            if (IsSubtype(left, result) && IsSubtype(right, result))
+            {
+                return result;
+            }
+
+            failure = Unmet(right.Origin, result.Origin);
+            return null;
         }
         finally
         {
             this.originScratch.Return(origins, clearArray: true);
             this.typeScratch.Return(components, clearArray: true);
         }
+
+        static ComparisonFailure Unmet(BoundOrigin? longer, BoundOrigin? shorter) => new(ComparisonFailureKind.Position, longer, shorter, false, default);
     }
 
     // How a fit treats the outer Origins of two Types of one shape (FitOuterOrigins).

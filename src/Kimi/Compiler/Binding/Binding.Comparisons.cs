@@ -65,7 +65,7 @@ public sealed partial class Binding
         right = ComparisonReferent(right);
         if (!FitsType(right, left, out var failure))
         {
-            if (this.CommonOriginType(left, right) is not { } common)
+            if (this.CommonOriginType(left, right, out _) is not { } common)
             {
                 return this.FailMismatch(binary, binary.Right, right, left, failure);
             }

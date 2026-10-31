@@ -619,7 +619,7 @@ public sealed partial class Binding
         if (!IsUnfittedLiteral(part) && this.Deferred(part) && this.SuppliesDefault(part) && this.BindWaiting(part, null) is { } type &&
             !ReferenceEquals(type, BoundType.Never))
         {
-            literalDefault = literalDefault is null ? type : this.CommonOriginType(literalDefault, type) ?? literalDefault;
+            literalDefault = literalDefault is null ? type : this.CommonOriginType(literalDefault, type, out _) ?? literalDefault;
         }
     }
 

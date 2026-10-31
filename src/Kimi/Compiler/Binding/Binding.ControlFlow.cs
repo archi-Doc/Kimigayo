@@ -133,7 +133,7 @@ public sealed partial class Binding
 
         if ((left.CarriesRawOrigin || right.CarriesRawOrigin) && SameExceptRawOrigins(left, right))
         {
-            return this.CommonOriginType(left, right); // SPEC 5.7 (Q-O6): differing raw Origins join unstated, never as a meet.
+            return this.CommonOriginType(left, right, out _); // SPEC 5.7 (Q-O6): differing raw Origins join unstated, never as a meet.
         }
 
         if (left.Kind != BoundTypeKind.Semantics || right.Kind != BoundTypeKind.Semantics ||
