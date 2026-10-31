@@ -19,7 +19,7 @@ public sealed partial class Binding
 
         // SPEC 6.4.4: lexical self is the receiver of the function whose body holds the reference, an instance accessor's included (DECISIONS
         // BU-53), and the lexical declaring struct is that function's.
-        if (this.types.EnclosingFunction(scope) is not
+        if (this.types.EnclosingDeclaration(scope) is not
             { ReceiverIndex: >= 0, Declaration: FunctionKoto lexical, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
         {
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base requires a derived instance function; named locals have no implicit self");
@@ -51,7 +51,7 @@ public sealed partial class Binding
     }
 
     // Lexical self as `function`, the innermost activation (a scope's Function), reads it: through the explicit self capture of each
-    // anonymous function between them. `lexical` is TyCtxt.EnclosingFunction of that scope, for both callers (base calls, ObjectViews);
+    // anonymous function between them. `lexical` is TyCtxt.EnclosingDeclaration of that scope, for both callers (base calls, ObjectViews);
     // the first activation that is not anonymous is lexical's own, or null in an accessor's body, whose scopes record no Function.
     private BindingSymbol? BaseReceiver(FunctionKoto? function, FunctionKoto lexical)
     {

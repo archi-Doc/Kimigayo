@@ -2438,8 +2438,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone7");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
-        _ = stratum.Run(program);
-        Assert.Equal(0, stratum.Run(program));
+        stratum.Run(program);
+        Assert.Equal(0, stratum.MeasuredRun(program));
     }
 
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
@@ -2599,34 +2599,49 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal MirBorrows Borrows { get; }
 
-        // Each run returns what the Loan stratum's runs allocated on the thread (the Origin stratum's Judge apart).
-        internal long Run(MirProgram program)
+        internal void Run(MirProgram program)
+        {
+            foreach (var body in program.Bodies)
+            {
+                this.Run(program, body);
+            }
+        }
+
+        internal void Run(MirProgram program, MirBody body)
+        {
+            this.Begin(program, body);
+            for (var view = 0L; view < MirCases.Count(body); view++)
+            {
+                this.cases.Select(body, view);
+                this.Borrows.Run(program, body, view);
+            }
+        }
+
+        // A run that returns what the Loan stratum's runs allocated on the thread (the Origin stratum's Judge apart), each view's run in
+        // its own MeasureOnce window. Run measures nothing, so the Measure windows over it collect nothing per view.
+        internal long MeasuredRun(MirProgram program)
         {
             long allocated = 0;
             foreach (var body in program.Bodies)
             {
-                allocated += this.Run(program, body);
+                this.Begin(program, body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    this.cases.Select(body, view);
+                    allocated += AllocationMeasurement.MeasureOnce(() => this.Borrows.Run(program, body, view));
+                }
             }
 
             return allocated;
         }
 
-        internal long Run(MirProgram program, MirBody body)
+        // A4's summaries of the program version, then the body's dataflow, Moves and Origin stratum, before its views.
+        private void Begin(MirProgram program, MirBody body)
         {
             this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
             this.origins.Judge(body, MirCases.Count(body), program.Problems);
-            long allocated = 0;
-            for (var view = 0L; view < MirCases.Count(body); view++)
-            {
-                this.cases.Select(body, view);
-                var before = GC.GetAllocatedBytesForCurrentThread();
-                this.Borrows.Run(program, body, view);
-                allocated += GC.GetAllocatedBytesForCurrentThread() - before;
-            }
-
-            return allocated;
         }
 
         // A4 over a program version it has not solved: each body's views' local facts, then the summaries and keys.

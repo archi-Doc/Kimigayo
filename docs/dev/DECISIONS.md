@@ -8897,6 +8897,64 @@ resumed by R4-M86 (2026-10-20).
     re-running the conformance proof at the capture (a consumer re-running a check); Binding's null for a rejected projection
     (R5-M155 (c)).
 
+- **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
+  its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
+  bu77; rewritten 2026-10-31, unit bu89; PLAN G300; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g300\design.md` rounds 1-4 and
+  `design-r5.md`, ACCEPTED by BU and R5 before code; the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」) SPEC 3,
+  6.1.3, 6.3.3. Meets R5-M157's removal condition in part.
+  - View: `TyCtxt.EnclosingDeclaration` (renamed from EnclosingFunction, with R5's consent for the collector's one call and comments)
+    gives the declaration whose instance the code at a scope holds: a named function, an accessor's executing function (bu60), and for
+    code in a container outside every body (a Field's or static's initializer) the container. A member or top-level declaration holds
+    none. bu63's base calls and ObjectViews read it unchanged (a Type matches neither of their patterns).
+  - Representation: the Closure Type's existing ClosureContext holds a substitution whose target is the closure and whose declaring Type
+    is the instance I, erased; BoundType counts I's parameters, pair layers and abstract parts (`TyCtxt.HeldType`), not its Origins.
+  - One producer, `TyCtxt.HeldContext(c, I)`: none where Erase(I) is Erase(SelfType(D)), D = EnclosingDeclaration(c) (the identity test,
+    so every read in D's own frame keeps D's identity), else the context holding Erase(I). It is a function of Erase(I) alone, so it drops
+    nothing a reader reads, and every order of steps reaching one closed, normalized instance gives one context. Its callers: the closing
+    step (`ClosePartCore`, I being the environment's image of D's identity, `EnvironmentInstance`, substitution alone, never a storage
+    query) and the five structural walks, SubstituteTypeCore, ContractTypeCore, SubstituteIdentity, CaseType and CompletedParts, which
+    map I as a part and give it back through the producer. KeptType substitutes, completes, then closes a stored part's Closures under its
+    owner (a `ContainsClosure` summary gates it); StorageInstance closes the rest under the instance's declaring Type, last. A group
+    has none.
+  - One closing step (R5's B1): ClosePart keeps a Type without a Closure and a Closure whose context a function's instance made (closed
+    with its parts by that instance, R5-M36); a held context is closed again, its instance (its own, else the environment's image)
+    closed in the same query (BU-19's memo covers it), then given to the producer. In `outer[A]`, `Holder<C>`'s held Closure gets
+    `Holder<C{outer[A]}>`: one key per instance of `outer`, a closed representative (before: InternalInvariant_Kd).
+  - The owner's (a), read: one lossless producer on Erase(I); every instance Type a reader or the collector reads ends with the closing
+    step; the walks re-intern through the producer. The literal "formed only by the closing step" would need an ordering rule across
+    about 70 callers (CaseType in Semantics adaptations, SubstituteIdentity in proofs, about 50 ContractType callers), which is not local.
+    The identity test commutes with substitution only through the closing step: a walk whose binder is D leaves a null context null.
+  - Readers' view, `TyCtxt.ClosureInstance`: the context, except a held instance with an Origin position (a borrow, Slice, handle or raw
+    layer, or an Origin argument, static included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance), which is closed
+    in no instance. ClosureSignature (ClosureDefinitionSignature), ClosureEnvironment and SubstOfClosure read it; every other
+    ClosureContext read is interning, equality, Erase, Retains' memo key or HoverBuilder's key. SubstOfClosure gives the closure's
+    own identity there, so the
+    collector reports the EnclosingInstance gap at each site through CarriesInstance's first branch, exactly where dev does, until PLAN
+    G300's per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
+  - Exception to KD3 (the collector's representative erased only into its key) and to TyCtxt.Instances' rule against proving on erased
+    values: a held closure item's representative carries an erased declaring Type; the collector reads no Origin of it (R5 consents).
+  - N6 resolved: Box<ref/i32> and Box<ref/i64> are two instances, so two Closure Types (SPEC 3, one Concrete Closure Type per expression
+    and instantiation): `TypeMismatch_Kd` where one is assigned to the other, an independent error dev masked. N5: a group static's
+    Closure call keeps one collector record where dev had two (Binding's Unsupported_Kd at the access stays); its fix is R5's collector
+    change.
+  - Rejected: (b-i), the read's Origins in the Closure Type's Origin arguments. A Type's Origin arguments are its symbol's declared ones
+    (the old analysis's SupportsType, Aliases, BoundContracts, MemberLookup, ResultSurvey, AggregateLayout and 13 `Schema.Origins[i]`
+    reads assume it). (b-ii), opening I's Origin positions per use in ClosureSignature: it threads a use through ClosureSignature's 8 sites
+    and TryCallable's 16 callers and instantiates D's Origin premises per use, a separate design step (PLAN G300). Reader Origins kept
+    in I (round 2): two reads of one instance differ only in I's Origins and the modulo-Origins relations reject them. A staged context
+    (round 4, the closure's identity for an instance with an Origin position): lossy, so a walk could not decide again after
+    normalization (B5 (b)), and its identity test by reference missed D's identity read through another path (B5 (a)). Formation in the
+    closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the capture
+    storage (`Binding.Closures.cs`).
+  - Tests: InstanceCollectorTest's R5-M157 rows flipped (one item per instance, a function in an initializer R5-M43's gap at its call),
+    a read through another instance, held contexts holding a function's Closure (also with an Origin parameter, and inside a second held
+    context: one item per instance), `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records) and
+    `OneInstanceModuloOriginsHasOneClosureType` (D's own instance joined and assigned through another path: dev's records; two instances:
+    TypeMismatch_Kd; erased reads: the gap at each); TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and
+    `AFieldInitializersClosureHoldsItsOwnersInstance`; GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another
+    instance, erased, a generic function, a nested Type, a base Field, a projection, also joined through R{o}.Item, a signature naming T,
+    a forwarded holder, the three held contexts of a function's Closure), each observing T.
+
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
   the premise contract's second reader, the fit judge's dependence query) (2026-10-30; PLAN G206 (7),
@@ -10653,6 +10711,8 @@ structure is recorded here by the unit that first implements it.
     until G7.
   - Amended by R5-M165 (G9b): the out-string adapters `WriteIr` and `Validate` are deleted (tests and `src/Benchmark` call `Generate`
     and read its records), and a publication failure is `EmissionArtifacts.Publish`'s own record (`ArtifactPublicationFailed_Kd`).
+  - Amended by R5-M169 (G330): "records why" covers what code generation checks; a broken contract it throws leaves `Generate`
+    unrecorded and is the Emission result's fault, which the command renders (`CheckFaulted_Kd`).
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -13854,6 +13914,26 @@ structure is recorded here by the unit that first implements it.
     erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
     a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
     closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
+  - Amended by BU-60 (bu77): the removal condition is partly met. Owners whose erased instance has an Origin position remain the
+    EnclosingInstance gap, as do group statics, until G300's per-use opening; they reach CarriesInstance's first branch, so the else
+    branch's deletion stays R5's.
+  - Amended (2026-10-31, R5's follow-up unit after bu89; the owner's 「すべて推奨どおり」, relayed by BU; N5 and N7 of R5's bu77 reviews 3
+    and 4): the else branch is deleted. After BU-60 a definition `TyCtxt.EnclosingDeclaration` gives none for is a member or top-level
+    declaration, whose own substitution is its instance (Instantiable's contract), or code in a module's root, which does not
+    instantiate; a tripwire on the branch's false outcome had no hit (62905c6f6: 1,340 tests on default and mir, 194 probes natively;
+    bee89889c: those probes and 9 more, a group's function and a group static's nested function among them, at check on both
+    pipelines). `CarriesInstance` is one test: the substitution carries the instance of the declaration EnclosingDeclaration gives, as
+    its binder or its declaring Type. N5: `TyCtxt.SubstOfClosure` took the identity of a generic container's group for its static's
+    Closure, but a group has no instance (BU-60; R5-M82, X33 (a)), so `CarriesInstance` accepted that identity (its binder is the
+    group), the collector admitted the body under the group's open identity and the call's record was lost. The
+    fallback now takes the enclosing declaration's identity only for a function or a Type, else the Closure's own, so the call is the
+    gap again (`InstanceCollectorTest.AGroupStaticsClosureIsTheGap`, fail-first). The gap's family is now a nested function's call
+    (G149, R5-M43), a Closure whose held instance has an Origin position (until G300's per-use opening) and a group static's Closure
+    (until P42). Rejected: a group arm in the collector (a consumer deciding what TyCtxt publishes); EnclosingDeclaration skipping a
+    group (Binding's view: it would close the Closure per instance while X33 (a) keys the static's storage by its symbol). The test
+    is a whitelist (a function or a Type), so another kind of enclosing declaration falls to the gap, never into an identity (BU's
+    n1). A function nested in a group static's Closure loses its record at its call (m-groupstaticfunc's `inner()`): the Closure's
+    body is no longer admitted, and that record existed only through N5's open admission (R5's reviewer).
 - **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
   §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
   - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and
@@ -14227,6 +14307,8 @@ structure is recorded here by the unit that first implements it.
     for tests (a second form of the entry).
   - Amends, each with its amendment line: R5-M18 (the owner's choice, implemented), R5-M64 (the adapters and the publication record) and
     R5-M162 (`ReportPublicationFailure`).
+  - Superseded in part by R5-M169 (G330): the mapping of code generation's argument, data and support exceptions to
+    `InternalInvariant_Kd` is gone; an exception publication does not classify is the Emission result's fault (`CheckFaulted_Kd`).
 - **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
   Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
   expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
@@ -14365,3 +14447,43 @@ structure is recorded here by the unit that first implements it.
     A4 and code generation read; an optional or defaulted range.
   - Saving per compilation (indicative, unpinned): 39-42 % of stage 3, about 5 ms of the pinned 12.7 ms on Scalar 1, 0.64-0.77 MB cold, the
     same time per warm rebuild; G337's O1-M retakes it pinned, and O2 (library bodies built on demand) follows that measurement.
+- **R5-M169 An exception publication does not classify ends the Emission result as Faulted (G330)** (2026-10-31, R5; PLAN G330, design
+  `draft/Sketches/R5/G330-design.md` (`c5f3a9b0d`, option C) with the planning session's rulings Q1-Q4 and review 1's N1-N7; under
+  DIAGNOSTICS rule 9, R5-M64 and R5-M165; Major)
+  - Rule: while code generation writes the publication's output, an `IOException` or `UnauthorizedAccessException` is the output's
+    (`ArtifactPublicationFailed_Kd` with its cause, `EmissionArtifacts.GenerateInto`): code generation does no file I/O but through that
+    writer (it reads embedded templates). Every other exception publication does not itself classify, a broken contract code generation
+    throws (a closed table without a row, a missing fact, a framework operation's contract) or another such as `Utf8JsonWriter`'s
+    `InvalidOperationException`, leaves `EmissionArtifacts` unclassified, and the Emission result's one finalization point
+    (`Project.PublishArtifacts`) renders it as Faulted: its valid records and one `CheckFaulted_Kd` (`Exception`, the message its bounded
+    note, at the project file), as `BuildTarget` renders the front end's, under one filter (`Project.Faults`). `Publish` keeps its own
+    mapping off such exceptions with the local `generating` (`BuildTarget`'s `completed` precedent), cleared before the writer's
+    `Dispose`, so a flush failure stays the output's; a flush failure while a generation exception unwinds replaces it and is the fault.
+    `CheckFaulted_Kd`'s fixed text stays (Q2).
+  - Supersedes R5-M165's mapping of "code generation's argument, data and support exceptions" to `InternalInvariant_Kd`. The premise of
+    G9b's review 1 B1 that no longer holds: that code generation throws argument, data and support exceptions. G330's census: 55 throw
+    sites reached by generation, 50 `InvalidOperationException` (3 `InvalidDataException`, 1 `ArgumentException`, 1
+    `ArgumentOutOfRangeException`), and framework exceptions (index expressions, null-forgiving reads, static table initializers); a
+    probe showed `kimi build` printing `InvalidOperationException` and `KeyNotFoundException` as toolchain failures without a code and
+    dying on `IndexOutOfRangeException`. Rejected: one record for every non-I/O exception as `InternalInvariant_Kd` (rule 9: a thrown
+    failure ends its result as Faulted with exactly one `CheckFaulted_Kd`; `InternalInvariant_Kd` is a Completed result's); one contract
+    exception type for every check (framework exceptions still escape); a catch in `Compilation.Generate` (tests and `src/Benchmark` would
+    lose the exception) or in `CommandExecution` (no result to render).
+  - Holds: R5-M18's "contract failures become `InternalInvariant_Kd`" (C-package §3.10's first bullet) for the checked form: a broken
+    contract code generation checks is recorded at its subject (81 sites in `Backend/Codegen`, 14 in `Backend/Instances`), at a root's
+    site or at the project (`Compilation.Generate`); the missing embedded backend record stays `InternalInvariant_Kd` (R5-M165 Q6).
+    Binding's throws (36 `InvalidOperationException`, 5 `ArgumentOutOfRangeException` and 2 `UnreachableException` across
+    `Binding/*.cs`, 6 of them in the TyCtxt files) end a check the same way (BU-24, BU-36).
+  - Effect: `kimi build`, `emit` and `run` render the fault and exit 1; `kimi test` reports "Test generation failed" with exit 2 (IMPL
+    §20.6.4's build failure) where it reported an internal runner error with 3 (code-read; no end-to-end `TestCommand` test exists). The
+    language server never generates; tests and `src/Benchmark` call `Compilation.Generate` and keep the exception.
+  - Deleted: `GenerateInto`'s contract catch. Tests: `EmissionArtifactsTest`'s theory over the writer's exception kinds (fail-first: the
+    `ArgumentException` and `InvalidDataException` rows were recorded). The command-layer test is G330b: its reproducer (another
+    program's `ModuleCodegen`) generated without throwing, and no production seam is added for a test.
+  - Amends, each with its amendment line: R5-M64 (a thrown failure is not `Generate`'s record) and R5-M165 (the mapping clause).
+  - G330b (no production seam): `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted` observes the command layer: a null
+    source path (`AddKimiFile`) faults the front-end result (`BuildTarget`), a null `NativeLibraries` input publication (`PublishArtifacts`),
+    and a source path with an embedded NUL makes code generation's location text throw `ArgumentException`, which `Publish`'s `generating`
+    exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
+    (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
+    the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
