@@ -21,8 +21,10 @@ public sealed partial class MirBorrowsTest
     // The forms' Types: Writer stores its q through its raw slot p when destroyed (SPEC 15.6.4's example), Quiet holds the same Fields
     // without a drop; Outer holds a Writer by value and OuterD's own drop rewrites its inner Writer's slot before the Field's drop runs
     // (SPEC 16.3.2's order); BaseW's drop runs for a Derived's base part; Holder<T> is a generic Type with the drop; Setter's drop writes its
-    // borrowed value through its borrowed target (no raw layer, so nothing reaches storage the body does not own); WKey is a Dictionary
-    // key with Writer's drop.
+    // borrowed value through its borrowed target (no raw layer, so nothing reaches storage the body does not own); ELeaf is a sealed leaf
+    // with Writer's drop under an open EBase without one (a handle to EBase destroys erased, SPEC 16.3.3); WriterS states its raw layers'
+    // Origin through a Loan of the slot it writes (BU's p6 Lens spelling, SPEC 5.7), so its drop stores only into that slot; WKey is a
+    // Dictionary key with Writer's drop.
     private const string DropShapes = """
         func inspect<T>(value: ref/T) => ()
         func usep<T>(p: raw/T) => ()
@@ -83,6 +85,26 @@ public sealed partial class MirBorrowsTest
                 self.value = value
             drop
                 self.target@follow = self.value
+        open struct EBase
+            public var p: raw/(raw/u8)
+            public var q: raw/u8
+            public init(q: raw/u8)
+                self.p = null
+                self.q = q
+        struct ELeaf : EBase
+            public init(q: raw/u8) : base(q: q) => ()
+            drop
+                unsafe => *self.p = self.q
+        struct WriterS {a}
+            let loan: Loan<uniq/(raw/u8) during a>
+            public var p: raw/(raw/u8) during a
+            public var q: raw/u8 during a
+            public init(target: uniq/(raw/u8) during a)
+                self.p = target@follow@raw
+                self.loan = Loan.init(target)
+                self.q = null
+            drop
+                unsafe => *self.p = self.q
         struct WKey
             Self is Equatable
             public var p: raw/(raw/u8)
@@ -112,7 +134,7 @@ public sealed partial class MirBorrowsTest
             x = Writer.init(q: null)
             y = 5
             usep(slot)
-        func localOk()
+        func localReachBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
             var slot: raw/u8 = null
@@ -148,7 +170,7 @@ public sealed partial class MirBorrowsTest
                 x.p = slot@raw
             y = 5
             usep(slot)
-        func endOk()
+        func endReachBad()
             var slot: raw/u8 = null
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -177,31 +199,13 @@ public sealed partial class MirBorrowsTest
                 s.value = y@ref
             y = 5
             inspect(t@ref)
-        func setterScopeOk(b: bool)
+        func setterScopeContentBad(b: bool)
             var z: i32 = 0
             var t: ref/i32 = z@ref
             var y: i32 = 1
             if b
                 var s = Setter.init(target: t@uniq, value: z@ref)
                 s.value = y@ref
-            inspect(t@ref)
-            y = 5
-        func setterDiscardBad()
-            var z: i32 = 0
-            var t: ref/i32 = z@ref
-            var y: i32 = 1
-            var s = Setter.init(target: t@uniq, value: z@ref)
-            s.value = y@ref
-            _ = s@move
-            y = 5
-            inspect(t@ref)
-        func setterDiscardOk()
-            var z: i32 = 0
-            var t: ref/i32 = z@ref
-            var y: i32 = 1
-            var s = Setter.init(target: t@uniq, value: z@ref)
-            s.value = y@ref
-            _ = s@move
             inspect(t@ref)
             y = 5
         func escapeBad(p: raw/(raw/u8))
@@ -212,14 +216,6 @@ public sealed partial class MirBorrowsTest
         func escapeOk(p: raw/(raw/u8))
             var x = Writer.init(q: null)
             x.p = p
-        func escapeLaterBad(p: raw/(raw/u8))
-            var y: i32 = 1
-            let w = y@ref
-            var slot: raw/(raw/u8) = p
-            var x = Writer.init(q: w@raw@raw/u8)
-            x.p = slot
-            x = Writer.init(q: null)
-            usep(slot)
         func fieldBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -306,17 +302,6 @@ public sealed partial class MirBorrowsTest
             a = []
             y = 5
             usep(slot)
-        func arrScopeBad(b: bool)
-            var y: i32 = 1
-            var w: ref/i32 = y@ref
-            var slot: raw/u8 = null
-            if b
-                var x = Writer.init(q: w@raw@raw/u8)
-                x.p = slot@raw
-                var a: Array<Writer> = []
-                a.append(x@move)
-            y = 5
-            usep(slot)
         func litScopeBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -325,6 +310,182 @@ public sealed partial class MirBorrowsTest
                 var x = Writer.init(q: w@raw@raw/u8)
                 x.p = slot@raw
                 let a: Array<Writer> = [x@move]
+            y = 5
+            usep(slot)
+        func tempOnlyBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            inspect(Writer.init(q: w@raw@raw/u8))
+            y = 5
+        func tempOnlyNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            inspect(Writer.init(q: null))
+            y = 5
+        func statedBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var spare: raw/u8 = null
+            var x = WriterS.init(target: slot@uniq)
+            x.q = w@follow@raw@raw/u8
+            x = WriterS.init(target: spare@uniq)
+            y = 5
+            usep(slot)
+        func statedOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var spare: raw/u8 = null
+            var x = WriterS.init(target: slot@uniq)
+            x.q = w@follow@raw@raw/u8
+            x = WriterS.init(target: spare@uniq)
+            usep(slot)
+            y = 5
+        func sealedLateBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var o: obj/ELeaf = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
+            o.q = w@raw@raw/u8
+            o.p = slot@raw
+            o = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
+            y = 5
+            usep(slot)
+        func sealedLateNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var o: obj/ELeaf = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
+            o.p = slot@raw
+            o = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
+            y = 5
+            usep(slot)
+        func erasedLateBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var o: obj/ELeaf = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
+            o.q = w@raw@raw/u8
+            o.p = slot@raw
+            var b: obj/EBase = o@move@obj/EBase
+            b = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))@obj/EBase
+            y = 5
+            usep(slot)
+        func erasedLateNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var o: obj/ELeaf = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
+            o.p = slot@raw
+            var b: obj/EBase = o@move@obj/EBase
+            b = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))@obj/EBase
+            y = 5
+            usep(slot)
+        func dictReassignBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            var d: Dictionary<i32, Writer> = [:]
+            _ = d.tryInsert(1, x@move)
+            d = [:]
+            y = 5
+            usep(slot)
+        func dictReassignNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: null)
+            x.p = slot@raw
+            var d: Dictionary<i32, Writer> = [:]
+            _ = d.tryInsert(1, x@move)
+            d = [:]
+            y = 5
+            usep(slot)
+        func dictScopeBad(b: bool)
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            if b
+                var x = Writer.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                var d: Dictionary<i32, Writer> = [:]
+                _ = d.tryInsert(1, x@move)
+            y = 5
+            usep(slot)
+        func dictScopeNullOk(b: bool)
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            if b
+                var x = Writer.init(q: null)
+                x.p = slot@raw
+                var d: Dictionary<i32, Writer> = [:]
+                _ = d.tryInsert(1, x@move)
+            y = 5
+            usep(slot)
+        func dictKeyReassignBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var k = WKey.init(n: 1, q: w@raw@raw/u8)
+            k.p = slot@raw
+            var d: Dictionary<WKey, i32> = [:]
+            _ = d.tryInsert(k@move, 1)
+            d = [:]
+            y = 5
+            usep(slot)
+        func dictKeyReassignNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var k = WKey.init(n: 1, q: null)
+            k.p = slot@raw
+            var d: Dictionary<WKey, i32> = [:]
+            _ = d.tryInsert(k@move, 1)
+            d = [:]
+            y = 5
+            usep(slot)
+        func fixedReassignBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            var f: [2 of Writer] = [x@move, Writer.init(q: null)]
+            f = [Writer.init(q: null), Writer.init(q: null)]
+            y = 5
+            usep(slot)
+        func fixedReassignNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: null)
+            x.p = slot@raw
+            var f: [2 of Writer] = [x@move, Writer.init(q: null)]
+            f = [Writer.init(q: null), Writer.init(q: null)]
+            y = 5
+            usep(slot)
+        func fixedScopeBad(b: bool)
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            if b
+                var x = Writer.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                var f: [1 of Writer] = [x@move]
+            y = 5
+            usep(slot)
+        func fixedScopeNullOk(b: bool)
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            if b
+                var x = Writer.init(q: null)
+                x.p = slot@raw
+                var f: [1 of Writer] = [x@move]
             y = 5
             usep(slot)
         func arrClearBad()
@@ -410,48 +571,68 @@ public sealed partial class MirBorrowsTest
 
         """;
 
-    // SPEC 15.6.4, 16.3.1, 16.3.2, 16.4 and 15.6 (the owner's 「(B)」): each destruction site of the design's §5.2 composes the drop of
-    // every destroyed part as a call over a `uniq/Self` receiver. A Writer from `Writer.init` reaches storage the body does not own through
-    // every raw Field, so its drop stores q (which addresses w, which carries y's Loan) into slot and there, where it may be used after
-    // every point: a later write of y errs at the write, and with no write at y's storage end (its declaration, as A5 locates a storage
-    // end). The rows: Drop at `=` (localBad, which stands for localDrop2Bad, reset and k2's resetSpecBad, the same source; localOk, the
-    // twin using slot first, is a correct error by the whole-holder text, as Raw's viaOk; quietOk without a drop and nullQOk whose drop
-    // stores null are valid); Drop at a scope end (scopeBad; endOk, y's storage end after x's drop, a correct error by the same text;
-    // endParamOk, SPEC 15.6.4's valid shape: a parameter referent's Loan in that storage with no later access; escapeBad and
-    // escapeLaterBad store through a parameter's raw layer; escapeOk stores null); Drop of `_ = x@move` (discardBad); a drop writing
-    // through a borrow Field (Setter, no raw layer): retention is per argument (SPEC 15.6.4), so the drop's receiver Content, its own
-    // `t@uniq` Loan included, is stored into t, and `t@ref` errs after it in Bad and Ok alike (dev's setterConsumeBad through Binding's
-    // consuming-callee rows, BU-52); parts: a Field (fieldBad), an outer drop rewriting its Field's slot before the Field's drop (orderBad,
-    // SPEC 16.3.2), a base (baseBad respelled `: base(q: q)`; baseOk stores null), Tuple and Option payloads, a generic Type's drop
-    // (holderBad), a Closure's capture (closureBad respelled: the Closure ends with its `do` block), Array elements at a reassignment
-    // (arrReassignBad, also scopeDrop2Bad) and at a scope end (arrScopeBad, litScopeBad from an Array literal).
+    // SPEC 15.6.4, 16.3.1-16.3.3, 16.4, 4.9.6 and 15.6 (the owner's 「(B)」): each destruction site of the design's §5.2 composes the
+    // drop of every destroyed part as a call over a `uniq/Self` receiver. A Writer from `Writer.init` reaches storage the body does not
+    // own through every raw Field, so its drop stores q (which addresses w, which carries y's Loan) into slot and there, where it may be
+    // used after every point: a later write of y errs at the write, and with no write at y's storage end (its declaration, as A5 locates
+    // a storage end). One row per rule and site, each Bad with a valid twin where SPEC gives one:
+    // - Drop at `=`: localBad (also localDrop2Bad, reset and k2's resetSpecBad, the same source); localReachBad uses slot first and errs
+    //   all the same by the whole-holder text (as Raw's viaOk); quietOk has no drop, nullQOk's drop stores null; statedBad/statedOk:
+    //   WriterS's stated raw layers reach only the slot its Loan names, so the drop's store into that holder alone decides.
+    // - A temporary's Drop: tempOnlyBad (no slot: only that storage).
+    // - Scope end: scopeBad; endReachBad, y's storage end after x's drop; escapeBad adds a raw layer that comes from a parameter (SPEC
+    //   15.6; escapeOk stores null); endParamOk is SPEC 15.6.4's valid shape (a parameter referent's Loan there, no later access).
+    // - `_ = x@move`: discardBad.
+    // - A drop writing through a borrow Field (Setter, no raw layer): retention is per argument (SPEC 15.6.4), so the receiver's Content,
+    //   its own `t@uniq` Loan included, reaches t, and `t@ref` errs after it (setterScopeBad, setterScopeContentBad).
+    // - Parts: a Field (fieldBad); an outer drop and its Field's drop both composed (orderBad: the inner Writer reaches that storage
+    //   whether or not OuterD's drop rewrites its slot first, so no verdict observes SPEC 16.3.2's order); a base (baseBad respelled
+    //   `: base(q: q)`); Tuple and Option payloads; a generic Type's drop (holderBad); a Closure capture (closureBad respelled: the
+    //   Closure ends with its `do` block); a Sealed handle payload walked on and an erased destruction of a non-Sealed handle's payload
+    //   (sealedLateBad, erasedLateBad: q is set after makeObj, whose by-value call would decide the verdict by itself); Array elements
+    //   (arrReassignBad, also scopeDrop2Bad; litScopeBad adds the Array literal's own construction, R5-M129); Dictionary values and keys
+    //   (dictReassignBad, dictScopeBad, dictKeyReassignBad); fixed-array elements (fixedReassignBad, fixedScopeBad).
     [Theory]
     [InlineData("localBad", "localBad: y = 5")] // Drop at `=`
-    [InlineData("localOk", "localOk: y = 5")] // Drop at `=`
+    [InlineData("localReachBad", "localReachBad: y = 5")] // Drop at `=`
     [InlineData("quietOk", "")] // Drop at `=`
     [InlineData("nullQOk", "")] // Drop at `=`
+    [InlineData("statedBad", "statedBad: y = 5")] // Drop at `=`, stated raw layers
+    [InlineData("statedOk", "")] // Drop at `=`, stated raw layers
+    [InlineData("tempOnlyBad", "tempOnlyBad: y = 5")] // a temporary's Drop
+    [InlineData("tempOnlyNullOk", "")] // a temporary's Drop
     [InlineData("scopeBad", "scopeBad: y = 5")] // scope end
-    [InlineData("endOk", "endOk: var y: i32 = 1")] // scope end
+    [InlineData("endReachBad", "endReachBad: var y: i32 = 1")] // scope end
     [InlineData("endParamOk", "")] // scope end
-    [InlineData("escapeBad", "escapeBad: var y: i32 = 1")] // scope end
-    [InlineData("escapeOk", "")] // scope end
-    [InlineData("escapeLaterBad", "escapeLaterBad: var y: i32 = 1")] // Drop at `=`
+    [InlineData("escapeBad", "escapeBad: var y: i32 = 1")] // scope end, a parameter's raw layer
+    [InlineData("escapeOk", "")] // scope end, a parameter's raw layer
     [InlineData("discardBad", "discardBad: y = 5")] // `_ = x@move`
-    [InlineData("setterScopeBad", "setterScopeBad: y = 5; setterScopeBad: t@ref")] // scope end
-    [InlineData("setterScopeOk", "setterScopeOk: t@ref")] // scope end
-    [InlineData("setterDiscardBad", "setterDiscardBad: y = 5; setterDiscardBad: t@ref")] // `_ = x@move`
-    [InlineData("setterDiscardOk", "setterDiscardOk: t@ref")] // `_ = x@move`
+    [InlineData("setterScopeBad", "setterScopeBad: y = 5; setterScopeBad: t@ref")] // scope end, a borrow Field's drop
+    [InlineData("setterScopeContentBad", "setterScopeContentBad: t@ref")] // scope end, a borrow Field's drop
     [InlineData("fieldBad", "fieldBad: y = 5")] // Field part
-    [InlineData("orderBad", "orderBad: y = 5")] // Field part after the outer drop
+    [InlineData("orderBad", "orderBad: y = 5")] // an outer drop and its Field's drop
     [InlineData("baseBad", "baseBad: y = 5")] // base part
     [InlineData("baseOk", "")] // base part
     [InlineData("tupleBad", "tupleBad: y = 5")] // Tuple element
     [InlineData("optionBad", "optionBad: y = 5")] // Case payload
     [InlineData("holderBad", "holderBad: y = 5")] // generic Type's drop
     [InlineData("closureBad", "closureBad: y = 5")] // Closure capture
+    [InlineData("sealedLateBad", "sealedLateBad: y = 5")] // Sealed handle payload
+    [InlineData("sealedLateNullOk", "")] // Sealed handle payload
+    [InlineData("erasedLateBad", "erasedLateBad: y = 5")] // erased destruction (non-Sealed handle payload)
+    [InlineData("erasedLateNullOk", "")] // erased destruction (non-Sealed handle payload)
     [InlineData("arrReassignBad", "arrReassignBad: y = 5")] // Array elements at `=`
-    [InlineData("arrScopeBad", "arrScopeBad: y = 5")] // Array elements at a scope end
     [InlineData("litScopeBad", "litScopeBad: y = 5")] // Array literal's elements at a scope end
+    [InlineData("dictReassignBad", "dictReassignBad: y = 5")] // Dictionary values at `=`
+    [InlineData("dictReassignNullOk", "")] // Dictionary values at `=`
+    [InlineData("dictScopeBad", "dictScopeBad: y = 5")] // Dictionary values at a scope end
+    [InlineData("dictScopeNullOk", "")] // Dictionary values at a scope end
+    [InlineData("dictKeyReassignBad", "dictKeyReassignBad: y = 5")] // Dictionary keys at `=`
+    [InlineData("dictKeyReassignNullOk", "")] // Dictionary keys at `=`
+    [InlineData("fixedReassignBad", "fixedReassignBad: y = 5")] // fixed-array elements at `=`
+    [InlineData("fixedReassignNullOk", "")] // fixed-array elements at `=`
+    [InlineData("fixedScopeBad", "fixedScopeBad: y = 5")] // fixed-array elements at a scope end
+    [InlineData("fixedScopeNullOk", "")] // fixed-array elements at a scope end
     public void ADestructionRetainsAsItsDropsCall(string form, string expected)
     {
         var c = MirBuildTest.Compile(DropShapes + Form(DropForms, form));
@@ -479,15 +660,6 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]))}]");
     }
 
-    // SPEC 15.6.4's example (tests/diagnostics/spec-cases.json 15.6.4-drop-retention): as written it is valid, and with `y@follow = 5`
-    // A5 reports the conflict there, the record the SPEC gives (the example's own expectation, not its recorded MIR difference, which U1
-    // removes).
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void TheDropRetentionExampleGetsItsLoanCodes(int variant)
-        => this.TheSpecExamplesGetTheirLoanCodes($"15.6.4-drop-retention/{variant}");
-
     // V16 (the design's §5.7): N locals whose drops store a parameter referent's Loan through their raw slot, each destroyed by a
     // reassignment (N = 8, 16, 32; SPEC 15.6.4's valid shape). Each destruction composes its drop's rows once, so the work grows at most
     // 3 times as much from 16 to 32 as from 8 to 16 (dev, which composes none: 102,043, 106,611, 116,179, a factor 2.09; quadratic is 4).
@@ -503,13 +675,14 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16: A5 on a program version it checked before allocates nothing at destructions: every site's composition, the published
-    // destroying calls and a drop writing through a borrow Field.
+    // destroying calls, a drop writing through a borrow Field and one through stated raw layers.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmDestructionAllocatesNothing()
     {
-        string[] forms = ["localBad", "scopeBad", "discardBad", "escapeLaterBad", "setterScopeBad", "fieldBad", "orderBad", "baseBad", "tupleBad",
-            "optionBad", "holderBad", "closureBad", "arrReassignBad", "litScopeBad", "arrClearBad", "replaceBad", "keyParamBad"];
+        string[] forms = ["localBad", "tempOnlyBad", "scopeBad", "discardBad", "escapeBad", "setterScopeBad", "statedBad", "fieldBad", "orderBad",
+            "baseBad", "tupleBad", "optionBad", "holderBad", "closureBad", "sealedLateBad", "erasedLateBad", "arrReassignBad", "litScopeBad",
+            "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad"];
         var c = MirBuildTest.Compile(DropShapes + string.Concat(forms.Select(static x => Form(DropForms, x))) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
