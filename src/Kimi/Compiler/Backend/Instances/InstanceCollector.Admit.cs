@@ -238,7 +238,8 @@ internal sealed partial class InstanceCollector
 
     // SPEC 8.15.3, IMPL 21.3.2 (DECISIONS R5-M170, superseding K 4.6's depth): whether a new key of an identity, requested below an item,
     // stays within the growth limits. The nearest item of its identity among the Window identity items above (the Above links) gives its
-    // generation, one more when the key's height passes that item's peak (growth), else the same (a repeat at a height already reached);
+    // generation, one more when the key's height passes that item's peak (growth; both saturate at 255, past which no growth is seen and
+    // SetLimit stops the identity), else the same (a repeat at a height already reached);
     // none within the Window is the first generation. Past GrowthLimit generations, or past SetLimit items of the identity, it is
     // GenerationResourceLimit_Kd at the requesting site; else the identity counts the item.
     private bool Grows(int parent, (MonoKind Kind, MirDefKey Definition) identity, int height, SourceRef site, out Growth growth)
@@ -252,7 +253,7 @@ internal sealed partial class InstanceCollector
             if (Identity(items[current]) == identity)
             {
                 var found = items[current].Growth;
-                growth = height > found.Peak ? new((byte)Math.Min(found.Generation + 1, byte.MaxValue), growth.Peak, above) : found with { Above = above };
+                growth = growth.Peak > found.Peak ? new((byte)Math.Min(found.Generation + 1, byte.MaxValue), growth.Peak, above) : found with { Above = above };
                 break;
             }
         }

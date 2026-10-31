@@ -10388,6 +10388,8 @@ structure is recorded here by the unit that first implements it.
     record out of its inlined default and out of its body; the work doubles and quadruples with the instances; a warm run allocates
     nothing; the library (as roots) and the 44 milestones give no record.
   - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
+  - Superseded by R5-M170 (G332) in its limit clause (KD9's depth 128, the 16 items of a definition on the chain, the 1,024 items):
+    growth generations, a type-driven height cap and the 1,024 count per identity.
 - **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18, planning session; plan K4b, the K package's second half of
   K4, §4.4, §4.9, §5 and §10 D-A and D-B; under R5-M18; meets R5-M4's "under sel, collector records publish from K4" with K4b) Under
   MIR code generation (sel), `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40)
@@ -14537,6 +14539,11 @@ structure is recorded here by the unit that first implements it.
     site; so is any type-driven key whose Type is higher than 128. Generation and peak saturate (bytes).
   - Deleted: `DepthLimit`, its three checks, `MonoItem.Depth` and Grows' walk of the whole chain (a walk now reads at most 1,024
     identity items).
+  - Cost (`src/Benchmark --analyze-cost`, dev `443ab6d36` with bu91 against the same with U1, two interleaved runs, identical item
+    counts): a fresh check of Generic 1 allocates +0.9 to +1.4 KB (+0.01 %) and retains +808 B; of Generic 128, +65 to +67 KB (+0.14 %)
+    and +33 KB retained, about 13 B per item: `MonoItem.Growth` (two bytes and an int link, aligned) for the ushort `Depth`, and the
+    wider per-identity count key; warm Analyze allocation is unchanged (315 B to 1,200 B). The `Above` link buys a walk bounded by
+    the window instead of the chain; no allocation regression row moves.
   - Known limits: written growth on a non-recursive chain (17 distinct functions each adding `Option`) is GRL at generation 17; a Type
     past Binding's storage walk (a 120-struct ring) is G128's `Unsupported_Kd` at the call; a body cycle that grows but repeats only
     past the window meets Binding's storage bound (`Unsupported_Kd`) or SetLimit; a branching non-regular Type is bounded by b^16 items
