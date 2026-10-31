@@ -36,7 +36,8 @@ public sealed partial class Binding
                 : null;
         }
 
-        if (actual is BoundType { Kind: BoundTypeKind.Function } && node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
+        if (actual is BoundType { Kind: BoundTypeKind.Function } &&
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
         {
             return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
         }
@@ -63,17 +64,22 @@ public sealed partial class Binding
                 ? "The generic function's Type and length parameters are bound from the expected signature without adaptations; "
                 : "The generic function's Type parameters are bound from the expected signature without adaptations; ";
             var slot = fact is { Slot: >= 0 } known && known.Slot < known.Declaration.GenericArguments.Count
-                ? $"{(known.Declaration.GenericArguments[known.Slot] is LengthParameterKoto ? "length" : "Type")} parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a generic parameter";
+                ? $"{(known.Declaration.GenericArguments[known.Slot] is LengthParameterKoto ? "length" : "Type")} parameter " +
+                    $"'{known.Declaration.GenericArguments[known.Slot].Identifier}'"
+                : "a generic parameter";
             return fact?.Failure switch
             {
                 ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => prefix + $"the signature does not bind {slot}",
                 ReferenceSlotFailure.Structure => prefix + "no binding of them fits its structure",
-                ReferenceSlotFailure.Constraint => prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
-                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
+                ReferenceSlotFailure.Constraint =>
+                    prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
+                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit =>
+                    prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
                     "and a bound Type argument holds one Origin for every call",
                 ReferenceSlotFailure.OriginConflict => prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
                     "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.InputOrigin => prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
+                ReferenceSlotFailure.InputOrigin =>
+                    prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
                     "which never becomes part of a bound Type argument (SPEC 10.5)",
                 _ => prefix + "no binding fits it, or a bound argument fails its Constraints",
             };
@@ -106,7 +112,8 @@ public sealed partial class Binding
         if (failure.Kind == ComparisonFailureKind.WellFormedness)
         {
             var part = failure.Part < 0 ? "result's well-formedness" : $"{Ordinal(failure.Part + 1)} parameter's well-formedness";
-            return new(at, (member.Length == 0 ? "the " : member + "'s ") + part, this.Instantiated(failure.Longer!, instance), this.Instantiated(failure.Shorter!, instance), false);
+            var name = (member.Length == 0 ? "the " : member + "'s ") + part;
+            return new(at, name, this.Instantiated(failure.Longer!, instance), this.Instantiated(failure.Shorter!, instance), false);
         }
 
         return new(at, member, instance.Instantiate(failure.Longer!), instance.Instantiate(failure.Shorter!), failure.Equality);
@@ -172,7 +179,8 @@ public sealed partial class Binding
             // SPEC 7.2.3: in a default, a capture of a preceding argument can neither move it nor keep a new borrow of it, and the
             // closure always converts to the parameter's Function Type, so only a Copy that holds no borrow or a new parameter remain.
             note = (origin is { } shown
-                ? $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
+                ? "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); " +
+                    $"the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
                 : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} is not proven Owned") +
                 "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
             // An exclusive reference is captured by a Reborrow, which no proof makes valid there.
@@ -182,7 +190,8 @@ public sealed partial class Binding
         else if (owned.Closure is not null)
         {
             note = origin is { } shown
-                ? $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
+                ? "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); " +
+                    $"the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
                 : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} is not proven Owned";
         }
         else

@@ -354,7 +354,18 @@ public sealed partial class Binding
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
     // `container` with `arguments` bound, or those of the Function Item `item`.
-    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, BoundLength?[]? lengths = null)
+    private bool ContractFits(
+        Koto use,
+        BindingSymbol symbol,
+        FunctionKoto function,
+        BoundType required,
+        BoundType? container,
+        BoundType? item,
+        BoundType?[]? arguments,
+        Span<BoundArgumentOperation> operations,
+        BoundOrigin[] origins,
+        BoundOrigin[] inputs,
+        BoundLength?[]? lengths = null)
     {
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;

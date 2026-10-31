@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 //   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record (PublishCallRelations); and the
 //   one channel of a node's records beyond its first, Origin relation and Origin contract records alike (furtherOriginRecords,
 //   RecordFurtherOriginRecord, also for RecordOriginFitFailure's other chains), reported after the node's first record, whichever its kind,
-//   each with its own condition (ReportFurtherOriginRecords); whether a node has a collected record (HasCallRelation).
+//   each with its own condition (ReportOriginRecords, ReportFurtherOriginRecords); whether a node has a collected record (HasCallRelation).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
 //   originContracts.
 // - Outputs: the OriginRelation failure of each collected node and every node's further records.
@@ -26,6 +26,27 @@ public sealed partial class Binding
     // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
     private Dictionary<Koto, List<OriginRecord>>? furtherOriginRecords;
+
+    // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
+    private bool ReportOriginRecords(Koto node, DiagnosticCode code, DiagnosticRequirement requirement)
+    {
+        if (code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd &&
+            this.originRelations?.TryGetValue(node, out var relation) == true)
+        {
+            ReportOriginRelation(node, relation, requirement, code, this.OmittedResultNote(node));
+        }
+        else if (code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(node, out var contract) == true)
+        {
+            ReportOriginContract(node, contract, requirement, code);
+        }
+        else
+        {
+            return false;
+        }
+
+        this.ReportFurtherOriginRecords(node, requirement);
+        return true;
+    }
 
     // The records of one node beyond the first, each by its kind and with its own condition so that it stays an independent problem.
     private void ReportFurtherOriginRecords(Koto node, DiagnosticRequirement requirement)

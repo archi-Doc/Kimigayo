@@ -544,7 +544,8 @@ public sealed partial class Binding
         }
     }
 
-    private bool CheckCallOriginRelations(Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, in CallableInstance comparison)
+    private bool CheckCallOriginRelations(
+        Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, in CallableInstance comparison)
     {
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {

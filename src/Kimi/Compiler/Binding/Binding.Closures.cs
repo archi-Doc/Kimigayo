@@ -133,7 +133,9 @@ public sealed partial class Binding
         var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
         if (function.Parameters.Count != count)
         {
-            return this.RecordMismatch(function, function, function.Parameters.Count == 1 ? "an anonymous function with 1 parameter" : $"an anonymous function with {function.Parameters.Count} parameters", expected, ComparisonFailure.Shape);
+            var found = function.Parameters.Count == 1 ? "an anonymous function with 1 parameter"
+                : $"an anonymous function with {function.Parameters.Count} parameters";
+            return this.RecordMismatch(function, function, found, expected, ComparisonFailure.Shape);
         }
 
         var scope = this.scopes[function];

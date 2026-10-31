@@ -200,7 +200,8 @@ public sealed partial class Binding
         }
 
         var result = function.BoundSymbol!.Type!;
-        this.VisitWellFormedPremises(result, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Unbound, inference, declaringType)); // Left by an earlier pass.
+        var unbound = new WellFormedVisit(WellFormedSubject.NamedResult, function, use, WellFormedAction.Unbound, inference, declaringType);
+        this.VisitWellFormedPremises(result, result, null, unbound); // Left by an earlier pass.
         var count = inference.Bounds.Count;
         var variables = inference.Variables.Count;
         this.VisitWellFormedPremises(result, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Bound, inference, declaringType));
@@ -211,7 +212,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            this.VisitWellFormedPremises(result, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Unbound, inference, declaringType));
+            this.VisitWellFormedPremises(result, result, null, unbound);
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
@@ -223,7 +224,8 @@ public sealed partial class Binding
     {
         if (CarriesResultPremises(function))
         {
-            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Require));
+            var visit = new WellFormedVisit(WellFormedSubject.NamedResult, function, use, WellFormedAction.Require);
+            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, visit);
         }
     }
 
@@ -268,19 +270,28 @@ public sealed partial class Binding
     // wherever its solve replaced an Origin of the required input, whose own well-formedness covers every position it kept.
     private bool ProvesInputPremises(BoundType implementation, BoundType required, Koto use, in CallableInstance comparison)
         => ReferenceEquals(implementation, required) || !implementation.StoresOrigin ||
-            this.VisitWellFormedPremises(implementation, implementation, required, new(WellFormedSubject.Input, null, use, WellFormedAction.Prove) { Comparison = comparison });
+            this.VisitWellFormedPremises(
+                implementation, implementation, required, new(WellFormedSubject.Input, null, use, WellFormedAction.Prove) { Comparison = comparison });
 
     // SPEC 15.3.7: a whole-contract comparison proves the implementation's result premises for its substituted result from the
     // required contract's premises at `use`.
     private bool ProvesResultPremises(FunctionKoto function, BoundType result, Koto use, in CallableInstance comparison)
         => !CarriesResultPremises(function) ||
-            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Prove) { Comparison = comparison });
+            this.VisitWellFormedPremises(
+                function.BoundSymbol!.Type!,
+                result,
+                null,
+                new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Prove) { Comparison = comparison });
 
     // SPEC 15.3.7, 15.6.4 step 3: whether a use of a named function must prove Origin conditions beyond its inputs' Types: a declared
     // relation, or a result premise that its inputs and clauses do not prove.
     private bool HasOriginConditions(FunctionKoto function)
         => this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0 ||
-            (CarriesResultPremises(function) && !this.VisitWellFormedPremises(function.BoundSymbol!.Type!, function.BoundSymbol!.Type!, null, new(WellFormedSubject.NamedResult, function, function, WellFormedAction.Detect)));
+            (CarriesResultPremises(function) && !this.VisitWellFormedPremises(
+                function.BoundSymbol!.Type!,
+                function.BoundSymbol!.Type!,
+                null,
+                new(WellFormedSubject.NamedResult, function, function, WellFormedAction.Detect)));
 
     // SPEC 15.3.7, the owner's (a): the first part of the implementation's own well-formedness, its n-th input's or its result's, that the
     // required signatures' own well-formedness and the premises at `use` do not prove under the instantiation (null when every part
@@ -390,7 +401,8 @@ public sealed partial class Binding
             actual = null; // Every position is covered when the shapes differ.
         }
 
-        if (visit.Subject == WellFormedSubject.Input && result.Symbol is { } symbol && result.OriginArguments.Count != 0 && !SameOriginArguments(result, actual) &&
+        if (visit.Subject == WellFormedSubject.Input && result.Symbol is { } symbol && result.OriginArguments.Count != 0 &&
+            !SameOriginArguments(result, actual) &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
         {
             foreach (var relation in declaration.Relations)
@@ -536,7 +548,7 @@ public sealed partial class Binding
                 BoundOrigins(visit.Inference!, longer, outer, visit.Subject != WellFormedSubject.Input);
                 return true;
             case WellFormedAction.Unbound:
-                if (visit.Inference!.IndexOf(longer, outer, true, true) is >= 0 and var index)
+                if (visit.Inference!.IndexOf((Longer: longer, Shorter: outer, LongerVariable: true, ShorterVariable: true)) is >= 0 and var index)
                 {
                     visit.Inference!.Bounds.RemoveAt(index);
                 }

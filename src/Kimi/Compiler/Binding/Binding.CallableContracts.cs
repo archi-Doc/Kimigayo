@@ -83,7 +83,8 @@ public sealed partial class Binding
             }
 
             var actual = Translate(implementation.Input(i)!);
-            if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder) || !this.ProvesInputPremises(actual, required, requirement.Binder, default))
+            if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder) ||
+                !this.ProvesInputPremises(actual, required, requirement.Binder, default))
             {
                 return ConstraintProof.Refuted;
             }

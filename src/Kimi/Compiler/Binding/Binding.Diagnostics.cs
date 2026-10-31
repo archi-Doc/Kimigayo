@@ -235,11 +235,19 @@ public sealed partial class Binding
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
     // SPEC 15.6.1, 23.1: the Reason names the comparison, the member, the relation and its two ends, rigid symbols of the comparison
     // displayed as the required contract writes them; an omitted end is related at its Type occurrence.
-    private static void ReportOriginContract(Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition = 0)
+    private static void ReportOriginContract(
+        Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition = 0)
     {
         if (contract.Required is { } original)
         {
-            node.Report(requirement, code, evidence: ["implementation", contract.Member, contract.Equality ? "==" : "outlives", OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)], related: [("requirement", original, "the original implementation contract")], at: contract.At, condition: condition);
+            var relation = contract.Equality ? "==" : "outlives";
+            node.Report(
+                requirement,
+                code,
+                evidence: ["implementation", contract.Member, relation, OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)],
+                related: [("requirement", original, "the original implementation contract")],
+                at: contract.At,
+                condition: condition);
             return;
         }
 
@@ -258,11 +266,25 @@ public sealed partial class Binding
             // is related at the anonymous function's header.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             const string Note = "A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.7.4)";
-            node.Report(requirement, code, note: Note, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, relatedSpans: [("origin", closure, header, null)], at: contract.At, condition: condition);
+            node.Report(
+                requirement,
+                code,
+                note: Note,
+                evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
+                related: related,
+                relatedSpans: [("origin", closure, header, null)],
+                at: contract.At,
+                condition: condition);
             return;
         }
 
-        node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, at: contract.At, condition: condition);
+        node.Report(
+            requirement,
+            code,
+            evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
+            related: related,
+            at: contract.At,
+            condition: condition);
     }
 
     // The capture entry that names an environment binding, when the closure has a capture list.
@@ -411,7 +433,8 @@ public sealed partial class Binding
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } owner && actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
+        if (expected is BoundType { Kind: BoundTypeKind.Function } owner &&
+            actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
             this.FailOwnedConversion(value, owner, at, node))
         {
             return null;

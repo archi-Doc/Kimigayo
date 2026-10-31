@@ -268,7 +268,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination && !this.FitsTypeAt(left, destination, binary, out var failure))
+        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination &&
+            !this.FitsTypeAt(left, destination, binary, out var failure))
         {
             this.FailMismatch(binary, binary.Left, left, destination, failure);
             return false;

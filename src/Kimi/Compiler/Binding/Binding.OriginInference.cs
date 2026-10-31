@@ -13,7 +13,16 @@ public sealed partial class Binding
     private static ComparisonFailure BoundFailure(
         in CallableInstance comparison, byte member, Koto? clause, BoundOrigin longer, BoundOrigin shorter, bool equality)
     {
-        var kind = clause is not null ? ComparisonFailureKind.Clause : member != 0 ? ComparisonFailureKind.Origin : ComparisonFailureKind.ResultPremise;
+        var kind = ComparisonFailureKind.ResultPremise;
+        if (clause is not null)
+        {
+            kind = ComparisonFailureKind.Clause;
+        }
+        else if (member != 0)
+        {
+            kind = ComparisonFailureKind.Origin;
+        }
+
         return new(kind, longer, shorter, equality, comparison) { Clause = clause, Path = member, Depth = (byte)(member == 0 ? 0 : 1) };
     }
 
@@ -317,7 +326,12 @@ public sealed partial class Binding
             }
 
             var end = isLimit ? bound.Longer : bound.Shorter;
-            var (longer, shorter) = invariant ? (first, end) : isLimit ? (end, floor) : (limit, end);
+            var (longer, shorter) = isLimit ? (end, floor) : (limit, end);
+            if (invariant)
+            {
+                (longer, shorter) = (first, end);
+            }
+
             if (longer is not null && shorter is not null && (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison) ||
                 (invariant && !this.ProvesOriginOutlives(shorter, longer, use, inference.Comparison))))
             {
@@ -325,8 +339,14 @@ public sealed partial class Binding
             }
 
             first ??= end;
-            limit = isLimit ? limit ?? end : limit;
-            floor = isLimit ? floor : floor ?? end;
+            if (isLimit)
+            {
+                limit ??= end;
+            }
+            else
+            {
+                floor ??= end;
+            }
         }
 
         return default;
@@ -343,7 +363,7 @@ public sealed partial class Binding
         {
             if (bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable))
             {
-                if (polarity == 3 && inference.IndexOf(variable, bound.Longer, true, false) >= 0)
+                if (polarity == 3 && inference.IndexOf((Longer: variable, Shorter: bound.Longer, LongerVariable: true, ShorterVariable: false)) >= 0)
                 {
                     return bound.Longer;
                 }
@@ -352,7 +372,7 @@ public sealed partial class Binding
             }
             else if (bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable))
             {
-                if (polarity == 3 && inference.IndexOf(bound.Shorter, variable, false, true) >= 0)
+                if (polarity == 3 && inference.IndexOf((Longer: bound.Shorter, Shorter: variable, LongerVariable: false, ShorterVariable: true)) >= 0)
                 {
                     return bound.Shorter;
                 }
@@ -390,19 +410,21 @@ public sealed partial class Binding
 
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true)
         {
-            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) && this.IndexOf(longer, shorter, longerVariable, shorterVariable) < 0)
+            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) &&
+                this.IndexOf((longer, shorter, longerVariable, shorterVariable)) < 0)
             {
                 this.Bounds.Add((longer, shorter, longerVariable, shorterVariable, this.Source.Member, this.Source.Clause, this.Source.Equality));
             }
         }
 
-        internal int IndexOf(BoundOrigin longer, BoundOrigin shorter, bool longerVariable, bool shorterVariable)
+        // The index of the bound with these ends (its source aside), or -1.
+        internal int IndexOf((BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable) ends)
         {
             for (var i = 0; i < this.Bounds.Count; i++)
             {
                 var bound = this.Bounds[i];
-                if (ReferenceEquals(bound.Longer, longer) && ReferenceEquals(bound.Shorter, shorter) &&
-                    bound.LongerVariable == longerVariable && bound.ShorterVariable == shorterVariable)
+                if (ReferenceEquals(bound.Longer, ends.Longer) && ReferenceEquals(bound.Shorter, ends.Shorter) &&
+                    bound.LongerVariable == ends.LongerVariable && bound.ShorterVariable == ends.ShorterVariable)
                 {
                     return i;
                 }

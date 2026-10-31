@@ -57,7 +57,8 @@ public sealed partial class Binding
     // SPEC 10.7, 15.6.1, 23.1: the first failure of one walk, where the walk found it: the failing condition (Kind, Part), its ends as
     // written with the comparison that instantiates them, and the members from the nearest Callable comparison (Path, one byte per member,
     // the outermost highest: a parameter n + 1, the result ResultStep; Depth saturates at 8).
-    internal readonly record struct ComparisonFailure(ComparisonFailureKind Kind, BoundOrigin? Longer, BoundOrigin? Shorter, bool Equality, CallableInstance Instance)
+    internal readonly record struct ComparisonFailure(
+        ComparisonFailureKind Kind, BoundOrigin? Longer, BoundOrigin? Shorter, bool Equality, CallableInstance Instance)
     {
         internal const byte ResultStep = 0xFF;
 
@@ -179,7 +180,8 @@ public sealed partial class Binding
                     variance == OriginVariance.Covariant ? !this.OriginFits(a, b, instance) : !this.OriginFits(b, a, instance))
                 {
                     holds = false;
-                    var failed = variance == OriginVariance.Contravariant && !both ? this.OriginFailure(b, a, false, instance) : this.OriginFailure(a, b, both, instance);
+                    var failed = variance == OriginVariance.Contravariant && !both ? this.OriginFailure(b, a, false, instance)
+                        : this.OriginFailure(a, b, both, instance);
                     if (!this.Keep(failed, instance))
                     {
                         return false;

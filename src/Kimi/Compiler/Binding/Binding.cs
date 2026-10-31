@@ -872,15 +872,9 @@ public sealed partial class Binding
         {
             this.ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
+        else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
-            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.OmittedResultNote(issue.Node));
-            this.ReportFurtherOriginRecords(issue.Node, requirement);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
-        {
-            ReportOriginContract(issue.Node, contract, requirement, issue.Code);
-            this.ReportFurtherOriginRecords(issue.Node, requirement);
+            // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
         }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
         {

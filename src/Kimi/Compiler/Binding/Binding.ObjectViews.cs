@@ -231,7 +231,8 @@ public sealed partial class Binding
             {
                 if (!this.CheckTypeUse(result, target, conversion, out var failure))
                 {
-                    return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure) : this.Fail(conversion, BindingFailure.InvalidAssignment);
+                    return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure)
+                        : this.Fail(conversion, BindingFailure.InvalidAssignment);
                 }
 
                 result = target;

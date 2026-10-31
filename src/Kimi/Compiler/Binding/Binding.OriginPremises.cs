@@ -34,7 +34,8 @@ public sealed partial class Binding
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
                 retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null || environment.Comparison.Expected is not null;
+                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null ||
+                    environment.Comparison.Expected is not null;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);

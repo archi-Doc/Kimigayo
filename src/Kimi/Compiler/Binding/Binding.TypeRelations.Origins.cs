@@ -45,9 +45,18 @@ public sealed partial class Binding
                     !(left.Kind == BoundTypeKind.Function && i == 0) &&
                     (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
                 var (l, r) = (left.Components[i], right.Components[i]);
-                if ((covariant ? this.CommonOriginType(l, r, out failure) : ReferenceEquals(l, r) ? l : null) is not { } part)
+                var part = ReferenceEquals(l, r) ? l : null;
+                if (covariant)
                 {
-                    failure = covariant ? failure : ReferenceTypes.StorageMatches(l, r) ? Unmet(null, null) : ComparisonFailure.Shape;
+                    part = this.CommonOriginType(l, r, out failure);
+                }
+                else if (part is null)
+                {
+                    failure = ReferenceTypes.StorageMatches(l, r) ? Unmet(null, null) : ComparisonFailure.Shape;
+                }
+
+                if (part is null)
+                {
                     return null;
                 }
 

@@ -464,7 +464,9 @@ public sealed partial class Binding
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
-                    return this.RecordMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType, ComparisonFailure.Shape); // The Type keeps a generic default's parameter (SPEC 7.2.3).
+                    // The Type keeps a generic default's parameter (SPEC 7.2.3).
+                    var found = number.IsInteger ? "integer literal" : "floating-point literal";
+                    return this.RecordMismatch(node, node, found, numberType, ComparisonFailure.Shape);
                 }
 
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
@@ -579,7 +581,8 @@ public sealed partial class Binding
                         targetResult?.Add(jump.Expression, actual);
                     }
 
-                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node, out var failure) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
+                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node, out var failure) &&
+                        !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
                     {
                         this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType, failure);
                     }
@@ -838,7 +841,8 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node, out var failure) && !this.CheckLocalTypeUse(actual, expected, node))
+        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node, out var failure) &&
+            !this.CheckLocalTypeUse(actual, expected, node))
         {
             this.FailMismatch(node, node, actual, expected, failure);
         }

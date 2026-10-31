@@ -347,7 +347,8 @@ public sealed partial class Binding
         types.Clear();
         if (context.Outcome == JoinOutcome.Conflict)
         {
-            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure) : this.Fail(node, BindingFailure.TypeMismatch);
+            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure)
+                : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
         if (context.Outcome == JoinOutcome.Dependent)
