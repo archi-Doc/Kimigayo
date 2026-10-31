@@ -26,10 +26,14 @@ public sealed partial class Binding
 {
     private readonly List<Koto> positionParts = new();
 
+    // SPEC 3.8, 10.5.1: whether a Tuple literal has the Type's shape, a Tuple of its length: the one Tuple shape rule of the walks, the
+    // fit and the late Type (TupleShapeAt; arrays: ArrayShapeAt).
+    private static bool TupleShapeAt(TupleLiteralKoto tuple, BoundType? type)
+        => type is { Kind: BoundTypeKind.Tuple } && type.Components.Count == tuple.Elements.Count;
+
     private static BoundType? ChildPattern(Koto shape, int index, BoundType? pattern) => shape switch
     {
-        TupleLiteralKoto tuple => pattern is { Kind: BoundTypeKind.Tuple } && pattern.Components.Count == tuple.Elements.Count
-            ? pattern.Components[index] : null,
+        TupleLiteralKoto tuple => TupleShapeAt(tuple, pattern) ? pattern!.Components[index] : null,
         ArrayLiteralKoto => pattern is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray } ? pattern.Components[0] : null,
         _ => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
     };

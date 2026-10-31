@@ -39,6 +39,20 @@ public partial class OriginRelationDiagnosticTest
 
     private const string D2Join = "(if c => (identity(1), 2) else => (x, 3))";
 
+    private const string FPairs = "func f(x: i64, y: i32) -> i32 => 0\nfunc f(x: bool, y: i32) -> i32 => 1\n";
+
+    private const string GBool = "func g(x: bool) -> i32 => 0\n";
+
+    private const string Pick = "func pick<T>(x: T, y: T) -> T => x@move\n";
+
+    private const string BoxInit = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n";
+
+    private const string WJoin = "if c => identity(1) else => 2";
+
+    private const string WTuples = "if c => (identity(1), 2) else => (2, 3)";
+
+    private const string WSources = "NoApplicableOverload_Kd identity(1); TypeMismatch_Kd 2";
+
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
     // (`h(a)` and a value call `h(a)` give NoApplicableOverload_Kd at the call); its twins pass sources of the parameter Type.
@@ -147,6 +161,48 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
     public void ATypedPartGivesItsPositionItsType(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // B1 (R4's G1b B1 and U1.5 design review D1): a join its call classifies fits position by position (SPEC 10.5.1 last paragraph,
+    // 10.5.4, 14.9.2). A position with no typed part whose part awaits its call (`identity(1)` beside `2`) is checked by the selected
+    // candidate only, its literal taking no part in applicability, so with `f` overloaded no candidate is best (10.4): at the join's own
+    // position (wj_ov, pw8, its `match` pw16, pw17 in a `let`), as an element (wj_elem) and at a child position (wj_tup, its `match`
+    // wj_tup_m, wj_arr). With one candidate the sources get their own records, as `g(identity(1))` and `g(2)` do (wj_one_n, wj_pick_n,
+    // wj_ctor_n, wj_tup_n, and wj_one_v at a value call).
+    [Theory]
+    [InlineData("U1.5", "wj_ov", IdentityT + FPairs + KHead + "    return f(" + WJoin + ", 3)\n", "AmbiguousBinding_Kd f(" + WJoin + ", 3)")]
+    [InlineData("U1.5", "pw8", IdentityT + FScalars + KHead + "    return f(" + WJoin + ")\n", "AmbiguousBinding_Kd f(" + WJoin + ")")]
+    [InlineData("U1.5", "pw16", IdentityT + FScalars + KHead + "    return f(match c\n        true => identity(1)\n        false => 2\n    )\n", "AmbiguousBinding_Kd f(match c")]
+    [InlineData("U1.5", "pw17", IdentityT + FPairs + KHead + "    let a = f(" + WJoin + ", 0)\n    return a\n", "AmbiguousBinding_Kd f(" + WJoin + ", 0)")]
+    [InlineData("U1.5", "wj_elem", IdentityT + FTuples + KHead + "    return f((" + WJoin + ", 3))\n", "AmbiguousBinding_Kd f((" + WJoin + ", 3))")]
+    [InlineData("U1.5", "wj_tup", IdentityT + FTuples + KHead + "    return f(" + WTuples + ")\n", "AmbiguousBinding_Kd f(" + WTuples + ")")]
+    [InlineData("U1.5", "wj_tup_m", IdentityT + FTuples + KHead + "    return f(match c\n        true => (identity(1), 2)\n        false => (2, 3)\n    )\n", "AmbiguousBinding_Kd f(match c")]
+    [InlineData("U1.5", "wj_arr", IdentityT + "func f(x: [2 of i64]) -> i32 => 0\nfunc f(x: [2 of bool]) -> i32 => 1\n" + KHead + "    return f(if c => [identity(1), 2] else => [2, 3])\n", "AmbiguousBinding_Kd f(if c => [identity(1), 2] else => [2, 3])")]
+    [InlineData("U1.5", "wj_one_n", IdentityT + GBool + KHead + "    return g(" + WJoin + ")\n", WSources)]
+    [InlineData("U1.5", "wj_one_v", IdentityT + GBool + KHead + "    let h = g\n    return h(" + WJoin + ")\n", WSources)]
+    [InlineData("U1.5", "wj_pick_n", IdentityT + Pick + "func k(c: bool, v: bool) -> bool\n    return pick(" + WJoin + ", v)\n", WSources)]
+    [InlineData("U1.5", "wj_ctor_n", IdentityT + BoxInit + KHead + "    let b: Box<bool> = Box.init(" + WJoin + ")\n    return 0\n", WSources)]
+    [InlineData("U1.5", "wj_tup_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 0\n" + KHead + "    return f(" + WTuples + ")\n", WSources)]
+    public void AWaitingJoinPositionTakesNoPartInApplicability(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // B1's valid twins: the candidate that the other positions or arguments fix completes the waiting position (wj_pick, wj_ctor_exp at
+    // its expected Type, wj_nest, wj_fn, pw13, pw19, wj_tup_ok, and wj_ov_v at a value call); a literal position still selects
+    // (wj_tup_lit), and a waiting anonymous function's header selects at the join's position (wj_fnh) as at a child position (wj_tup_fn;
+    // SPEC 10.5.4).
+    [Theory]
+    [InlineData("U1.5", "wj_pick", IdentityT + Pick + "func k(c: bool, v: i64) -> i64\n    return pick(" + WJoin + ", v)\n")]
+    [InlineData("U1.5", "wj_ctor_exp", IdentityT + BoxInit + KHead + "    let b: Box<i64> = Box.init(" + WJoin + ")\n    return 0\n")]
+    [InlineData("U1.5", "wj_nest", IdentityT + Pick + "func k(c: bool, v: i64) -> i64\n    return pick(identity(" + WJoin + "), v)\n")]
+    [InlineData("U1.5", "wj_fn", IdentityT + "func apply<F>(f: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return f(x)\nfunc twice(x: i32) -> i32 => x + x\nfunc mk() -> (i32) -> i32 => twice\n" + KHead + "    return apply(if c => identity(mk()) else => mk(), 1)\n")]
+    [InlineData("U1.5", "pw13", IdentityT + "func pair<T>(a: T, b: T) -> i32 => 0\n" + KHead + "    let w: i64 = 3\n    return pair(" + WJoin + ", w)\n")]
+    [InlineData("U1.5", "pw19", "struct C<T>\n    public var tag: i32 = 0\n    public init(x: T, y: T) => self.tag = 1\n" + IdentityT + "func k(c: bool, w: i64) -> i32\n    let v = C.init(" + WJoin + ", w)\n    return 0\n")]
+    [InlineData("U1.5", "wj_tup_ok", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f(" + WTuples + ")\n")]
+    [InlineData("U1.5", "wj_ov_v", IdentityT + "func g(x: i64, y: i32) -> i32 => 0\n" + KHead + "    let h = g\n    return h(" + WJoin + ", 3)\n")]
+    [InlineData("U1.5", "wj_tup_lit", IdentityT + FTuples + KHead + "    return f(if c => (1, identity(2)) else => (2, 3))\n")]
+    [InlineData("U1.5", "wj_fnh", "func run(action: () -> ()) -> i32 => 0\nfunc run(action: () -> i32) -> i32 => 1\n" + KHead + "    return run(if c => func () -> i32 => 1 else => func () -> i32 => 2)\n")]
+    [InlineData("U1.5", "wj_tup_fn", "func f(x: (() -> (), i32)) -> i32 => 0\nfunc f(x: (() -> i32, i32)) -> i32 => 1\n" + KHead + "    return f(if c => (func () -> i32 => 1, 2) else => (func () -> i32 => 2, 3))\n")]
+    public void AWaitingJoinPositionIsCompletedByTheSelectedCandidate(string unit, string form, string body)
+        => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid
     // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4); with

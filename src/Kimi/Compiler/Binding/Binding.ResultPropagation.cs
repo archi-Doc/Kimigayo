@@ -699,7 +699,7 @@ public sealed partial class Binding
 
     private BoundType? LateTupleType(TupleLiteralKoto tuple, BoundType target)
     {
-        if (target.Kind != BoundTypeKind.Tuple || target.Components.Count != tuple.Elements.Count)
+        if (!TupleShapeAt(tuple, target))
         {
             return null;
         }
@@ -730,8 +730,7 @@ public sealed partial class Binding
     // array of its count, a fill a fixed array of its length (SPEC 4.3.1, 4.3.3; DECISIONS BU-43).
     private BoundType? LateArrayType(ArrayLiteralKoto array, BoundType target)
     {
-        if (target.Components.Count != 1 ||
-            (array.BoundType is { Kind: BoundTypeKind.FixedArray } own ? !SameArrayShape(own, target) : !this.ConstructsAt(array, target)))
+        if (!this.ArrayShapeAt(array, target))
         {
             return null;
         }
@@ -746,6 +745,11 @@ public sealed partial class Binding
 
         return target;
     }
+
+    // SPEC 4.3: whether an array literal has the target's shape: its own fixed array's, or the one it constructs there (ConstructsAt).
+    private bool ArrayShapeAt(ArrayLiteralKoto array, BoundType target)
+        => target.Components.Count == 1 &&
+            (array.BoundType is { Kind: BoundTypeKind.FixedArray } own ? SameArrayShape(own, target) : this.ConstructsAt(array, target));
 
     // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3).
     private bool ConstructsAt(ArrayLiteralKoto array, BoundType target)

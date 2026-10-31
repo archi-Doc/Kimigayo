@@ -78,7 +78,7 @@ public sealed partial class Binding
 
         if (source is TupleLiteralKoto tuple)
         {
-            if (expected.Kind != BoundTypeKind.Tuple || expected.Components.Count != tuple.Elements.Count)
+            if (!TupleShapeAt(tuple, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -97,10 +97,7 @@ public sealed partial class Binding
 
         if (ControlFlowExpression(source) is { } join && this.KindOf(source) == PartKind.Join)
         {
-            // SPEC 10.5.1, 14.9.2 step 3 (DECISIONS BU-43): a join its call classifies fits by its results' late Type, waiting literals
-            // fitting as literals.
-            return this.LateTypeOf(join, expected) is { } late && this.FitsStructurallyAt(late, expected, source)
-                ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+            return this.FitsJoin(join, expected) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
 
         if (source is RangeKoto range && IsMixedRange(range))
@@ -138,6 +135,55 @@ public sealed partial class Binding
         return syntax.BoundType is not { } actual ? CandidateApplicability.Pending :
             ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable
             : CandidateApplicability.Inapplicable;
+    }
+
+    // SPEC 10.5.1, 10.5.4, 14.9.2 (DECISIONS BU-43): a join its call classifies fits position by position, each position taking the parts
+    // its sources hold there (PositionKind, ChildPositions), as its evidence does: a position that waits (no typed part, one awaiting its
+    // call) is checked by the selected candidate, only a waiting anonymous function's header filtering here; an Aggregate one by each
+    // part's shape and then its child positions; any other by each part's late Type (LateFits), which applies no late write.
+    private bool FitsJoin(Koto join, BoundType type)
+    {
+        var start = this.positionParts.Count;
+        this.AddResults(join);
+        var fits = this.FitsPosition(start, type);
+        this.ClosePosition(start);
+        return fits;
+    }
+
+    private bool FitsPosition(int start, BoundType type)
+    {
+        var end = this.positionParts.Count;
+        var kind = this.PositionKind(start, end, out _);
+        for (var i = start; i < end; i++)
+        {
+            var part = this.positionParts[i];
+            var fits = (kind, KotoHelper.UnwrapParentheses(part)) switch
+            {
+                (PartKind.Call, FunctionKoto closure) => !this.AwaitsCall(closure) || this.ClosureSignatureFits(closure, type),
+                (PartKind.Call, _) => true,
+                (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),
+                (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
+                _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
+            };
+            if (!fits)
+            {
+                return false;
+            }
+        }
+
+        var children = kind == PartKind.Aggregate && this.PartsShape(start, end) is not DictionaryLiteralKoto ? this.ChildPositions(start, end) : 0;
+        for (var i = 0; i < children; i++)
+        {
+            var child = this.positionParts.Count;
+            var fits = this.AddChildPosition(start, end, i, type) is { } element && this.FitsPosition(child, element);
+            this.ClosePosition(child);
+            if (!fits)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
