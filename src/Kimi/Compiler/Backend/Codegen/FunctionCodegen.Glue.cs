@@ -20,8 +20,9 @@ namespace Kimi.Compiler.Backend;
 // under one switch on its tag over the Cases holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned
 // match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a
 // row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
-// A common Function value's calls its table's drop entry, when present (FunctionCodegen.Erasures). An owning handle's releases its
-// object (FunctionCodegen.Objects' Release), only in its glue function, since no move path opens a handle. A collection's rows (also only
+// A common Function value's calls its table's drop entry, when present, on a copy of its word in an entry slot (FunctionCodegen.Erasures),
+// and an owning handle's releases its object (FunctionCodegen.Objects' Release), each only in its glue function, since no move path opens
+// either. A collection's rows (also only
 // in its glue function): an Array's and a Dictionary's call their glue item's Drop helper with the glue's parameters (FunctionCodegen.Arrays,
 // FunctionCodegen.Dictionaries; DECISIONS R5-M121, R5-M124); a Type of a kind no glue has, or a target missing or left over, is a broken
 // contract, InternalInvariant_Kd there.
@@ -58,14 +59,14 @@ internal sealed partial class FunctionCodegen
             case DropGlueRow.Parts:
                 this.DestroyParts(glue, type, row, address, site);
                 return;
-            case DropGlueRow.Function:
+            case DropGlueRow.Function when row < 0:
                 this.DestroyErased(type, address, site);
                 return;
             case DropGlueRow.Handle when row < 0:
                 this.Release(glue, type, address, site);
                 return;
-            case DropGlueRow.Handle:
-                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A handle has no part a move path opens.
+            case DropGlueRow.Function or DropGlueRow.Handle:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A Function value or a handle has no part a move path opens.
                 return;
             case DropGlueRow.Array when row < 0:
                 this.ArrayGlue(glue, address, site);
