@@ -10508,6 +10508,8 @@ structure is recorded here by the unit that first implements it.
   - Verified (`InstanceCollectorTest`): size and count limits at an unused function's parameter, a generic instance's `Raw.allocate`
     Type argument at the call in the generic body, a Closure local whose environment is too large (no adapter item for its erasure), no
     record for a struct Binding rejected or for `Option<Never>`; the library (as roots) and the 44 milestones under sel give no record.
+  - Amended by R5-M171 (G153 U1a): a limit's record is once per erased Type and declaration, at the declaration's least use, made at
+    the run's end, not once per erased Type at its first use.
 - **R5-M45 Legacy storage kernel rows** (2026-10-18, planning session; plan P2a, PD2, S2-S4 X4, package C §3.4; refines R5-M16)
   `StorageKernelRow(Kind, Write, Needs)` is one row per `StorageKernelKind`, the storage-boundary text a Body-disposition storage
   operation writes inline in its caller's body (SPEC 22.2): DictionaryLayout (StorageDictionaryLayout), EntryAddress (StorageKeyAt,
@@ -14603,3 +14605,33 @@ structure is recorded here by the unit that first implements it.
     admitted item (none can be above otherwise) and counts each step in `Work`, so `AChainWithoutGrowthScalesLinearly` observes the walk
     (the 800-function chain walks nothing); O(W·n) stays the recorded worst case, reached by an identity whose earlier items lie off
     the chain (e.g. two parallel chains of the same definitions), which no row covers yet.
+- **R5-M171 A Type over a layout limit is one record per declaration, at its least use (G153 U1a)** (2026-10-31, R5; PLAN G153 (1),
+  design `draft/Sketches/R5/G153-design.md` revision 1, accepted at its re-review; amends R5-M44's record clause) SPEC 23.1.2 leaves
+  grouping to the implementation; IMPL 21.3.2 reports a limit at the affected declaration, call or token; SPEC 8.15's Limits paragraph
+  and DIAGNOSTICS rule 6 forbid a placement that depends on the order of checks.
+  - Cause: one record per erased Type sat at its first use in the collector's FIFO order, so an edit elsewhere moved it to another
+    function (routing one call through a generic helper), fixing one function revealed the next, and inside one generic body the order
+    of its instances chose the line.
+  - Rule (`InstanceCollector.Layouts.cs`, `Limit`, `RecordLimits`): Layout's verdict stays once per erased Type (its memo); a limit is a
+    use of the erased Type in a declaration, the MIR body holding the use's subject (`Declaration`, `Admit.cs`, K 4.9: the nearest item
+    on the admission chain, itself included, whose body lies in a root module; an import is its own `MirDefKey`), and the table
+    `limits` keeps the least subject per (Type, declaration) in `SourceRef` order (module, then the syntax table's pre-order; Binding's
+    synthesized nodes follow every parsed node). At the end of `Run` each entry is one record through `Report`, in subject order, so
+    Layout records follow the run's other records. `Declaration` is memoized per item for the run (an int array cleared by `Run`, grown
+    with the items, allocated at a run's first failing use), each walk filling every item it passes; its steps count in `Work`.
+  - Records: one more per extra declaration using a failing Type (none in the diagnostic snapshot, the MIR ledger, the library or the
+    milestones); an anonymous function is its own declaration, so one Type can be recorded twice on one line. Growth and identity-count
+    refusals keep R5-M170's one record per key: their cause is the chain that decided them, and a later request is their dependent.
+  - Known limits: a shared admitted item keeps its records at its first admitter's `Site` (K 4.9), since a later request finds it and
+    replays nothing: library bodies and type-driven expansions of root-module Types (`struct S { var a: Array<[2^31 of u8]> }` used as
+    `Option<S>` in `d` and `e` is one record at `d`, at `e` only once `d` is gone); PLAN G153 (3) would place those per requesting
+    declaration. An inlined default of a template in another root module can put the least subject in the template's text, ordered by
+    module first. No limit record of the rows lies at a synthesized node (an index, an iteration and an object creation assert it).
+  - Rejected: a record per use (R5-M44's noise); one record per Type at its least use (fixing one use still reveals the next); admission
+    order as "first use"; growth refusals per declaration (a non-growing call would get a growth record decided by another declaration);
+    a per-item declaration field (memory on every item for a value read on failure only); the outermost named declaration (another walk;
+    it groups uses fixed in different bodies).
+  - Tests: `InstanceCollectorTest.ALayoutLimitIsARecordPerDeclarationAtItsLeastUse` (two functions, two generic bodies in either
+    admission order, one generic body in either order of its instances, a function and its anonymous function, a constructor and its
+    creation, an index and an iteration), seven of its nine rows failing on dev; `ACollectionsGlueLaysOutItsElements`' limit row moves
+    from `let b`, the first glue request in drop order, to `let a`, the least (this rule's change, not a weakening).

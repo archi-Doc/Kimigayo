@@ -32,6 +32,10 @@ internal sealed partial class InstanceCollector
     private static BoundType Designated(BoundType below)
         => below is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw, Components: [var pointee] } ? pointee : below;
 
+    // DIAGNOSTICS rule 6 (DECISIONS R5-M171): the order of two subjects, by module and then by id, the syntax table's pre-order of parsed
+    // nodes, after which nodes outside the tree (Binding's synthesized ones) follow in creation order.
+    private static int Order(SourceRef x, SourceRef y) => x.Module != y.Module ? x.Module - y.Module : x.Id.CompareTo(y.Id);
+
     // DECISIONS R5-M170: the declaration a DropGlue item's identity names, that of a Nominal, Constructed or Closure Type; none for a
     // structural Type, whose parts are its subterms.
     private static BindingSymbol? Declaration(BoundType type)
@@ -142,7 +146,7 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        if (!this.LaysOut(site, type) || (key.Kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
+        if (!this.LaysOut(parent, site, type) || (key.Kind == MonoKind.DropGlue && !this.ElementsLayOut(parent, site, type)))
         {
             return -1;
         }
@@ -199,7 +203,7 @@ internal sealed partial class InstanceCollector
         var laidOut = true;
         for (var i = 0; i < collection.Components.Count; i++)
         {
-            laidOut &= this.LaysOut(site, collection.Components[i]);
+            laidOut &= this.LaysOut(parent, site, collection.Components[i]);
         }
 
         if (!laidOut)
@@ -300,6 +304,38 @@ internal sealed partial class InstanceCollector
         }
 
         return (byte)BitOperations.TrailingZeroCount(views);
+    }
+
+    // K 4.9 (DECISIONS R5-M171): the declaration whose body holds the subjects of an item's records (Subject): the body of the nearest item
+    // on its admission chain, itself included, whose body lies in a root module, since every other item's Site is its parent's located
+    // site. Memoized per item for the run (declaring, cleared by Run, grown with the items), each walk filling every item it passed, so an
+    // item is walked once per run; each step counts in Work.
+    private MirDefKey Declaration(int item)
+    {
+        var items = this.Set.Items;
+        var bodies = this.program!.Bodies;
+        if (this.declaring.Length < items.Length)
+        {
+            Array.Resize(ref this.declaring, Math.Max(64, 2 * items.Length));
+        }
+
+        var found = item;
+        for (; this.declaring[found] == 0; found = items[found].Parent, this.Work++)
+        {
+            if (items[found].BodyOrdinal >= 0 && bodies[items[found].BodyOrdinal].Source.Module < this.rootModules)
+            {
+                this.declaring[found] = found + 1;
+                break;
+            }
+        }
+
+        var declaring = this.declaring[found];
+        for (var i = item; this.declaring[i] == 0; i = items[i].Parent)
+        {
+            this.declaring[i] = declaring;
+        }
+
+        return bodies[items[declaring - 1].BodyOrdinal].Key;
     }
 
     // K 4.9: a site of a body, moved out of the inline defaults of templates outside the root modules to the outermost omitting call; in a

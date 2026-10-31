@@ -1732,7 +1732,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
     // whose verdicts join the glue item's: a C-layout element storing a zero-sized Field is InvalidCLayout_Kd at each request of the glue,
     // an empty local's declaration (written or inferred alike; Binding reports none, DECISIONS R4-M134 Q8), and a limit element the erased
-    // Type's one Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
+    // Type's one Resource record in the declaration, at its least request (DECISIONS R5-M171), not the first in drop order; such a glue has
+    // no item. Records by code and the subject's first line, in record order.
     [Theory]
     [InlineData(
         "func use() -> ()\n    let a: Array<P<()>> = []\n    let b: Array<P<()>> = []\n    return\n",
@@ -1741,7 +1742,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", "")]
     [InlineData(
         "func use() -> ()\n    let a: Array<[2147483648 of u8]> = []\n    let b: Array<[2147483648 of u8]> = []\n    return\n",
-        "GenerationResourceLimit_Kd let b: Array<[2147483648 of u8]> = []")]
+        "GenerationResourceLimit_Kd let a: Array<[2147483648 of u8]> = []")]
     public void ACollectionsGlueLaysOutItsElements(string uses, string records)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
@@ -1811,8 +1812,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Fn make [i32]"));
     }
 
-    // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
-    // use: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
+    // K 4.8, IMPL 21.3.2, DECISIONS R5-M44, R5-M171: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the
+    // Type's least use in its declaration: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
     // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
     [Theory]

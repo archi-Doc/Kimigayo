@@ -212,7 +212,7 @@ internal sealed partial class InstanceCollector
         if (target.Kind == RequirementTargetKind.Builtin)
         {
             this.uses.Clear();
-            this.Uses(subject, this.types.Comparison(TyCtxt.Contract(callee.Symbol!), template, operators: true)!, target.Subst!.Self!, past: true);
+            this.Uses(item, subject, this.types.Comparison(TyCtxt.Contract(callee.Symbol!), template, operators: true)!, target.Subst!.Self!, past: true);
         }
 
         return this.Comparing(item, subject, target, template, new(default, this.Set.Items[item].Key.Body.Erased), (byte)callee.Arg);
@@ -238,8 +238,8 @@ internal sealed partial class InstanceCollector
     // SPEC 8.15.3, 23.1.2 (DECISIONS R5-M149, R5-M166): a comparison call is a use, at its site, of each compared Tuple's offsets past its
     // operands' storage: its Self, and below a node laid out without its component (Layout.Indirect: a reference layer) the next node with
     // a layout need (LayoutNeeds: a Tuple's parts), after which its Type is the storage again; its node and the instance Type in parallel
-    // (a part's Type is the instance's component), each distinct node once per position (uses).
-    private void Uses(SourceRef subject, ComparisonNode node, BoundType type, bool past)
+    // (a part's Type is the instance's component), each distinct node once per position (uses); the calling item's use (LaysOut).
+    private void Uses(int item, SourceRef subject, ComparisonNode node, BoundType type, bool past)
     {
         var position = past ? (byte)2 : (byte)1;
         if (node.Kind != ComparisonKind.Composite)
@@ -257,12 +257,12 @@ internal sealed partial class InstanceCollector
         var needed = past && LayoutNeeds.Of(node) != LayoutNeed.None;
         if (needed)
         {
-            _ = this.LaysOut(subject, type);
+            _ = this.LaysOut(item, subject, type);
         }
 
         for (var i = 0; i < node.Parts.Length; i++)
         {
-            this.Uses(subject, node.Parts[i], type.Components[i], Layout.Indirect(node.Type) || (past && !needed));
+            this.Uses(item, subject, node.Parts[i], type.Components[i], Layout.Indirect(node.Type) || (past && !needed));
         }
     }
 
