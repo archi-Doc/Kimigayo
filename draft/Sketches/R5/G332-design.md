@@ -1,131 +1,113 @@
 # G332 design: the instance collector's depth rule
 
-Status: design phase of PLAN G332 (R5, 2026-10-31), revision 1 after design review 1 (REVISE). Working record, not authority: what it
-decides becomes authority only as a DECISIONS entry in the commit that implements it. Base: `origin/dev` `def70d15d`. No source change
-committed; two throwaway prototypes of the growth test (uncommitted, reverted, the second's script
-`C:\Users\bwff1\AppData\Local\Temp\claude\r5\g332\proto2.py`) and CLI probes under `...\r5\g332\probes\` and the reviewer's scratchpad.
+Status: design phase of PLAN G332 (R5, 2026-10-31), revision 2 after design reviews 1 and 2 (both REVISE). Working record, not
+authority: what it decides becomes authority only as a DECISIONS entry in the commit that implements it. Base: `origin/dev`
+`def70d15d`. No source change committed; throwaway prototypes (uncommitted, reverted; revision 2's is
+`C:\Users\bwff1\AppData\Local\Temp\claude\r5\g332\proto3.py`, the collector's height memo standing in for BU's `BoundType.Height`) and
+CLI probes under `...\r5\g332\probes\` and the reviewer's scratchpad.
 
-## Revision 1
+## Revisions
 
-| Finding | Revision 0 | Revision 1 |
+| Rev | Finding | Change |
 | --- | --- | --- |
-| B1 (blocking) | B counted every repeat of an identity that is not a proper subterm, so sideways repeats (a ring's `Option<rc/S_k>`, a shared `Helpers.wrap<T>`) and descents through an intermediate generic (`Option<W^k>`) were refused, which dev accepts; U1 was not behavior-preserving | the generation counts only growth: the key's height above the largest recorded for its identity on the chain (`Peak`, carried); repeats at the same or a lower height inherit. Re-prototyped (§3): ring 17/42/50, nest 16/20, the helper chain, p1, p2 and p8 get no record; every growing probe keeps its GRL. U1 is now the behavior-preserving restructuring |
-| Height source | a subterm walk per hit | Binding publishes no height (BoundType's summary flags only: `ContainsParameter`, `CarriesOrigin`, ...; BU-55 has none); the collector memoizes `Height` once per distinct interned Type (a reference-keyed table cleared per run: linear in distinct parts, no warm allocation). BU proposal, not required: `BoundType.Height` beside `containsParameter` (one int per Type, O(components) at interning; owner BU) would delete the memo |
-| N1 | p9's class only | a type-driven cycle past the window (130 structs through `obj/`) stays Resource; an invalid counterpart and an A/B row |
-| N2 | walk over every chain item | a nearest-identity-ancestor link (`Above`) per item: at most W steps per new key |
-| N3 | identity table incomplete | §4 names each Type kind |
-| N4 | KD9's depth clause | the entry supersedes KD9's whole limit clause (generation, chain count and SetLimit); OQ1 names `StorageRingsMeetTheGlueDepth`'s change |
-| N5 | W = 128 | no window-free formulation; W decided by U3's A/B (the planning session leans to 1,024 if flat): O(W) per new key |
+| 1 | B1: every non-subterm repeat counted (sideways rings, a shared `wrap<T>`, descents through a generic) | a generation counts only growth: a height above the largest recorded for the identity on the chain (`Peak`); lower or equal heights inherit |
+| 1 | N1-N5 | `Above` link (walk <= W), identity table per Type kind, KD9's whole clause superseded, W by A/B |
+| 2 | R1: a type-driven cycle longer than W never stops (`Repeats` resets with the W-bounded search) | **cause one level up (§2)**: each item kind's non-termination has one measure; every backstop is window-free: bodies keep the global SetLimit, type-driven keys get a height cap (128) that replaces `Repeats` |
+| 2 | N1: the chain count refused long sideways chains | gone with `Repeats` |
+| 2 | N2: written growth without recurrence (helpergrow) still GRL | a Known limit (§5) |
+| 2 | N3: ushort wrap | `Generation` and `Peak` are saturating bytes (type-driven heights <= 128 by the cap, body heights by Binding's storage bound) |
+| 2 | N4: U1 carried unread fields and a memo | BU publishes `BoundType.Height` (owner's approval); no memo; units re-cut after BU's unit (§6) |
 
 ## 1. Required meaning
 
-| Source | Rule |
-| --- | --- |
-| SPEC 8.15.3 | Polymorphic recursion with a growing Type argument is valid; one copy per instantiation "may reach an implementation-defined limit", a resource failure. |
-| SPEC 6.1 (finite inline storage) | "Only growth of distinct instantiations through an indirection (for example polymorphic recursion) can reach a generation limit." |
-| IMPL 21.3.2 | Analysis and generation limits (instantiation growth, context depth, default-expansion count, analysis storage, string-interpolation nesting) are implementation-defined; exceeding one is a Resource diagnostic at the affected declaration, call or token. |
-| IMPL A.4, SPEC 23.1.1 | Deep or large input never exhausts the host stack; a limit is `Resource`, never Language or acceptance. |
+SPEC 8.15.3: polymorphic recursion with a growing Type argument is valid and may reach an implementation-defined limit, a resource
+failure. SPEC 6.1: "Only growth of distinct instantiations through an indirection (for example polymorphic recursion) can reach a
+generation limit." IMPL 21.3.2: limits (instantiation growth, context depth, default-expansion count, analysis storage,
+string-interpolation nesting) are implementation-defined; exceeding one is a Resource diagnostic at the affected declaration, call or
+token. IMPL A.4: deep input never exhausts the host stack. So the collector bounds growth, and a valid program without growth is
+accepted. No SPEC/IMPL gap in the rules; reported only: IMPL A.4 names the 64 Semantics cases, not the instantiation limits.
 
-The collector's limit is "instantiation growth": it bounds growth of distinct instantiations, and a valid program without growth must
-be accepted. A program's own nesting is bounded by its input. No SPEC/IMPL gap in the rules; reported only: IMPL A.4 names this
-implementation's 64 Semantics cases but not its instantiation limits (DIAGNOSTICS:361 states them).
+## 2. Cause, one level up
 
-## 2. Cause chain
+Both reviews' findings came from measuring growth by counting repeats along a W-bounded chain (revision 0 counted hops, revision 1
+`Repeats`): a count along a bounded window is not a measure of growth, so it either refuses sideways repeats or resets on long cycles.
+The collector's keys grow in exactly two ways, each with one window-free measure:
 
-- K package 4.6, KD9 (owner-approved, R5-M18): "depth 128 on every item; growing key 16 and set 1,024 on Body items only".
-  `InstanceCollector.Admit.cs:11` `DepthLimit`; checks at `:79-85`, `:122-127`, `:178-183`; `Grows` `:222-236` walks the whole chain.
-- Every hop counts a level, and Grows counts every repeat of a definition, growing or not (the helper chain: 17 sideways
-  `Helpers.wrap<A_k<T>>` on one chain is GRL on dev).
-- The depth is today the only bound on DropGlue recurrence: DropGlue's parts are Fields under a substitution, read without a storage
-  verdict, and an owning handle is indirect for Layout, so a non-regular Type behind `obj/` (`Chain<T>` holding
-  `Option<obj/Chain<(T, T)>>`) expands forever without it: revision 0's bodies-only prototype overflowed the host stack in
-  `Binding.OperandContexts` (`ComponentSummaryTest.ANewlyOwnedNonRegularValueMeetsTheGenerationLimits`, whose comment misnames the
-  record as R5-M44's layout depth).
-- Order: `Depth` is the hop-BFS distance (order-independent); Grows reads the first admitter's chain, chosen by site order, and a refused
-  key is not remembered; SetLimit's victim is order-dependent (placement only, as G153).
-
-## 3. Census and prototype results
-
-| Item kind | Recurs by itself? |
-| --- | --- |
-| Body, LegacyRow | Yes (a definition cycle with a growing substitution); LegacyRow only through its body |
-| DropGlue | Yes: Field expansion of a non-regular Type behind an owning handle; structural parts are subterms |
-| Builtin comparison, Format, Arithmetic; PropertyWitness; ClosureErasure, ItemAdapter; ObjectDescriptor, VTable | No: subterms, or through a body |
-
-Prototype: B's rule, depth deleted, W = 1,024 identity items; dev is `def70d15d`. "r1a" used a global per-declaration count for
-type-driven items, "r1b" the chain count of §4 (the design).
-
-| Probe | Shape | dev | r1a / r1b |
+| Kind | Key | How an infinite set arises | Measure |
 | --- | --- | --- | --- |
-| p1 | 80-deep chain comparing a 50-deep Tuple nest | GRL `x == x` | none |
-| p1b, p6 | 0 x 50, 80 x 40 | none | none |
-| p2 | the chain ending in 50 nested generic constructors | 4 GRL | none |
-| p8 | 300 distinct generic functions | GRL at g128's call | none |
-| p10, ring 50 | 50 structs, `Option<rc/S_{k+1}>` | GRL 104:18 | none |
-| ring 16, 17, 20, 42 | | none | none |
-| ring 120 | past Binding's storage walk (256 Types) | GRL + `Unsupported_Kd` | `Unsupported_Kd` (G128) only |
-| nest16s, nest20s | `Option<W^n<string>>`, `W<T>.next: Option<T>` | none | none |
-| nest20 | `Option<rc/W^20<i32>>`, `W<T>.next: Option<rc/T>` | `UnprovenConstraint_Kd` 2:29 (Binding) | same |
-| helper20 | 20 `A_k<T>.run` through one `Helpers.wrap<T>` | GRL 70:47 | none |
-| p3, p7 | polymorphic / mutual growing recursion | GRL at the call | same (generation 17) |
-| p9 | growing cycle through 140 functions | GRL at g128's call (130:42) | GRL at the cycle's call (142:42), Resource with W = 1,024 |
-| p4, p5 | non-regular `rc/` to an open payload | 2 `Unsupported_Kd` | same |
-| p11, chain | non-regular `obj/` (`ComponentSummaryTest`'s shape) | GRL at the local + `Unsupported_Kd` | same (generation 17) |
-| cycd130 (N1) | 130 structs through `obj/`, the last to `C1<(T, T)>` | GRL 262:5 | same (generation 17, lap 17) |
-| cyc130 | the same through `Option<obj/>` | GRL 262:5 | same (r1a: 1,025 Option glue items, lap 8; r1b: chain count 1,025, lap 8) |
+| Body, LegacyRow | definition + erased substitution | a definition cycle whose substitution grows in height, or in a function length slot (SPEC 4.4: only functions have length parameters) at fixed height | the global per-definition count (SetLimit 1,024, KD9; window-free, catches both); the generation on height growth within W is the early, located stop |
+| Type-driven (DropGlue, comparison, shims, property witness, adapters, descriptor, VTable) | kind + erased Type (+ symbol, variant) | only through Types of unbounded height: a struct has no length slot, so with finitely many declarations, arities and written lengths, Types of bounded height are finitely many; type-driven expansion alone grows them only through a non-regular Type behind an owning handle (§3's `obj/` probes) | `BoundType.Height` of the key's Type, capped |
 
-The test classes were not run on r1 (revision 0's run found the ring row and the overflow); U2 runs them.
+The flat depth measured neither (it counted the input's nesting). A single height cap cannot replace the bodies' rule: a body's
+substitution is Made, so its storage verdict reaches Binding's storage bound (BU-12, height 64) first and a polymorphic recursion would
+become G128's `Unsupported_Kd` instead of Resource; a cap low enough to stay Resource (about 32) refuses valid written Types (p1's
+51-high Tuple nest as a generic argument). Order: the depth was the hop-BFS distance; the generation reads the first admitter's chain,
+as Grows today (placement only, G153).
 
-## 4. Options
+## 3. The rule
 
-A (type-driven items inherit the depth) and A' (depth only on substitution-changing body edges): rejected as in revision 0 (p2 and p8
-stay refused; the `obj/` overflow; an order-dependent weighted depth). B2 (type-driven parts read a storage verdict): rejected, leans on
-G128's interim bound. C (static SCCs) and D (height per definition, unchained): rejected.
+- **Bodies (and LegacyRow):** identity = the definition; height = the largest `BoundType.Height` over the erased substitution's Self,
+  declaring Type and Types. At admission the nearest same-identity ancestor within W identity items (through `Above`); none:
+  generation 1, `Peak` = height; a height above its `Peak`: its generation + 1; otherwise its generation and `Peak`. Past 16 is
+  `GenerationResourceLimit_Kd` at the requesting call. SetLimit (1,024 items of a definition, global) unchanged: the window-free stop
+  for cycles past W and length-slot growth.
+- **Type-driven items:** a key whose Type's `BoundType.Height` exceeds 128 is `GenerationResourceLimit_Kd` at the requesting site
+  (window-free; replaces `Repeats`). DropGlue items of a Nominal, Constructed or Closure Type also take the generation rule (identity
+  = (DropGlue, declaration)) for the early stop; every other type-driven kind has no identity (its parts are subterms or bodies).
+- **Why 128:** every Type an accepted program stores, passes, creates or compares by value is Prepared under Binding's storage height
+  64 (BU-12), and each nesting level adds at least one storage level, so its `BoundType.Height` stays near 64; 128 leaves the
+  factor two. A Type past it arises only from type-driven growth (a non-regular Type behind a handle) or from a Type Binding already
+  refuses at its storage (G128); reaching it is IMPL 21.3.2's "instantiation growth" limit, Resource. The cap also bounds the height
+  Binding's recursive walks receive from the collector (IMPL A.4; G348).
+- Deleted: `DepthLimit`, the three depth checks, Grows' full walk, `MonoItem.Depth` (`Generation` and `Peak` bytes, `Above` int).
+  About +45/-35 lines. Cost: at most W steps per new body or DropGlue key, O(1) height reads; no allocation.
 
-**B (recommended): one growth rule for every item; the flat depth deleted.**
-- Identity: a Body or LegacyRow item's definition; a DropGlue item's declaration when its Type is Nominal or Constructed (a struct, an
-  enum, Option, Array, Dictionary, a library container) or a Closure Type (its definition); none for Tuple, FixedArray, Function,
-  Slice, Range, reference and handle layers and Primitives (their glue's parts are subterms) and for every other type-driven kind
-  (census). A function Item Type has nothing to destroy, so no glue item.
-- Height: a type-driven key's Type's height; a body key's, the largest over its substitution's Self, declaring Type and Types
-  (`Height`, memoized per distinct Type).
-- Generation at admission: the nearest item with the same identity, found through the `Above` links over at most W identity items;
-  none: generation 1, `Peak` the height; a height above that ancestor's `Peak`: its generation + 1 and the new peak; otherwise its
-  generation and peak. Past 16 is `GenerationResourceLimit_Kd` at the requesting site.
-- Backstops: a body definition's 1,024 items (KD9's SetLimit, global, unchanged); a type-driven identity's count on the chain
-  (`Repeats`, the ancestor's + 1) past 1,024, for growth height does not show (length slots) and cycles past the window. A global
-  per-declaration count is rejected: it counts breadth (r1a reached 1,024 `Option` glue items in cyc130), which a large valid program
-  can have.
-- Fields: `MonoItem.Depth` becomes `Generation` (byte) plus `Peak` (ushort), `Repeats` (ushort) and `Above` (int); `DepthLimit`, the
-  three depth checks and Grows' walk deleted. About +70/-35 lines (`Admit.cs`, `Instantiation.cs`, `InstanceCollector.cs`).
-- Effect: every no-growth probe above passes; every growing one keeps its GRL (Resource), at the growing call or the destroyed local;
-  never a hang or an overflow (the worklist; heights only grow 16 generations per identity within W). Known limit: a cycle past W
-  falls to the backstops, and a body cycle that never repeats within W to SetLimit or Binding's storage bound (`Unsupported_Kd`).
-- Cost: at most W steps per new key (O(W·n) worst, N5) plus the memo, linear in distinct Type parts; no warm allocation.
-- Order: the first admitter's chain, as Grows today.
+## 4. Prototype (revision 2, proto3: W = 1,024 unless stated; 60 s bound per probe; dev = `def70d15d`)
 
-Tests: fail-first (`InstanceCollectorTest`): p1, p2, helper20 and an 800-function chain without a record, `Work` linear over
-200/400/800; `StorageRingsMeetTheGlueDepth` 50 -> no record plus the largest ring under the storage walk's cap (about 85 structs; the owner's decision); nest20s.
-Invalid counterparts: the existing growth rows unchanged; p7; p11 and cycd130 (GRL at the destroyed value); p9 (Resource with W =
-1,024). `ComponentSummaryTest`'s comment corrected.
+| Probe | Shape | dev | Revision 2 |
+| --- | --- | --- | --- |
+| cycd130, W = 128 | 130 structs through `obj/`, the last to `C1<(T, T)>` | GRL 262:5 | GRL 262:5 by the height cap (h 129), 4.2 s process |
+| cycd130, W = 1,024 | | GRL 262:5 | GRL 262:5, generation 17 |
+| cyc130, W = 128 / 1,024 | the same through `Option<obj/>` | GRL 262:5 | GRL 262:5, generation 17 (Option's repeats within W) |
+| ring 17, ring 50 | `Option<rc/S_{k+1}>` rings | none / GRL 104:18 | none / none |
+| ring 120 | past the storage walk's 256 Types | GRL + `Unsupported_Kd` | `Unsupported_Kd` 244:13 (G128) |
+| nest16s | `Option<W^16<string>>` | none | none |
+| helper20 | 20 `A_k.run` through one `wrap<T>` | GRL 70:47 | none |
+| helpergrow | 17 `A_k` with `wrap(A_{k+1}<Option<T>>)` | GRL 70:47 | GRL 70:47 (Known limit) |
+| p1, p1b, p6 | comparisons 80 x 50, 0 x 50, 80 x 40 | GRL / none / none | none |
+| p2, p8 | 50 nested constructors; 300-function chain | 4 GRL; GRL | none; none |
+| p3, p7 | polymorphic; mutual growing recursion | GRL | GRL (generation 17) |
+| p4, p5; p4b | non-regular `rc/`; regular | 2 `Unsupported_Kd`; none | same |
+| p9, W = 1,024 / 128 | growing cycle through 140 functions | GRL 130:42 | GRL 142:42 / `Unsupported_Kd` 142:42 (storage bound before SetLimit) |
+| p11 | non-regular `obj/` (`ComponentSummaryTest`) | GRL + `Unsupported_Kd` | same (generation 17) |
 
-## 5. Classification and sizing
+The test classes were not run on revision 2; U1 runs them.
 
-Major: one owning component (`Depth` is read only in `Admit.cs`), departing from K package 4.6/KD9, an owner-approved contract (OQ1,
-asked). DECISIONS: one entry superseding KD9's whole limit clause and amending R5-M166's Known limit; DIAGNOSTICS:361, STATUS:81,
-`InstanceCollector.cs:62-63`; PLAN G332 done. G153 and G289 (4) do not ride.
+## 5. DECISIONS entry (outline) and Known limits
+
+Supersedes K package 4.6/KD9's limit clause (owner question OQ1, asked) and amends R5-M166's Known limit; DIAGNOSTICS:361 and STATUS's
+generic generation row follow. Known limits: (1) growth written into a non-recursive chain (helpergrow: 17 distinct functions each
+adding `Option`) is GRL at generation 17, since the generation measures height growth per definition on the chain, not recurrence;
+(2) a Type past Binding's storage walk (ring 120) is G128's `Unsupported_Kd` at the call, not this rule's; (3) a body cycle that grows
+but repeats only past W meets Binding's storage bound first (`Unsupported_Kd`) or SetLimit; W from the A/B (the planning session leans
+to 1,024); (4) a branching non-regular Type whose cycle exceeds W is bounded only by the cap (breadth up to branching^128 in
+principle): an open question whether a global per-declaration count (like SetLimit) is wanted, at revision 1's cost (it counted
+1,024 sideways `Option` glue items).
+
+## 6. Classification and units
+
+Major (one owning component; `Depth` read only in `Admit.cs`), departing from an owner-approved contract (OQ1). G153 and G289 (4) do
+not ride. After BU's `BoundType.Height` unit:
 
 | Unit (each <= 1 h) | Content | Checks |
 | --- | --- | --- |
-| U1 | restructuring, behavior unchanged: `Height`, `Above`, `Generation`/`Peak`/`Repeats` carried, Grows read through them counting every repeat as today; depth kept | InstanceCollectorTest and the GRL classes (ComponentSummary, GenericStorage/GenericDestructorEmission, RecursiveDefault, VirtualGenericDispatch, MinimalEmission, TypeDagScaling); snapshot 0 |
-| U2 | the growth test, type-driven identities, the chain count; the depth deleted; §4's rows | the same classes; snapshot (only programs dev refuses change) |
-| U3 | A/B (Generic 128, the 800-function chain, cycd130) choosing W; DECISIONS, DIAGNOSTICS, STATUS | measurement; Session |
+| U1 | the rule reading `BoundType.Height`; the depth and Grows' walk deleted; `ComponentSummaryTest`'s comment | InstanceCollectorTest and the GRL classes (ComponentSummary, GenericStorage/GenericDestructorEmission, RecursiveDefault, VirtualGenericDispatch, MinimalEmission, TypeDagScaling); snapshot (only programs dev refuses change) |
+| U2 | rows: p1, p2, helper20, rings 50 and the largest under the storage cap, an 800-function chain with `Work` linear (fail-first); p7, p11, cycd130 at W, helpergrow (Known limit), the cap row; A/B (Generic 128, the 800 chain, cycd130) choosing W; DECISIONS, DIAGNOSTICS, STATUS, PLAN | the same classes; measurement; Session |
 
-No native fixture: U1 keeps every set; U2 changes only programs dev refuses.
+No native fixture: only programs dev refuses change.
 
-## 6. Open questions
+## 7. Open questions
 
-- **OQ1 (owner, asked):** depart from K package 4.6/KD9 (the flat depth deleted; growth 16 per identity on a chain; the chain count and
-  SetLimit as backstops; `StorageRingsMeetTheGlueDepth`'s 50-ring accepted)?
-- Planning: W by U3's A/B (lean 1,024).
-- Open issue for BU/R7: `Binding.OperandContexts` recurses on Type height.
+- **OQ1 (owner, asked):** depart from KD9 (depth deleted; growth generations and SetLimit for bodies, a height cap and generations for
+  type-driven items; `StorageRingsMeetTheGlueDepth`'s 50-ring accepted)?
+- Planning: W (lean 1,024); Known limit (4)'s breadth count.
