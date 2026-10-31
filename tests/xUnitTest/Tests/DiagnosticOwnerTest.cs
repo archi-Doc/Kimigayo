@@ -69,7 +69,7 @@ public sealed partial class DiagnosticOwnerTest
         c.Kotonoha.DiagnosticCollection.Add(new(4, 5), DiagnosticCode.IndentationLevelMismatch_Kd, sourceDocument: later);
 
         var failure = Assert.Throws<InvalidOperationException>(() => TestDiagnostics.Of(c));
-        Assert.StartsWith("Two snapshots of main.kimi are registered", failure.Message, StringComparison.Ordinal);
+        Assert.StartsWith("Two snapshots of 'main.kimi' are registered", failure.Message, StringComparison.Ordinal);
         Assert.Equal("value", Assert.Single(TestDiagnostics.Of(c, later)).Text);
     }
 

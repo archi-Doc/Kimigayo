@@ -431,7 +431,7 @@ public sealed partial class DiagnosticOwner
             if (entry.Document is { } document && entry.Path == path)
             {
                 found = found is null ? document : throw new InvalidOperationException(
-                    $"Two snapshots of {path} are registered, so the path cannot tell which one a record names; a test reading either passes the document itself.");
+                    $"Two snapshots of '{path}' are registered, so the path cannot tell which one a record names; a test reading either passes the document itself.");
             }
         }
 
