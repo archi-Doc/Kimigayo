@@ -14,11 +14,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction); a recorded mismatch of a
-    // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract, as is an Owned
-    // failure that no work judged (BU's n7). The member is a capture of a closure or a bound Type argument of an Item.
+    // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract. The member is a
+    // capture of a closure or a bound Type argument of an Item.
     private bool FailOwnedConversion(BoundType implementation, BoundType required, Koto at, Koto use)
     {
-        if (this.ErasureOf(implementation, required) is not { } erasure || erasure is { Part: ErasurePart.Owned, Owned.Member: -2 })
+        if (this.ErasureOf(implementation, required) is not { } erasure)
         {
             this.Fail(use, BindingFailure.Internal);
             return true;
@@ -39,6 +39,12 @@ public sealed partial class Binding
             }
         }
 
+        if (erasure.Owned.Context is { } context)
+        {
+            this.CompleteDependent(use, context); // SPEC 23.1.2: no work judged it; it rests on its operand context's own record.
+            return true;
+        }
+
         if (erasure.Owned is not { Member: >= 0 and var i, Origin: var origin } owned)
         {
             return false; // No part failed: the failure rests on no member (the Type mismatch keeps its Note).
@@ -46,7 +52,7 @@ public sealed partial class Binding
 
         var closure = implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
         var captures = BoundClosure.Of(implementation)?.Captures;
-        var member = captures is null || implementation.Components.Count == captures.Count ? implementation.Components[i] : captures[i].Environment.Type;
+        var member = implementation.Components[i]; // A Closure's environment is built from its captures (Storage).
         var name = captures is null ? $"{Ordinal(i + 1)} Type argument" : captures[i].Environment.Name;
 
         // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
@@ -66,16 +72,24 @@ public sealed partial class Binding
     {
         this.failedCause = null;
         var proof = this.ProveOwned(actual, node, out var rest);
-        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest);
+        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(actual, proof == ConstraintProof.Error ? this.HoldCause() : null, rest);
         return proof;
     }
 
     // SPEC 15.2.3, 15.6.1 (BU's n6): the member an Owned failure names, from the parts the engine found not Proven: each member in member
     // order with the Origin of its first part; the first whose Origin is Refuted in the forming body (a body-local borrow) wins, else the
-    // first. -1 when no part failed; -2 when no work judged the subject.
-    private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest)
+    // first; -1 when no part failed. SPEC 23.1.2 (BU's n7): when no work judged the subject (an operand context that is not resolved
+    // returns before one exists), the failure rests on that context's own record (OperandContextCause); a context without one (a G354
+    // gap) names the first member whose context is not resolved, Unknown.
+    private OwnedFact OwnedMember(BoundType subject, ICheckCause? cause, in OwnedRest rest)
     {
-        var first = new OwnedFact(cause, rest.Judged ? -1 : -2, null, false);
+        if (!rest.Judged)
+        {
+            return this.OperandContextCause(subject) is { } context ? new(cause, context, -1, null, false)
+                : new(cause, null, this.UnresolvedMember(subject), null, false);
+        }
+
+        var first = new OwnedFact(cause, null, -1, null, false);
         var refuted = first;
         var parts = rest.Parts;
         for (var p = 0; parts is not null && p < parts.Count; p++)
@@ -92,11 +106,25 @@ public sealed partial class Binding
                 continue; // A member is explained by its first part.
             }
 
-            var fact = new OwnedFact(cause, member, origin, origin is not null && BodyLocalIn(origin, this.formingBody));
+            var fact = new OwnedFact(cause, null, member, origin, origin is not null && BodyLocalIn(origin, this.formingBody));
             first = first.Member < 0 || member < first.Member ? fact : first;
             refuted = fact.Refuted && (refuted.Member < 0 || member < refuted.Member) ? fact : refuted;
         }
 
         return refuted.Member >= 0 ? refuted : first;
+    }
+
+    // The first member of a subject whose operand contexts are not resolved (OperandContexts), or -1.
+    private int UnresolvedMember(BoundType subject)
+    {
+        for (var i = 0; i < subject.Components.Count; i++)
+        {
+            if (this.OperandContexts(subject.Components[i]) is { Invalid: true } or { Unresolved: true })
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 }

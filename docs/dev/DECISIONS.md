@@ -5956,8 +5956,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     answer that is not Proven, so premises that prove a part leave none; `StaticOrigin` writes it, a child's work joins it at its read.
     Both are cleared by `Reset`, outside the fixpoint's equality, and read by no decision. The erasure reads them once
     (`ProveOwned(…, out OwnedRest)`) and names the member (`OwnedMember`, BU's n6): each member in order with its first part's Origin,
-    the first Refuted in the forming body, else the first; no work is `InternalInvariant_Kd` at the record (BU's n7). The member loop
-    and `FirstUnownedOrigin` are deleted.
+    the first Refuted in the forming body, else the first. A failure no work judged (an operand context that is not resolved returns
+    before a work exists) rests on that context's own record (`OperandContextCause`, `CompleteDependent`, no record; BU's n7, fix round
+    1); a context with no record of its own (a G354-type gap) keeps r2-1a's record, naming the first member whose context is not
+    resolved, Unknown. The member loop and `FirstUnownedOrigin` are deleted.
   - Rejected: the reader's cache read in its own scope (a join's scope can differ from its arm's); node keys; R/U in the engine.
   - Removes: `erasureSignatures`, two receiver re-tests, the second Owned proof of the erasure and the gate's Owned proof.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;

@@ -93,6 +93,10 @@ public sealed partial class Binding
         (constraint.Left is { } left && this.InvalidConstraintRequirement(left)) ||
         (constraint.Right is { } right && this.InvalidConstraintRequirement(right));
 
+    // The failed context the first part of a Type names that has one (InvalidDeclarationContextCause), each distinct part visited once
+    // (DECISIONS BU-19): a check that cannot judge the Type rests on it.
+    private Koto? OperandContextCause(BoundType type) => this.OperandContextCause(type, this.visitedParts.Begin(this.storageVersion));
+
     // Whether a part of a Type is an associated projection (BoundConstraint.HasAssociatedProjection), each distinct part visited once; a
     // projection is abstract, so a part without an abstract part has none.
     private bool ContainsAssociatedProjection(BoundType? type)
@@ -113,6 +117,24 @@ public sealed partial class Binding
                 this.OperandContexts(type.Components[i], query, ref found);
             }
         }
+    }
+
+    private Koto? OperandContextCause(BoundType type, uint query)
+    {
+        if (type.Symbol is { } symbol && this.InvalidDeclarationContextCause(symbol.Declaration) is { } cause)
+        {
+            return cause;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.OperandContextCause(type.Components[i], query) is { } inner)
+            {
+                return inner;
+            }
+        }
+
+        return null;
     }
 
     private bool ProjectionPart(BoundType type, uint query)
