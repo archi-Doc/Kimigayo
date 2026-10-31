@@ -138,9 +138,9 @@ bodies; the fixtures measured in both runs ranked by candidate/baseline whole-mo
 without an O2 file in a run. The module is the measure because at O2 the runtime helpers are not the same text in both
 runs: inlining and interprocedural constant propagation move code between them and the bodies (until 2026-10-31,
 `growth` was body growth; an earlier `o2-metrics.json` keeps each fixture's `instructions`, from which module growth
-follows). A fixture whose program folds to constants keeps `__kimi_start` as its only body (1,308 of 6,137 on
-2026-10-31), so it measures the runtime helpers alone, not generated code. The metrics are information, not part of the
-result; R5 measured MIR code generation against a legacy run with them (DECISIONS R5-M3).
+follows). A fixture whose program folds to constants keeps `__kimi_start` as its only body, so it measures the runtime
+helpers alone, not generated code. The metrics are information, not part of the result; R5 measured MIR code generation
+against a legacy run with them (DECISIONS R5-M3).
 
 ## Shared heavy runs and bases
 
