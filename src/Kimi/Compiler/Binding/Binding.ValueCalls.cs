@@ -550,13 +550,14 @@ public sealed partial class Binding
                     !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!, out var failure))
                 {
                     // SPEC 15.6.1, 23.1.2: a fit whose structure holds, or a Closure's or Function Item's erasure, is the argument's own record
-                    // (RecordMismatch), and the call rests on it.
-                    if (failure.Kind == ComparisonFailureKind.Shape &&
-                        !(instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function))
+                    // (RecordMismatch; an erasure's failed condition is recorded where it is judged, ErasesToFunction), and the call rests on it.
+                    var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
+                    if (failure.Kind == ComparisonFailureKind.Shape && !erasure)
                     {
                         return this.Fail(call, BindingFailure.NoApplicableCandidate);
                     }
 
+                    _ = erasure && this.ErasesToFunction(operations[i].Source!, instantiated[i], parameter);
                     this.RecordMismatch(operations[i].Source!, operations[i].Source!, instantiated[i], parameter, failure);
                     return this.CompleteDependent(call, operations[i].Source!);
                 }

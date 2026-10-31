@@ -338,7 +338,7 @@ public sealed partial class Binding
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
     // `container` with `arguments` bound, or those of the Function Item `item`.
-    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false, BoundLength?[]? lengths = null)
+    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, BoundLength?[]? lengths = null)
     {
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
@@ -371,7 +371,7 @@ public sealed partial class Binding
 
         // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
         inference.Source = default;
-        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
+        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null))
         {
             this.contractFailure = inference.Failure;
             return false;

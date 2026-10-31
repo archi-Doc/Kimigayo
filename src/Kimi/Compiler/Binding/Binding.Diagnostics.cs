@@ -401,33 +401,6 @@ public sealed partial class Binding
     // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
     // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
     // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
-    // The signature and own binder an implementation converts to a common Function Type with (SPEC 7.7.4): a Function value, a Function
-    // Item proven Owned, or a closure with a Shared receiver and a proven Owned environment. Other failures stay Type mismatches.
-    private bool ConversionSignature(BoundType implementation, Koto use, out BoundType signature, out Koto? own)
-    {
-        own = SignatureOwner(implementation);
-        signature = implementation;
-        if (implementation.Kind == BoundTypeKind.Function)
-        {
-            return implementation.Components.Count == 2;
-        }
-
-        if (implementation.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(implementation) is { } item && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            signature = item;
-            return true;
-        }
-
-        if (BoundClosure.Of(implementation) is { Receiver: SemanticsKind.Ref } &&
-            this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            signature = closure;
-            return true;
-        }
-
-        return false;
-    }
-
     // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
     // position is its relation record (RecordOriginFitFailure), which must find it; any other failure is a Type mismatch.
@@ -445,17 +418,6 @@ public sealed partial class Binding
             ComparisonFailureKind.Position)
         {
             return this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
-        }
-
-        // Transitional until G216 (a) U2.1 e2 and f: the erasure judgment of a Closure or Function Item and an Item's solve give no fact
-        // yet (the fit root sees only the erased value's shape, or Kind None), so their conversion's record is still explained here.
-        if ((failure.Kind == ComparisonFailureKind.None || actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem }) &&
-            expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
-            this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
-            (implementation.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(implementation, signature, required, at, node)
-            : this.ConversionContractFailure(signature, required, own, at, node)) is { } contract)
-        {
-            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
         }
 
         // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
