@@ -69,8 +69,8 @@ internal record struct MonoItem
     /// <summary>Gets the item that first admitted it, or -1 for a root.</summary>
     internal int Parent { get; init; }
 
-    /// <summary>Gets its depth on the admission chain, 0 for a root.</summary>
-    internal ushort Depth { get; init; }
+    /// <summary>Gets its place in its identity's growth on the admission chain (DECISIONS R5-M170).</summary>
+    internal Growth Growth { get; init; }
 
     /// <summary>Gets the root-module site of its first admission (a root's body).</summary>
     internal SourceRef Site { get; init; }
@@ -81,6 +81,15 @@ internal record struct MonoItem
     /// <summary>Gets or sets the number of its targets.</summary>
     internal int TargetCount { get; set; }
 }
+
+/// <summary>A mono item's place in the growth of its identity (DECISIONS R5-M170): its generation, the number of times the height of its
+/// identity's keys grew on its admission chain, counting from 1 (0 for an item without an identity); the greatest height of those keys
+/// (its peak); and the nearest item with an identity above it on the chain (-1 for none), through which a search reads only identity
+/// items. Generation and peak saturate.</summary>
+/// <param name="Generation">The generation.</param>
+/// <param name="Peak">The peak height.</param>
+/// <param name="Above">The nearest identity item above it, or -1.</param>
+internal readonly record struct Growth(byte Generation, byte Peak, int Above);
 
 /// <summary>An edge of the checked set: the item a site of an item's body names, the site, and whether a runtime path from the body's
 /// entry reaches it (false: only the checks reach it, so the item is checked, never generated through it); a type-driven item's targets

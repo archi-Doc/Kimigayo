@@ -9358,6 +9358,39 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: one walk over enclosing declarations only (B1: a contract reaching the use through a Type's premises); a repair ranging
     over every Origin (B2: an enclosing contract's clause cannot name a nested signature's own Origins).
 
+- **BU-71 Binding publishes each interned Type's height, `BoundType.Height`, and each substitution's, `Subst.Height`** (2026-10-31; PLAN
+  G332, unit bu91; the owner approved G332 and this entry together, verbatim 「まとめて承認します」, relayed by R5; BU's design, and
+  main's decision (A) on the children after the implementer found that the brief's two lists differed; R5's review REVISE B1, n1-n3)
+  SPEC-neutral: a measure of the Type term, which no language rule reads.
+  - Representation: one int per BoundType, set in its constructor from its children's heights beside the other subtree summaries; no
+    walk. A leaf (a Primitive, the wrapping Scalar included, a struct without arguments, a Type parameter) is 0; any other Type is 1 + the
+    greatest height of its children, the parts its identity holds as Types: its components (Type arguments, Tuple components, a fixed
+    array's element, a referent or pointee, a Function Type's inputs and result, a function item's Type arguments, a projection's self
+    and Contract Type, a Closure's environment) and a Closure's whole ClosureContext, one child of height `Subst.Height`: computed on
+    read as the greatest height over its Types, Self and Declaring (one read each), 0 for none. Lengths and Origins are no Types and no
+    children. So a Closure with no environment is 0 without a context and 1 under an identity context (one binding only leaves).
+  - Reason: G332's recurrence rule asks whether a key's Type grows (type-driven keys stop past height 128, a body counts a generation
+    only on substitution-height growth). The collector lacked the fact; its owner publishes it (AGENTS), with no collector table.
+  - One fact, one owner: Binding's growth guards read it. `Binding.CapabilityTypeDepth` and its memo table `capabilityTypeDepths` are
+    deleted; the capability proof's growth step (BU-22) and the component summary's re-entry test (SPEC 8.3.3) compare `Height`. The
+    old depth was the components-only height + 1, so it differs only on a Closure's context; the related classes and the diagnostic
+    snapshot are unchanged. `OwnershipAnalysis.TypeDepth`, the old Analysis's copy, goes with that Analysis at R6-check (D5 freeze).
+  - Two facts, two child lists: ContainsParameter, ContainsPairLayer and HasAbstractPart read only BU-60's held instance, since they ask
+    what a substitution may rewrite and the walks rewrite only that instance, keeping a context a function's instance made (R5-M36,
+    ClosePart). Height measures the term as interned, whose identity holds the whole context: a capture-free Closure in g<T> has no
+    components, yet its instances' heights follow T. Those three summaries are unchanged.
+  - Readers: G332's collector (R5) and Binding's two growth guards; R4's G349 and BU's G309-R may read it later.
+  - Cost: BoundType stays 112 B (its data grows 91 → 95 B inside the same 8-byte-aligned slot), a Subst is unchanged (72 B). A/B
+    probe from one build each, byte-exact: cold Bind −88 B on Hello and Milestone 26 (the deleted table's empty Dictionary), BuildMir
+    +0 B, warm Bind 0 B. One `Math.Max` per component at interning; no timing for one int.
+  - Tests (`TyCtxtTest`): `ATypesHeightIsOneAboveItsHighestComponent` (12 rows: leaves; Option, Tuple, ref, raw, rc, a fixed array of
+    length 64; nesting; a Function Type; an abstract projection with its Contract Type), `AClosuresHeightCountsItsContext` (a Closure
+    with no context at 0, the g<T> instances, a Field initializer's Closure one above its held instance and above its signature, an
+    obj/-recursive non-regular instance stepped three times) and `AFunctionItemAndASubstitutionCountTheirTypes` (a Subst's Self).
+  - Rejected: the held instance alone as a Closure's child (option B: a key holding a capture-free Closure would never pass 128 however
+    its instance grows, leaving only the per-definition limit); a table in the collector (a consumer computing its owner's fact); a
+    stored Subst height (+8 B per Subst, BuildMir +1.9 / +2.0 KB, for a read that costs one load per bound Type).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
@@ -10370,6 +10403,8 @@ structure is recorded here by the unit that first implements it.
     record out of its inlined default and out of its body; the work doubles and quadruples with the instances; a warm run allocates
     nothing; the library (as roots) and the 44 milestones give no record.
   - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
+  - Superseded by R5-M170 (G332) in its limit clause (KD9's depth 128, the 16 items of a definition on the chain, the 1,024 items):
+    growth generations, a type-driven height cap and the 1,024 count per identity.
 - **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18, planning session; plan K4b, the K package's second half of
   K4, §4.4, §4.9, §5 and §10 D-A and D-B; under R5-M18; meets R5-M4's "under sel, collector records publish from K4" with K4b) Under
   MIR code generation (sel), `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40)
@@ -14350,6 +14385,7 @@ structure is recorded here by the unit that first implements it.
     composite nesting (Tuples and reference layers) deeper than 128 less the admission chain's depth reaches `GenerationResourceLimit_Kd` at the comparison, as a constructor chain of
     that depth already does (probes: an 80-deep generic chain comparing a closed 50-deep nest; nested generic constructors 50 deep at
     the end of the same chain give it on the base too). Counting only recurring instantiation steps is a collector unit of its own.
+  - Amended by R5-M170 (G332): the depth is gone; a comparison's composite parts have no identity and no limit but the height cap.
   - Owner: the departure from K package 4.3's Builtin row (the comparison mode in `Variant`; an operator node with an abstract part
     keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
     「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.
@@ -14502,3 +14538,63 @@ structure is recorded here by the unit that first implements it.
     exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
     (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
     the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
+- **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, R5; PLAN G332, design
+  `draft/Sketches/R5/G332-design.md` revision 3, accepted at its third review; the owner approved the departure from K package 4.6/KD9
+  together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known limit)
+  - Cause: KD9's depth 128 counted every admission (a call of a distinct definition, a comparison's part, a glue's part), so valid
+    programs without growth reached `GenerationResourceLimit_Kd` (SPEC 6.1: only growth of distinct instantiations reaches a generation
+    limit; IMPL 21.3.2), while it was the only bound on a DropGlue chain through a non-regular Type behind an owning handle (without it,
+    `Binding.OperandContexts` overflowed the host stack). Keys grow in two ways: a body's substitution in height or in a function length
+    slot; a type-driven key only in Type height (a struct has no length slot).
+  - Rule (`InstanceCollector.Admit.cs`): an identity is a body's or LegacyRow's definition, or a DropGlue's declaration (a Nominal,
+    Constructed or Closure Type); other items have none. A new key finds the nearest item of its identity among 1,024 identity items
+    above it (`Growth.Above` links); its generation is that item's, plus one when its height (`Subst.Height`, a DropGlue's
+    `BoundType.Height`, BU-71) passes that item's peak; none found is generation 1. A 17th generation, or a 1,025th item of an identity
+    (counted globally: bodies' SetLimit, now one breadth rule for every identity), is `GenerationResourceLimit_Kd` at the requesting
+    site; so is any type-driven key whose Type is higher than 128. Generation and peak saturate (bytes).
+  - Deleted: `DepthLimit`, its three checks, `MonoItem.Depth` and Grows' walk of the whole chain (a walk now reads at most 1,024
+    identity items).
+  - Cost (`src/Benchmark --analyze-cost`, dev `443ab6d36` with bu91 against the same with U1, two interleaved runs, identical item
+    counts): a fresh check of Generic 1 allocates +0.9 to +1.4 KB (+0.01 %) and retains +808 B; of Generic 128, +65 to +67 KB (+0.14 %)
+    and +33 KB retained, about 13 B per item: `MonoItem.Growth` (two bytes and an int link, aligned) for the ushort `Depth`, and the
+    wider per-identity count key; warm Analyze allocation is unchanged (315 B to 1,200 B). The `Above` link buys a walk bounded by
+    the window instead of the chain; no allocation regression row moves.
+  - Known limits: written growth on a non-recursive chain (17 distinct functions each adding `Option`) is GRL at generation 17; a Type
+    past Binding's storage walk (a 120-struct ring) is G128's `Unsupported_Kd` at the call; a body cycle that grows but repeats only
+    past the window meets Binding's storage bound (`Unsupported_Kd`) or SetLimit; a branching non-regular Type is bounded by b^16 items
+    within the window and the per-declaration count; a written Type above height 128 reaches the cap only behind a handle, as dev did.
+    The window's size is U2's measured choice (it amends this entry).
+  - Rejected: type-driven items inheriting the depth, a depth only on substitution-changing calls (both keep the overflow and an
+    order-dependent depth); type-driven parts reading a storage verdict (leans on G128's interim bound); static recurrence over the
+    definition graph; a per-definition height cap for bodies (Binding's storage bound turns polymorphic recursion into `Unsupported_Kd`
+    first); a repeat count along the window (a long cycle resets it, review 2).
+  - Tests: `InstanceCollectorTest.NestingWithoutGrowthHasNoLimit` (an 80-deep chain comparing a 50-deep Tuple nest; the chain ending in
+    50 nested constructors; 20 structs through one shared helper) and `StorageRingsHaveNoGrowth` (50 structs; the owner's approval names
+    this expectation change) fail on dev with `GenerationResourceLimit_Kd`; `AChainWithoutGrowthHasNoLimitAndTheSetLimitStopsAtItsCall`
+    replaces the depth row (130 distinct functions, no record); the growth rows (`grow<Box<T>>`, the growing destructor, the tables'
+    growing key, `ComponentSummaryTest`'s non-regular value, now stopped by the generation) are unchanged.
+  - Amended by G332 U2 (window): W stays 1,024 identity items, chosen from deterministic data (a throwaway probe of a fresh collector
+    over a built program, W = 128 against 1,024, interleaved twice): Generic 128 is identical (2,570 items, Work 11,793, 3,608 walk
+    steps, 1.92 MB); an 800-function chain admits the same 801 items and Work 3,199, its walk 94,272 against 320,400 steps (O(W·n),
+    review 1's N5); a growing drop glue cycle through 130 structs stops at generation 17 with 1,024 (4,164 items, 262,276 steps,
+    3.4 MB) and only at the height cap with 128 (33,023 items, 2,105,280 steps, 22.3 MB), and a body cycle longer than 128 stays
+    Resource. Timing, indicative only (unpinned, a merge window open): chain 5.6 against 3.3-4.4 ms, the cycle 15-31 against 139-160
+    ms, Generic 128 within noise; it did not decide W. Rows: `StorageRingsHaveNoGrowth` 64 (the largest ring under the storage cap)
+    and 65 (its storage-nesting gap); `GrowthStopsAtItsSite` (a mutual cycle, a non-regular value behind a handle, the 130-struct
+    cycle, a nest of 130 `W<T>` holding `Option<obj/T>`, which only the height cap refuses, a branching non-regular Type stopped at its
+    1,024 glue items, and the Known limit's
+    written growth, each at its site); `AChainWithoutGrowthScalesLinearly` (200, 400, 800 functions: items and Work in proportion).
+  - Amended (U1's defect, batch 76's Session): a refused key was not remembered, so each request of it recorded at its own site
+    (`GenericObjectFactoryTest.FactoriesKeepDestructorExpansionBounded`: a destructor creating `Expanding<Marker<T>>` requests that
+    Type's glue key from the creation, the object descriptor and the local's handle glue, three records for one cause; the depth had
+    refused one requester at the boundary). The refusal is part of the key's one admission decision, the shape of Layout's `limited`:
+    a key refused for growth, the per-identity count or the height cap enters `refused` (cleared per run) when its one record is made,
+    at the first request in admission order, and a later request finds it after `Find` and is refused without a record. Row:
+    `GrowthStopsAtItsSite("requested")`. A key refused first stays refused for every later requester, the same rule as admission (the
+    first admitter's chain decides); a growth refusal is order-dependent as admission is, which moves only where the record sits (G153's
+    class). Rejected: suppressing duplicate records afterwards (a second decision of the same key).
+  - Amended (U2's review, B1 and B2): the height row's nest holds `Option<obj/T>`, so Layout's inline depth cannot refuse it first
+    (without the cap it has no record); the breadth row asserts its 1,024 `Nest` glue items. Admission walks only for an identity with an
+    admitted item (none can be above otherwise) and counts each step in `Work`, so `AChainWithoutGrowthScalesLinearly` observes the walk
+    (the 800-function chain walks nothing); O(W·n) stays the recorded worst case, reached by an identity whose earlier items lie off
+    the chain (e.g. two parallel chains of the same definitions), which no row covers yet.

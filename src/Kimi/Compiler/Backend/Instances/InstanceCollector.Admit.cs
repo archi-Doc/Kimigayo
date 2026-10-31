@@ -5,12 +5,13 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// Admission (K package 4.6, X19) and the location rule (K 4.9).
+// Admission (K package 4.6, X19; DECISIONS R5-M170) and the location rule (K 4.9).
 internal sealed partial class InstanceCollector
 {
-    private const int DepthLimit = 128; // Every item's depth on its admission chain.
-    private const int GrowthLimit = 16; // Ancestors of one definition with other keys: a growing key.
-    private const int SetLimit = 1024; // Items of one definition.
+    private const int GrowthLimit = 16; // Generations of one identity on an admission chain: its key's height grew 15 times.
+    private const int SetLimit = 1024; // Items of one identity.
+    private const int HeightLimit = 128; // A type-driven key's Type height (BoundType.Height).
+    private const int Window = 1024; // Identity items searched for the nearest one of the same identity.
 
     /// <summary>Gets the subject of a record caused at a site of an item's body (K 4.9), the one location rule of the collector's records and
     /// code generation's (R5 C0b1): the site located in its body, if that lies in a root module; else the root-module site the item's
@@ -30,6 +31,20 @@ internal sealed partial class InstanceCollector
     // 22.2); a part of the Type Below made, so its verdict was read at the site.
     private static BoundType Designated(BoundType below)
         => below is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw, Components: [var pointee] } ? pointee : below;
+
+    // DECISIONS R5-M170: the declaration a DropGlue item's identity names, that of a Nominal, Constructed or Closure Type; none for a
+    // structural Type, whose parts are its subterms.
+    private static BindingSymbol? Declaration(BoundType type)
+        => type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Closure ? type.Symbol : null;
+
+    // The identity whose growth and breadth an item's admission counts (DECISIONS R5-M170): a body's or LegacyRow's definition, a DropGlue's
+    // declaration (Declaration); null for every other item.
+    private static (MonoKind Kind, MirDefKey Definition)? Identity(in MonoItem item) => item.Key.Kind switch
+    {
+        MonoKind.Body or MonoKind.LegacyRow => (item.Key.Kind, item.Key.Body.Def),
+        MonoKind.DropGlue when Declaration(item.RepresentativeType!) is { } declaration => (MonoKind.DropGlue, new(declaration, default)),
+        _ => null,
+    };
 
     // SPEC 6.1.3, 8.13.3 (DECISIONS R5-M43, R5-M157, BU-60): whether the substitution of a definition generic in its context carries the
     // instance it instantiates in, that of the declaration whose instance it holds (TyCtxt.EnclosingDeclaration), as its binder (a Closure's
@@ -70,26 +85,27 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
+        if (this.refused.Contains(key))
+        {
+            return -1; // Refused once, with its one record (DECISIONS R5-M170).
+        }
+
         var representative = erased is null ? null : subst;
         if (representative is not null && !this.Instantiable(target, representative, site))
         {
             return -1;
         }
 
-        var depth = set.Items[parent].Depth + 1;
-        this.counts.TryGetValue(target.Key, out var count);
-        if (depth > DepthLimit || count >= SetLimit || this.Grows(parent, target.Key))
+        if (!this.Grows(parent, key, (MonoKind.Body, target.Key), representative?.Height ?? 0, site, out var growth))
         {
-            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
-        this.counts[target.Key] = count + 1;
         this.Work++;
         var view = this.View(target, representative, site);
         return set.Add(new()
         {
-            Key = key, Representative = representative, BodyOrdinal = target.Ordinal, View = view, Parent = parent, Depth = (ushort)depth, Site = site,
+            Key = key, Representative = representative, BodyOrdinal = target.Ordinal, View = view, Parent = parent, Growth = growth, Site = site,
         });
     }
 
@@ -114,23 +130,34 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
+        if (this.refused.Contains(key))
+        {
+            return -1; // Refused once, with its one record (DECISIONS R5-M170).
+        }
+
+        if (type.Height > HeightLimit)
+        {
+            this.refused.Add(key);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            return -1;
+        }
+
         if (!this.LaysOut(site, type) || (key.Kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
         {
             return -1;
         }
 
-        var depth = set.Items[parent].Depth + 1;
-        if (depth > DepthLimit)
+        var growth = new Growth(0, 0, this.Above(parent));
+        if (key.Kind == MonoKind.DropGlue && Declaration(type) is { } declaration &&
+            !this.Grows(parent, key, (MonoKind.DropGlue, new(declaration, default)), type.Height, site, out growth))
         {
-            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
         this.Work++;
         return set.Add(new()
         {
-            Key = key, Representative = representative, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Depth = (ushort)depth,
-            Site = site,
+            Key = key, Representative = representative, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Growth = growth, Site = site,
         });
     }
 
@@ -164,6 +191,11 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
+        if (this.refused.Contains(key))
+        {
+            return -1; // Refused once, with its one record (DECISIONS R5-M170).
+        }
+
         var laidOut = true;
         for (var i = 0; i < collection.Components.Count; i++)
         {
@@ -175,10 +207,8 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        var depth = set.Items[parent].Depth + 1;
-        if (depth > DepthLimit)
+        if (!this.Grows(parent, key, (MonoKind.LegacyRow, key.Body.Def), subst?.Height ?? 0, site, out var growth))
         {
-            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -186,7 +216,7 @@ internal sealed partial class InstanceCollector
         return set.Add(new()
         {
             Key = key, Representative = erased is null ? null : subst, RepresentativeType = collection, BodyOrdinal = -1, Parent = parent,
-            Depth = (ushort)depth, Site = site,
+            Growth = growth, Site = site,
         });
     }
 
@@ -219,20 +249,44 @@ internal sealed partial class InstanceCollector
         static bool Open(BoundType? type) => type is { ContainsParameter: true };
     }
 
-    // Whether the admission chain from an item already holds GrowthLimit items of a definition, all with other keys than a new one's.
-    private bool Grows(int item, MirDefKey definition)
+    // The nearest item with an identity at or above an item: where a new child's search begins.
+    private int Above(int item) => Identity(this.Set.Items[item]) is null ? this.Set.Items[item].Growth.Above : item;
+
+    // SPEC 8.15.3, IMPL 21.3.2 (DECISIONS R5-M170, superseding K 4.6's depth): whether a new key of an identity, requested below an item,
+    // stays within the growth limits. The nearest item of its identity among the Window identity items above (the Above links; a walk only
+    // when the identity has an admitted item, each step counted in Work, so at most Window per key, review 1's N5) gives its
+    // generation, one more when the key's height passes that item's peak (growth; both saturate at 255, past which no growth is seen and
+    // SetLimit stops the identity), else the same (a repeat at a height already reached);
+    // none within the Window is the first generation. Past GrowthLimit generations, or past SetLimit items of the identity, it is
+    // GenerationResourceLimit_Kd at the requesting site, the key's one record: the key is refused (refused), so a later request of it is
+    // refused without a record; else the identity counts the item.
+    private bool Grows(int parent, in MonoKey key, (MonoKind Kind, MirDefKey Definition) identity, int height, SourceRef site, out Growth growth)
     {
-        var count = 0;
-        for (var current = item; current >= 0; current = this.Set.Items[current].Parent)
+        var items = this.Set.Items;
+        var above = this.Above(parent);
+        growth = new(1, (byte)Math.Min(height, byte.MaxValue), above);
+        this.counts.TryGetValue(identity, out var count);
+        var current = count == 0 ? -1 : above; // No admitted item of the identity: none above (a root is closed, one key).
+        for (var steps = 0; current >= 0 && steps < Window; steps++, current = items[current].Growth.Above)
         {
-            count += this.Set.Items[current].Key.Body.Def == definition ? 1 : 0;
-            if (count >= GrowthLimit)
+            this.Work++;
+            if (Identity(items[current]) == identity)
             {
-                return true;
+                var found = items[current].Growth;
+                growth = growth.Peak > found.Peak ? new((byte)Math.Min(found.Generation + 1, byte.MaxValue), growth.Peak, above) : found with { Above = above };
+                break;
             }
         }
 
-        return false;
+        if (growth.Generation > GrowthLimit || count >= SetLimit)
+        {
+            this.refused.Add(key);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            return false;
+        }
+
+        this.counts[identity] = count + 1;
+        return true;
     }
 
     // K 4.3: the one view of a body its representative selects (a closed item's body has one); none or several is a broken contract.
