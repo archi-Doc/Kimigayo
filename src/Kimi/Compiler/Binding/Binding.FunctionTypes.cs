@@ -281,7 +281,7 @@ public sealed partial class Binding
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits) and its complete environment is Owned. Initializations, returns and
     // call arguments share this judgment. A failure publishes its first failed part for its record and Note (erasureOutcomes): the
-    // receiver, the signature's structure, Owned (an environment that is not Owned is the record first, its Error's cause held), then a
+    // receiver, the signature's structure, Owned (an environment that is not Owned is the record first, its Error's cause held, its member named), then a
     // condition, the conversion's one record at `node`, made here from the judgment's failure (RecordCondition).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
@@ -292,18 +292,18 @@ public sealed partial class Binding
             ? expected.Kind == BoundTypeKind.Function && receiver == SemanticsKind.Ref && signature is not null &&
                 this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
             : this.ErasureSignatureFits(actual, expected, node, out failure);
-        ICheckCause? cause = null;
+        OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
-            : this.ProveErasedOwned(actual, node, out cause) == ConstraintProof.Proven ? ErasurePart.Condition
+            : this.ProveErasedOwned(actual, node, out owned) == ConstraintProof.Proven ? ErasurePart.Condition
             : shape ? ErasurePart.Shape : ErasurePart.Owned;
         if (part == ErasurePart.Condition && fits)
         {
             return true;
         }
 
-        (this.erasureOutcomes ??= new(ErasureKey.Instance))[(actual, expected)] = new(part, fits, receiver, cause);
+        (this.erasureOutcomes ??= new(ErasureKey.Instance))[(actual, expected)] = new(part, fits, receiver, owned);
         if (part == ErasurePart.Condition)
         {
             this.RecordCondition(node, failure, signature!, expected);

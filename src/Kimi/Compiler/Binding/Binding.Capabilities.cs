@@ -288,6 +288,7 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
+            this.originRead ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
             return this.ReadVerdict(work.Result, work.Cause, work.Fact);
         }
 
@@ -302,9 +303,12 @@ public sealed partial class Binding
                 this.limitRead = null;
                 this.errorRead = null;
                 this.unknownRead = null;
+                this.originRead = null;
+                next.Parts?.Clear();
                 var result = this.ComputeCapability(next);
                 var cause = result == ConstraintProof.Unknown ? this.limitRead : result == ConstraintProof.Error ? this.errorRead : null;
                 next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
+                next.Origin = result == ConstraintProof.Proven ? null : this.originRead;
                 if (result == next.Result && ReferenceEquals(cause, next.Cause))
                 {
                     continue;
@@ -331,6 +335,7 @@ public sealed partial class Binding
         this.limitRead = null;
         this.errorRead = null;
         this.unknownRead = null;
+        this.originRead = work.Result == ConstraintProof.Proven ? null : work.Origin;
         return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
@@ -483,19 +488,29 @@ public sealed partial class Binding
             return this.SummaryCapability(work, (DeclarationContainerKoto)work.Type.Symbol!.Declaration);
         }
 
+        // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        foreach (var (part, argument) in new CapabilityParts(work.Type))
+        var parts = new CapabilityParts(work.Type);
+        while (parts.MoveNext())
         {
+            var (part, argument) = parts.Current;
+            var saved = this.originRead;
+            this.originRead = null;
             var proof = argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
+            this.originRead = work.Part(parts.Member, proof, this.originRead, saved);
         }
 
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
             {
-                result = CombineProof(result, this.StaticOrigin(reference.OriginArguments[a], work.Scope), true);
+                var saved = this.originRead;
+                this.originRead = null;
+                var proof = this.StaticOrigin(reference.OriginArguments[a], work.Scope);
+                result = CombineProof(result, proof, true);
+                this.originRead = work.Part(1, proof, this.originRead, saved);
             }
         }
 
@@ -620,6 +635,9 @@ public sealed partial class Binding
         private int argument = -1;
 
         public (BoundType Part, bool Argument) Current { readonly get; private set; }
+
+        // The current part's member: its component's index; a requirement reference's Type arguments are member 1.
+        public readonly int Member => this.argument >= 0 ? 1 : this.index;
 
         public readonly CapabilityParts GetEnumerator() => this;
 

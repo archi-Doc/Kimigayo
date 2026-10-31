@@ -40,6 +40,10 @@ public sealed partial class Binding
     // The U fact (design-r2 Amendment 4): the first Callable comparison failure the Unknown answer of the proof scope in progress rests on
     // (unknownRead), and the one a settled Unknown leaves for its check (failedUnknown), each diagnostic payload only.
     private CallableUnknown? unknownRead;
+
+    // The first Origin not proven `static` that the Owned answer of the proof scope in progress rests on (R4-M161, r2-1b): kept by a
+    // scope only when its own answer is not Proven, as the U fact (BU-22); diagnostic payload only (CapabilityWork.Origin).
+    private BoundOrigin? originRead;
     private CallableUnknown? failedUnknown;
 
     // The candidate trial's own U fact (SlotSolution.Prove), for the selection's explanation of a Pending candidate (CallableOriginFailure).
@@ -61,7 +65,7 @@ public sealed partial class Binding
 
     // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request. A judgment
     // (a scope whose answer EndProof no longer combines) first drops the facts the last one left untaken (r2-6).
-    private (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, long Frame) BeginProof()
+    private (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, BoundOrigin? Origin, long Frame) BeginProof()
     {
         if (this.proofNesting == 0 && this.capabilityConsumer is null)
         {
@@ -69,7 +73,8 @@ public sealed partial class Binding
             this.failedClause = null;
         }
 
-        var outer = (this.limitRead, this.errorRead, this.unknownRead, this.clauseRead, this.proofNesting == 0 ? this.OpenFrame() : -1L);
+        var outer = (this.limitRead, this.errorRead, this.unknownRead, this.clauseRead, this.originRead, this.proofNesting == 0 ? this.OpenFrame() : -1L);
+        this.originRead = null;
         this.limitRead = null;
         this.errorRead = null;
         this.unknownRead = null;
@@ -83,11 +88,13 @@ public sealed partial class Binding
     // an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes it (TakeFailedCause),
     // which publishes a site.
     private ConstraintProof EndProof(
-        (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, long Frame) outer, ConstraintProof proof)
+        (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, BoundOrigin? Origin, long Frame) outer, ConstraintProof proof)
     {
         this.proofNesting--;
         var cause = this.ProofCause(proof);
         var fact = this.ProofFact(proof);
+        var origin = proof == ConstraintProof.Proven ? null : this.originRead;
+        this.originRead = outer.Origin;
         this.limitRead = outer.Limit;
         this.errorRead = outer.Error;
         this.unknownRead = outer.Unknown;
@@ -99,6 +106,7 @@ public sealed partial class Binding
 
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
+            this.originRead ??= origin;
             return this.ReadVerdict(proof, cause, fact);
         }
 
@@ -251,6 +259,7 @@ public sealed partial class Binding
         this.limitRead = null;
         this.errorRead = null;
         this.unknownRead = null;
+        this.originRead = null;
         this.failedUnknown = null;
         this.trialUnknown = null;
         this.clauseRead = null;

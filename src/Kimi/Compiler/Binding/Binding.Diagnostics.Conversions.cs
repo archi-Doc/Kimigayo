@@ -233,8 +233,12 @@ public sealed partial class Binding
     }
 
     // A failed erasure's outcome (ErasesToFunction): its first failed part, whether its receiver and signature fit (the Note's input),
-    // the closure's minimum receiver, and an Owned Error's held cause. Diagnostic payload only; no decision reads it.
-    private readonly record struct ErasureOutcome(ErasurePart Part, bool SignatureFits, SemanticsKind Receiver, ICheckCause? Cause);
+    // the closure's minimum receiver, and its Owned failure. Diagnostic payload only; no decision reads it.
+    private readonly record struct ErasureOutcome(ErasurePart Part, bool SignatureFits, SemanticsKind Receiver, OwnedFact Owned);
+
+    // An erasure's Owned failure (R4-M161): an Error's held cause, and the explaining member (OwnedMember; -1 none, -2 no work) with its
+    // Origin and whether that Origin is Refuted in the forming body.
+    private readonly record struct OwnedFact(ICheckCause? Cause, int Member, BoundOrigin? Origin, bool Refuted);
 
     // An erasure's two Types compared by reference: both are interned, and a Closure Type holds its whole context (BU-60, BU-71).
     private sealed class ErasureKey : IEqualityComparer<(BoundType Actual, BoundType Expected)>

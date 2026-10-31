@@ -5949,6 +5949,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `SignatureFits` and the receiver, with today's texts. A missing row for a Closure or Item against a Function Type is
     `InternalInvariant_Kd`. Temporary until r2-1b: `FailOwnedConversion`'s member loop and `FirstUnownedOrigin` still prove each
     member to find the explaining one (removal: the erasure publishes the member from the proof that decided).
+  - Amendment (r2-1b, 2026-11-01): the engine's Owned fact. A work's final evaluation keeps the first Origin not proven `static`
+    that its verdict rests on (`CapabilityWork.Origin`) and, for a Type judged by its parts, each part that is not Proven with its
+    member (a `Components` index; a requirement reference's arguments and Origin arguments are member 1) and Origin (`Parts`). The
+    Origin is a proof-scope read (`originRead`, beside `unknownRead`): BeginProof saves and clears it, EndProof joins it only for an
+    answer that is not Proven, so premises that prove a part leave none; `StaticOrigin` writes it, a child's work joins it at its read.
+    Both are cleared by `Reset`, outside the fixpoint's equality, and read by no decision. The erasure reads them once
+    (`ProveOwned(…, out OwnedRest)`) and names the member (`OwnedMember`, BU's n6): each member in order with its first part's Origin,
+    the first Refuted in the forming body, else the first; no work is `InternalInvariant_Kd` at the record (BU's n7). The member loop
+    and `FirstUnownedOrigin` are deleted.
   - Rejected: the reader's cache read in its own scope (a join's scope can differ from its arm's); node keys; R/U in the engine.
   - Removes: `erasureSignatures`, two receiver re-tests, the second Owned proof of the erasure and the gate's Owned proof.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
@@ -6776,7 +6785,8 @@ resumed by R4-M86 (2026-10-20).
   Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
   binds as a transfer (PLAN G100; classification superseded by G224 Static Field classification, acquisition legality remains).
-- **BU-22** (amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2
+- **BU-22** (amended by R4-M161 (r2-1b): an Owned verdict also carries the Origin it rests on and its parts that are not Proven, a
+  proof-scope read like the U fact; amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2
   Amendments 4-5) (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
   `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
   component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
