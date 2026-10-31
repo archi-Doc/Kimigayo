@@ -7,10 +7,14 @@
 # compare byte for byte; nothing is normalized. Exit code 1 when anything differs; a failed run or missing evidence throws.
 # -O2Metrics also writes o2-metrics.json (information only: the exit code stays the comparison's): instructions and
 # blocks per define of each natively run fixture's optimized IR, the first native step's <work>/native*/<stem>.O2.ll
-# (summary.json workDirectory), totalled over the runtime helpers (this checkout's runtime template) and over the
-# generated bodies; fixtures with one in both runs ranked by candidate/baseline body instruction growth, then by the
-# difference, then by name; the others listed as unpaired. Generated bodies are not paired across runs: each run names
-# them __kimi_f<n> by its own numbering.
+# (summary.json workDirectory), totalled over the whole module and, as information, over the runtime helpers (this
+# checkout's runtime template) and the generated bodies; fixtures with one in both runs ranked by candidate/baseline
+# whole-module instruction growth, then by the difference, then by name; the others listed as unpaired. The module is
+# the measure because at O2 the runtime helpers are not the same text in both runs: inlining and interprocedural
+# constant propagation move code between them and the bodies (G182; before 2026-10-31 growth was body growth, and an
+# earlier o2-metrics.json keeps each fixture's instructions). A fixture whose program folds to constants keeps
+# __kimi_start as its only body, so it measures the runtime helpers alone. Generated bodies are not paired across runs:
+# each run names them __kimi_f<n> by its own numbering.
 #   ./scripts/compare-fixtures.ps1 -Baseline artifacts/verify/<parent run> -Candidate artifacts/verify/<run> [-O2Metrics]
 [CmdletBinding()]
 param(
@@ -174,28 +178,28 @@ if ($O2Metrics) {
     function Add-Counts($sum, $counts) {
         foreach ($count in @('instructions', 'blocks')) { $sum[$count] += $counts[$count]; $sum.runtime[$count] += $counts.runtime[$count]; $sum.bodies[$count] += $counts.bodies[$count] }
     }
-    # Fixtures rank by the growth of their generated bodies: the runtime helpers are the same text in both runs.
+    # Fixtures rank by the growth of their whole module (above).
     foreach ($fixture in $nativeFixtures) {
         $before = $baseRun.o2[$fixture]
         $after = $candidateRun.o2[$fixture]
         if ($null -eq $before -or $null -eq $after) { $unpaired.Add([ordered]@{ fixture = $fixture; baseline = $before; candidate = $after }); continue }
-        $growth = [Math]::Round($after.bodies.instructions / [double]$before.bodies.instructions, 4)
-        $ranked.Add([ordered]@{ fixture = $fixture; growth = $growth; difference = $after.bodies.instructions - $before.bodies.instructions; baseline = $before; candidate = $after })
+        $growth = [Math]::Round($after.instructions / [double]$before.instructions, 4)
+        $ranked.Add([ordered]@{ fixture = $fixture; growth = $growth; difference = $after.instructions - $before.instructions; baseline = $before; candidate = $after })
         Add-Counts $sides[0] $before
         Add-Counts $sides[1] $after
     }
     $ranked = @($ranked | Sort-Object @{ Expression = { $_.growth }; Descending = $true }, @{ Expression = { $_.difference }; Descending = $true }, @{ Expression = { $_.fixture } } -CaseSensitive)
-    $growth = if ($ranked.Count -gt 0) { [Math]::Round($sides[1].bodies.instructions / [double]$sides[0].bodies.instructions, 4) } else { $null }
+    $growth = if ($ranked.Count -gt 0) { [Math]::Round($sides[1].instructions / [double]$sides[0].instructions, 4) } else { $null }
     $o2Report = [ordered]@{
         baseline = $runs[0]; candidate = $runs[1]; runtime = @($runtime | Sort-Object -CaseSensitive)
         totals = [ordered]@{ fixtures = $ranked.Count; baseline = $sides[0]; candidate = $sides[1]; growth = $growth }; ranked = $ranked; unpaired = @($unpaired)
     }
     $o2Report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Output 'o2-metrics.json')
-    $o2Line = "O2: $($ranked.Count) paired, body instructions $($sides[0].bodies.instructions) -> $($sides[1].bodies.instructions) (growth $growth), " +
-        "runtime $($sides[0].runtime.instructions) -> $($sides[1].runtime.instructions), all $($sides[0].instructions) -> $($sides[1].instructions), $($unpaired.Count) unpaired"
+    $o2Line = "O2: $($ranked.Count) paired, instructions $($sides[0].instructions) -> $($sides[1].instructions) (growth $growth), " +
+        "runtime $($sides[0].runtime.instructions) -> $($sides[1].runtime.instructions), bodies $($sides[0].bodies.instructions) -> $($sides[1].bodies.instructions), $($unpaired.Count) unpaired"
     $text.Add($o2Line)
-    if ($ranked.Count -gt 0) { $text.Add('Largest O2 body instruction growth (baseline -> candidate):') }
-    foreach ($item in @($ranked | Select-Object -First 10)) { $text.Add("  $($item.fixture): $($item.baseline.bodies.instructions) -> $($item.candidate.bodies.instructions) ($($item.growth))") }
+    if ($ranked.Count -gt 0) { $text.Add('Largest O2 instruction growth (baseline -> candidate):') }
+    foreach ($item in @($ranked | Select-Object -First 10)) { $text.Add("  $($item.fixture): $($item.baseline.instructions) -> $($item.candidate.instructions) ($($item.growth))") }
     if ($unpaired.Count -gt 0) { $text.Add('Unpaired O2 fixtures:') }
     foreach ($item in $unpaired) { $text.Add("  $($item.fixture): none in $(@(foreach ($side in @('baseline', 'candidate')) { if ($null -eq $item[$side]) { $side } }) -join ' and ')") }
 }

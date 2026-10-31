@@ -125,22 +125,23 @@ Put-O2 'o2head' 'two' ((Define 'f' 4) + (Define 'g' 4))
 Put-O2 'o2head' 'three' (Define 'f' 4)
 Put-O2 'o2head' 'five' (Define 'f' 1)
 # six.ll's runtime helpers (one a template define, one a spliced marker) are unchanged and its body doubles: it ranks by
-# the body (2), above one.ll (1.5) although its whole module grows less (1.08), and before three.ll (2, +2) by name.
+# its whole module (1.0769), below one.ll (1.5), although its body grows more (2); three.ll (2, +2) ranks after two.ll
+# (2, +4) by the difference.
 Put-O2 'o2base' 'six' ((Define '__kimi_write_bytes' 15) + (Define '__kimi_exit' 9) + (Define '__kimi_start' 2))
 Put-O2 'o2head' 'six' ((Define '__kimi_write_bytes' 15) + (Define '__kimi_exit' 9) + (Define '__kimi_start' 4))
 Put-O2 'o2empty' 'one' (Define '__kimi_exit' 2)
 $o2 = Compare-Run 'o2base' 'o2head' 1 -O2Metrics
-Expect ((@($o2.ranked.fixture) -join ',') -ceq 'two.ll,six.ll,three.ll,one.ll') 'O2 metrics must rank by body instruction growth, then by the difference, then by name.'
-$one = @($o2.ranked)[3]
+Expect ((@($o2.ranked.fixture) -join ',') -ceq 'two.ll,three.ll,one.ll,six.ll') 'O2 metrics must rank by whole-module instruction growth, then by the difference, then by name.'
+$one = @($o2.ranked)[2]
 $defines = @($one.candidate.defines | ForEach-Object { "$($_.name)=$($_.instructions)/$($_.blocks)" }) -join ','
 Expect ($defines -ceq '__kimi_start=2/1,__kimi_f1=4/3,__kimi_f2=3/2') "Each define must count its instructions and blocks, not '$defines'."
 Expect ($one.growth -eq 1.5 -and $one.difference -eq 3 -and $one.baseline.instructions -eq 6 -and $one.baseline.blocks -eq 4) 'A fixture must total its defines.'
-$six = @($o2.ranked)[1]
-Expect ($six.growth -eq 2 -and $six.baseline.runtime.instructions -eq 24 -and $six.candidate.bodies.instructions -eq 4 -and $six.candidate.instructions -eq 28) 'Runtime helpers and bodies must be totalled apart.'
+$six = @($o2.ranked)[3]
+Expect ($six.growth -eq 1.0769 -and $six.difference -eq 2 -and $six.baseline.runtime.instructions -eq 24 -and $six.candidate.bodies.instructions -eq 4 -and $six.candidate.instructions -eq 28) 'Runtime helpers and bodies must be totalled apart, the growth by the whole module.'
 Expect (@($o2.runtime) -ccontains '__kimi_exit' -and @($o2.runtime) -ccontains '__kimi_write_bytes' -and @($o2.runtime) -cnotcontains '__kimi_start') 'The runtime helpers must be the runtime template functions.'
 $totals = $o2.totals
-Expect ($totals.fixtures -eq 4 -and $totals.baseline.bodies.instructions -eq 14 -and $totals.candidate.bodies.instructions -eq 25 -and $totals.growth -eq 1.7857) 'O2 totals must sum the bodies of paired fixtures.'
-Expect ($totals.baseline.runtime.instructions -eq 24 -and $totals.candidate.runtime.instructions -eq 24 -and $totals.candidate.instructions -eq 49) 'O2 totals must sum their runtime helpers.'
+Expect ($totals.fixtures -eq 4 -and $totals.baseline.bodies.instructions -eq 14 -and $totals.candidate.bodies.instructions -eq 25) 'O2 totals must sum the bodies of paired fixtures.'
+Expect ($totals.baseline.runtime.instructions -eq 24 -and $totals.candidate.runtime.instructions -eq 24 -and $totals.baseline.instructions -eq 38 -and $totals.candidate.instructions -eq 49 -and $totals.growth -eq 1.2895) 'O2 totals must sum their runtime helpers and grow by the whole modules.'
 $unpaired = @($o2.unpaired | ForEach-Object { "$($_.fixture):$([int]($null -ne $_.baseline))$([int]($null -ne $_.candidate))" }) -join ','
 Expect ($unpaired -ceq 'five.ll:01,four.ll:10') "A fixture without an O2 file in one run must be reported, not '$unpaired'."
 Expect ((Get-Content -LiteralPath (Join-Path $work 'compare-o2base-o2head/fixture-comparison.txt')) -contains '  four.ll: none in candidate') 'The text report must name an unpaired fixture.'
