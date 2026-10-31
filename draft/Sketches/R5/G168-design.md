@@ -8,6 +8,7 @@ access's HIR facts, `program.Records`, `program.Findings`, module-0 problems and
 | --- | --- |
 | 0 (f579d4bd4) | Design. |
 | 1 | R4's review 1 (REVISE): B1, rows c1Used and c3Moved with base's records, rows c2 and c3 called guards; `Reborrowed` folded in (R4 released its lines); (a)'s CLI result in item 1; N1 recorded as an open item; N2's window. The coordinator's addition: the interim for (a) lies partly in R4-held `Selections.cs`, so BU takes it; STATUS lines drafted. |
+| 1a | Window: no sel lane (R4's correction); the newest shared base. Pending: whether R4 releases `Element`/`ConstElement`, which would bring (a)'s interim and its row into G168. |
 
 ## Finding: valid programs reach `Field`'s failure
 
@@ -96,7 +97,7 @@ interim's (BU).
 Major: one owning component and its contract; the PLAN row's premise changes. No DECISIONS entry (R5-M63/R5-M84's rule, no new
 representation or vocabulary). PLAN: G168 closes; items 1 (the planning session writes it) and 2 open. Size: `Places.cs` about +9/-2
 code and +3 comment lines, `Acquisitions.cs` about +4/-1, the test about +30 lines. Window: the default Session with
-`-DiagnosticSnapshot` against `d459bc5b8`, `-Pipeline mir`, sel where it applies, and the full mir ledger from its own run. Expected
+`-DiagnosticSnapshot` against the newest shared base and R5's own full mir ledger (a `-Pipeline mir` Session optional; no sel lane). Expected
 ledger movement: only rows where a false member `MovedPlace_Kd` beside an `Unsupported_Kd` goes (none expected: F19 round 2 found no
 MIR-side `Unsupported_Kd` at a `MemberAccessKoto` in the suite), each moved row classified by its probe; any A1-A6 verdict change
 otherwise stops the unit.
