@@ -8,7 +8,9 @@ public sealed partial class Binding
 {
     private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
 
-    // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
+    // Complete stored Origin identity, including declared slots and intersections: the old analysis's walk (its three calls); Binding reads
+    // MentionsOrigin, a test of the Type's Origin summary (DECISIONS BU-63).
+    [Transitional("R6-check", Reason = "The old analysis's copy of MentionsOrigin goes with the old analysis (DECISIONS BU-63, PLAN G309).")]
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
         if (type.Origin is { } own && ContainsOrigin(own, origin))
@@ -330,7 +332,14 @@ public sealed partial class Binding
         }
     }
 
+    // One query of the requirement fixed point's visit of a declared Type: each distinct part once per polarity (visitedParts' state, one
+    // bit per polarity). A part met again at a polarity repeats its joins and keepers, duplicates only; a join a revisit would have made
+    // after this visit changed a slot the part reads is made when the declaration is visited again (its self-edge, CollectRequirementEdges,
+    // queues it as its own dependent), so the least fixed point is the same (DECISIONS BU-19, PLAN G309).
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
+        => this.RequirementPart(type, schema, polarity, ref changed, this.visitedParts.Begin(this.storageVersion));
+
+    private void RequirementPart(BoundType type, DeclarationSchema schema, int polarity, ref bool changed, uint query)
     {
         // Only Origins and Type Parameter slots contribute; other subtrees cannot change a summary.
         if (!type.CarriesOriginOrSlot)
@@ -412,7 +421,10 @@ public sealed partial class Binding
                 sign = variance == OriginVariance.Invariant ? 0 : variance == OriginVariance.Contravariant ? -polarity : polarity;
             }
 
-            this.AccumulateRequirements(type.Components[i], schema, sign, ref changed);
+            if (this.FirstVisit(type.Components[i], query, (byte)(2 << (sign + 1))))
+            {
+                this.RequirementPart(type.Components[i], schema, sign, ref changed, query);
+            }
         }
     }
 

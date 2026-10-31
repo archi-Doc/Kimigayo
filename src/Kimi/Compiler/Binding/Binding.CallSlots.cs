@@ -178,7 +178,7 @@ public sealed partial class Binding
                 actual = referent;
             }
 
-            if (evidence is { Binder: FunctionKoto { ClosureDefinition: not null } closure } && HasEnvironmentOrigin(actual, closure))
+            if (evidence is { Binder: FunctionKoto { ClosureDefinition: not null } closure } && this.HasEnvironmentOrigin(actual, closure))
             {
                 // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.

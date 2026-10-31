@@ -1,4 +1,4 @@
-; windows-x64-v1 internal runtime. Definitions receive the emitter's common #0 profile.
+; windows-x64-v1 internal runtime. Definitions receive the Backend's common #0 profile.
 ; No buffer allocation, encoding conversion, CRT startup or exception unwinding.
 declare dllimport ptr @GetProcessHeap()
 declare dllimport ptr @HeapAlloc(ptr, i32, i64)
@@ -15,7 +15,7 @@ declare dllimport void @ExitProcess(i32) noreturn
 @__kimi_close = private constant [1 x i8] c")"
 {{abort_reasons}}
 
-; Compiler-facing definitions are expanded from WindowsLowering FunctionAbi records.
+; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records.
 {{__kimi_exit}}
 entry:
   call void @ExitProcess(i32 %code)

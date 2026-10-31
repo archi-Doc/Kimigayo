@@ -35,7 +35,8 @@
 // buffer is kept, so a warm module allocates nothing; a request for an item outside Generated (its Signature or Glue, the requests naming an
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax or HIR, write a
-// partial module, use LINQ, Supports* or catch-alls.
+// partial module, use LINQ, Supports* or catch-alls, or do file I/O but through the caller's writer (it reads embedded templates), whose
+// I/O exceptions are therefore the output's (DECISIONS R5-M169); a broken contract it throws is the command's fault.
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
 // entries (ModuleCodegen.Erasures.cs), the formatting wrappers of formatter items (ModuleCodegen.Formatting.cs), the object descriptors

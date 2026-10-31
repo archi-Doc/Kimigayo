@@ -55,9 +55,9 @@
 // argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
-// (CarriesInstance: a nested function's enclosing instance, DECISIONS R5-M43; a Field initializer's Closure or a function declared in it,
-// whose binder declares no slot and whose substitution binds no Self or declaring Type, R5-M157, until TyCtxt.EnclosingFunction gives
-// every nested definition the declaration whose instance it holds, BU's fact), a substitution or Type whose storage is a limit (Made),
+// (CarriesInstance, the instance of the declaration it holds, TyCtxt.EnclosingDeclaration: a nested function's call, DECISIONS R5-M43; a
+// Closure no instance closed, in its own identity: a held instance with an Origin position or a generic container's group static,
+// R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors
 // of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its

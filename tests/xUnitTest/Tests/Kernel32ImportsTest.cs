@@ -27,7 +27,7 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(definition, Kernel32Imports.Definition);
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
         Assert.True(exports.SetEquals(Kernel32Imports.Symbols));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Emission/WindowsRuntime.ll.in"));
+        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
         foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
         {
             Assert.Contains(match.Groups[1].Value, exports);
@@ -60,7 +60,7 @@ public sealed class Kernel32ImportsTest
     public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Emission/WindowsRuntime.ll.in")) +
+        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")) +
             File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll"));
         var declared = new List<string>();
         foreach (Match match in Regex.Matches(runtime, @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))

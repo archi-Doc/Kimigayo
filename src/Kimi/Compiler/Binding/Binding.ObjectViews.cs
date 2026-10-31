@@ -121,9 +121,9 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 6.4.5: lexical self as a direct base call takes it (TyCtxt.EnclosingFunction, DECISIONS BU-53); an accessor is never an override.
+        // SPEC 6.4.5: lexical self as a direct base call takes it (TyCtxt.EnclosingDeclaration, DECISIONS BU-53); an accessor is never an override.
         var scope = this.ConstraintScope(operand);
-        if (this.types.EnclosingFunction(scope) is { Declaration: FunctionKoto { IsOverride: true } lexical } &&
+        if (this.types.EnclosingDeclaration(scope) is { Declaration: FunctionKoto { IsOverride: true } lexical } &&
             this.virtualOverrides.TryGetValue(lexical, out var implementation) && ReferenceEquals(source, implementation.ImplementingType) &&
             ReferenceEquals(receiver, this.BaseReceiver(scope.Function, lexical)))
         {

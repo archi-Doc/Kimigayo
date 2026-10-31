@@ -397,7 +397,7 @@ public sealed partial class Binding
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
             var walk = new RelationWalk(this, use, OriginPart.Judged);
-            if (HasUnsubstitutedOrigin(parameter, function))
+            if (this.HasUnsubstitutedOrigin(parameter, function))
             {
                 return false;
             }
@@ -433,7 +433,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (symbol.Type is not { } result || Bound(result) is not { } boundResult || HasUnsubstitutedOrigin(result = Substitute(boundResult), function))
+        if (symbol.Type is not { } result || Bound(result) is not { } boundResult || this.HasUnsubstitutedOrigin(result = Substitute(boundResult), function))
         {
             return false;
         }

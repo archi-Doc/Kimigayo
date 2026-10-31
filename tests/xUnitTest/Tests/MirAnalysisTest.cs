@@ -430,6 +430,30 @@ public sealed class MirAnalysisTest
         }
     }
 
+    // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
+    // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
+    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit and the C1-F4 view's findings
+    // included. It reuses the compilation's TyCtxt, so MirOrigins.Findings adds again every finding TyCtxt collected, the first run's
+    // pass-walk findings included (none today): a pass-walk finding shows both in the program's records and here. Every unit changing A3 or
+    // A5 runs it.
+    [Theory]
+    [InlineData(WindowsProfile.Target)]
+    public void TheLibraryHasNoAnalysisProblem(string target)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
+        Assert.True(c.Bind().IsComplete);
+        var program = c.BuildMir();
+        var library = c.SourceModules.Length;
+        Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
+        new MirAnalysis(c.Types).Run(program, library + 1);
+        Assert.Equal([], program.Records.Select(x => $"record {x.Code} {Line(c, x.Subject)}")
+            .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
+            .Concat(program.Problems.All.ToArray().Select(x =>
+                $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Bodies[x.Body].Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+    }
+
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -473,9 +497,8 @@ public sealed class MirAnalysisTest
         for (var i = 0; i < sizes.Length; i++)
         {
             var c = MirBuildTest.Compile(RequireEnds(sizes[i]));
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var program = c.BuildMir();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            MirProgram program = null!;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => program = c.BuildMir());
             work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
             var problems = program.Problems.All.ToArray();
             Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, ulong.MaxValue), (x.Code, x.Views)));

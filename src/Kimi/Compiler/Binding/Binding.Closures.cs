@@ -387,7 +387,7 @@ public sealed partial class Binding
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {

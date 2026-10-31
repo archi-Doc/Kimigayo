@@ -13,9 +13,10 @@ public static class EmissionArtifacts
     /// <summary>Publishes both files, with the manifest last, or records why not in the Emission partition without claiming old files
     /// (DECISIONS R5-M165): the generation entry's records; <c>ArtifactPublicationFailed_Kd</c> at the project, its cause as a note, for an
     /// output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the project when the
-    /// compiler's embedded backend record is missing or code generation fails a contract check while it writes the output (GenerateInto's
-    /// mapping). The publication inputs are checked first, since the generation entry writes into
-    /// the temporary IR file (R5 C0a); preparation has validated the native configuration (DependencyConfiguration).</summary>
+    /// compiler's embedded backend record is missing. Any other exception, such as a broken contract code generation throws, is not
+    /// classified here: it leaves for the command's fault path (DECISIONS R5-M169). The publication inputs are checked first, since the
+    /// generation entry writes into the temporary IR file (R5 C0a); preparation has validated the native configuration
+    /// (DependencyConfiguration).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="irPath">The published IR path on success.</param>
@@ -31,6 +32,7 @@ public static class EmissionArtifacts
 
         string? tempIr = null;
         string? tempManifest = null;
+        var generating = false; // While code generation writes, only GenerateInto classifies a failure (DECISIONS R5-M169).
         try
         {
             var project = compilation.Project;
@@ -64,7 +66,12 @@ public static class EmissionArtifacts
             tempManifest = manifest + "." + unique + ".tmp";
             using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
             {
-                if (!GenerateInto(compilation, writer))
+                // Cleared before the writer's Dispose, as BuildTarget's completed, so a flush failure stays the output's; a flush failure
+                // while a generation exception unwinds replaces that exception and becomes the fault.
+                generating = true;
+                var generated = GenerateInto(compilation, writer);
+                generating = false;
+                if (!generated)
                 {
                     return false;
                 }
@@ -82,7 +89,7 @@ public static class EmissionArtifacts
             irPath = destination;
             return true;
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (!generating && ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
             return false;
@@ -94,10 +101,12 @@ public static class EmissionArtifacts
         }
     }
 
-    /// <summary>Generates into the publication's output through the generation entry, separating the output's failure from a broken
-    /// contract of code generation (DECISIONS R5-M165): an I/O failure of the output is <c>ArtifactPublicationFailed_Kd</c> with its
-    /// cause, and an argument, data or support exception from code generation's own checks is <c>InternalInvariant_Kd</c>. Publish's
-    /// other output operations (paths, directories, files, the manifest, the replacement) map their failures themselves.</summary>
+    /// <summary>Generates into the publication's output through the generation entry and records only the output's failure (DECISIONS
+    /// R5-M169): code generation does no file I/O but through this writer (it reads embedded templates), so an <c>IOException</c> or
+    /// <c>UnauthorizedAccessException</c> is the output's, <c>ArtifactPublicationFailed_Kd</c> with its cause. Every other exception, such
+    /// as a broken contract code generation throws, leaves unclassified for the command's fault path (<c>CheckFaulted_Kd</c>, DIAGNOSTICS
+    /// rule 9). Publish's other output operations (paths, directories, files, the manifest, the replacement) map their failures
+    /// themselves.</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="output">The output, written only when generation succeeds.</param>
     /// <returns>Whether the module was written; otherwise the Emission partition records why.</returns>
@@ -110,11 +119,6 @@ public static class EmissionArtifacts
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
-            return false;
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or NotSupportedException)
-        {
-            Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
             return false;
         }
     }

@@ -12,7 +12,7 @@ namespace XunitTest;
 // escaping the counters.
 internal static class NativeAllocationAudit
 {
-    // The runtime's two transfer routines, which both generators call (DECISIONS R5-M145): Array growth (RuntimeAbi.ArrayGrow) and the
+    // The runtime's two transfer routines, which generated code calls (DECISIONS R5-M145): Array growth (RuntimeAbi.ArrayGrow) and the
     // Dictionary source's private byte copy (RuntimeAbi.TransferBytes, Storage.transferBytes) each copy high-water storage once, at their
     // anchor.
     private const string CopyAnchor = "  %used = mul i64 %length, %stride\n";

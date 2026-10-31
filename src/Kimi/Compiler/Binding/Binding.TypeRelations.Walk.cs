@@ -173,7 +173,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var variance = actual.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+                var variance = OriginArgumentVariance(actual, i, this.binding);
                 var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
                 if (both ? !this.OriginFits(a, b, instance) || !this.OriginFits(b, a, instance) :
                     variance == OriginVariance.Covariant ? !this.OriginFits(a, b, instance) : !this.OriginFits(b, a, instance))

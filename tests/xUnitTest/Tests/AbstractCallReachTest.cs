@@ -235,7 +235,7 @@ public class AbstractCallReachTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // The old Emission generates the abstract calls the adoption accepts (the proposal's section 6 forms): a Take-only takeTwo over a
+    // The abstract calls the adoption accepts (the proposal's section 6 forms) generate and run: a Take-only takeTwo over a
     // Merge of two iterators, and zip, each keeping its first result across the second call.
     [Fact]
     public void AcceptedAbstractCallsRunNatively()

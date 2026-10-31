@@ -14,7 +14,17 @@ public sealed partial class Binding
 {
     private readonly TypeMemo<BoundType?> substitutedParts = new(); // SubstituteType's images.
     private readonly TypeMemo<BoundType?> closedParts = new(); // CloseClosureTypes' images.
-    private readonly TypeMemo<bool> visitedParts = new(); // The parts an existence walk met (Binding.ConstraintOperands, DependentType, ProveTypeLengths).
+
+    // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins and PublishedResult
+    // (DECISIONS BU-58, BU-63): none calls a user of this table while it walks, so a query never begins inside another and evicts nothing
+    // live.
+    private readonly TypeMemo<BoundType?> rewrittenParts = new();
+
+    // The states in which a walk met a part, one bit per state (DECISIONS BU-63): the existence walks OperandContexts,
+    // ContainsAssociatedProjection, DependentType, TypeAccessCovers, ProveTypeLengths, HasLocalRegion and HasRegionBounds, and the walks
+    // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises, ClosureType's Collect, and AccumulateRequirements
+    // and ClosureArgumentVariance's Occurrences (a bit per polarity).
+    private readonly TypeMemo<byte> visitedParts = new();
 
     private sealed class TypeMemo<T>
     {

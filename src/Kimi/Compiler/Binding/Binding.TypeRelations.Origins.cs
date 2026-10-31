@@ -56,7 +56,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < left.OriginArguments.Count; i++)
             {
-                if (!ReferenceEquals(left.OriginArguments[i], right.OriginArguments[i]) && left.Symbol?.Schema?.Origins[i].Variance != OriginVariance.Covariant)
+                if (!ReferenceEquals(left.OriginArguments[i], right.OriginArguments[i]) && OriginArgumentVariance(left, i, this) != OriginVariance.Covariant)
                 {
                     failure = Unmet(right.OriginArguments[i], left.OriginArguments[i]);
                     return null;

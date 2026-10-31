@@ -1236,6 +1236,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
     R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19), and restored
     by R4-M86 (2026-10-20).
+  - Amended by R5-M167 (R6-gen's exit, the owner's row 12): D5's Emission half ended on 2026-10-31 with R6-gen; the Analysis half and
+    its exceptions continue until R6-check.
 - **R4-M36** (superseded in part by R4-M153: the bound's answer and record) (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -5831,6 +5833,61 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `ALoanStaysLiveIntoANeverFormsContinuation` (each Never form above, `defer` and the observing Drop included, an error at its
     reachable twin's location; valid counterparts, a holder without a `drop` and one moved away before the write among them).
   - Old path: such forms without an unreachable local use stay accepted until R6-check (STATUS, Unreachable code).
+- **R4-M159 A Closure Type's Origin arguments carry its maker's images (G273, F1's representation)** (2026-10-31; R4's
+  design-first candidate of the Full change, `r4-notes\g273-df\design.md`, adopted after implementation review 1
+  (`r4-notes\g273-choice\revision-1.md`); the default side by the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」
+  (PLAN 7f3e61b1b), unit G273-r3) SPEC 3.2.1, 7.7.3, 15.3.4, 15.3.5, 15.6.4, 15.8.2, 5.7.
+  - Representation (a new meaning of an existing slot): a Closure definition's Type (`Binding.ClosureType`) lists as its Origin
+    arguments each atom of another, enclosing Closure that its call signature names (receiver, environment binding, call result,
+    input; any Origin position, raw layers and nested arguments included), in first-occurrence order. A Closure naming none, every
+    flat Closure, keeps an argument-free Type. Every walk that images a Type's Origins images them with its environment: the maker's
+    call (P9's images, the input substitution), P8's publication, instantiation, erasure (static for codegen).
+  - Readers: `ClosureSignature` is the call signature as the value reads it, its definition's under the closure context with each
+    definition argument replaced by the Type's (one `PerCallImages` row of the one substitution); every caller-world reader takes it
+    (value calls, argument-kind inference, Callable proofs, conversions, diagnostics). `ClosureDefinitionSignature` is the
+    definition's, which a value call declares (`CallPlan.DeclaredSignature`), so retention keeps reading the definition's world and
+    its memo. `TryCallable` and a value call's declared signature resolve the callee Closure Type through one function,
+    `CallableClosure` (BU's N1).
+  - Variance (implementation review 1's B1; SPEC 15.3.5, 15.3.6, 15.6.1): a Closure Type's Origin argument has the composition of its
+    atom's occurrences in the definition's signature (a parameter reverses polarity, an exclusive layer's target is invariant; equal
+    occurrences keep their variance, different ones are invariant), read through the one accessor `OriginArgumentVariance` that
+    replaced nine inline schema reads (a behavior-preserving commit first). So an argument only a result or a shared capture names is
+    covariant (`var c = outer(q); c = outer(s)` with `s` outliving `q`, v50, v51, v53: valid), one only a parameter names is
+    contravariant (c1, c3 valid; c2 rejected at the call), and one in both is invariant: c4 (`func (y: ref/i32 during x) -> ref/i32
+    during x`, then `var c = outer(p); c = outer(q)` under `origin p outlives q`, never called), which dev accepted because its Type
+    carried no binding, is now `UnprovenOriginRelation_Kd` (a new rejection, correct under SPEC 15.3.5). The declaration-variance
+    producer (`TypeOrigins.AccumulateRequirements`) keeps reading schema arguments only: a declaration's stored Types never hold a
+    Closure Type with Origin arguments (no Field Type names a Closure Type), and such an argument has no Loan requirement to
+    propagate. Rejected: the schema-less default
+    (invariant: those valid forms get `UnprovenOriginRelation_Kd`, and P8's own fit `env0 : ρ` would be Refuted); one covariance rule
+    for every argument (it would shorten an Origin a parameter promises, w1's `uniq/(raw/i32 during x)`).
+  - Removes: F1's located `Unsupported_Kd` (R4-M152) on every reachable form: it stays only for an atom no image reached (a value
+    that reaches a non-enclosing call without its maker's call; no form known), and now walks raw layers (R4-M152's first open item)
+    through the raw-Origin owner's `OwnedOrigin`, so BU-24's raw-role sites are unchanged. R4-M152's interim limit's cause
+    (images reach the Callable proof); the q rows keep PLAN G326's class.
+  - Default pipeline (the owner's (a), a larger D5 exception until R6-check, which deletes the old Analysis): the old Analysis stops
+    where `SupportsType` refuses a Type for Origin arguments its symbol does not declare, reporting its located `Unsupported_Kd` and
+    nothing else of the program, as R4-M126 (vi)'s gate does at its calls: one stop (`OwnershipAnalysis.Stop`, `Stopped`) for both,
+    keyed by the refusal's reason, which `SupportsType` publishes (`TypeSupport.UndeclaredOriginArguments`, a part's included). The
+    declared Origins are the symbol's schema's, its enclosing declarations' included (SPEC 6.1.3), so a nested struct's inherited
+    Origin is declared and its refusal goes on (implementation review 3's R3-B1, n01_inherited_bad). Such a Type is a Closure Type with
+    its maker's images, which the old Analysis does not model; before the stop its refusal left the Loan
+    analysis running, so a valid kept value got a false Loan record (v13_param_kept_ok, v60_kept_move_ok, v63, v64: implementation
+    reviews 1 B2 and 2 R2-B1). The owner's approval was for this case (the planning session, 2026-10-31: a subset of the approved
+    exception). Any other refusal (a Never-holding Type, `Option<(string, Never)>`) keeps its located `Unsupported_Kd` and the analysis
+    goes on: stopping there dropped independent records SPEC 23.1.2 keeps (14.9.2-joined-result's `ComparisonLoanConflict_Kd`,
+    NeverContinuationTest's Loans and Moves; the first G273-r3 Session). The reduction regression is
+    a class (K5): every program with a Closure value whose Type carries Origin arguments, a literal in its maker's body (i6, i7) or a
+    maker-returned value kept or called (a16, a18_raw_input_store, a21, v3_reassign_nocall, w3_var_nocall), is `Unsupported_Kd` on
+    the default where dev accepted it.
+  - Rejected: O1 solve the images from the environment (meets normalize; a signature-only atom has no position: a fallback); O3
+    images in `Subst` or a closure context (codegen-visible, R4-M152); O4 the definition over its own Origin parameters (every
+    definition-world reader changes); the call gate row (`3201d9ea4`, F1's predicate listing a value call that reads a maker's images:
+    a kept value is never called, so it covered one case of the family, R2-B1; replaced by the owner's (a)).
+  - Open: a Closure returned from a named function's call may keep the function's per-call atoms in its signature (design §3.1; no
+    reproducer).
+  - Numbering: R4-M159 was reserved for G273 by the planning session.
+  - Amendment (R4 agrees): Collect and Occurrences walk each shared part once (G309, bu90).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6618,7 +6675,8 @@ resumed by R4-M86 (2026-10-20).
   open parts, so the table is still needed); a memo across queries (one `Apply` still walks its DAG as a tree); a cap on a Type's
   tree size (narrows accepted programs); waiting for R6 and R7; a per-query `Clear` (very many small substitution queries would pay
   the table's capacity); one stamp shared by nested calls through a field (exact only if every nested call closes in the same
-  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape).
+  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape;
+  superseded by BU-64, a per-query table).
   U2, the old analysis, under the owner's D5 exception of 2026-10-21 (the owner's choice 「例外を認める (推奨)」: performance fixes of
   its walks W1 and W5 with identical verdicts, the Origin-carrying shared Tuples of letr included; nothing else of the frozen path;
   they go with the old analysis at R6-check): `CleanupObservesBorrows` keeps one query per Place, its source and context fixed; its
@@ -8839,6 +8897,64 @@ resumed by R4-M86 (2026-10-20).
     re-running the conformance proof at the capture (a consumer re-running a check); Binding's null for a rejected projection
     (R5-M155 (c)).
 
+- **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
+  its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
+  bu77; rewritten 2026-10-31, unit bu89; PLAN G300; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g300\design.md` rounds 1-4 and
+  `design-r5.md`, ACCEPTED by BU and R5 before code; the owner's (a), 2026-10-31, verbatim 「すべて推奨の内容でお願いします」) SPEC 3,
+  6.1.3, 6.3.3. Meets R5-M157's removal condition in part.
+  - View: `TyCtxt.EnclosingDeclaration` (renamed from EnclosingFunction, with R5's consent for the collector's one call and comments)
+    gives the declaration whose instance the code at a scope holds: a named function, an accessor's executing function (bu60), and for
+    code in a container outside every body (a Field's or static's initializer) the container. A member or top-level declaration holds
+    none. bu63's base calls and ObjectViews read it unchanged (a Type matches neither of their patterns).
+  - Representation: the Closure Type's existing ClosureContext holds a substitution whose target is the closure and whose declaring Type
+    is the instance I, erased; BoundType counts I's parameters, pair layers and abstract parts (`TyCtxt.HeldType`), not its Origins.
+  - One producer, `TyCtxt.HeldContext(c, I)`: none where Erase(I) is Erase(SelfType(D)), D = EnclosingDeclaration(c) (the identity test,
+    so every read in D's own frame keeps D's identity), else the context holding Erase(I). It is a function of Erase(I) alone, so it drops
+    nothing a reader reads, and every order of steps reaching one closed, normalized instance gives one context. Its callers: the closing
+    step (`ClosePartCore`, I being the environment's image of D's identity, `EnvironmentInstance`, substitution alone, never a storage
+    query) and the five structural walks, SubstituteTypeCore, ContractTypeCore, SubstituteIdentity, CaseType and CompletedParts, which
+    map I as a part and give it back through the producer. KeptType substitutes, completes, then closes a stored part's Closures under its
+    owner (a `ContainsClosure` summary gates it); StorageInstance closes the rest under the instance's declaring Type, last. A group
+    has none.
+  - One closing step (R5's B1): ClosePart keeps a Type without a Closure and a Closure whose context a function's instance made (closed
+    with its parts by that instance, R5-M36); a held context is closed again, its instance (its own, else the environment's image)
+    closed in the same query (BU-19's memo covers it), then given to the producer. In `outer[A]`, `Holder<C>`'s held Closure gets
+    `Holder<C{outer[A]}>`: one key per instance of `outer`, a closed representative (before: InternalInvariant_Kd).
+  - The owner's (a), read: one lossless producer on Erase(I); every instance Type a reader or the collector reads ends with the closing
+    step; the walks re-intern through the producer. The literal "formed only by the closing step" would need an ordering rule across
+    about 70 callers (CaseType in Semantics adaptations, SubstituteIdentity in proofs, about 50 ContractType callers), which is not local.
+    The identity test commutes with substitution only through the closing step: a walk whose binder is D leaves a null context null.
+  - Readers' view, `TyCtxt.ClosureInstance`: the context, except a held instance with an Origin position (a borrow, Slice, handle or raw
+    layer, or an Origin argument, static included; `TyCtxt.HasOriginPosition`, one fact for every owner of that instance), which is closed
+    in no instance. ClosureSignature (ClosureDefinitionSignature), ClosureEnvironment and SubstOfClosure read it; every other
+    ClosureContext read is interning, equality, Erase, Retains' memo key or HoverBuilder's key. SubstOfClosure gives the closure's
+    own identity there, so the
+    collector reports the EnclosingInstance gap at each site through CarriesInstance's first branch, exactly where dev does, until PLAN
+    G300's per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
+  - Exception to KD3 (the collector's representative erased only into its key) and to TyCtxt.Instances' rule against proving on erased
+    values: a held closure item's representative carries an erased declaring Type; the collector reads no Origin of it (R5 consents).
+  - N6 resolved: Box<ref/i32> and Box<ref/i64> are two instances, so two Closure Types (SPEC 3, one Concrete Closure Type per expression
+    and instantiation): `TypeMismatch_Kd` where one is assigned to the other, an independent error dev masked. N5: a group static's
+    Closure call keeps one collector record where dev had two (Binding's Unsupported_Kd at the access stays); its fix is R5's collector
+    change.
+  - Rejected: (b-i), the read's Origins in the Closure Type's Origin arguments. A Type's Origin arguments are its symbol's declared ones
+    (the old analysis's SupportsType, Aliases, BoundContracts, MemberLookup, ResultSurvey, AggregateLayout and 13 `Schema.Origins[i]`
+    reads assume it). (b-ii), opening I's Origin positions per use in ClosureSignature: it threads a use through ClosureSignature's 8 sites
+    and TryCallable's 16 callers and instantiates D's Origin premises per use, a separate design step (PLAN G300). Reader Origins kept
+    in I (round 2): two reads of one instance differ only in I's Origins and the modulo-Origins relations reject them. A staged context
+    (round 4, the closure's identity for an instance with an Origin position): lossy, so a walk could not decide again after
+    normalization (B5 (b)), and its identity test by reference missed D's identity read through another path (B5 (a)). Formation in the
+    closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the capture
+    storage (`Binding.Closures.cs`).
+  - Tests: InstanceCollectorTest's R5-M157 rows flipped (one item per instance, a function in an initializer R5-M43's gap at its call),
+    a read through another instance, held contexts holding a function's Closure (also with an Origin parameter, and inside a second held
+    context: one item per instance), `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records) and
+    `OneInstanceModuloOriginsHasOneClosureType` (D's own instance joined and assigned through another path: dev's records; two instances:
+    TypeMismatch_Kd; erased reads: the gap at each); TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and
+    `AFieldInitializersClosureHoldsItsOwnersInstance`; GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another
+    instance, erased, a generic function, a nested Type, a base Field, a projection, also joined through R{o}.Item, a signature naming T,
+    a forwarded holder, the three held contexts of a function's Closure), each observing T.
+
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
   the premise contract's second reader, the fit judge's dependence query) (2026-10-30; PLAN G206 (7),
@@ -8897,6 +9013,115 @@ resumed by R4-M86 (2026-10-20).
     copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
+
+- **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
+  them read it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` and
+  `design-r1.md`, design review 1 REVISE (B1: the summary as BoundType fields; B2: ReplaceHolder), re-check ACCEPT) SPEC 3.8, R4's V16:
+  a walk's work is linear in the distinct parts of an interned Type. This entry makes the walks it names so (the summary's readers and
+  the walks taking BU-19's tables, below); it does not make every Origin walk linear (Open, below).
+  - Census (BU-55's instrumentation, with root entries told apart from entries once per visit of an outer walk; `g309\census\`): on
+    `D1<ref/i32 during a>` (a member path, a generic callee, `T is Copy`, called Closures) at n = 16 the root walks HasUnsubstitutedOrigin
+    (688,997 visits), HasUnsubstitutedInput, CallAtomsOf and ResultFixedForCall's FixedType (about 98,300 each) grow as 2^n; FixedType
+    asks ContainsOrigin and ProveCopy once per Origin position (ContainsOrigin 524,288 visits, OperandContexts 1.69 M through the Copy
+    proofs). A Closure with two captures (`func [v, u] () => v`, u `during b`) makes ContainsOrigin 4^n (201 M visits, Bind 7.1 s at n =
+    14). On BU-58's projection chains with raw leaves HoldsHolder takes 131,247 visits at n = 16.
+  - The summary (`Binding.OriginSummaries`): per interned Type the Origin expression nodes its parts' Origins and Origin arguments state
+    (Nodes) and those its raw layers state (RawNodes), each distinct, a meet node and its operands included, in the order a walk of the
+    parts meets them first (own Origin, Origin arguments, then each component's), and the holder bit (a `during self` layer inline: the
+    layer, or a Tuple or fixed array with a component holding one). It is formed on its first read from the components' summaries; a Type
+    without CarriesAnyOrigin has the empty summary and no entry; an array equal element by element to a component's is that component's.
+  - Readers, each a loop over the nodes with its own per-node test, a meet node passed over where the walk recursed into its operands
+    (Meet's operands are atoms): HasUnsubstitutedOrigin (both roles), HasUnsubstitutedInput, HasEnvironmentOrigin, CallAtomsOf (CallAtomOf
+    per node), ResultFixedForCall (its FixedOrigin per node), FixedInBody, MentionsOrigin (also Binding's two ContainsOrigin calls:
+    FixedOrigin's capture test and OriginDiagnostics), HoldsHolder (its six sites and NonNullAtLayers). Each becomes an instance member.
+    ∃, ∀ and ∪ folds of a pure per-node test are equal over the set of nodes, and the first-visit order keeps ResultFixedForCall's Copy
+    proofs in dev's order, repeats removed. BU-24's raw-role sites (ArchitectureRulesTest) follow the reads: HasUnsubstitutedOrigin's
+    (ContractCalls) and HoldsHolder's (RawOrigins.Holder) move to the summary, two sites out and two in (OriginSummaries).
+  - Stay walks (the sweep of BU-19's ungated Origin walks): ContainsOrigin's static walk for the old analysis's three calls, marked
+    `[Transitional("R6-check")]` (PLAN G309's residue; the Origin-expression overload it calls is Binding's own since G306 and stays);
+    StaticOnly and OverInputs, reached from the static Type relation (`PerCallShape`) without a Binding; OriginInheritance's local
+    MentionsOrigin, which compares whole expressions, not meet operands; FirstUnownedOrigin (a depth bound, a Function stop, components
+    before arguments); HasLocalRegion, CarrierOf and RegionBoundsPart, which stop at Function and FunctionItem parts (HasLocalRegion takes
+    BU-55's table in G309's next unit).
+  - Open (implementation review 1's B1, 2026-10-31; PLAN G309, its unit G309-R): the sweep missed walks that still take 2^n on an
+    Origin-carrying projection-chain DAG under a written borrow layer, CHAIN = `Dup<…Dup<ref/i32 during static>.Item…>.Item`: `let y:
+    ref/CHAIN = x` (Bind 15.6 s at n = 22), `func p(x: ref/CHAIN)` (5.7 s at n = 26) and `r<T>(x: ref/Dup<…T…>.Item)` called at `ref/i32
+    during static` (6.5 s at n = 22), through RetainInnerOutlives, RewriteOrigins (ResolveOrigin and TyCtxt.Intern per visit),
+    AddTypeClauseObligations, LocalOrigins' Match, and CallSlots' Infer with its proofs and OperandContexts per visit. Not a regression:
+    dev is as slow or slower on these forms.
+  - Not a shared representation (B1): BoundType's fields, constructor and interning are unchanged; the table is private to Binding, keyed
+    by identity as TypeMemo is, derived only from fields BoundType holds, and read by no other phase. BU-19's rejection of new BoundType
+    summaries and BU-58's of a BoundType bit stand. Nor is it BU-19's rejected "memo across queries (one `Apply` still walks its DAG as a
+    tree)": no query input enters a summary, which is built components-first through the table, so no walk of a DAG as a tree remains.
+    A summary is a function of its Type alone (an interned Type and its Origins never change; a test that reads a binding state, such as
+    PendingAtom or BorrowCondition, runs when a walk reads the nodes), so the table is never cleared, as interning is not (Binding's
+    constructor creates its TyCtxt), and a warm pass allocates nothing.
+  - The walks no summary answers take BU-19's tables, each entry call a query (G309's second unit): HasLocalRegion on `visitedParts`, as
+    RegionBoundsPart is; AddStoredPremises on `visitedParts` (a revisit adds the same premise edges, which the closure reaches anyway);
+    AccumulateRequirements on `visitedParts` with one state bit per polarity (a revisit at a met polarity repeats joins and keepers,
+    duplicates only, and a join a revisit would have made after a slot it reads changed is made when the declaration is visited again,
+    its self-edge queueing it, so the least fixed point is the same); and the leaf rewrites SubstituteStoredOrigins, WithoutUnstated and
+    PublishedResult on `rewrittenParts`, with WithoutRawOrigins and WithUnstatedOrigins (none calls a user of the table while it walks).
+    ReplaceHolder reads the holder bit: a part holding no `during self` layer is its own image (Rebuild of unchanged components returns
+    the interned part), which replaces its copy of HoldsHolder's rule; a declaration writes the parts holding one inline (no Type
+    argument or projection states `during self`, InvalidOriginBinding_Kd), so they form a tree of the text's size and need no table.
+    G273's walks (R4-M159; unit bu90) take `visitedParts` as well: ClosureType's Collect, its bound pass and its fill pass each a query
+    (a part met again adds no atom, so the distinct atoms keep their first-occurrence order), and ClosureArgumentVariance's Occurrences
+    with one state bit per polarity (Join is idempotent). The static Type relation reads a variance without a Binding, so Occurrences
+    takes the table of its definition's compilation's Binding, the table's one owner, whatever premises its caller reads. On dev
+    Collect took 24,580 / 393,220 / 6,291,460 calls per Bind on PLAN's `ref` form at n = 12 / 16 / 20; it takes 52 / 68 / 84.
+  - Cost: with BU-64's, G309's three units together. Pinned Bind A/B of bu82 merged with dev 06a74fe9d (b0fcb291d; BU's quiet slot,
+    2026-10-31, 7 rounds; `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\trim-report.md`): B/A' median 1.012-1.015 cold and
+    1.004-1.010 warm on Hello / Milestone 26 / Milestone 27, cold +45 KB, warm 0 B, above the 1.01 gate; the trim unit bu88 kept no
+    trim. The owner accepted the cost (2026-10-31, verbatim 「(a) Accept, fix, land」; PLAN G309).
+  - Tests: TypeDagScalingTest's raw projection-chain rows (`AWrittenProjectionDagIsWalkedOncePerPart` at n = 40,
+    `AWrittenTypeDagIsWalkedOncePerWrittenType` at n = 30) lose Explicit; `AHolderReadRebuildsOnlyThePartsHoldingTheLayer` (n = 40: an
+    instance's holder Field at the end of the chain D_i, and a projection chain beside the layer). The summary's readers' verdicts are
+    dev's (diagnostic snapshot and Unit runs on both pipelines).
+
+- **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of a
+  table for it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` item 4,
+  design review 1 (its prototype found 0 mismatches in 8,721,555 memo-versus-tree root checks over 847 focused tests and the census
+  forms) and re-check ACCEPT) SPEC 8.2, 8.4; R4's V16.
+  - Census: on `D1<ref/i32 during a>` ContractType/ContractTypeCore took 3,453,264 visits at n = 16 in Bind (7,035 root calls:
+    candidates, adaptations, constraint instantiations) and 4,231,059 in BuildMir (through TyCtxt.Instance -> Binding.StorageInstance
+    and TyCtxt.Retains), ApplyContractEnvironment once per ContractTypeCore visit. On a projection chain over a Type parameter in a
+    generic body (the guard path) the review counted 11,868 / 18,012 / 42,588 / 140,892 ContractTypeCore visits at n = 8 to 14.
+  - The rule: one outermost ContractType call is a query of `contractParts` (BU-19's TypeMemo), its scope, Self, normalize flag,
+    activeRequirementContract and normalizingAssociated's set fixed. ContractTypeCore's component loop continues it (ContractPart), a
+    component with components recorded (BU-55: a leaf is cheaper to rewrite again, a root is met once). The normalizations under a
+    guard push (ProjectionSpecification, the specified Type's and a Type-identity fact's ContractType) enter afresh: nested queries.
+    The associated collection's batch keeps its place at every call (BatchedContractType).
+  - BU-19's rejection re-examined. Its text: "a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the
+    gate suffices on every shape)". Neither reason holds. (i) The guard's set changes only by a push after a part's component loop,
+    popped before that part returns, and what runs under the push is a nested query; so within one query the set is the one the query
+    began with, and an answer is a function of the part and the query's fixed inputs. The writers of activeRequirementContract and
+    collectingAssociated (call binding, associated inference) restore them and run inside no query's component walk. A memo across
+    queries stays rejected. (ii) The gate passes every Origin-carrying part (the census above). This supersedes that clause of BU-19;
+    the rest of BU-19 stands.
+  - Exact as SubstituteType's table is: each answer is the one the recursion gives (the review's prototype compared them root by root),
+    and a nested query can only evict outer entries, which are then recomputed.
+  - Open limit (N2): ApplyContractEnvironment runs once per distinct part, and under a conformance path each run is a StoredType query
+    over the part's subtree; the guard path runs one nested query per normalized level. Both stay O(sum of subtree sizes), quadratic in
+    distinct parts (the review's prototype: +50 / +58 / +66 ContractTypeCore visits per +2), short of BU-55's linear rule. A conformance
+    path reaches a shared part (implementation review 1's B2): `contract Get<T>` requiring `func get(self: ref/Self, x:
+    ref/Dup<…T…>.Item)`, conformed by `struct X<U>` with `Self is Get<U>` and the matching `get`; SubstituteTypeCore takes +445 / +877 /
+    +2,221 / +6,829 / +10,093 visits over the base level at n = 4 / 8 / 16 / 32 / 40, quadratic (Bind 61 ms at n = 40; dev 2,185 ms at
+    n = 18). The rows below, this form's included, pass in milliseconds at n = 40.
+  - Tests: TypeDagScalingTest `InstanceChainWalksAreLinearInDistinctParts`'s `ref` row (n = 40: the summary's readers, the published
+    result, a Closure with two captures and G273's walks, BU-63's Collect and Occurrences, as well) and
+    `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); with the table undone both exceed the runner's 120 s
+    timeout, as the `ref` row does with dev's Collect. `AConformanceOverAProjectionDagFinishes` (n = 40, B2's conformance path;
+    G309-F1) bounds the open limit.
+  - Cost of G309's three units (BU-63, BU-64; unpinned A/B from one folder, full JIT, A = dev 1f2d7dea6; two other sessions' heavy runs
+    were registered, so no pinned timing): cold Bind +44,776 / +44,808 / +45,808 B and BuildMir +14,904 / +14,904 / +30,472 B on Hello /
+    Milestone 26 / Milestone 27, the heap with the compilation alive +35,024 / +35,032 / +45,504 B, warm Bind 0 B. Entries after
+    Bind: originSummaries 142 / 143 / 175 (12,224 / 12,256 / 13,256 B, byte-exact), contractParts 159 / 159 / 176, rewrittenParts
+    121 / 121 / 143, visitedParts 161 / 161 / 181 (dev 159 / 159 / 178); BuildMir in the same pass raises contractParts to 287 / 287 /
+    341 (431 slots) and rewrittenParts to 155 / 155 / 221, its +14.9 / +14.9 / +30.5 KB (implementation review 1's N2). Recording a query's root too gave 737 / 743 / 833 contractParts
+    entries and +93 KB cold Bind on Hello, so roots are not recorded. Cold Bind (one run each after a warm-up): PLAN's `ref` form 49 /
+    150 / 2,457 ms at n = 12 / 16 / 20 on dev, 14 to 17 ms up to n = 40; the two-capture form 206 ms / 3.3 s / 73.6 s at n = 12 / 14 /
+    16 on dev, 19 ms at n = 40; the raw chain (`during s`) 12.2 s at n = 24 on dev, 14 ms at n = 40.
 
 - **BU-65 A declaration's finite inline storage is judged on per-node summaries by Tarjan over the edges the walks discover**
   (2026-10-30; PLAN G310, unit bu76; designs `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g310\design.md`, `design-r1.md`,
@@ -9572,6 +9797,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M160 (G4): the temporary sel-only behaviors and the R5 tooling of the package end with the code generator selection.
   - Amended by R5-M165 (G9b): the owner's choice is implemented: `EmissionArtifacts.Publish` records `ArtifactPublicationFailed_Kd`
     (Input) and `GenerationFailed_Kd` is gone (net 0 codes); contract failures are `InternalInvariant_Kd`.
+  - Amended by R5-M167 (the owner's row 14): `DiagnosticPartition.Emission` and the `Emission` requirement are lasting names, the
+    generation request's partition and requirement, not R6 temporaries; no attribute.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
   `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
@@ -10484,6 +10711,8 @@ structure is recorded here by the unit that first implements it.
     until G7.
   - Amended by R5-M165 (G9b): the out-string adapters `WriteIr` and `Validate` are deleted (tests and `src/Benchmark` call `Generate`
     and read its records), and a publication failure is `EmissionArtifacts.Publish`'s own record (`ArtifactPublicationFailed_Kd`).
+  - Amended by R5-M169 (G330): "records why" covers what code generation checks; a broken contract it throws leaves `Generate`
+    unrecorded and is the Emission result's fault, which the command renders (`CheckFaulted_Kd`).
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; case identity by the owner,
   2026-10-19: 「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」; a
   temporary structure removed with the selector at G4) The pending ledger is the union of
@@ -13427,6 +13656,8 @@ structure is recorded here by the unit that first implements it.
        and G285-G289).
   - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
     collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
+  - Amended by R5-M167 (the owner's row 13): R5-M7's shared-file hold protocol, carried over to R6-gen, continues beside R4 until R4's
+    exit.
 - **R5-M149 Layout needs: one published fact of what a form's generated code reads a layout of, read by the collector and code
   generation; an uncalled constructor without a layout is checked only (unit proj)** (2026-10-29, C lane; PLAN G157 (41), the end-to-end
   review's B2; design `proj-design.md` revision 3, design review 2 ACCEPT; the owner's approval 2026-10-29, verbatim
@@ -13683,6 +13914,26 @@ structure is recorded here by the unit that first implements it.
     erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
     a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
     closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
+  - Amended by BU-60 (bu77): the removal condition is partly met. Owners whose erased instance has an Origin position remain the
+    EnclosingInstance gap, as do group statics, until G300's per-use opening; they reach CarriesInstance's first branch, so the else
+    branch's deletion stays R5's.
+  - Amended (2026-10-31, R5's follow-up unit after bu89; the owner's 「すべて推奨どおり」, relayed by BU; N5 and N7 of R5's bu77 reviews 3
+    and 4): the else branch is deleted. After BU-60 a definition `TyCtxt.EnclosingDeclaration` gives none for is a member or top-level
+    declaration, whose own substitution is its instance (Instantiable's contract), or code in a module's root, which does not
+    instantiate; a tripwire on the branch's false outcome had no hit (62905c6f6: 1,340 tests on default and mir, 194 probes natively;
+    bee89889c: those probes and 9 more, a group's function and a group static's nested function among them, at check on both
+    pipelines). `CarriesInstance` is one test: the substitution carries the instance of the declaration EnclosingDeclaration gives, as
+    its binder or its declaring Type. N5: `TyCtxt.SubstOfClosure` took the identity of a generic container's group for its static's
+    Closure, but a group has no instance (BU-60; R5-M82, X33 (a)), so `CarriesInstance` accepted that identity (its binder is the
+    group), the collector admitted the body under the group's open identity and the call's record was lost. The
+    fallback now takes the enclosing declaration's identity only for a function or a Type, else the Closure's own, so the call is the
+    gap again (`InstanceCollectorTest.AGroupStaticsClosureIsTheGap`, fail-first). The gap's family is now a nested function's call
+    (G149, R5-M43), a Closure whose held instance has an Origin position (until G300's per-use opening) and a group static's Closure
+    (until P42). Rejected: a group arm in the collector (a consumer deciding what TyCtxt publishes); EnclosingDeclaration skipping a
+    group (Binding's view: it would close the Closure per instance while X33 (a) keys the static's storage by its symbol). The test
+    is a whitelist (a function or a Type), so another kind of enclosing declaration falls to the gap, never into an identity (BU's
+    n1). A function nested in a group static's Closure loses its record at its call (m-groupstaticfunc's `inner()`): the Closure's
+    body is no longer admitted, and that record existed only through N5's open admission (R5's reviewer).
 - **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
   §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
   - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and
@@ -14013,6 +14264,8 @@ structure is recorded here by the unit that first implements it.
     destruction half (no reader).
   - Amends, each with its amendment line: R5-M16, R5-M17, R5-M27, R5-M46, R5-M58, R5-M148's correction, R5-M152 S7 and R5-M162's
     unit mapping.
+  - Amended by R5-M167 (the owner's row 15): G11c moved the five `.ll.in` templates to `Backend/`; `C/Emission` keeps the toolchain,
+    publication and profile files until R9 moves the toolchain out of the compiler.
 - **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, R6-gen; plan §4.9 row G9, R5-M18's G9a/G9b split;
   design `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q1-Q10; under R5-M162; Major, G:R6-gen-del; BU
   reviews the Binding commit)
@@ -14054,6 +14307,8 @@ structure is recorded here by the unit that first implements it.
     for tests (a second form of the entry).
   - Amends, each with its amendment line: R5-M18 (the owner's choice, implemented), R5-M64 (the adapters and the publication record) and
     R5-M162 (`ReportPublicationFailure`).
+  - Superseded in part by R5-M169 (G330): the mapping of code generation's argument, data and support exceptions to
+    `InternalInvariant_Kd` is gone; an exception publication does not classify is the Emission result's fault (`CheckFaulted_Kd`).
 - **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
   Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
   expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
@@ -14083,3 +14338,152 @@ structure is recorded here by the unit that first implements it.
   - Owner: the departure from K package 4.3's Builtin row (the comparison mode in `Variant`; an operator node with an abstract part
     keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
     「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.
+- **R5-M167 R6-gen's exit gate item by item; the owner's review of the exit's exceptions and Transitional declarations (G11)** (owner,
+  2026-10-31, verbatim 「R6-gen の出口も、推奨の内容でお願いします」 on G11's table, relayed by the planning session, PLAN `7869725d2`;
+  planning session; plan §4.9 row G11, §5.4, OQ17 (c); design `draft/Sketches/R6-gen/G11-design.md` with the planning session's
+  rulings Q1-Q4; under R5-M148, the model, R5-M152 and R5-M156 to R5-M165)
+  - The owner approved the table as recommended (`artifacts/benchmarks/r6-gen-exit/exceptions-and-transitional.md`, 18 rows; 100
+    declarations at `25570bb00`: "R6" 51, "R6-check" 9, "R7" 12, "R8" 28, "R6-gen" 0): row 12, D5's Emission half ends at this exit,
+    its Analysis half and exceptions continuing to R6-check (ARCH; R4-M35's amendment); row 13, R5-M7's shared-file hold protocol
+    continues beside R4 until R4's exit (R5-M148's amendment); row 14, `DiagnosticPartition.Emission` and the `Emission` requirement
+    are lasting names, no attribute (R5-M18's amendment); row 15, option (B): the five `.ll.in` templates move to `Backend/`, beside
+    their readers `LlvmModuleText` and `LegacyRuntimeHelpers.Formatting` (P11-P12's LLVM text), and the toolchain, publication and
+    profile files stay in `C/Emission`, P13's build boundary, which R9 moves out of the compiler, so nothing moves twice (R5-M163's
+    amendment); row 18, LLVM_OPTIMIZATION §6.1 and P34_REMAINING are in scope and name the code that exists. The other rows stand.
+  - The template comment (G11c, option (a), the planning session's Q2): `WindowsRuntime.ll.in` line 18 names `RuntimeAbi`, line 1 the
+    Backend's #0 profile; they named the deleted `WindowsLowering` and the emitter in every generated module, where G10's `*.cs` rows
+    cannot see them. A declared `.ll` text change.
+  - Gate (plan §5.4), on `claude/r6-g11` (dev `506ddbebc` with G11a-G11c); the runs are that worktree's `artifacts/verify/`:
+    1. E1 `20261030-212731-789-session-g11-e1-7ef1f02d0` (base `7ef1f02d0`), E2c `20261030-214736-909-session-g11-e2c-85c10bbb9`
+       (the comment) and E2m `20261030-221942-871-session-g11-e2m-6a10c82b2` (the move and the documents): each a default Session
+       with `'*.ll'` at O0 and O2, 25,628 tests (6 not run), 12,240 native executions. E1 to E2c: natives 6,120 equal, sidecars
+       identical, every `.ll` identical but the two template lines (`compare-ll-modulo-template.py`, kept with E2c); E2c to E2m
+       identical, so the move is behavior-preserving. The 40 harnessed milestones and the five CLI harnesses run in the landing window.
+    2. Snapshot 0 at each step (E1 against the shared base `506ddbebc`, E2c against E1, E2m against E2c); G2's classification, the
+       20 methods and `stage-baselines.json` stand (R5-M156).
+    3. The 8 O2 corpus kernels' input and O2 IR are identical between G3's B `519d88f38` and `df7ae4c45`
+       (`artifacts/benchmarks/r6-gen-exit/kernel-ir.txt`), so G3's run 3 (`r6-g3-run3/`, every kernel within variance) measured the
+       exit's code; G11c changed comment lines only. G308, merged into dev after this head, keeps that: its O2 A/B found the 8
+       kernels' `.ll` and `.O2.ll` byte-identical between `f600ef4c8` and its D `cbdc16afc` (`artifacts/benchmarks/r6-g308-o2/`).
+       M5 = 0: G287's `count.sh` at `df7ae4c45` counts Z 63, B 28, A 20 raw, and the
+       changed sites read: two zero-expect audits through `WriteFixture`, which fails closed; four negative names left with deleted
+       old-module tests; `VirtualOwnershipTest`'s names a symbol `ObjectRuntime` writes. The warm allocation tests pass in each Session: 1,183
+       `Purpose=Allocation` tests (the 6 tests not run are Explicit).
+    4. G10's zero-reference rows (R5-M162's G10 line) hold; their `*.cs` scope missed two names, fixed by G11a (`O2Corpus.md`) and
+       G11c (the template); M8's Emission rows are 0.
+    5. No `[Transitional("R6-gen")]`; `GenerationFailed_Kd` replaced (R5-M165); `AnalyzeInstance` deleted (R5-M162).
+    6. PLAN10-P3, measured 2026-10-31 in a quiet slot (`artifacts/benchmarks/r6-gen-exit/plan10-p3/`: `run-p3.sh`, `summarize-p3.py`,
+       the raw reports; A = `acc2f12ad`, the old generator's default, B = `8d93fec57`, both run from one folder, CPU 2 pinned at High
+       priority, tiering off, 5 interleaved rounds, each report's compiler id checked; times are the median of the rounds' sample
+       medians). The MIR side, BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against
+       the old Analyze and Emission (A's stages 4 to 6): 11.0-17.0 ms against 0.13-7.8 ms on the Scalar and Branching inputs and Generic 1,
+       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 39.4, 58.7
+       and 118.4 ms against 91.7, 190.1 and 388.3 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 3.8-5.9 MB against
+       0.06-4.7 MB on the small inputs; 11.4, 18.8 and 33.7 MB against 26.1, 50.6 and 100.2 MB. The whole default build (A's total without its
+       stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+9.0 to +15.0 ms) on the small inputs, 0.65,
+       0.51 and 0.47 on Generic 32, 64 and 128 (74.1, 113.4 and 199.8 ms against 114.8, 220.3 and 427.7 ms). Cold collection is equal within
+       2.5 % (B/A 0.98-1.02; bytes and items equal; Generic 128: 25.5 ms and 7.9 MB on both). Check cost against G2's head `90697ecfa`
+       (its default configuration; R5-M156's measurement): a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1
+       and 157.4 ms against 34.4, 94.2 and 154.7) and 61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.00 to
+       +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms, the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on
+       both, cold +21 KB (Hello) and +17 KB (Milestone26). The owner accepted the fresh small-build cost, verbatim
+       「(a) 受け入れる」 (2026-10-31); its fixed cost's measured breakdown is R5's next unit (PLAN G337).
+       Corrected 2026-10-31 (G337's census): the first summary took each sample's ticks and bytes, which cover the report's 8
+       iterations, as one iteration, so the owner was shown each absolute figure 8 times too large (+72 to +120 ms); the figures
+       above are per iteration (`summarize-p3.py` fixed; the first output kept as `summary-output-uncorrected-x8.txt`); every ratio
+       and the owner's answer stand.
+    7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
+       `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
+       `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
+       -272, Binding -179, Core -140, root -21). M4: the Emission's C# 18,284 lines in 77 files to 1,362 in 8, the Backend 14,365 (the
+       2,335 template lines join it at G11c). M8: TryPrepare reads, generation failure facts, instance reads and Emission failure
+       strings 0; `Ownership.Bodies` 30 (R6-check's). Hotspots: `Compilation.Generation.cs` (9 R6-gen commits, now 158 lines) and
+       `Compilation.Switch.cs` (5). Duplication: R5's two line clones, no new one. No NativeAOT run (OQ17 (c)). The final review
+       follows these records.
+  - Corrections (G11a's probes under MIR code generation, `artifacts/benchmarks/r6-gen-exit/probes/`; STATUS, P34_REMAINING, PLAN
+    G147 (2)): P34's generation-failure forms, G147 (2)'s two old-generator failures, `(p@uniq, 1)` and Unit or struct
+    temporaries on the right of `and`/`or` build and run; a custom setter or compound assignment through `uniq/(rc/T)` reports
+    `InternalInvariant_Kd` at check (PLAN's BU row).
+  - Open after the exit: G330 (one rule for a thrown code generation contract failure, its own design; Q1). Re-staged in PLAN,
+    each to the next unit changing its files (R6-gen ended without one): G157 (7), (17), (25)'s cache, (26), (28), (29)'s `Use`,
+    (30), (37), (38), (40), (43), (44), (46) and (50), G153, G289 (4) and LN (whose old-generator copy, `ObjectGenerationPlan.WriteKey`,
+    went at G7); G158 (1) and (2) to BU after the exit. G157 (34), the old generator's defect, closed by G7 as (22). BU's G147 (2),
+    G158 and G300 restate their old-generator outcomes as history or the current fact. LLVM_OPTIMIZATION §4 (`:638`) still names
+    `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G336).
+  - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
+    R5-M163 (the folder).
+- **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, R5; PLAN G337, design
+  `draft/Sketches/R5/G337-design.md` §7 (`bde706c59`); R4, which owns `Mir/Analysis`, agreed to O1 under its hold, accepted §7 with five
+  conditions and reviews the A3/A5 side; the owner's G337 acceptance 「(a) 受け入れる」; under R4-M1, R4-M2a and R5-M156)
+  - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's (PLAN10-P3's
+    `--compiler-pipeline` figures are per 8 compilations: per compilation stage 3 is 12.7 ms of Scalar 1's 30.1 ms); A3 and A5 over them
+    are 39-42 % of it, while nothing reads a library body's A3 or A5 result (A5 reads A4's keys, A4 no A5 fact, code generation A2's tables).
+  - Input rule: `MirAnalysis.Run(program, rootModules)`, the range required: steps 1 (A3) and 4 (A5: the Origin judgment, the Loans and
+    their block order and move paths) judge the bodies with `Source.Module < rootModules`, the range Compilation already passes to
+    `InstanceCollector.Run`; steps 2 (block order, move paths, A1, A2, A4's local facts) and 3 (A4 over the program) visit every body, since
+    A4 composes library callees' local facts and code generation reads A2's tables of generated library bodies, so no step reads a fact step
+    2 did not produce. Every caller passes `SourceModules.Length` (`Compilation.BuildMir`, `MirInitTest`, `CollectionCostMeasurements`).
+  - Invariant: a body outside the root range is built from its library definition alone (`MirBuilder` builds one body per definition from
+    its own syntax; an instance is the collector's replay of it; a library Closure captures library locals; SPEC 18: the library names no
+    program module). A builder change that builds a library-owned body from program facts (a per-instance or specialized body, R8's
+    monomorphization included) must place it in the root range or end this rule.
+  - Precondition, measured over 134 programs (`tests/milestones`, `tests/mir`, `docs/examples`, `src/Benchmark/Kimi`), every step on every
+    body: 215 library bodies each; no program declaration named by a library body; no problem, record or finding at a library site; the
+    library MIR identical but for two synthesized location ids in Milestone27 and Milestone30 (`SourceRef.Of` numbers a synthesized node on
+    its first use, in an order the program can change; A3 and A5 read an id only as a subject); 117 program constructors, none with a
+    library layer.
+  - Findings: `TyCtxt.OriginFindings` holds (a) the pass walk's findings over every obligation (`Binding.OriginRows.cs:122-147`: rows formed
+    with no body, BU-26, and case masks), which do not depend on the views read and are unchanged by this rule, and (b) each view's findings
+    at its first read by step 4 (`Binding.OriginRows.Atoms.cs:108`, `:120`), keyed by `MirDefKey.Body`, at that view's own or its layer's
+    rows. A view's layer is its constructor's own struct (`LayerOf`, `Binding.ExecutableBodies.cs:53`: the constructor's scope owner);
+    fragments never merge across Kotonoha libraries (SPEC 6.1.2) and a conformance block declares no constructor (SPEC 8.8.1), so a program
+    view never reads a library layer's rows. No program body's finding depends on reading a library view; the library views' findings move
+    to the library check.
+  - Library check: `MirAnalysisTest.TheLibraryHasNoAnalysisProblem(target)`, one row per target, runs the driver with the library as a root
+    module and fails on any library construction record, validator finding or analysis problem, A1's arena limit and the C1-F4 view's
+    findings included: a library defect is a compiler-test failure, not a user record (acceptable at H3 and after: the library ships with
+    the compiler). Every unit changing A3 or A5 runs it (G264 U1's candidates, G338); `MirAnalysis`'s contract header names it.
+  - Rejected: a syntax test in `MirAnalysis`; a per-body library flag (a second copy of the module order); skipping A1, A2 or A4 too, which
+    A4 and code generation read; an optional or defaulted range.
+  - Saving per compilation (indicative, unpinned): 39-42 % of stage 3, about 5 ms of the pinned 12.7 ms on Scalar 1, 0.64-0.77 MB cold, the
+    same time per warm rebuild; G337's O1-M retakes it pinned, and O2 (library bodies built on demand) follows that measurement.
+- **R5-M169 An exception publication does not classify ends the Emission result as Faulted (G330)** (2026-10-31, R5; PLAN G330, design
+  `draft/Sketches/R5/G330-design.md` (`c5f3a9b0d`, option C) with the planning session's rulings Q1-Q4 and review 1's N1-N7; under
+  DIAGNOSTICS rule 9, R5-M64 and R5-M165; Major)
+  - Rule: while code generation writes the publication's output, an `IOException` or `UnauthorizedAccessException` is the output's
+    (`ArtifactPublicationFailed_Kd` with its cause, `EmissionArtifacts.GenerateInto`): code generation does no file I/O but through that
+    writer (it reads embedded templates). Every other exception publication does not itself classify, a broken contract code generation
+    throws (a closed table without a row, a missing fact, a framework operation's contract) or another such as `Utf8JsonWriter`'s
+    `InvalidOperationException`, leaves `EmissionArtifacts` unclassified, and the Emission result's one finalization point
+    (`Project.PublishArtifacts`) renders it as Faulted: its valid records and one `CheckFaulted_Kd` (`Exception`, the message its bounded
+    note, at the project file), as `BuildTarget` renders the front end's, under one filter (`Project.Faults`). `Publish` keeps its own
+    mapping off such exceptions with the local `generating` (`BuildTarget`'s `completed` precedent), cleared before the writer's
+    `Dispose`, so a flush failure stays the output's; a flush failure while a generation exception unwinds replaces it and is the fault.
+    `CheckFaulted_Kd`'s fixed text stays (Q2).
+  - Supersedes R5-M165's mapping of "code generation's argument, data and support exceptions" to `InternalInvariant_Kd`. The premise of
+    G9b's review 1 B1 that no longer holds: that code generation throws argument, data and support exceptions. G330's census: 55 throw
+    sites reached by generation, 50 `InvalidOperationException` (3 `InvalidDataException`, 1 `ArgumentException`, 1
+    `ArgumentOutOfRangeException`), and framework exceptions (index expressions, null-forgiving reads, static table initializers); a
+    probe showed `kimi build` printing `InvalidOperationException` and `KeyNotFoundException` as toolchain failures without a code and
+    dying on `IndexOutOfRangeException`. Rejected: one record for every non-I/O exception as `InternalInvariant_Kd` (rule 9: a thrown
+    failure ends its result as Faulted with exactly one `CheckFaulted_Kd`; `InternalInvariant_Kd` is a Completed result's); one contract
+    exception type for every check (framework exceptions still escape); a catch in `Compilation.Generate` (tests and `src/Benchmark` would
+    lose the exception) or in `CommandExecution` (no result to render).
+  - Holds: R5-M18's "contract failures become `InternalInvariant_Kd`" (C-package §3.10's first bullet) for the checked form: a broken
+    contract code generation checks is recorded at its subject (81 sites in `Backend/Codegen`, 14 in `Backend/Instances`), at a root's
+    site or at the project (`Compilation.Generate`); the missing embedded backend record stays `InternalInvariant_Kd` (R5-M165 Q6).
+    Binding's throws (36 `InvalidOperationException`, 5 `ArgumentOutOfRangeException` and 2 `UnreachableException` across
+    `Binding/*.cs`, 6 of them in the TyCtxt files) end a check the same way (BU-24, BU-36).
+  - Effect: `kimi build`, `emit` and `run` render the fault and exit 1; `kimi test` reports "Test generation failed" with exit 2 (IMPL
+    §20.6.4's build failure) where it reported an internal runner error with 3 (code-read; no end-to-end `TestCommand` test exists). The
+    language server never generates; tests and `src/Benchmark` call `Compilation.Generate` and keep the exception.
+  - Deleted: `GenerateInto`'s contract catch. Tests: `EmissionArtifactsTest`'s theory over the writer's exception kinds (fail-first: the
+    `ArgumentException` and `InvalidDataException` rows were recorded). The command-layer test is G330b: its reproducer (another
+    program's `ModuleCodegen`) generated without throwing, and no production seam is added for a test.
+  - Amends, each with its amendment line: R5-M64 (a thrown failure is not `Generate`'s record) and R5-M165 (the mapping clause).
+  - G330b (no production seam): `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted` observes the command layer: a null
+    source path (`AddKimiFile`) faults the front-end result (`BuildTarget`), a null `NativeLibraries` input publication (`PublishArtifacts`),
+    and a source path with an embedded NUL makes code generation's location text throw `ArgumentException`, which `Publish`'s `generating`
+    exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
+    (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
+    the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.

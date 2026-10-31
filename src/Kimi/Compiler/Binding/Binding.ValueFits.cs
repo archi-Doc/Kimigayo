@@ -91,7 +91,7 @@ public sealed partial class Binding
         {
             failure = walk.Failure;
         }
-        else if (!HasLocalRegion(actual) && !HasLocalRegion(expected))
+        else if (!this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
         {
             return true;
         }
@@ -121,7 +121,7 @@ public sealed partial class Binding
             var b = expected.OriginArguments[i];
             if (!ReferenceEquals(a, b))
             {
-                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
+                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, OriginArgumentVariance(expected, i, this)));
             }
         }
 

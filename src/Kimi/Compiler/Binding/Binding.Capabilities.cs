@@ -513,7 +513,7 @@ public sealed partial class Binding
         {
             var type = this.StoredType(shape.Types[i], work.Type);
             var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope);
-            if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && HoldsHolder(type))
+            if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && this.HoldsHolder(type))
             {
                 proof = ConstraintProof.Refuted; // SPEC 5.7: a `during self` layer makes its Type non-Copy.
             }

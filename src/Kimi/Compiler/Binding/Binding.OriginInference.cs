@@ -53,7 +53,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
-            var variance = pattern.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var variance = OriginArgumentVariance(pattern, i, this);
             Add(pattern.OriginArguments[i], actual.OriginArguments[i], Compose(polarity, variance));
         }
 

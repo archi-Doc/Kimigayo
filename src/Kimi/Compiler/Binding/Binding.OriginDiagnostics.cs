@@ -416,7 +416,7 @@ public sealed partial class Binding
 
         foreach (var parameter in function.Parameters)
         {
-            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && ContainsOrigin(input, actual.Origin))
+            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && this.MentionsOrigin(input, actual.Origin))
             {
                 return true;
             }

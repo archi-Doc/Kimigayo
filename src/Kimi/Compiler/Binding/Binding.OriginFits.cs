@@ -228,7 +228,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < actual.OriginArguments.Count && i < expected.OriginArguments.Count; i++)
             {
-                var variance = ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant);
+                var variance = ComposeVariance(polarity, OriginArgumentVariance(expected, i, binding));
                 if (this.FailedOriginPart(actual.OriginArguments[i], expected.OriginArguments[i], variance) is { } slot)
                 {
                     if (all is null)

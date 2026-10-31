@@ -104,7 +104,7 @@ public partial class Compilation
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
     internal Mir.MirProgram BuildMir()
     {
-        var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
+        var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build(), this.SourceModules.Length);
         this.Collect(program);
         return program;
     }
