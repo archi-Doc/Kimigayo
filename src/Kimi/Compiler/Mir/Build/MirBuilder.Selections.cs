@@ -25,8 +25,7 @@ internal sealed partial class MirBuilder
         var sequence = this.Place(index.Left, input);
         if (this.Identical(sequence, index.Left, index))
         {
-            // Selected on an identity premise's Type: the index keeps its own code and records, and nothing reads the parameter's Place.
-            _ = this.Operand(index.Right is FromEndIndexKoto { Operand: var offset } ? offset : index.Right, expected: null);
+            this.Evaluate(index.Right);
             return this.Unidentified(sequence, index);
         }
 
@@ -58,6 +57,16 @@ internal sealed partial class MirBuilder
         }
 
         return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
+    }
+
+    // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a written ^x's offset) or a key, built for its
+    // own code and records, while nothing reads the parameter's Place.
+    private void Evaluate(Koto? node)
+    {
+        if (node is not null)
+        {
+            _ = this.Operand(node is FromEndIndexKoto { Operand: var offset } ? offset : node, expected: null);
+        }
     }
 
     // SPEC 4.7.4, 12.2: a selection's receiver whose value it reads, a Slice handle or a raw pointer, secured where it is located (before an
@@ -136,6 +145,16 @@ internal sealed partial class MirBuilder
     {
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var sequence = this.Place(index.Left);
+        if (this.Identical(sequence, index.Left, index))
+        {
+            this.Evaluate(range is null ? index.Right : range.Start);
+            this.Evaluate(range?.End);
+            this.roots.Clear();
+            this.roots.Add(sequence.Root);
+            this.Unsupported(index, destination, index);
+            return;
+        }
+
         var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);

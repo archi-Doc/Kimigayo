@@ -11480,7 +11480,7 @@ structure is recorded here by the unit that first implements it.
     Place, on exactly the premise's Type (the receiver node's published Type through its Layers), forms no projection and reads nothing
     of the receiver (an index's length or key resolution included; its index keeps its own code): it is the located `Unsupported_Kd` of
     an Opaque whose site names only the receiver's root (`MirBuilder.Identical`, `Unidentified`), not a typeless projection or length
-    MirValidator rejects (`InternalInvariant_Kd`). A range selection (`Slice`) is not covered. Any other typeless projection still reaches MirValidator; a parameter nested in the
+    MirValidator rejects (`InternalInvariant_Kd`); a range selection (`Slice`) the same, its boundaries or key built. Any other typeless projection still reaches MirValidator; a parameter nested in the
     receiver's Type has no fact (BU-72's limit) and keeps that defect (STATUS). Removal: G170's identity query, which gives the Place
     the identical Type, removes the premise test with BU-72.
 - **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
