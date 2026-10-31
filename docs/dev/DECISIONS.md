@@ -14481,3 +14481,9 @@ structure is recorded here by the unit that first implements it.
     `ArgumentException` and `InvalidDataException` rows were recorded). The command-layer test is G330b: its reproducer (another
     program's `ModuleCodegen`) generated without throwing, and no production seam is added for a test.
   - Amends, each with its amendment line: R5-M64 (a thrown failure is not `Generate`'s record) and R5-M165 (the mapping clause).
+  - G330b (no production seam): `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted` observes the command layer: a null
+    source path (`AddKimiFile`) faults the front-end result (`BuildTarget`), a null `NativeLibraries` input publication (`PublishArtifacts`),
+    and a source path with an embedded NUL makes code generation's location text throw `ArgumentException`, which `Publish`'s `generating`
+    exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
+    (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
+    the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
