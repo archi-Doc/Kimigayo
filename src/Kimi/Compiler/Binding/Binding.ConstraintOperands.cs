@@ -134,14 +134,14 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether an existence walk's query meets a part for the first time; a leaf is cheaper to answer again than to record.
+    // Whether an existence walk's query meets a part for the first time; a part answered again (AnsweredAgain) is met as if first.
     private bool FirstVisit(BoundType part, uint query) => this.FirstVisit(part, query, 1);
 
     // Whether a walk's query meets a part for the first time in a state, one bit: a walk whose effect at a part depends on a small state
     // as well keeps the visits of each state apart (visitedParts).
     private bool FirstVisit(BoundType part, uint query, byte state)
     {
-        if (part.Components.Count == 0)
+        if (AnsweredAgain(part))
         {
             return true;
         }

@@ -26,10 +26,10 @@ public sealed partial class Binding
     private BoundType PublishedResult(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType type)
         => this.PublishedParts(function, receiver, body, type, this.rewrittenParts.Begin(this.storageVersion));
 
-    // A component's result (PublishedResult); a leaf is cheaper to rewrite again than to record.
+    // A component's result (PublishedResult), recorded unless it is answered again (AnsweredAgain).
     private BoundType PublishedPart(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType part, uint query)
     {
-        if (part.Components.Count == 0)
+        if (AnsweredAgain(part))
         {
             return this.PublishedParts(function, receiver, body, part, query);
         }

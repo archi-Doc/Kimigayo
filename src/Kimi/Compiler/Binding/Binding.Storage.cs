@@ -234,11 +234,10 @@ public sealed partial class Binding
     // part is marked once per call (DECISIONS BU-19, BU-58).
     private BoundType WithUnstatedOrigins(BoundType declared) => this.MarkedParts(declared, this.rewrittenParts.Begin(this.storageVersion));
 
-    // A component's result (WithUnstatedOrigins), each distinct one with components marked once per query; a leaf is cheaper to mark
-    // again than to record.
+    // A component's result (WithUnstatedOrigins), recorded unless it is answered again (AnsweredAgain).
     private BoundType MarkedPart(BoundType part, uint query)
     {
-        if (part.Components.Count == 0)
+        if (AnsweredAgain(part))
         {
             return this.MarkedParts(part, query);
         }
@@ -296,12 +295,17 @@ public sealed partial class Binding
     private BoundType? WithoutUnstated(BoundType? kept)
         => kept is null || !kept.CarriesRawOrigin ? kept : this.UnmarkedParts(kept, this.rewrittenParts.Begin(this.storageVersion));
 
-    // A component's result (WithoutUnstated), each distinct one carrying a raw Origin, so with components, rewritten once per query.
+    // A component's result (WithoutUnstated): a part carrying a raw Origin rewritten, recorded unless it is answered again (AnsweredAgain).
     private BoundType UnmarkedPart(BoundType part, uint query)
     {
         if (!part.CarriesRawOrigin)
         {
             return part;
+        }
+
+        if (AnsweredAgain(part))
+        {
+            return this.UnmarkedParts(part, query);
         }
 
         if (!this.rewrittenParts.TryGet(part, query, out var result))
@@ -565,10 +569,10 @@ public sealed partial class Binding
         => arguments.IsEmpty && images.IsEmpty && correspondingBinder is null
             ? type : this.StoredOriginParts(type, binder, arguments, images, correspondingBinder, this.rewrittenParts.Begin(this.storageVersion));
 
-    // A component's result (SubstituteStoredOrigins); a leaf is cheaper to substitute again than to record.
+    // A component's result (SubstituteStoredOrigins), recorded unless it is answered again (AnsweredAgain).
     private BoundType StoredOriginPart(BoundType part, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images, Koto? correspondingBinder, uint query)
     {
-        if (part.Components.Count == 0)
+        if (AnsweredAgain(part))
         {
             return this.StoredOriginParts(part, binder, arguments, images, correspondingBinder, query);
         }

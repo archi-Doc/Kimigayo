@@ -10,8 +10,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // Whether a Type holds a `during self` layer in its inline storage: the layer, or a Tuple or fixed array with a component holding one
-    // (its Origin summary's bit, Binding.OriginSummaries).
-    private bool HoldsHolder(BoundType type) => this.SummaryOf(type).HoldsHolder;
+    // (its Origin summary's bit, Binding.OriginSummaries); the layer is raw, so a Type carrying no raw Origin holds none.
+    private bool HoldsHolder(BoundType type) => type.CarriesRawOrigin && this.SummaryOf(type).HoldsHolder;
 
     // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
     // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,

@@ -25,6 +25,16 @@ public sealed partial class Binding
     // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises and AccumulateRequirements (a bit per polarity).
     private readonly TypeMemo<byte> visitedParts = new();
 
+    // Whether a walk of contractParts, rewrittenParts or visitedParts answers a part again rather than recording it (DECISIONS BU-63): a
+    // leaf, or a part of at most two components that are leaves. Answering one again is a bounded step for each component edge that
+    // reaches it, so the walk stays linear in its DAG, and it saves the two table operations a record costs: such parts are most of the
+    // parts a program's walks meet, and a query rarely meets one twice.
+    private static bool AnsweredAgain(BoundType part)
+    {
+        var components = part.Components;
+        return components.Count == 0 || (components.Count <= 2 && components[0].Components.Count == 0 && components[^1].Components.Count == 0);
+    }
+
     private sealed class TypeMemo<T>
     {
         private readonly Dictionary<BoundType, (uint Query, T Answer)> answers = new(ReferenceEqualityComparer.Instance);

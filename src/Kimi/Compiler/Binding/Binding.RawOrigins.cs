@@ -88,12 +88,17 @@ public sealed partial class Binding
         return true;
     }
 
-    // A component's result (WithoutRawOrigins), each distinct one carrying a raw Origin, so with components, erased once per query.
+    // A component's result (WithoutRawOrigins): a part carrying a raw Origin erased, recorded unless it is answered again (AnsweredAgain).
     private BoundType ErasedPart(BoundType part, uint query)
     {
         if (!part.CarriesRawOrigin)
         {
             return part;
+        }
+
+        if (AnsweredAgain(part))
+        {
+            return this.ErasedParts(part, query);
         }
 
         if (!this.rewrittenParts.TryGet(part, query, out var result))

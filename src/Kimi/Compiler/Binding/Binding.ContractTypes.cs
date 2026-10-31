@@ -30,8 +30,8 @@ public sealed partial class Binding
         return this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
     }
 
-    // A component of a query: the associated collection's batch answers it where one is open (unchanged); otherwise a component with
-    // components is recorded, a leaf being cheaper to rewrite again than to record and a query's root met once (DECISIONS BU-55).
+    // A component of a query: the associated collection's batch answers it where one is open (unchanged); otherwise a component is
+    // recorded unless it is answered again (AnsweredAgain), a query's root being met once (DECISIONS BU-55).
     private BoundType ContractPart(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         if (!type.HasAbstractPart && !type.CarriesOrigin)
@@ -44,7 +44,7 @@ public sealed partial class Binding
             return this.BatchedContractType(type, scope, self, normalize, query);
         }
 
-        if (type.Components.Count == 0)
+        if (AnsweredAgain(type))
         {
             return this.ContractTypeCore(type, scope, self, normalize, query);
         }
