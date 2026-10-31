@@ -117,8 +117,9 @@ internal sealed partial class InstanceCollector
     // once per erased Type (the key's own when preset: a comparison item's node Type, DECISIONS R5-M166) whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
     // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
     // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose storage verdict the call's edge read
-    // (Made), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. Past the depth limit
-    // GenerationResourceLimit_Kd. -1 when refused.
+    // (Made), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. A Type higher than the
+    // height cap is, like a Layout limit, a use of its erased Type over a limit in the requesting declaration (Limit, DECISIONS R5-M171),
+    // read again at each request, not a refused key. -1 when refused.
     private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type, Subst? representative)
     {
         var set = this.Set;
@@ -141,8 +142,7 @@ internal sealed partial class InstanceCollector
 
         if (type.Height > HeightLimit)
         {
-            this.refused.Add(key);
-            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Limit(this.types.Erase(type), this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
             return -1;
         }
 

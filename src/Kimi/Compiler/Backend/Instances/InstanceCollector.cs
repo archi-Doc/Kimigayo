@@ -61,8 +61,9 @@
 // R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
-// a type-driven key whose Type is higher than 128, a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's
-// declaration) on an admission chain, its height grown at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd; a
+// a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's declaration) on an admission chain, its height grown
+// at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd, once per key; a type-driven key whose Type is higher than
+// 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
@@ -91,7 +92,7 @@ internal sealed partial class InstanceCollector
     private readonly Layout layout;
     // The least use of each erased Type over a limit per declaration (Limit), recorded at the run's end (DECISIONS R5-M171).
     private readonly Dictionary<(BoundType Type, MirDefKey Declaration), SourceRef> limits = new();
-    private readonly List<SourceRef> limited = new(); // RecordLimits' scratch.
+    private readonly List<SourceRef> limitSubjects = new(); // RecordLimits' scratch.
     private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.

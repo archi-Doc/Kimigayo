@@ -220,7 +220,7 @@ internal sealed partial class InstanceCollector
         return result;
     }
 
-    // SPEC 8.15 (Limits), IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171): a use of an erased Type over a limit in a declaration, kept
+    // IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171): a use of an erased Type over a limit in a declaration, kept
     // as the least subject of the declaration's uses in SourceRef order (module, then the syntax table's pre-order), whatever the
     // collection's order; RecordLimits makes each Type's one record per declaration.
     private void Limit(BoundType erased, MirDefKey declaration, SourceRef subject)
@@ -241,14 +241,14 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        this.limited.Clear();
+        this.limitSubjects.Clear();
         foreach (var subject in this.limits.Values)
         {
-            this.limited.Add(subject);
+            this.limitSubjects.Add(subject);
         }
 
-        this.limited.Sort(static (x, y) => Order(x, y));
-        foreach (var subject in this.limited)
+        this.limitSubjects.Sort(static (x, y) => Order(x, y));
+        foreach (var subject in this.limitSubjects)
         {
             this.Report(DiagnosticCode.GenerationResourceLimit_Kd, subject);
         }

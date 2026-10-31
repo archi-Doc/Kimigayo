@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// IMPL 21.3.2, SPEC 8.15 (Limits), DIAGNOSTICS rule 6 (DECISIONS R5-M171, PLAN G153): a Type over a layout limit is one record per
+// IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171, PLAN G153): a Type over a layout limit is one record per
 // declaration that uses it, at the least of that declaration's uses, whatever the collection's order.
 public sealed partial class InstanceCollectorTest
 {
@@ -47,5 +47,33 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(subjects, string.Join("|", set.Records.Select(x => c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
         Assert.All(set.Records, x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
         Assert.All(set.Records, x => Assert.True(c.SyntaxOf(x.Subject) is var node && node.SyntaxId <= node.SyntaxOwner!.ParsedCount, "Synthesized."));
+    }
+
+    // DECISIONS R5-M171: a type-driven key whose Type passes the height cap is a limit of its erased Type, not a refused key: one record per
+    // declaration at its least request (two functions, two records; two locals of one function, one). Known limit: a shared type-driven
+    // item keeps its first admitter's record (Option<S>'s glue, reaching an Array of a Type over the size limit, requested from d and e:
+    // one record, at d; at e once d is gone). Subjects up to their first colon.
+    [Theory]
+    [InlineData("twoFunctions", "let v|let v")]
+    [InlineData("oneFunction", "let v")]
+    [InlineData("shared", "let o")]
+    [InlineData("sharedAlone", "let p")]
+    public void AHeightCapIsATypeLimitAndASharedItemKeepsItsFirstRecord(string shape, string subjects)
+    {
+        var deep = "Option<obj/" + string.Concat(Enumerable.Repeat("W<", 130)) + "i32" + new string('>', 130) + "> = .None\n";
+        var nest = "struct W<T>\n    public var next: Option<obj/W<T>>\n";
+        var shared = "struct S\n    public var a: Array<[2147483648 of u8]>\n";
+        var e = "func e() -> i32\n    let p: Option<S> = .None\n    return 2\n";
+        var c = MirBuildTest.Compile(shape switch
+        {
+            "twoFunctions" => nest + $"func f() -> ()\n    let v: {deep}    return\nfunc g() -> ()\n    let v: {deep}    return\n",
+            "oneFunction" => nest + $"func f() -> ()\n    let v: {deep}    let u: {deep}    return\n",
+            "shared" => shared + "func d() -> i32\n    let o: Option<S> = .None\n    return 1\n" + e,
+            _ => shared + e,
+        });
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(subjects, string.Join("|", set.Records.Select(x => c.SyntaxOf(x.Subject).ToString().Split(':')[0])));
+        Assert.All(set.Records, x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
     }
 }

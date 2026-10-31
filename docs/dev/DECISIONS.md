@@ -14605,10 +14605,13 @@ structure is recorded here by the unit that first implements it.
     admitted item (none can be above otherwise) and counts each step in `Work`, so `AChainWithoutGrowthScalesLinearly` observes the walk
     (the 800-function chain walks nothing); O(W·n) stays the recorded worst case, reached by an identity whose earlier items lie off
     the chain (e.g. two parallel chains of the same definitions), which no row covers yet.
+  - Amended by R5-M171 (G153 U1b): the height cap is a property of the Type, so its record follows R5-M171's Type rule (one per erased
+    Type and declaration, at the least request) and the key enters no `refused`; growth and identity-count refusals keep one record per key.
 - **R5-M171 A Type over a layout limit is one record per declaration, at its least use (G153 U1a)** (2026-10-31, R5; PLAN G153 (1),
   design `draft/Sketches/R5/G153-design.md` revision 1, accepted at its re-review; amends R5-M44's record clause) SPEC 23.1.2 leaves
-  grouping to the implementation; IMPL 21.3.2 reports a limit at the affected declaration, call or token; SPEC 8.15's Limits paragraph
-  and DIAGNOSTICS rule 6 forbid a placement that depends on the order of checks.
+  grouping to the implementation; IMPL 21.3.2 reports a limit at the affected declaration, call or token; DIAGNOSTICS rule 6 orders
+  positions by structure, and by analogy with SPEC 8.3.3's limits paragraph (proof and premise limits, never dependent on the order of
+  checks) the placement follows that order, not the collection's.
   - Cause: one record per erased Type sat at its first use in the collector's FIFO order, so an edit elsewhere moved it to another
     function (routing one call through a generic helper), fixing one function revealed the next, and inside one generic body the order
     of its instances chose the line.
@@ -14635,3 +14638,7 @@ structure is recorded here by the unit that first implements it.
     admission order, one generic body in either order of its instances, a function and its anonymous function, a constructor and its
     creation, an index and an iteration), seven of its nine rows failing on dev; `ACollectionsGlueLaysOutItsElements`' limit row moves
     from `let b`, the first glue request in drop order, to `let a`, the least (this rule's change, not a weakening).
+  - U1b: a type-driven key whose Type passes the height cap (128) is a limit of its erased Type (`Erase(type)`, not the key's Type, which
+    a comparison presets to a template node) through `Limit`, read again at each request, with no `refused` entry (R5-M170 amended).
+    Rows (`AHeightCapIsATypeLimitAndASharedItemKeepsItsFirstRecord`): two functions, two records (one before); two locals of one
+    function, one; the Known limit's `Option<S>` pair pinned (one record at `d`; at `e` alone once `d` is gone).
