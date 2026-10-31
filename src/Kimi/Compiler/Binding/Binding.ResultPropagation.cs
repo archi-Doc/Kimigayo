@@ -115,15 +115,15 @@ public sealed partial class Binding
     }
 
     // What an expression awaits its position for (SPEC 14.9.2 step 3): the Type of a part of Type Never, the Type or default of a literal
-    // that waits unbound, the Type of an anonymous function that waits unbound for its call (SPEC 10.5.1; DECISIONS BU-43), or several;
-    // a literal or anonymous function bound once is decided.
+    // that waits unbound, the Type of a part that awaits its call (Call: AwaitsCall, whatever its kind; SPEC 10.5.1; DECISIONS BU-43), or
+    // several; a literal bound once, or a part its call completed, is decided.
     [Flags]
     private enum Awaiting : byte
     {
         None = 0,
         Never = 1,
         Literal = 2,
-        Callable = 4,
+        Call = 4,
     }
 
     // SPEC 14.9.2 step 3: whether an expression, bound or waiting, takes its position's Type once that is decided.
@@ -146,7 +146,7 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.PartsAwait(array.Elements),
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
-            _ when this.AwaitsCall(node) && this.KindOf(node) is PartKind.Function or PartKind.Case => Awaiting.Callable,
+            _ when this.AwaitsCall(node) => Awaiting.Call, // SPEC 10.5.1: a part its call completes takes the Type there.
             _ => node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) ? Awaiting.Literal : Awaiting.None,
         };
     }

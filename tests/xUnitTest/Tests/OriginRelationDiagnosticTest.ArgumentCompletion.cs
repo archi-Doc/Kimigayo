@@ -5,7 +5,7 @@ using Xunit;
 namespace XunitTest;
 
 // G216 (a) T1: Part 1's (argument completion's) rows beside d4's (OriginRelationDiagnosticTest.JoinArguments.cs), under the owner-adopted
-// G216a-PLAN.md §3. Each row's first value names the Part 1 unit expected to pass it (U1.2 to U1.5). Forms are BU's design review
+// G216a-PLAN.md §3. Each row's first value names the Part 1 unit expected to pass it (U1.2 to U1.6). Forms are BU's design review
 // (D1, N11), R4's design review (B1-B4) and BU's review 3 (B6), copied as written, one form per program, each with its twin.
 public partial class OriginRelationDiagnosticTest
 {
@@ -52,6 +52,10 @@ public partial class OriginRelationDiagnosticTest
     private const string WTuples = "if c => (identity(1), 2) else => (2, 3)";
 
     private const string WSources = "NoApplicableOverload_Kd identity(1); TypeMismatch_Kd 2";
+
+    private const string KD = "func k(c: bool, d: bool) -> i32\n";
+
+    private const string NdJoin = "(if c => (if d => identity(1) else => identity(2)) else => identity(3))";
 
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
@@ -204,11 +208,26 @@ public partial class OriginRelationDiagnosticTest
     public void AWaitingJoinPositionIsCompletedByTheSelectedCandidate(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 
+    // B2 (BU's U1.5 review, U1.6 design 1): a part that awaits its call awaits its position whatever its kind (SPEC 10.5.1, 14.9.2 step
+    // 3), so a nested join all of whose sources are deferred calls awaits the outer join's position, and the selected candidate completes
+    // it: at a named call (nd1, nd1b beside a literal), with explicit Type arguments (nd1g), under a `let` expectation (nd1e) and at a
+    // value call (nd1v); nd1c, a literal in the inner join, was valid before.
+    [Theory]
+    [InlineData("U1.6", "nd1", IdentityT + "func f(x: i64) -> i32 => 0\n" + KD + "    return f" + NdJoin + "\n")]
+    [InlineData("U1.6", "nd1b", IdentityT + "func f(x: i64) -> i32 => 0\n" + KD + "    return f(if c => (if d => identity(1) else => identity(2)) else => 3)\n")]
+    [InlineData("U1.6", "nd1c", IdentityT + "func f(x: i64) -> i32 => 0\n" + KD + "    return f(if c => (if d => identity(1) else => 2) else => identity(3))\n")]
+    [InlineData("U1.6", "nd1e", IdentityT + "func k(c: bool, d: bool) -> i64\n    let v: i64 = identity" + NdJoin + "\n    return v\n")]
+    [InlineData("U1.6", "nd1g", IdentityT + "func g<T>(x: T) -> T => x@move\nfunc k(c: bool, d: bool) -> i64\n    return g<i64>" + NdJoin + "\n")]
+    [InlineData("U1.6", "nd1v", IdentityT + "func f(x: i64) -> i32 => 0\n" + KD + "    let h = f\n    return h" + NdJoin + "\n")]
+    public void ANestedJoinOfDeferredCallsAwaitsItsPosition(string unit, string form, string body)
+        => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
+
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid
     // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4); with
-    // literal leaves at an `i64` position (R4's dlit, dvlit), each literal takes its position's Type (SPEC 12.3, 14.9.2 step 3). The row
-    // asserts the verdict at every depth; the linear work it requires is shown by the row finishing in the unit run (TypeDagScalingTest's
-    // pattern: a regression is a hang the runner's process timeout reports).
+    // literal leaves at an `i64` position (R4's dlit, dvlit), each literal takes its position's Type (SPEC 12.3, 14.9.2 step 3); B2's nd
+    // (U1.6), joins nested directly in a join's first source with deferred calls as every source, is valid. The row asserts the verdict
+    // at every depth; the linear work it requires is shown by the row finishing in the unit run (TypeDagScalingTest's pattern: a
+    // regression is a hang the runner's process timeout reports).
     [Theory]
     [InlineData("U1.4", "dn", false, false)]
     [InlineData("U1.4", "dn_n", false, true)]
@@ -216,11 +235,14 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.4", "dv_n", true, true)]
     [InlineData("U1.4", "dlit", false, false)]
     [InlineData("U1.4", "dvlit", true, false)]
+    [InlineData("U1.6", "nd", false, false)]
     public void NestedJoinArgumentsHaveTheirVerdictAtEveryDepth(string unit, string form, bool valueCall, bool failing)
     {
         for (var depth = 1; depth <= 32; depth++)
         {
-            var body = NestedJoinArgument(depth, valueCall, failing, literal: form.EndsWith("lit", StringComparison.Ordinal));
+            var body = form == "nd"
+                ? NestedDeferredJoinArgument(depth)
+                : NestedJoinArgument(depth, valueCall, failing, literal: form.EndsWith("lit", StringComparison.Ordinal));
             if (failing)
             {
                 AssertLanguageErrors($"{form} d={depth} [{unit}]", body, "TypeMismatch_Kd .Some(true)");
@@ -257,5 +279,18 @@ public partial class OriginRelationDiagnosticTest
         return valueCall
             ? $"func k(c: bool, g: ({type}) -> i32) -> i32\n    return g({join})\n"
             : $"func inner(x: {type}) -> i32 => 0\nfunc k(c: bool) -> i32\n    return inner({join})\n";
+    }
+
+    // B2's nd program of `depth` (BU's U1.6 design): each join nested in the first source of the next, every other source a deferred
+    // `identity(·)`, at f(i64).
+    private static string NestedDeferredJoinArgument(int depth)
+    {
+        var join = "identity(1)";
+        for (var i = 1; i <= depth; i++)
+        {
+            join = $"(if c => {join} else => identity({i + 1}))";
+        }
+
+        return $"{IdentityT}func f(x: i64) -> i32 => 0\nfunc k(c: bool) -> i32\n    return f{join}\n";
     }
 }
