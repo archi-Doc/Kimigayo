@@ -635,7 +635,7 @@
 
 - **ABI**：物理型に加え、借用モード・属性 mask・定数 alignment/byte 範囲を保持する。引数、結果、関数効果は別管理。`ParameterShape` と cache の一致判定にも含める。
 - **出力の統一**：定義と直接 call は既に `AbiParameter.Attributes` を利用する。一方、現在の closure adapter と間接 call には属性を出力しない経路がある。共通出力へ揃える。欠落だけで直ちに UB ではないが、強すぎる付与や ABI 不一致は避ける。
-- **命令**：lowering が確定した証明を `EmissionInstruction` へ渡す。writer が Binding・syntax・ownership を読み直して推測しない。
+- **命令**：lowering が確定した証明を MIR（`MirStatement` と終端）へ渡す。MIR コード生成（`FunctionCodegen`）が Binding・syntax・ownership を読み直して推測しない。
 - **効果**：既存 `EffectSummary` は主に Iterator/BufferWriter の公開制約用。LLVM の一般的な memory/capture/termination 属性と同一視しない。追加解析は未知を保守的に扱い、LLVM の既存推論と重複させすぎない。
 - **費用**：属性の文字列化を命令ごとに再計算しない。既存の再利用可能な計画・cache を使い、warm allocation 回帰を維持する。
 - **仕様更新**：raw pointer の初期 GEP、Wrapping の初期算術、FP 方針など、現行実装仕様が形を限定する場合は、採用時に所有章を更新する。本書だけで例外を追加しない。
