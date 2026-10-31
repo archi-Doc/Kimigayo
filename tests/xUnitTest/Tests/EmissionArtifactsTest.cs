@@ -297,10 +297,13 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     // DECISIONS R5-M169: a command ends a result that an exception ends as Faulted (Project.Faults): one CheckFaulted_Kd (Exception) at
-    // the project file, and the command fails and publishes nothing. Each row breaks a caller contract no command input reaches, without a
-    // production seam: the front end reads a null source path (BuildTarget's fault); publication checks a null NativeLibraries input that
-    // preparation validated (ArtifactFiles.CheckPath, PublishArtifacts' fault); code generation writes the location of a source path with
-    // an embedded NUL (SourceLocationTable.Text's ArgumentException, which Publish's own mapping would take as an output failure).
+    // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
+    // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
+    // (ArtifactFiles.CheckPath, PublishArtifacts' fault); code generation writes the location of a source whose path has an embedded NUL,
+    // which throws ArgumentException (Publish's generating exclusion leaves it to the fault) only because of a defect, PLAN G346:
+    // SourceLocationTable.Text's GetRelativePath rejects the path before its escaping (IMPL 21.4.2) runs. The source is checked without a
+    // project directory, since the whole command's parse rejects the path the same way (a front-end fault). Removal condition: when G346
+    // is fixed, this row needs another trigger for the generating exclusion.
     [Theory]
     [InlineData("front end")]
     [InlineData("publication")]
@@ -309,7 +312,6 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        File.WriteAllText(Path.Combine(this.directory, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello, world!\")");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         if (phase == "front end")
@@ -330,7 +332,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             Assert.Null(path);
         }
 
-        Assert.Contains(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
+        Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
         Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);

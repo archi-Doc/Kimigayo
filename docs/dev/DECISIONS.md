@@ -14467,4 +14467,6 @@ structure is recorded here by the unit that first implements it.
   - G330b (no production seam): `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted` observes the command layer: a null
     source path (`AddKimiFile`) faults the front-end result (`BuildTarget`), a null `NativeLibraries` input publication (`PublishArtifacts`),
     and a source path with an embedded NUL makes code generation's location text throw `ArgumentException`, which `Publish`'s `generating`
-    exclusion leaves to the fault; each row fails with its catch or the exclusion removed. No gap remains.
+    exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
+    (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
+    the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
