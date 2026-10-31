@@ -49,14 +49,20 @@ public sealed partial class Binding
     private static bool IsInvariantLayer(BoundType type, Binding? binding)
         => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
 
+    // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
+    // comparisons `outer` names.
+    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, ComparisonPremises? outer)
+        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), outer);
+
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
         => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
-    // required per-call Origins are rigid: one outlives another only at the same position, and a fixed Origin outlives one only when
-    // it is static, since the call that binds it may come after every point of the enclosing body. A meet outlives an Origin when
-    // each operand does, and an Origin outlives a meet when it outlives one operand.
+    // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
+    // comparison's required signatures (the owner's (a)), and a fixed Origin outlives one only when it is static, since the call that
+    // binds it may come after every point of the enclosing body. A meet outlives an Origin when each operand does, and an Origin
+    // outlives a meet when it outlives one operand.
     private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use, int depth)
     {
         if (depth > 8)
@@ -99,7 +105,8 @@ public sealed partial class Binding
 
         if (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b))
         {
-            return false;
+            // A required per-call Origin relates to another only through the required signatures' own well-formedness.
+            return binding is not null && binding.ProvesOriginOutlives(a, b, use!, instance);
         }
 
         if (b is { Kind: OriginKind.Inference, Open: true } && instance.IsResultOnlyOrigin(a))
@@ -107,7 +114,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!);
+        return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!, instance);
     }
 
     // The required signature an implementation's is compared against (CompatibleResult): the required one, its result replaced.
@@ -133,7 +140,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var instance = new CallableInstance(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
+        var instance = Comparison(actual, own, expected, null);
         var inputs = actual.Components[0];
         var required = expected.Components[0];
         for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)

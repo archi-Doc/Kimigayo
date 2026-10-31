@@ -354,25 +354,48 @@ internal enum TypePosition : byte
     StaticStorage,
 }
 
-// SPEC 10.7, 15.3.7: one Callable comparison of an implementation signature (Actual) with a required one (Expected). The Origins that
-// the implementation binds per call are instantiated at the required inputs in the same positions; the required per-call Origins are
-// rigid symbols of the comparison, and every other Origin is compared as written.
+// SPEC 15.3.7, the owner's (a): the required signatures of the Callable comparisons that enclose one, innermost first. A proof request
+// made in a comparison assumes the well-formedness of its own required signature and of each enclosing one (ExtractOriginPremises);
+// no other request sees them.
+internal sealed class ComparisonPremises(BoundType required, ComparisonPremises? outer)
+{
+    internal BoundType Required { get; } = required;
+
+    internal ComparisonPremises? Outer { get; } = outer;
+}
+
+// SPEC 10.7, 15.3.7: one Callable comparison of an implementation signature (Actual) with a required one (Expected), nested in the
+// comparisons Outer names. The Origins that the implementation binds per call are instantiated at the required inputs in the same
+// positions; the required per-call Origins are rigid symbols of the comparison, related only through the required signatures' own
+// well-formedness, and every other Origin is compared as written. A comparison without an implementation signature (ContractFits
+// solves the implementation's Origins itself) only carries the premises.
 internal readonly struct CallableInstance
 {
     private readonly BoundType? actual;
     private readonly Koto? actualBinder;
     private readonly BoundType? expected;
     private readonly Koto? expectedBinder;
+    private readonly ComparisonPremises? outer;
 
-    internal CallableInstance(BoundType? actual, Koto? actualBinder, BoundType? expected, Koto? expectedBinder)
+    internal CallableInstance(BoundType? actual, Koto? actualBinder, BoundType? expected, Koto? expectedBinder, ComparisonPremises? outer)
     {
         this.actual = actual;
         this.actualBinder = actualBinder;
         this.expected = expected;
         this.expectedBinder = expectedBinder;
+        this.outer = outer;
     }
 
     internal BoundType? Actual => this.actual;
+
+    // The required signature whose own well-formedness the comparison's proofs assume; null outside a comparison.
+    internal BoundType? Expected => this.expected;
+
+    internal ComparisonPremises? Outer => this.outer;
+
+    // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
+    // A signature that carries no Origin has no well-formedness, so it adds no node.
+    internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)

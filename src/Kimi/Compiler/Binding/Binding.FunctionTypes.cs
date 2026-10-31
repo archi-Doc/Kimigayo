@@ -303,7 +303,11 @@ public sealed partial class Binding
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
+
+        // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
+        var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null);
         var inference = this.BeginOriginInference(use, function);
+        inference.Comparison = comparison;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
@@ -330,8 +334,9 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use))
+            if (HasUnsubstitutedOrigin(parameter, function) ||
+                !new RelationWalk(this, use, OriginPart.Judged).Fits(parameters.Components[i], parameter, instance: comparison) ||
+                !this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
             {
                 return false;
             }
@@ -345,11 +350,11 @@ public sealed partial class Binding
             }
         }
 
-        return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
+        return this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison) &&
             symbol.Type is { } result && Bound(result) is { } boundResult &&
             !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-            this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
-            this.ProvesResultPremises(function, result, use);
+            new RelationWalk(this, use, OriginPart.Judged).Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison) &&
+            this.ProvesResultPremises(function, result, use, comparison);
 
         BoundType? Bound(BoundType type)
         {

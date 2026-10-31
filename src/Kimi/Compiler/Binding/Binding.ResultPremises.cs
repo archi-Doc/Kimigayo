@@ -16,8 +16,7 @@ public sealed partial class Binding
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
     private FunctionKoto? resultPremiseExcluded;
 
-    // The comparison an Instance visit judges the premises under, and the first premise it fails (longer, shorter).
-    private CallableInstance resultPremiseInstance;
+    // The first premise an Instance visit fails (longer, shorter).
     private (BoundOrigin Longer, BoundOrigin Shorter)? failedResultPremise;
 
     private enum WellFormedAction : byte
@@ -54,7 +53,11 @@ public sealed partial class Binding
     // the receiver Type whose arguments a member's container Origins project to (an input's pattern is already projected where the call
     // collects it).
     private readonly record struct WellFormedVisit(
-        WellFormedSubject Subject, FunctionKoto? Named, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null);
+        WellFormedSubject Subject, FunctionKoto? Named, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null)
+    {
+        // For Instance and Prove, the Callable comparison the visit judges under, whose premises its proofs assume.
+        internal CallableInstance Comparison { get; init; }
+    }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
     // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
@@ -242,14 +245,15 @@ public sealed partial class Binding
 
     // SPEC 15.3.7: a whole-contract comparison proves the implementation's instantiated input well formed from the premises at `use`
     // wherever its solve replaced an Origin of the required input, whose own well-formedness covers every position it kept.
-    private bool ProvesInputPremises(BoundType implementation, BoundType required, Koto use)
+    private bool ProvesInputPremises(BoundType implementation, BoundType required, Koto use, in CallableInstance comparison)
         => ReferenceEquals(implementation, required) || !implementation.StoresOrigin ||
-            this.VisitWellFormedPremises(implementation, implementation, required, new(WellFormedSubject.Input, null, use, WellFormedAction.Prove));
+            this.VisitWellFormedPremises(implementation, implementation, required, new(WellFormedSubject.Input, null, use, WellFormedAction.Prove) { Comparison = comparison });
 
     // SPEC 15.3.7: a whole-contract comparison proves the implementation's result premises for its substituted result from the
     // required contract's premises at `use`.
-    private bool ProvesResultPremises(FunctionKoto function, BoundType result, Koto use)
-        => !CarriesResultPremises(function) || this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Prove));
+    private bool ProvesResultPremises(FunctionKoto function, BoundType result, Koto use, in CallableInstance comparison)
+        => !CarriesResultPremises(function) ||
+            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Prove) { Comparison = comparison });
 
     // SPEC 15.3.7, 15.6.4 step 3: whether a use of a named function must prove Origin conditions beyond its inputs' Types: a declared
     // relation, or a result premise that its inputs and clauses do not prove.
@@ -301,7 +305,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var instance = new CallableInstance(actual, function, expected, FunctionTypeBinder(expected));
+        var instance = Comparison(actual, function, expected, null);
         if (this.originDeclarations.GetValueOrDefault(function) is { } declaration)
         {
             foreach (var relation in declaration.Relations)
@@ -321,18 +325,16 @@ public sealed partial class Binding
             return null;
         }
 
-        var saved = this.resultPremiseInstance;
-        this.resultPremiseInstance = instance;
         this.failedResultPremise = null;
         try
         {
             var result = function.BoundSymbol!.Type!;
-            return !this.VisitWellFormedPremises(result, actual.Components[1], null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed
+            var visit = new WellFormedVisit(WellFormedSubject.NamedResult, function, use, WellFormedAction.Instance) { Comparison = instance };
+            return !this.VisitWellFormedPremises(result, actual.Components[1], null, visit) && this.failedResultPremise is { } failed
                 ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, instance, use) : null;
         }
         finally
         {
-            this.resultPremiseInstance = saved;
             this.failedResultPremise = null;
         }
     }
@@ -549,7 +551,7 @@ public sealed partial class Binding
             case WellFormedAction.Detect:
                 return false;
             case WellFormedAction.Instance:
-                if (InstanceOutlives(value, substituted, this.resultPremiseInstance, this, visit.Use, 0))
+                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use, 0))
                 {
                     return true;
                 }
@@ -563,7 +565,7 @@ public sealed partial class Binding
                 visit.Inference!.Bounds.Remove((longer, outer, true, true));
                 return true;
             case WellFormedAction.Prove:
-                return this.ProvesOriginOutlives(value, substituted, visit.Use, condition);
+                return this.ProvesOriginOutlives(value, substituted, visit.Use, visit.Comparison, condition);
             default:
                 if (visit.Subject == WellFormedSubject.Input)
                 {
@@ -590,7 +592,8 @@ public sealed partial class Binding
 
         if (visit.Action == WellFormedAction.Prove)
         {
-            return this.ProvesOriginOutlives(longer, shorter, visit.Use) && (!equality || this.ProvesOriginOutlives(shorter, longer, visit.Use));
+            return this.ProvesOriginOutlives(longer, shorter, visit.Use, visit.Comparison) &&
+                (!equality || this.ProvesOriginOutlives(shorter, longer, visit.Use, visit.Comparison));
         }
 
         if (visit.Action == WellFormedAction.Bound)

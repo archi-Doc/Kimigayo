@@ -93,7 +93,7 @@ public sealed partial class Binding
 
             if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
             {
-                return this.FunctionFits(actual, expected, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)));
+                return this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance.Enclosing));
             }
 
             for (var i = 0; i < actual.Components.Count; i++)
@@ -134,7 +134,7 @@ public sealed partial class Binding
 
         private readonly bool OriginFits(BoundOrigin a, BoundOrigin b, in CallableInstance instance, ulong condition = 0)
             => instance.Actual is not null ? InstanceOutlives(a, b, instance, this.binding, this.use, 0) :
-                this.binding is null ? OriginOutlives(a, b) : this.binding.FitOrigin(a, b, this.use!, condition);
+                this.binding is null ? OriginOutlives(a, b) : this.binding.FitOrigin(a, b, this.use!, instance, condition);
 
         // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
         // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
