@@ -253,8 +253,10 @@ public partial class Project
         => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
 
     /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
-    /// the generation records, or the publication failure. Emission is a later phase with its own result, rendered after the front-end
-    /// result, for <c>kimi build</c> and <c>kimi test</c> alike (R5 C0a).</summary>
+    /// the generation records, the publication failure, or, for an exception publication does not classify (a broken contract code
+    /// generation throws among them), the Faulted result as the front end's (DIAGNOSTICS rule 9; DECISIONS R5-M169). Emission is a later
+    /// phase with its own result, rendered after the front-end result, for <c>kimi build</c>, <c>emit</c>, <c>run</c> and <c>test</c> alike
+    /// (R5 C0a).</summary>
     /// <param name="compilation">The accepted compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="context">The check context, or null for a command.</param>
@@ -262,12 +264,22 @@ public partial class Project
     /// <returns>Whether the artifacts were published.</returns>
     internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
     {
-        if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+        irPath = null;
+        Exception? fault = null;
+        try
         {
-            return true;
+            if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+            {
+                return true;
+            }
+        }
+        catch (Exception ex) when (this.Faults(ex, context))
+        {
+            fault = ex;
         }
 
-        this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
+        // The one finalization point of the Emission result (SPEC 23.3).
+        this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context, fault: fault);
         return false;
     }
 
@@ -441,9 +453,8 @@ public partial class Project
             accepted = this.CheckFrontEnd(compilation, target, testSources, graph, prepared, context);
             completed = true;
         }
-        catch (Exception ex) when (context is null && this.kimigayo.RendersDiagnostics && ex is not OperationCanceledException)
+        catch (Exception ex) when (this.Faults(ex, context))
         {
-            // SPEC 23.2.2: a command renders the Faulted result the check entry publishes; the command then fails.
             fault = ex;
         }
         finally
@@ -615,6 +626,11 @@ public partial class Project
 
         return false;
     }
+
+    // SPEC 23.2.2, DIAGNOSTICS rule 9: a command renders an exception that ends a result (the front end's or the Emission result) as that
+    // result's fault, CheckFaulted_Kd, and then fails; a check request's caller (CheckService) handles its own, and cancellation propagates.
+    private bool Faults(Exception exception, CheckContext? context)
+        => context is null && this.kimigayo.RendersDiagnostics && exception is not OperationCanceledException;
 
     // SPEC 23.3: a command renders each result once it is finalized; a check request's caller finalizes its own.
     private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false, Exception? fault = null)

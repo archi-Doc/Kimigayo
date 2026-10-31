@@ -267,19 +267,76 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*.ll", SearchOption.AllDirectories));
     }
 
-    // DECISIONS R5-M165: generation into the publication's output separates the output's failure from a broken contract of code
-    // generation, by the exception's kind. A writer stands in for both: no test input makes code generation's own checks throw, so the
-    // contract side is shown on the narrowest function that maps it (an ArgumentException, as LlvmConstantPool's checks throw).
+    // DECISIONS R5-M169 (G330): while code generation writes the publication's output, only the output's I/O failure is publication's
+    // (ArtifactPublicationFailed_Kd with its cause); every other exception is left unclassified, the same instance, with no record, for the
+    // command's fault path. A writer throws each kind: no test input makes code generation's own checks throw.
     [Theory]
-    [InlineData(true, nameof(DiagnosticCode.ArtifactPublicationFailed_Kd))]
-    [InlineData(false, nameof(DiagnosticCode.InternalInvariant_Kd))]
-    public void GenerationIntoTheOutputSeparatesOutputFromContractFailures(bool output, string code)
+    [InlineData(typeof(IOException), true)]
+    [InlineData(typeof(UnauthorizedAccessException), true)]
+    [InlineData(typeof(InvalidOperationException), false)]
+    [InlineData(typeof(KeyNotFoundException), false)]
+    [InlineData(typeof(IndexOutOfRangeException), false)]
+    [InlineData(typeof(ArgumentException), false)]
+    [InlineData(typeof(InvalidDataException), false)]
+    public void GenerationIntoTheOutputRecordsOnlyTheOutputsFailure(Type kind, bool output)
     {
         var c = this.Create();
-        using var writer = new FailingWriter(output ? new IOException("disk full") : new ArgumentException("broken contract"));
-        Assert.False(EmissionArtifacts.GenerateInto(c, writer));
-        var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
-        Assert.Equal((code, output ? DiagnosticCategory.Input : DiagnosticCategory.Internal), (record.Code, record.Category));
+        var failure = (Exception)Activator.CreateInstance(kind, "failure")!;
+        using var writer = new FailingWriter(failure);
+        if (output)
+        {
+            Assert.False(EmissionArtifacts.GenerateInto(c, writer));
+            var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+            Assert.Equal((nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), DiagnosticCategory.Input), (record.Code, record.Category));
+            Assert.Equal("failure", PublicationFailure(c));
+            return;
+        }
+
+        Assert.Same(failure, Assert.Throws(kind, () => EmissionArtifacts.GenerateInto(c, writer)));
+        Assert.Empty(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+    }
+
+    // DECISIONS R5-M169: a command ends a result that an exception ends as Faulted (Project.Faults): one CheckFaulted_Kd (Exception) at
+    // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
+    // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
+    // (ArtifactFiles.CheckPath, PublishArtifacts' fault); code generation writes the location of a source whose path has an embedded NUL,
+    // which throws ArgumentException (Publish's generating exclusion leaves it to the fault) only because of a defect, PLAN G346:
+    // SourceLocationTable.Text's GetRelativePath rejects the path before its escaping (IMPL 21.4.2) runs. The source is checked without a
+    // project directory, since the whole command's parse rejects the path the same way (a front-end fault). Removal condition: when G346
+    // is fixed, this row needs another trigger for the generating exclusion.
+    [Theory]
+    [InlineData("front end")]
+    [InlineData("publication")]
+    [InlineData("code generation")]
+    public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        if (phase == "front end")
+        {
+            project.AddKimiFile(null!);
+            Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            var c = phase == "publication" ? this.Create() :
+                this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
+            if (phase == "publication")
+            {
+                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
+            }
+
+            Assert.False(project.PublishArtifacts(c, null, null, out var path));
+            Assert.Null(path);
+        }
+
+        Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*.l*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -394,9 +451,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         return c;
     }
 
-    private Compilation Create()
+    private Compilation Create(string source = "::Kimi.Console.writeLine(\"Hello, world!\")", string path = "Hello.kimi")
     {
-        var c = MinimalEmissionTest.Analyze("::Kimi.Console.writeLine(\"Hello, world!\")");
+        var c = MinimalEmissionTest.Analyze(source, path);
         c.Project.Directory = this.directory;
         c.Project.Name = "Hello";
         c.Project.ProjectFile.OutputPath = "out/Hello.ll";

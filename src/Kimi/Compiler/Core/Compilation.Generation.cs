@@ -8,6 +8,9 @@
 // check) and InternalInvariant_Kd at a broken input contract, each keyed by its location (a record carries no fact; DECISIONS R5-M65),
 // and, for a module neither written nor explained, InternalInvariant_Kd at the project. A publication failure (settings, native supplies,
 // the backend or the file system) is EmissionArtifacts.Publish's own record in the same partition (DECISIONS R5-M165), which Project renders.
+// A broken contract checked without a subject throws (a closed table without a row, a missing fact, a framework operation's contract); it
+// ends generation unrecorded here, and the command renders it as the Emission result's fault, CheckFaulted_Kd (DIAGNOSTICS rule 9;
+// DECISIONS R5-M169), as the front end's.
 // Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and the checked set's records, on every
 // pipeline; DECISIONS R5-M156). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none, and,
 // like every request, clears the partition first. MIR code generation then needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2,

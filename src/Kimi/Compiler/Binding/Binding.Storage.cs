@@ -100,8 +100,10 @@ public sealed partial class Binding
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
     // completable projections completed (CompleteProjections), then each raw layer it writes without `during` stating Unstated
     // (WithUnstatedOrigins, the one producer of a Type stating Unstated), then under the instance's substitution, completed again for the
-    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a projection that finally
-    // names none, whatever its subject: a dependent of Binding's records, so the instance's storage is Rejected, DECISIONS BU-38).
+    // projections whose subjects the substitution closes, then its closures closed in the instance (a stored Field initializer's closure
+    // holds it, DECISIONS BU-60: the closing step is last, on the completed instance); null where it does not substitute or names no Type
+    // (a projection that finally names none, whatever its subject: a dependent of Binding's records, so the instance's storage is Rejected,
+    // DECISIONS BU-38).
     // `BaseI<Src2<raw/u8>.Item>` is `BaseI<raw/u8>` (SPEC 8.2.3), so its layer is one the declaration writes.
     private BoundType? KeptType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.KeptType(written, owner) : null;
 
@@ -118,8 +120,8 @@ public sealed partial class Binding
             return null;
         }
 
-        var stored = this.StoredType(this.WithUnstatedOrigins(declared), owner);
-        return stored is null ? null : this.CompleteProjections(stored, declaration);
+        var stored = this.StoredType(this.WithUnstatedOrigins(declared), owner) is { } substituted ? this.CompleteProjections(substituted, declaration) : null;
+        return stored is { ContainsClosure: true } && this.types.Instantiates(owner.Symbol) ? this.CloseHeldClosures(stored, owner) : stored;
     }
 
     // The read form of a member's declared Type under an instance (StoredType's): KeptType without its marks.
@@ -179,7 +181,8 @@ public sealed partial class Binding
         return result;
     }
 
-    // A part with an abstract part, its components completed first (CompleteProjections).
+    // A part with an abstract part, its components completed first (CompleteProjections), and a closure's held instance (DECISIONS BU-60)
+    // with them, given back through its producer (TyCtxt.HeldContext).
     private BoundType? CompletedParts(BoundType part, Koto declaration, uint query)
     {
         var components = this.RentTypes(part.Components.Count);
@@ -199,6 +202,16 @@ public sealed partial class Binding
 
             var parts = components.AsSpan(0, part.Components.Count);
             var completed = changed ? this.types.Rebuild(part, parts, part.Origin, (BoundOrigin[])part.OriginArguments) : part;
+            if (TyCtxt.HeldType(part) is { } held)
+            {
+                if (this.CompletedPart(held, declaration, query) is not { } image)
+                {
+                    return null;
+                }
+
+                completed = ReferenceEquals(image, held) ? completed : this.WithContext(completed, this.types.HeldContext(part.Symbol!, image));
+            }
+
             return completed.Kind == BoundTypeKind.AssociatedProjection ? this.CompletedProjection(completed, declaration) : completed;
         }
         finally

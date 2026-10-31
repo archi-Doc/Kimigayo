@@ -635,9 +635,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             var (cases, report) = (new MirCases(c.Types), new MirReport());
             var flow = new MirDataflow(new MirReach());
             var effects = new MirEffects(c.Types, cases, flow);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            Analyze(effects, flow, cases, program, report);
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => Analyze(effects, flow, cases, program, report));
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
