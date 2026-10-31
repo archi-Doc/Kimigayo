@@ -143,9 +143,14 @@ public sealed partial class Binding
             return this.BindNode(part, scope, literal ? LiteralInputType(parameter) : parameter);
         }
 
-        // SPEC 7.7.4: a Closure or Function Item completed at a Function Type is converted to it, as at a named call (ErasePart).
-        return typed.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && parameter.Kind == BoundTypeKind.Function &&
-            this.ErasesToFunction(part, typed, parameter) ? (this.ErasePart(part, typed, parameter) ? parameter : null) : typed;
+        // SPEC 7.7.4, 10.5, 10.7: a Closure or Function Item completed at a Function Type is converted to it, as at a named call: its
+        // signature is the call's applicability, a misfit left to the call's adaptation, and the rest is judged after selection (ErasePart).
+        if (typed.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || !this.ErasureSignatureFits(typed, parameter, part))
+        {
+            return typed;
+        }
+
+        return this.ErasePart(part, typed, parameter) ? parameter : null;
     }
 
     // SPEC 23.1.2, 10.1: a call that ends unresolved, with no selected candidate or one that failed before completing its arguments,

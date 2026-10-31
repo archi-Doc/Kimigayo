@@ -5,7 +5,7 @@ using Xunit;
 namespace XunitTest;
 
 // G216 (a) T1: Part 1's (argument completion's) rows beside d4's (OriginRelationDiagnosticTest.JoinArguments.cs), under the owner-adopted
-// G216a-PLAN.md §3. Each row's first value names the Part 1 unit expected to pass it (U1.2, U1.3, U1.4). Forms are BU's design review
+// G216a-PLAN.md §3. Each row's first value names the Part 1 unit expected to pass it (U1.2 to U1.5). Forms are BU's design review
 // (D1, N11), R4's design review (B1-B4) and BU's review 3 (B6), copied as written, one form per program, each with its twin.
 public partial class OriginRelationDiagnosticTest
 {
@@ -20,6 +20,14 @@ public partial class OriginRelationDiagnosticTest
     private const string ValueG = "func k(c: bool, g: (Option<i32>) -> i32) -> i32\n";
 
     private const string LabeledDo = "label s: do\n        if c => exit to s .None\n        exit to s ";
+
+    private const string EnvClosure = "    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n";
+
+    private const string VarClosure = "    var total = 0\n    var f = func [var total] (n: i32) -> i32\n        total = total + n\n        return total\n";
+
+    private const string CallAction = "func call(action: (i32) -> i32, x: i32) -> i32 => action(x)\n";
+
+    private const string RunG2 = "func run2(g: ((i32) -> i32, i32) -> i32) -> i32\n";
 
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
@@ -102,6 +110,17 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.2", "b6x_ok", RunK + "    let a = k(if c => func [] (x: i32) -> i32 => x else => func [] (x: i32) -> i32 => x + 1)\n    return a\n")]
     public void AWaitingJoinArgumentIsCheckedAtItsCall(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
+
+    // B3 (R4's G1b N4): a Closure part of a value call at a Function parameter is erased as at a named call (SPEC 7.7.4, 10.5, 10.7): its
+    // signature is applicability, and an environment that is not Owned (pv1) or a receiver that is not Shared (pv2) is the part's own
+    // record after selection, as at the named call (pn1, pn2). R4's ev_env and en_env are pv1 and pn1 renamed.
+    [Theory]
+    [InlineData("U1.5", "pv1", RunG2 + EnvClosure + "    return g(f, 1)\n", "UnsatisfiedConstraint_Kd f")]
+    [InlineData("U1.5", "pv2", RunG2 + VarClosure + "    return g(f, 1)\n", "TypeMismatch_Kd f")]
+    [InlineData("U1.5", "pn1", CallAction + "func run2() -> i32\n" + EnvClosure + "    return call(f, 1)\n", "UnsatisfiedConstraint_Kd f")]
+    [InlineData("U1.5", "pn2", CallAction + "func run2() -> i32\n" + VarClosure + "    return call(f, 1)\n", "TypeMismatch_Kd f")]
+    public void AClosureIsErasedAtAValueCallAsAtANamedCall(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid
     // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4); with
