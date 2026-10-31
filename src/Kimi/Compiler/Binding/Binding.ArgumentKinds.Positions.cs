@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
-//   child positions are formed part by part (SPEC 14.9.2). A position of several parts has one kind (PositionKind), typed first
+//   child positions are formed part by part (SPEC 14.9.2). AddResultPart forms every part of a child position (Never dropped, the
+//   forms that deliver it passed, a waiting join flattened). A position of several parts has one kind (PositionKind), typed first
 //   (SPEC 14.9.2 step 2): Typed at its typed parts' common Type (one evidence) whatever else it holds, its literals and the parts
 //   awaiting their call beside them taking it (step 3), or with no Type when a part failed; only a position with no typed part, and so
 //   no candidate, waits (Call) when a part awaits its call; then Aggregate when its parts are aggregates, Literal when only literals
@@ -66,8 +67,9 @@ public sealed partial class Binding
         };
     }
 
-    // Appends the parts of child position `index` of [start, end) and gives the parameter Type at it: a Tuple element's component, an
-    // array element's element Type, a Dictionary key's or value's, a join's results its own; null where the pattern's shape differs.
+    // Appends the parts of child position `index` of [start, end), each formed by AddResultPart, and gives the parameter Type at it: a
+    // Tuple element's component, an array element's element Type, a Dictionary key's or value's, a join's results its own; null where
+    // the pattern's shape differs.
     private BoundType? AddChildPosition(int start, int end, int index, BoundType? pattern)
     {
         if (end - start != 1)
@@ -81,10 +83,10 @@ public sealed partial class Binding
         switch (part)
         {
             case TupleLiteralKoto tuple:
-                this.positionParts.Add(tuple.Elements[index]);
+                this.AddResultPart(tuple.Elements[index]);
                 return ChildPattern(tuple, index, pattern);
             case ArrayLiteralKoto array:
-                this.positionParts.Add(array.Elements[index]);
+                this.AddResultPart(array.Elements[index]);
                 return ChildPattern(array, index, pattern);
             default:
                 this.AddResults(this.ComposedJoin(part)!);
