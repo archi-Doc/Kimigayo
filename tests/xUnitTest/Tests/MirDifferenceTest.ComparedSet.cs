@@ -17,6 +17,10 @@ public sealed partial class MirDifferenceTest
         "    let local = 1\n    let t = (g, local@ref)\n    return t\n" +
         "func fixed(x: ref/i32, y: ref/i32) -> ref/i32 during y => x\n";
 
+    // TwinFits with the mixed Tuple's parts swapped: the same records at `t` in either order (G216 (a) U2.1, design-r2 Amendment 1).
+    private const string TwinFitsSwapped = "func mixed(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> (ref/i32 during x, ref/((ref/i32 during x) -> i32))\n" +
+        "    let local = 1\n    let t = (local@ref, g)\n    return t\n";
+
     // A local's clause whose record is a body chain (finite over fixed) and one whose record is fixed-fixed.
     private const string TwinClauses = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n" +
         "func twin(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n" +
@@ -144,9 +148,13 @@ public sealed partial class MirDifferenceTest
     // relation is also a row A5 judges: at a fit every record of the node, the mixed fit's fixed-fixed first chain included, and at a
     // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7; a Closure result over
     // call-local storage is a twin, its Refuted source at the returned value (DECISIONS R4-M152); a call argument's fixed-fixed record beside a body-chain position of the
-    // same call, a row without a record at the same node (BU's review N6). Each row has a record that passes through.
+    // same call, a row without a record at the same node (BU's review N6). Each row has a record that passes through. The mixed fit's
+    // Function component is one UnprovenOriginContract_Kd (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1; it was an Origin
+    // relation record compared as `return t`), so only its borrow's record is a twin, and only when the borrow comes first (no row
+    // after the differing Function component until H11).
     [Theory]
-    [InlineData(TwinFits, "UnprovenOriginRelation_Kd A5 return t|UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
+    [InlineData(TwinFits, "UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
+    [InlineData(TwinFitsSwapped, "UnsatisfiedOriginRelation_Kd A5 return t", "")]
     [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
     [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd A5 x@ref", "")]
     [InlineData(CallPositions, "", "UnprovenOriginRelation_Kd - t")]

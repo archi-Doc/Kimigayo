@@ -441,9 +441,10 @@ public sealed partial class Binding
         }
 
         var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
-        if (failure.IsCondition && storage)
+        if (storage && failure.Kind is ComparisonFailureKind.Origin or ComparisonFailureKind.WellFormedness or ComparisonFailureKind.Limit or
+            ComparisonFailureKind.Position)
         {
-            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure));
+            return this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
         }
 
         // Transitional until G216 (a) U2.1 e2 and f: the erasure judgment of a Closure or Function Item and an Item's solve give no fact
@@ -464,6 +465,43 @@ public sealed partial class Binding
         }
 
         return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+    }
+
+    // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
+    // and the others published with it (RecordFurtherOriginRecord): each Function component's failed condition is one
+    // UnprovenOriginContract_Kd at the value (ContractFact); the plain positions are recorded once, by RecordOriginFitFailure, whose search
+    // skips the Function components the walk judged; a limit is the located Unsupported_Kd. The walk's facts are read only when their
+    // first is `failure` (another fit may have walked since); otherwise `failure` is the one fact.
+    private BoundType? RecordComparisonFacts(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
+    {
+        if (failure.Kind == ComparisonFailureKind.Limit)
+        {
+            return this.Fail(node, BindingFailure.Unsupported);
+        }
+
+        var facts = this.comparisonFacts;
+        var count = facts.Count != 0 && facts[0] is var head && head.Kind == failure.Kind && ReferenceEquals(head.Longer, failure.Longer) &&
+            ReferenceEquals(head.Shorter, failure.Shorter) && head.Path == failure.Path && head.Depth == failure.Depth ? facts.Count : 1;
+        var positions = !failure.IsCondition;
+        if (failure.IsCondition)
+        {
+            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure));
+        }
+
+        for (var i = 1; i < count; i++)
+        {
+            if (facts[i].IsCondition)
+            {
+                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i])));
+            }
+            else
+            {
+                positions |= facts[i].Kind is ComparisonFailureKind.Position or ComparisonFailureKind.Shape;
+            }
+        }
+
+        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && node.BindingFailure == BindingFailure.None
+            ? this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, (object)actual, (object)expected)) : null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.

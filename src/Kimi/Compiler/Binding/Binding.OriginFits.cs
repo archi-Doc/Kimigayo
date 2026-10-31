@@ -133,19 +133,25 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
+        // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it. Beside a node whose
+        // own record is a comparison's contract (RecordComparisonFacts), every chain is published with that record.
         var rows = false;
-        for (var i = 0; i < all.Count && node.BindingFailure == BindingFailure.None; i++)
+        var further = node.BindingFailure == BindingFailure.OriginContract;
+        for (var i = 0; i < all.Count && (further || node.BindingFailure == BindingFailure.None); i++)
         {
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
-            if (!all[i].Equals(recorded))
+            if (further || !all[i].Equals(recorded))
             {
                 this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));
             }
         }
 
         all.Clear();
-        this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = destination });
+        if (!further)
+        {
+            this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = destination });
+        }
+
         if (rows)
         {
             (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(node);
@@ -195,6 +201,13 @@ public sealed partial class Binding
                 }
 
                 first ??= layer;
+            }
+
+            // Transitional until G216 (a) U2.2 removes this search: a Function component is one comparison, which the fit's walk judged and
+            // records as its contract fact (RecordComparisonFacts), so its members are no plain positions here.
+            if (mode != OriginFitMode.Verified && actual.Kind == BoundTypeKind.Function)
+            {
+                return first;
             }
 
             var exclusive = IsInvariantLayer(actual, binding);

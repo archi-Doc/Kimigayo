@@ -20,8 +20,8 @@ namespace Kimi.Compiler;
 //   into a parameter of one entry.
 public sealed partial class Binding
 {
-    // The facts of the recording roots' walks (FitsTypeAt, CheckTypeUse), one per failing position: each root reads its own, after its
-    // start, and truncates the list back to that start (warm 0 B).
+    // The facts of the last recording root's walk (FitsTypeAt, CheckTypeUse's walks), one per failing position, which the root clears
+    // when it starts (warm 0 B); RecordMismatch reads them when their first is the failure it records.
     private readonly List<ComparisonFailure> comparisonFacts = new();
 
     // What failed where a relation does not hold (SPEC 10.7, 15.6.1); the closed rows of ComparisonFailure.Kind.
