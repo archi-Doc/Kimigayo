@@ -41,7 +41,7 @@ public sealed partial class FunctionCodegenTest
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
 
     // SPEC 13.4, 5.1 (DECISIONS R5-M143): raw pointers compared through a ref layer in both orders and an i32 compared through one, each
-    // answer checked by the division, run under MIR code generation in every run (the old generator refuses the raw forms, GenerationFailed_Kd).
+    // answer checked by the division.
     private const string LayeredComparisons =
         "func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\nfunc differ(p: raw/i32, q: ref/raw/i32) -> bool => p != q\n" +
         "func near(a: ref/i32, b: i32) -> bool => a == b\nfunc far(a: i32, b: ref/i32) -> bool => a != b\n" +
@@ -878,7 +878,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // DECISIONS R5-M87: the string's record, a first-class value of its three Fields (RuntimeAbi.String), is loaded and stored whole, its
-    // Fields only, as the old generator moves it; nothing is copied by memcpy, so the module declares none.
+    // Fields only, as the old generator moved it; nothing is copied by memcpy, so the module declares none.
     [Fact]
     public void AStringIsMovedAsItsRecord()
     {
@@ -1184,7 +1184,7 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.2 (DECISIONS R5-M92, R5-M145): DictionaryStorage's byte copy and nullable Alloc call the runtime routines both generators define
+    // SPEC 22.2 (DECISIONS R5-M92, R5-M145): DictionaryStorage's byte copy and nullable Alloc call the runtime routines the module defines
     // where a body calls them, the copy with its destination, source and count.
     [Fact]
     public void TheStorageBytePrimitivesAreTheirRows()
@@ -1531,7 +1531,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
-    // refutes at its owning layer, which is checked only (the old generator skips it too); where the slot applies, the override is generated.
+    // refutes at its owning layer, which is checked only (as the old generator skipped it); where the slot applies, the override is generated.
     // A Closure and a function nested in its body are no output roots: the override's runtime targets reach them, so they follow its mark
     // (DECISIONS R5-M153; fail-before: both generated where the slot is refuted).
     [Theory]
