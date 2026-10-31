@@ -19,6 +19,7 @@ public sealed partial class Binding
         inference.Variables.Clear();
         inference.WellFormed.Clear();
         inference.Comparison = default;
+        inference.Source = default;
         return inference;
     }
 
@@ -88,10 +89,12 @@ public sealed partial class Binding
     private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
+        inference.Failure = default;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
             {
+                inference.Source = (0, relation.Syntax, relation.Equality);
                 var longer = Project(relation.Longer);
                 var shorter = Project(relation.Shorter);
                 inference.Discover(longer, 0);
@@ -102,6 +105,8 @@ public sealed partial class Binding
                     inference.Add(shorter, longer);
                 }
             }
+
+            inference.Source = default;
         }
 
         // Preliminary Type inference may have proposed values. Recompute every mentioned
@@ -201,6 +206,12 @@ public sealed partial class Binding
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
             if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison))
             {
+                var kind = bound.Clause is not null ? ComparisonFailureKind.Clause :
+                    bound.Member != 0 ? ComparisonFailureKind.Origin : ComparisonFailureKind.ResultPremise;
+                inference.Failure = new(kind, longer ?? bound.Longer, shorter ?? bound.Shorter, bound.Equality, inference.Comparison)
+                {
+                    Clause = bound.Clause, Path = bound.Member, Depth = (byte)(bound.Member == 0 ? 0 : 1),
+                };
                 return false;
             }
         }
@@ -268,7 +279,7 @@ public sealed partial class Binding
         {
             if (bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable))
             {
-                if (polarity == 3 && inference.Bounds.Contains((variable, bound.Longer, true, false)))
+                if (polarity == 3 && inference.IndexOf(variable, bound.Longer, true, false) >= 0)
                 {
                     return bound.Longer;
                 }
@@ -277,7 +288,7 @@ public sealed partial class Binding
             }
             else if (bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable))
             {
-                if (polarity == 3 && inference.Bounds.Contains((bound.Shorter, variable, false, true)))
+                if (polarity == 3 && inference.IndexOf(bound.Shorter, variable, false, true) >= 0)
                 {
                     return bound.Shorter;
                 }
@@ -293,7 +304,10 @@ public sealed partial class Binding
     {
         internal Koto Binder { get; } = binder;
 
-        internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable)> Bounds { get; } = new();
+        // Each bound with its source (SPEC 15.6.1): the comparison's member whose position collected it (a parameter n + 1, the result
+        // ComparisonFailure.ResultStep), else the declared clause; neither, a result premise or a call's bound.
+        internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable,
+            byte Member, Koto? Clause, bool Equality)> Bounds { get; } = new();
 
         internal List<(BoundOrigin Origin, int Polarity)> Variables { get; } = new();
 
@@ -304,13 +318,33 @@ public sealed partial class Binding
         // for a call's solve.
         internal CallableInstance Comparison { get; set; }
 
+        // The source of the bounds being added, set by their producer around its collection (ContractFits, SolveOriginInference).
+        internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
+
+        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
+        internal ComparisonFailure Failure { get; set; }
+
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true)
         {
-            var bound = (longer, shorter, longerVariable, shorterVariable);
-            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) && !this.Bounds.Contains(bound))
+            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) && this.IndexOf(longer, shorter, longerVariable, shorterVariable) < 0)
             {
-                this.Bounds.Add(bound);
+                this.Bounds.Add((longer, shorter, longerVariable, shorterVariable, this.Source.Member, this.Source.Clause, this.Source.Equality));
             }
+        }
+
+        internal int IndexOf(BoundOrigin longer, BoundOrigin shorter, bool longerVariable, bool shorterVariable)
+        {
+            for (var i = 0; i < this.Bounds.Count; i++)
+            {
+                var bound = this.Bounds[i];
+                if (ReferenceEquals(bound.Longer, longer) && ReferenceEquals(bound.Shorter, shorter) &&
+                    bound.LongerVariable == longerVariable && bound.ShorterVariable == shorterVariable)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         internal void Discover(BoundOrigin expression, int polarity)

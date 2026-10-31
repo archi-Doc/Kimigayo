@@ -483,16 +483,16 @@ public sealed partial class Binding
         var count = facts.Count != 0 && facts[0] is var head && head.Kind == failure.Kind && ReferenceEquals(head.Longer, failure.Longer) &&
             ReferenceEquals(head.Shorter, failure.Shorter) && head.Path == failure.Path && head.Depth == failure.Depth ? facts.Count : 1;
         var positions = !failure.IsCondition;
-        if (failure.IsCondition)
+        if (!positions)
         {
-            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure));
+            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure, node));
         }
 
         for (var i = 1; i < count; i++)
         {
             if (facts[i].IsCondition)
             {
-                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i])));
+                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
             }
             else
             {
@@ -501,7 +501,7 @@ public sealed partial class Binding
         }
 
         return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && node.BindingFailure == BindingFailure.None
-            ? this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, (object)actual, (object)expected)) : null;
+            ? this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected)) : null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.

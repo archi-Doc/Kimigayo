@@ -27,7 +27,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
-            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSubtype(itemSignature, signature, SignatureOwner(item))
+            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSubtype(itemSignature, signature, SignatureOwner(item), out _)
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -47,7 +47,7 @@ public sealed partial class Binding
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration, node)
+            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration, node, out _)
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
@@ -79,7 +79,7 @@ public sealed partial class Binding
     // SPEC 10.7, 15.6.1, 23.1: the one record of a whole-contract comparison that failed in a condition, from the failure its walk found:
     // the member from the nearest comparison ("the 1st parameter's 1st parameter's well-formedness"), with both ends instantiated under
     // the comparison.
-    private OriginContractFact ContractFact(Koto at, in ComparisonFailure failure)
+    private OriginContractFact ContractFact(Koto at, in ComparisonFailure failure, Koto use)
     {
         var member = string.Empty;
         for (var depth = failure.Depth - 1; depth >= 0; depth--)
@@ -89,6 +89,16 @@ public sealed partial class Binding
         }
 
         var instance = failure.Instance;
+        if (failure.Kind == ComparisonFailureKind.Clause)
+        {
+            return this.ConditionFact(at, $"the clause '{failure.Clause}'", failure.Longer!, failure.Shorter!, failure.Equality, instance, use);
+        }
+
+        if (failure.Kind == ComparisonFailureKind.ResultPremise)
+        {
+            return this.ConditionFact(at, "the result's well-formedness", failure.Longer!, failure.Shorter!, false, instance, use);
+        }
+
         if (failure.Kind == ComparisonFailureKind.WellFormedness)
         {
             var part = failure.Part < 0 ? "result's well-formedness" : $"{Ordinal(failure.Part + 1)} parameter's well-formedness";

@@ -42,6 +42,12 @@ public sealed partial class Binding
         // The implementation's own well-formedness, its Part-th input's or (Part -1) its result's (the owner's (a)).
         WellFormedness,
 
+        // An Item's declared clause, proven for the comparison's solution (Clause names it).
+        Clause,
+
+        // A named function's result premise, proven for its substituted result.
+        ResultPremise,
+
         // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
         // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
         // the plain position's search records it (design-r2 Amendment 1, A1).
@@ -64,8 +70,12 @@ public sealed partial class Binding
 
         internal byte Depth { get; init; }
 
+        // For Clause, the clause's syntax.
+        internal Koto? Clause { get; init; }
+
         // Whether it fails a condition of a whole-contract comparison (SPEC 15.6.1): Proof class, one UnprovenOriginContract_Kd at the value.
-        internal bool IsCondition => this.Kind is ComparisonFailureKind.Origin or ComparisonFailureKind.WellFormedness;
+        internal bool IsCondition => this.Kind is ComparisonFailureKind.Origin or ComparisonFailureKind.WellFormedness or ComparisonFailureKind.Clause or
+            ComparisonFailureKind.ResultPremise;
 
         // The failure as the enclosing comparison sees it: within its member `step`.
         internal ComparisonFailure Within(byte step) => this.Depth == 8 ? this :

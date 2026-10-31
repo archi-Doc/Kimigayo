@@ -16,8 +16,13 @@ public sealed partial class Binding
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
     private FunctionKoto? resultPremiseExcluded;
 
-    // The first premise an Instance visit fails (longer, shorter).
+    // The first premise an Instance or Prove visit fails (longer, shorter).
     private (BoundOrigin Longer, BoundOrigin Shorter)? failedResultPremise;
+
+    // The failure of the last Item solve that did not hold (ContractFits; ItemContractFits reads it), and the declared clause a solve's
+    // CheckCallOriginRelations did not prove, with its substituted ends.
+    private ComparisonFailure contractFailure;
+    private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality, Koto Syntax)? failedCallClause;
 
     private enum WellFormedAction : byte
     {
@@ -64,8 +69,9 @@ public sealed partial class Binding
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
     // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
     // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
-    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use)
+    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
     {
+        failure = default;
         if (item.Kind != BoundTypeKind.FunctionItem || item.Symbol is not { Declaration: FunctionKoto function } symbol)
         {
             return false;
@@ -74,7 +80,7 @@ public sealed partial class Binding
         signature = this.ContractType(signature, this.ConstraintScope(use));
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSubtype(signature, required, SignatureOwner(item)))
+            if (!this.CallableSubtype(signature, required, SignatureOwner(item), out failure))
             {
                 return false;
             }
@@ -98,7 +104,9 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            return this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
+            var fits = this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
+            failure = fits ? default : this.contractFailure;
+            return fits;
         }
         finally
         {
@@ -379,6 +387,10 @@ public sealed partial class Binding
         }
     }
 
+    // The failure of a premise a Prove visit did not prove, under `comparison` (ContractFits).
+    private ComparisonFailure PremiseFailure(ComparisonFailureKind kind, in CallableInstance comparison)
+        => this.failedResultPremise is { } failed ? new(kind, failed.Longer, failed.Shorter, false, comparison) : default;
+
     private OriginContractFact ConditionFact(Koto at, string member, BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance, Koto use)
     {
         if (!equality && longer.Kind == OriginKind.Intersection)
@@ -602,10 +614,20 @@ public sealed partial class Binding
                 BoundOrigins(visit.Inference!, longer, outer, visit.Subject != WellFormedSubject.Input);
                 return true;
             case WellFormedAction.Unbound:
-                visit.Inference!.Bounds.Remove((longer, outer, true, true));
+                if (visit.Inference!.IndexOf(longer, outer, true, true) is >= 0 and var index)
+                {
+                    visit.Inference!.Bounds.RemoveAt(index);
+                }
+
                 return true;
             case WellFormedAction.Prove:
-                return this.ProvesOriginOutlives(value, substituted, visit.Use, visit.Comparison, condition);
+                if (this.ProvesOriginOutlives(value, substituted, visit.Use, visit.Comparison, condition))
+                {
+                    return true;
+                }
+
+                this.failedResultPremise ??= (value, substituted);
+                return false;
             default:
                 if (visit.Subject == WellFormedSubject.Input)
                 {

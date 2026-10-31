@@ -284,7 +284,7 @@ public sealed partial class Binding
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
         => (actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && this.ClosureSignature(actual) is { } signature &&
-                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node)
+                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out _)
             : this.ErasureSignatureFits(actual, expected, node)) &&
             this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
@@ -310,9 +310,10 @@ public sealed partial class Binding
     // (SPEC 15.3.7).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
         => expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
+            this.ItemContractFits(actual, signature, expected, use, out _)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual))));
+            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out _)));
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
@@ -328,6 +329,7 @@ public sealed partial class Binding
         var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null);
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
+        this.contractFailure = default;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
@@ -338,26 +340,43 @@ public sealed partial class Binding
             // Only the implementation's per-call binders are inferred; the
             // required signature's quantifiers and fixed Origins remain rigid.
             this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+            inference.Source = ((byte)(i + 1), null, false);
             this.CollectOriginInference(parameter, parameters.Components[i], inference);
         }
 
         if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
         {
+            inference.Source = (ComparisonFailure.ResultStep, null, false);
             this.CollectOriginInference(produced, required.Components[1], inference, result: true);
         }
 
+        // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
+        inference.Source = default;
         if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
         {
+            this.contractFailure = inference.Failure;
             return false;
         }
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) ||
-                !new RelationWalk(this, use, OriginPart.Judged).Fits(parameters.Components[i], parameter, instance: comparison) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+            var walk = new RelationWalk(this, use, OriginPart.Judged);
+            if (HasUnsubstitutedOrigin(parameter, function))
             {
+                return false;
+            }
+
+            if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
+            {
+                this.contractFailure = walk.Failure.Within((byte)(i + 1));
+                return false;
+            }
+
+            this.failedResultPremise = null;
+            if (!this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+            {
+                this.contractFailure = this.PremiseFailure(ComparisonFailureKind.WellFormedness, comparison) with { Part = i };
                 return false;
             }
 
@@ -370,11 +389,35 @@ public sealed partial class Binding
             }
         }
 
-        return this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison) &&
-            symbol.Type is { } result && Bound(result) is { } boundResult &&
-            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-            new RelationWalk(this, use, OriginPart.Judged).Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison) &&
-            this.ProvesResultPremises(function, result, use, comparison);
+        this.failedCallClause = null;
+        if (!this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison))
+        {
+            this.contractFailure = this.failedCallClause is { } clause
+                ? new ComparisonFailure(ComparisonFailureKind.Clause, clause.Longer, clause.Shorter, clause.Equality, comparison) { Clause = clause.Syntax }
+                : default;
+            return false;
+        }
+
+        if (symbol.Type is not { } result || Bound(result) is not { } boundResult || HasUnsubstitutedOrigin(result = Substitute(boundResult), function))
+        {
+            return false;
+        }
+
+        var resultWalk = new RelationWalk(this, use, OriginPart.Judged);
+        if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
+        {
+            this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
+            return false;
+        }
+
+        this.failedResultPremise = null;
+        if (!this.ProvesResultPremises(function, result, use, comparison))
+        {
+            this.contractFailure = this.PremiseFailure(ComparisonFailureKind.ResultPremise, comparison);
+            return false;
+        }
+
+        return true;
 
         BoundType? Bound(BoundType type)
         {
