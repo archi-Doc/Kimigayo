@@ -5888,6 +5888,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reproducer).
   - Numbering: R4-M159 was reserved for G273 by the planning session.
   - Amendment (R4 agrees): Collect and Occurrences walk each shared part once (G309, bu90).
+- **R4-M160 A5's holder state: Placed and Shared (G342)** (2026-10-31; R4's design-first candidate of the Full change,
+  `r4-notes\g342-df\design.md`; amends R4-M53's "a holder's state is an int"; R4-M138's Chain, R4-M154's W and R4-M66's gather
+  read each distinct Shared set once) SPEC 15.6, 15.6.4; R4-M57's Bound.
+  - The state: a holder's 64-bit slot holds two interned `MirLoanSets` sets (`MirBorrows.States`): Placed, what stores into the
+    holder's own Place put there (a whole replace, a direct part, a Call's destination, the entry), and Shared, what stores through a
+    reference gave it (P10's refs^k targets and every W target). σ(h) = Placed ∪ Shared; Commit, End and the Join work per part.
+  - Cause: a fan-out store copied its value into every holder it reached, and every later per-holder operation re-read the copy:
+    Θ(N³) Work on G342's rows against a Θ(N²) output. One store's value now reaches its targets as one Shared id.
+  - The walks: W, Chain and Content read each distinct Shared id once per walk (Written is idempotent; Indirect distributes over the
+    parts' union); Content joins its parts by one n-ary union. The gather reads a holder's Shared set again in a pass only until two
+    distinct non-special vias read it there (reservation holders, and escape holders where rule W runs, always read it).
+  - Unchanged: σ(h) at every point and every record: the full mir ledger at `d0ab31543` equals shared base `443ab6d36` (4,112 rows
+    → 4,112, unclassified 0).
+  - Cost (measured): G342's rows grow, work / bytes, call 3.79 / 3.81, callNoSlot 3.81 / 3.85, inline 3.53 / 3.83, twoHop
+    3.83 / 3.85, writingPlaces 3.63 / 3.78 (dev 6.88 to 7.40; writingPlaces' bytes 7.17); the library analysis (implementation
+    review 1) A5 Work +0.76% (96,257 → 96,987), cold allocation +488 B (804,640 → 805,128), time within noise; warm runs allocate
+    nothing (every Purpose=Allocation test). Net size: `Mir/Analysis` +203/−46, DECISIONS and COMPILER_ARCHITECTURE one entry each.
+  - Rejected: per-walk id stamps alone (they leave writingPlaces' near-copies); hash-consed Patricia tries (R4-M53's tree rejection,
+    size, small-set risk); restating V16 (R4-M65). Not temporary.
+  - Numbering: the next free R4-M number on dev and the open R4 branches at the commit.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
