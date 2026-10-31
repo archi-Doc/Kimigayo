@@ -8,6 +8,15 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
+    // The failure of a solve's bound under its source (OriginInference.Bounds): a declared clause, else a member's position, else a result
+    // premise.
+    private static ComparisonFailure BoundFailure(
+        in CallableInstance comparison, byte member, Koto? clause, BoundOrigin longer, BoundOrigin shorter, bool equality)
+    {
+        var kind = clause is not null ? ComparisonFailureKind.Clause : member != 0 ? ComparisonFailureKind.Origin : ComparisonFailureKind.ResultPremise;
+        return new(kind, longer, shorter, equality, comparison) { Clause = clause, Path = member, Depth = (byte)(member == 0 ? 0 : 1) };
+    }
+
     private OriginInference BeginOriginInference(Koto use, Koto binder)
     {
         if (!this.originInferences.TryGetValue((use, binder), out var inference))
@@ -206,12 +215,9 @@ public sealed partial class Binding
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
             if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison))
             {
-                var kind = bound.Clause is not null ? ComparisonFailureKind.Clause :
-                    bound.Member != 0 ? ComparisonFailureKind.Origin : ComparisonFailureKind.ResultPremise;
-                inference.Failure = new(kind, longer ?? bound.Longer, shorter ?? bound.Shorter, bound.Equality, inference.Comparison)
-                {
-                    Clause = bound.Clause, Path = bound.Member, Depth = (byte)(bound.Member == 0 ? 0 : 1),
-                };
+                inference.Failure = longer is not null && shorter is not null
+                    ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
+                    : this.ConflictFailure(inference, Unsolved(longer is null ? bound.Longer : bound.Shorter), use);
                 return false;
             }
         }
@@ -225,6 +231,25 @@ public sealed partial class Binding
         {
             var values = origin.Kind == OriginKind.Parameter ? origins : inputs;
             return (uint)origin.Slot < (uint)values.Length ? values[origin.Slot] : null;
+        }
+
+        // The variable without a solution that leaves `expression` unresolved.
+        BoundOrigin? Unsolved(BoundOrigin expression)
+        {
+            if (ReferenceEquals(expression.Binder, binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input)
+            {
+                return Get(expression) is null ? expression : null;
+            }
+
+            foreach (var operand in expression.Operands)
+            {
+                if (Unsolved(operand) is { } variable)
+                {
+                    return variable;
+                }
+            }
+
+            return null;
         }
 
         void Set(BoundOrigin origin, BoundOrigin? value)
@@ -266,6 +291,45 @@ public sealed partial class Binding
 
             return meet;
         }
+    }
+
+    // SPEC 15.3.5, 15.6.1 (design-r2 Amendment 2 (2)): the failure of a variable without a solution names fixed ends only, with the
+    // variable eliminated: an invariant one's first two fixed ends that are not proven equal (`s == x` and `s == y` give x == y), any
+    // other's fixed limit that is not proven to outlive its fixed floor. The Kind and member are those of the bound that completed the
+    // conflict. None when no fixed pair conflicts, such as a variable with no bound.
+    private ComparisonFailure ConflictFailure(OriginInference inference, BoundOrigin? variable, Koto use)
+    {
+        var invariant = false;
+        foreach (var known in inference.Variables)
+        {
+            invariant |= ReferenceEquals(known.Origin, variable) && known.Polarity == 3;
+        }
+
+        BoundOrigin? first = null;
+        BoundOrigin? limit = null;
+        BoundOrigin? floor = null;
+        foreach (var bound in inference.Bounds)
+        {
+            var isLimit = bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable);
+            if (!isLimit && !(bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable)))
+            {
+                continue;
+            }
+
+            var end = isLimit ? bound.Longer : bound.Shorter;
+            var (longer, shorter) = invariant ? (first, end) : isLimit ? (end, floor) : (limit, end);
+            if (longer is not null && shorter is not null && (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison) ||
+                (invariant && !this.ProvesOriginOutlives(shorter, longer, use, inference.Comparison))))
+            {
+                return BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, invariant);
+            }
+
+            first ??= end;
+            limit = isLimit ? limit ?? end : limit;
+            floor = isLimit ? floor : floor ?? end;
+        }
+
+        return default;
     }
 
     // The representative of a variable without a principal solution: for an invariant one the first Origin that bounds it from both
