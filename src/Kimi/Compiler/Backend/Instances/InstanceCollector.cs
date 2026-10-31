@@ -42,8 +42,9 @@
 // root's storage (LayoutNeeds, DECISIONS R5-M149: a projection step past a Deref, PairLayer or sequence handle, a raw pointer's
 // displacement, a call's Type arguments where its intrinsic or legacy row's need says so, a compared Tuple past a reference layer of a
 // comparison call's node, at the call, R5-M166), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
-// 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
-// first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
+// 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type and declaration, at
+// the least of that declaration's failing uses, made at the run's end (DECISIONS R5-M171), a C-layout instance whose C layout is
+// unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
 // complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
@@ -60,15 +61,17 @@
 // R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
-// a type-driven key whose Type is higher than 128, a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's
-// declaration) on an admission chain, its height grown at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd; a
+// a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's declaration) on an admission chain, its height grown
+// at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd, once per key; a type-driven key whose Type is higher than
+// 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
 // collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
-// root-module site the admission chain first reached; code generation's records take the same rule.
+// root-module site the admission chain first reached; code generation's records take the same rule. A record's declaration is the body
+// that holds its subject (Declaration; an import's own).
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
 // targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
@@ -87,12 +90,16 @@ internal sealed partial class InstanceCollector
     private readonly TyCtxt types;
     private readonly MirCases cases;
     private readonly Layout layout;
-    private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
+    // The least use of each erased Type over a limit per declaration (Limit), recorded at the run's end (DECISIONS R5-M171).
+    private readonly Dictionary<(BoundType Type, MirDefKey Declaration), SourceRef> limits = new();
+    private readonly List<SourceRef> limitSubjects = new(); // RecordLimits' scratch.
     private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
+    private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
+    private MirProgram? program; // The program of the latest run, whose bodies Declaration reads.
     private int rootModules;
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
@@ -127,9 +134,10 @@ internal sealed partial class InstanceCollector
 
         set.Clear(program.Version);
         this.counts.Clear();
-        this.limited.Clear();
+        this.limits.Clear();
         this.refused.Clear();
-        (this.rootModules, this.Work) = (rootModules, 0);
+        Array.Clear(this.declaring);
+        (this.program, this.rootModules, this.Work) = (program, rootModules, 0);
         if (program.Findings.Count > 0)
         {
             return set;
@@ -152,6 +160,7 @@ internal sealed partial class InstanceCollector
             this.Replay(program, item);
         }
 
+        this.RecordLimits();
         return set;
     }
 

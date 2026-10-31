@@ -82,8 +82,8 @@ internal sealed partial class InstanceCollector
 
     // K 4.8, X34: whether a DropGlue's collection element Types are laid out: a collection's own layout is its handle words, and its glue
     // lays out its elements even when they need no drop (as the old CollectionDrop does), so their verdicts join the glue item's, reported
-    // at its request by the location rule.
-    private bool ElementsLayOut(SourceRef site, BoundType type)
+    // at its request (the requesting item's use) by the location rule.
+    private bool ElementsLayOut(int item, SourceRef site, BoundType type)
     {
         var parts = this.parts;
         var start = parts.Count;
@@ -91,7 +91,7 @@ internal sealed partial class InstanceCollector
         DropGlue.Parts(this.types, type, parts);
         for (var i = start; i < parts.Count; i++)
         {
-            laidOut &= parts[i].Kind != DropPartKind.Element || this.LaysOut(site, parts[i].Type);
+            laidOut &= parts[i].Kind != DropPartKind.Element || this.LaysOut(item, site, parts[i].Type);
         }
 
         parts.RemoveRange(start, parts.Count - start);

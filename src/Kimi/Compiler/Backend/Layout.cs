@@ -20,7 +20,8 @@
 // (DECISIONS R5-M148), never asked for an abstract Type (Inputs); it throws
 // for a Type without a row, a kind outside Layout's input contract in every compilation. The
 // collector (InstanceCollector) alone maps the outcomes: a
-// limit to a Resource record at the Type's first use (R5-M44), CLayout to InvalidCLayout_Kd and Oversized to
+// limit to one Resource record per erased Type and declaration, at the declaration's least use, made at the collection's end
+// (R5-M171), CLayout to InvalidCLayout_Kd and Oversized to
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record (InternalInvariant_Kd in a complete
 // compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd): the
 // collector's uses cover every Type it lays out (its by-value set and LayoutNeeds; DECISIONS R5-M149). No size is published.
