@@ -206,3 +206,125 @@ compiler). That check uses the range is shown by the deterministic cold-allocati
 | O1-U1 | `Run(program, rootModules)`, steps 1 and 4 over the range; callers pass `SourceModules.Length`; contract header; DECISIONS entry; the library check; allocation baselines; unit checks | `Mir/Analysis/MirAnalysis.cs` (R4), `Core/Compilation.Pipeline.cs` (hold), `tests/xUnitTest/Tests/MirAnalysisTest.cs`, `MirInitTest.cs` (two callers), `src/Benchmark/Benchmarks/CollectionCostMeasurements.cs`, `docs/dev/DECISIONS.md` |
 | O1-L | The full mir ledger and the Session (heavy runs, not counted); R4's review of the A3/A5 side | - |
 | O1-M | Pinned `--compiler-pipeline` and `--analyze-cost` retake on the quiet-slot GO, with the fixed summarizer | - |
+
+## 8. §O2: library bodies built when first looked up (design)
+
+The coordinator's request (2026-10-31), after O1 landed (R5-M168, dev `235094435`) and O1-M measured it (pinned, per compilation: Scalar 1
+stage 3 12.49 -> 9.29 ms, default build 30.51 -> 25.63 ms, stage 3 3.85 -> 3.11 MB; `artifacts/benchmarks/r6-gen-exit/g337-o1m/`).
+R4's condition: a missing body never reads as "no effects"; the demand path lives in W1 (`MirBuilder`, `MirProgram`) with A4 as a reader;
+R4 reviews A4's side. No source change here.
+
+### 8.1 What stays in stage 3 after O1, and what O2 can remove
+
+Shares of the remaining stage 3 on Scalar 1 (the census's unpinned full-JIT split, §2, scaled to O1-M's pinned 9.29 ms): library HIR
+publish about 2.5 ms (0.11 MB); library MIR construction and per-body validation about 4.5 ms (2.75 MB, validation 1.3 ms); library
+step 2 (block order, move paths, A1, A2, A4's local facts) about 1.8 ms (0.18 MB); source bodies, program steps and collection about
+0.5 ms. Scalar 1, Hello and Milestone26 look up no library body (§1: no library item, no library Fn callee); Generic 1's collector
+reaches 16 of 215, its direct Fn calls 9.
+
+| Option | Removes on Scalar 1 (pinned estimate) | Stage 3 after | Default build after (A's old 17.1 ms) |
+| --- | --- | ---: | ---: |
+| O2a: build a library body on its first lookup | library build and step 2: about 6.3 ms, 2.9 MB | about 3.0 ms | about 19.3 ms |
+| O2a plus a lazy library HIR publish | also about 2.5 ms, 0.11 MB | about 0.5 ms | about 16.8 ms |
+| O2b: build the whole library module on the first library lookup | the same as O2a where nothing is looked up; nothing where anything is (Hello: `Console.writeLine` names the library) | 3.0 or 9.3 ms | 19.3 or 25.6 ms |
+| O3: one frozen library per process | stage 3's library share and Binding's (stage 2, about 17 ms, library-dominated) | about 0.5 ms | well under 17 ms |
+
+On Generic 1 O2a removes about 85-90 % of the library's build and step 2 (the bodies A4 and the collector look up stay; their count is
+measured in U2). The library HIR publish (`Binding.PublishHir`'s second walk) is read only by `MirBuilder` (no `HirTables` reader in
+`Mir/Analysis`, `Backend` or `Core`), so per-definition publication would make it avoidable too; but the publisher is Transitional
+until R7, which replaces the walk with inline Binding writes. A lazy walk would be code R7 deletes, so O2 keeps the whole library
+publish, and the 2.5 ms is R7's or O3's to remove.
+
+### 8.2 The lookup sites that need a library body
+
+Every consumer finds a body by key through `MirProgram`'s three lookups: `this[MirDefKey]`, `Callee(MirCallee)` (a default template,
+else the function's Fn, Getter or Setter body) and `StaticInit(body, slot)`. A null result means "this definition has no body" (a
+bodyless intrinsic, an import, a published row), which each reader treats as such:
+
+| Reader | Sites | When |
+| --- | --- | --- |
+| A4, local facts (step 2) | `MirEffects.cs:192` StaticInit, `:223` Callee, `:234` an implementation's Callee | per body, step 2 |
+| A4, solve (step 3) | `MirEffects.Solve.cs:223` a Closure's body, `:237` and `:404` an implementation, `:303` a requirement's target, `:330` a destructor | during the fixed point, for Types made concrete there |
+| A5 (step 4, root bodies only since O1) | `MirBorrows.Effects.cs:185`, `:197`, `:258` StaticInit | per judged body |
+| Validator, program check (G191) | `MirValidator.Statics.cs:33` StaticInit | once, after build |
+| Collector | `InstanceCollector.Callees.cs:34` Closure, `:60` implementation, `:116` DictionaryStorage's function; `Edges.cs:165` callee or template; `Glue.cs:26` static initializer, `:122` destructor | admission, after the analyses |
+| Code generation | none by key: it reads `program.Bodies[item.BodyOrdinal]` of collected items only | after BuildMir |
+| The library check | none: it builds every library body (the library is a root module) | test |
+| `MirDump`, tests | `program.Bodies` in ordinal order | dumps (`MirBuildTest.Dump`, the semantic snapshot's `library.mir.txt`) |
+
+`MirBuilder` never looks a body up while building (no lookup in `Mir/Build`), so a demand never re-enters the builder's scratch.
+
+### 8.3 The demand path (O2a): owner and contract
+
+- **One producer.** `MirBuilder` builds every body, eagerly for the root modules (`Source.Module < rootModules`, O1's range: `Build`
+  walks only those modules), on demand for the others. `MirProgram`'s three lookups are the one demand point: a key not yet built whose
+  definition the HIR publishes with a value (`MirBuilder.Published`, today's module-walk test) is built by `MirBuilder.Demand(key)` (the
+  same `Body(...)` path the module walk takes, from `key.Decl.Declaration`), appended with the next ordinal and returned; a key whose
+  definition has no published value returns null, as today. So null keeps exactly today's meaning, and no reader can see "not built
+  yet": R4's condition holds by construction, not by each reader's care. `MirProgram` holds its builder (the one concrete producer, no
+  interface).
+- **Memo.** The program's key map (`bodies`) is the memo; `Clear()` per version resets it with the pool, as now.
+- **Validation.** A demanded body is validated by `Body`'s own `validator.Validate(body, findings)` as it is built. The program check
+  (G191) runs at the end of `BuildMir`, after every demand, so a staticEnsure's initializer is looked up (and built) there. A finding in a
+  demanded library body is a library defect: the library check (which builds every library body) fails on it; at check it is published
+  as today (`InternalInvariant_Kd`), and the driver does not analyze a body with findings.
+- **Sealing.** Demand is open from `Build` until `BuildMir` returns; afterwards the program is sealed, and a lookup that would build is
+  `InternalInvariant_Kd` (code generation reads collected items only, so it never demands).
+- **Driver order** (`MirAnalysis.Run`, `Compilation.BuildMir`): step 2 runs over a growing ordinal range (an index loop instead of
+  `foreach` over the span), so bodies A4's local facts look up get step 2 in turn; step 3 follows the round rule of 8.4; then step 4 (root
+  bodies only); then the collector, whose admissions may demand more bodies; those get step 2 (A1, A2 for code generation's tables; A4's
+  local facts unused) before `BuildMir` seals the program.
+- **Determinism.** Demand order is a function of the program (root bodies in id order, step 2 in ordinal order, the collector's FIFO), so
+  ordinals are deterministic per program. Library ordinals then differ between programs, so `MirDump` writes a module's bodies in
+  definition order (`Source.Id`), not ordinal order, and the semantic snapshot's `library.mir.txt` holds only the demanded bodies (a
+  declared snapshot change, re-baselined in the unit). Ledger rows are keyed by locations and forms, not ordinals: no change expected.
+  (Synthesized library node ids already depend on the program, §7.1.)
+- **Warm rebuilds.** A rebuild of the same version demands the same bodies in the same order and reuses the pool: warm 0 B holds
+  (`MirBuildTest`'s warm rebuild, `AnalyzeBench`'s warm 0 B). A version that demands a new body grows the pool once. Cold allocation
+  falls by about 2.9 MB on the small inputs: the `Purpose=Allocation` baselines that count library bodies move in the unit.
+
+### 8.4 A4's side: a body first named during the fixed point
+
+Step 3 resolves atoms through call substitutions, so it first names some bodies only during the fixed point (a destructor or an
+implementation for a Type made concrete there, a Closure's body). Such a body is built by the demand path, but it has no local facts yet.
+Two shapes, R4's choice:
+
+- **Rounds (proposed).** `MirEffects.Run` notes each body it enters without local facts and, when it noted any, ends without judging the
+  obligations or adding a problem; the driver runs step 2 on the bodies appended since, then `Run` again. Bodies only grow and the library
+  is finite, so the rounds end; usually there are none or one. A4 stays a reader: it never builds and never runs step 2 itself.
+- **Re-entrant.** `Solve` runs the body's local facts on the spot. It needs `Local`'s scratch (`MirDataflow`, `MirCases`) free during
+  `Solve` and node arrays that grow mid-iteration; more coupling, fewer passes.
+
+Rejected: a closure computed before step 3 from Types and callees (a second copy of A4's rule for which Types are dropped or which
+requirements run); reading an unrecorded body as bodyless (R4's condition).
+
+### 8.5 Options compared
+
+- **O2a, per body (proposed).** Owner W1 (`MirBuilder`, `MirProgram`) plus the driver; A4's round rule. Deletes the eager library walk at
+  check. Saving above. Risk: A4's round rule (8.4); the tests and dumps that count or print library bodies (`MirBuildTest.Dump`,
+  `CompilerPipelineBenchmark.MirBodies`, the semantic snapshot); a demanded body's findings.
+- **O2b, per module.** The whole library is built eagerly before step 2 when a root body names any library symbol, else not at all. Simple,
+  exact by the trigger, and no A4 change, but it helps only library-free programs (Scalar and Branching; not Hello, not Milestone26), and
+  its trigger restates "names the library" by syntax-free facts the closure already decides. Kept as the fallback if R4 rejects 8.4.
+- **O3, frozen library per process** (shared structure, §4). Removes the HIR publish and Binding's library share as well; R7-scale.
+
+### 8.6 Sizing (units of at most one hour)
+
+| Unit | Content | Holds |
+| --- | --- | --- |
+| U1 (bp) | `MirProgram`'s lookups as the demand point and `MirBuilder.Demand(key)`; sealing; still building every module eagerly, so every lookup hits; a test that a demanded key builds one validated body and a bodyless key returns null | `Mir/Build/MirBuilder.cs`, `Mir/MirProgram.cs` |
+| U2 (A4, R4) | The round rule of 8.4 with its test (a program whose solve names a destructor first: a forced lazy library in the test) | `Mir/Analysis/MirEffects*.cs`, `MirAnalysis.cs` |
+| U3 | Root modules eager, the library on demand; step 2 over the growing range; post-collection step 2; `MirDump` in definition order; the semantic re-baseline; allocation baselines; the census of demanded bodies (Generic 1) | `MirBuilder.cs`, `MirAnalysis.cs`, `Compilation.Pipeline.cs`, tests |
+| L, M | The full ledger and Session (heavy), then a pinned retake | - |
+
+U1 lands alone (behavior-preserving); U2 and U3 land as one group, since U3 without U2 would read unrecorded bodies.
+
+### 8.7 Questions for R4
+
+1. 8.4: rounds or re-entrant? Does `MirEffects.Run` add any problem before its fixed point completes (the round rule needs none)?
+2. Is null from a lookup meaning only "no published value" (never "not built") the contract you want stated in `MirProgram`'s header, with
+   sealing after `BuildMir` as the guard?
+3. Bodies the collector demands after the analyses get step 2 only (A1, A2 for code generation; A4's local facts unused, no step 3 or 4):
+   agreed?
+4. With laziness, A1/A2/A4 problems of library bodies are produced at check only for demanded bodies; the library check already runs every
+   step over every library body. Agreed that the library check covers them?
