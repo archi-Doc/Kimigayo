@@ -104,27 +104,22 @@ public partial class OriginRelationDiagnosticTest
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid
-    // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4). The
-    // row asserts the verdict at every depth; no counter observes Binding's argument preparation, so the linear work it requires is shown
-    // only by the row finishing (a work assertion needs a helper the planning session names).
+    // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4); with
+    // literal leaves at an `i64` position (R4's dlit, dvlit), each literal takes its position's Type (SPEC 12.3, 14.9.2 step 3). The row
+    // asserts the verdict at every depth; the linear work it requires is shown by the row finishing in the unit run (TypeDagScalingTest's
+    // pattern: a regression is a hang the runner's process timeout reports).
     [Theory]
     [InlineData("U1.4", "dn", false, false)]
     [InlineData("U1.4", "dn_n", false, true)]
     [InlineData("U1.4", "dv", true, false)]
     [InlineData("U1.4", "dv_n", true, true)]
+    [InlineData("U1.4", "dlit", false, false)]
+    [InlineData("U1.4", "dvlit", true, false)]
     public void NestedJoinArgumentsHaveTheirVerdictAtEveryDepth(string unit, string form, bool valueCall, bool failing)
     {
         for (var depth = 1; depth <= 32; depth++)
         {
-            var (type, join, plain) = ("Option<i32>", failing ? ".Some(true)" : ".None", ".None");
-            for (var i = 1; i <= depth; i++)
-            {
-                (type, join, plain) = ($"({type}, i32)", $"if c => ({join}, {i}) else => ({plain}, 0)", $"({plain}, 0)");
-            }
-
-            var body = valueCall
-                ? $"func k(c: bool, g: ({type}) -> i32) -> i32\n    return g({join})\n"
-                : $"func inner(x: {type}) -> i32 => 0\nfunc k(c: bool) -> i32\n    return inner({join})\n";
+            var body = NestedJoinArgument(depth, valueCall, failing, literal: form.EndsWith("lit", StringComparison.Ordinal));
             if (failing)
             {
                 AssertLanguageErrors($"{form} d={depth} [{unit}]", body, "TypeMismatch_Kd .Some(true)");
@@ -134,5 +129,32 @@ public partial class OriginRelationDiagnosticTest
                 AssertRecords($"{form} d={depth} [{unit}]", body, string.Empty, null);
             }
         }
+    }
+
+    // U1.4 (warm Bind allocation): a warm rebind of the depth-32 nested join argument allocates nothing.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AWarmRebindOfANestedJoinArgumentAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(NestedJoinArgument(32, valueCall: false, failing: false, literal: false) + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var complete = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
+        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // The B4 program of `depth`: a join inside a Tuple inside a join, at a named call or a value call, with `.None` leaves (one
+    // `.Some(true)` when failing) at Option<i32>, or literal leaves at i64.
+    private static string NestedJoinArgument(int depth, bool valueCall, bool failing, bool literal)
+    {
+        var (type, join, plain) = literal ? ("i64", "1", "2") : ("Option<i32>", failing ? ".Some(true)" : ".None", ".None");
+        for (var i = 1; i <= depth; i++)
+        {
+            (type, join, plain) = ($"({type}, i32)", $"if c => ({join}, {i}) else => ({plain}, 0)", $"({plain}, 0)");
+        }
+
+        return valueCall
+            ? $"func k(c: bool, g: ({type}) -> i32) -> i32\n    return g({join})\n"
+            : $"func inner(x: {type}) -> i32 => 0\nfunc k(c: bool) -> i32\n    return inner({join})\n";
     }
 }
