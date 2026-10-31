@@ -66,9 +66,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < work.Type.OriginArguments.Count; i++)
         {
-            var origin = work.Type.OriginArguments[i];
-            var outlives = origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner);
-            result = CombineProof(result, outlives ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+            result = CombineProof(result, this.StaticOrigin(work.Type.OriginArguments[i], work.Scope), true);
         }
 
         for (var i = 0; i < summary.Projections.Count; i++)

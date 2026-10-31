@@ -390,8 +390,7 @@ public sealed partial class Binding
         }
         else
         {
-            var origin = OwnedOrigin(type) is not { } owned ||
-                this.ProvesOriginOutlives(owned, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
             return CombineProof(origin, this.StructuralCapability(work), true);
         }
 
@@ -496,9 +495,7 @@ public sealed partial class Binding
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
             {
-                var origin = reference.OriginArguments[a];
-                var outlives = origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner);
-                result = CombineProof(result, outlives ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+                result = CombineProof(result, this.StaticOrigin(reference.OriginArguments[a], work.Scope), true);
             }
         }
 
@@ -653,48 +650,5 @@ public sealed partial class Binding
 
             return false;
         }
-    }
-
-    private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
-    {
-        internal BoundType Type { get; } = type;
-
-        internal BindingSymbol Intrinsic { get; } = intrinsic;
-
-        internal BindingScope Scope { get; } = scope;
-
-        internal bool Derivation { get; } = derivation;
-
-        // Recursive Owned structure starts optimistically; everything else starts unknown.
-        internal ConstraintProof Result { get; set; } = InitialResult(intrinsic, type);
-
-        internal bool Evaluated { get; set; }
-
-        internal bool Queued { get; set; }
-
-        internal CapabilityWork? Parent { get; set; }
-
-        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
-        internal ICheckCause? Cause { get; set; }
-
-        // The U fact its Unknown rests on, from the final iteration; never compared (design-r2 Amendment 4).
-        internal CallableUnknown? Fact { get; set; }
-
-        internal List<CapabilityWork> Dependents { get; } = new();
-
-        internal void Reset()
-        {
-            this.Result = InitialResult(this.Intrinsic, this.Type);
-            this.Evaluated = false;
-            this.Queued = false;
-            this.Parent = null;
-            this.Cause = null;
-            this.Dependents.Clear();
-        }
-
-        private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract
-                ? ConstraintProof.Proven
-                : ConstraintProof.Unknown;
     }
 }
