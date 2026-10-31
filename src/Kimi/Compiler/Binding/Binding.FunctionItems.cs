@@ -521,9 +521,13 @@ public sealed partial class Binding
         }
     }
 
+    // A Callable clause proven Unknown with its proof's U fact is RequireConstraint's record (FailUnprovenConstraint, census #25).
+    // Staged (U2.1 f2-4): referenceConstraints' Refuted, fact-less and pending outcomes route through RequireConstraint; then its record
+    // path is deleted (PLAN, U2.1 f2-4's follow-up).
     private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
     {
-        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
+        var shared = proof == ConstraintProof.Unknown && this.unknownRead is { Failure.IsCondition: true } fact && ReferenceEquals(fact.Clause, clause);
+        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !shared)
         {
             var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
             // A refuted clause, then the first Unknown one, is the reported cause.

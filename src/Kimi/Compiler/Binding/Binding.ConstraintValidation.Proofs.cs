@@ -102,6 +102,26 @@ public sealed partial class Binding
     private ICheckCause? ProofCause(ConstraintProof proof)
         => proof switch { ConstraintProof.Unknown => this.limitRead, ConstraintProof.Error => this.errorRead, _ => null };
 
+    // A part of a composite proof whose parts settle as separate judgments (ReferenceArgumentProof) keeps its own U fact as its own
+    // frame does (design-r2 Amendment 5): HoldUnknown takes the fact the part left, without the channel's Error cause, so the later
+    // parts' ends cannot drop it; LeaveUnknown hands it to the composite's consumer under the innermost open frame when the composite
+    // is Unknown, and drops it otherwise.
+    private CallableUnknown? HoldUnknown()
+    {
+        var fact = this.failedUnknown;
+        this.failedUnknown = null;
+        return fact;
+    }
+
+    private void LeaveUnknown(CallableUnknown? fact, ConstraintProof proof)
+    {
+        if (proof == ConstraintProof.Unknown && fact is not null)
+        {
+            fact.Epoch = this.frameEpoch;
+            this.failedUnknown = fact;
+        }
+    }
+
     // Opens a frame with a fresh epoch (design-r2 Amendment 5) and returns the enclosing frame's.
     private int OpenFrame()
     {

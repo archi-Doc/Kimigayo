@@ -532,6 +532,7 @@ public sealed partial class Binding
 
         var count = function.GenericArguments.Count;
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count), failureUse: failureUse);
+        var clauses = failureUse is null ? null : this.HoldUnknown(); // The clause list's U fact, for the reference's record.
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, failureUse), true);
         proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
         if (container is not null)
@@ -558,6 +559,7 @@ public sealed partial class Binding
             }
         }
 
+        this.LeaveUnknown(clauses, proof);
         return proof;
 
         ConstraintProof Formed(BoundType? written)

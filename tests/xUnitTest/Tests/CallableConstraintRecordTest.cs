@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
@@ -94,27 +95,23 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "apply(f@ref)"), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 8.3, 15.6.1 (G216 (a) U2.1 f2-3, census #25): a written Type whose Callable clause is Unknown only in the Origin part is the
-    // Constraint's one record at that Type, from its proof's own U fact (design-r2 Amendments 4 and 5): the clause and the member; the twin
-    // binds F to a signature that fits.
+    // SPEC 8.3, 15.6.1 (G216 (a) U2.1 f2-3 and f2-4, census #25): a Callable clause that is Unknown only in the Origin part is the
+    // Constraint's one record at its use, from its proof's own U fact (design-r2 Amendments 4 and 5): the clause and the member, at a
+    // written Type (f2-3) and at a Function Item reference (f2-4, whose record named only the clause before: a SPEC-faithful change of
+    // evidence, the more precise record, not a weakening); each twin binds F to a signature that fits.
     [Theory]
-    [InlineData("(ref/i32 during static) -> i32", true)]
-    [InlineData("(ref/i32) -> i32", false)]
-    public void AWrittenTypesCallableClauseIsRecordedFromItsProof(string argument, bool fails)
+    [InlineData("struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public init() => ()\nfunc use(h: ref/{0}) -> i32 => 0\npublic func main() => ()\n", "H<{0}>")]
+    [InlineData("func pick<F>() -> i32\n    F is Callable<(ref/i32) -> i32>\n    return 0\npublic func main() -> ()\n    let p = {0}\n", "pick<{0}>")]
+    public void ACallableClauseIsRecordedFromItsProof(string template, string form)
     {
-        var use = $"H<{argument}>";
-        var source = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public init() => ()\nfunc use(h: ref/" + use + ") -> i32 => 0\npublic func main() => ()\n";
-        var result = DiagnosticCorpus.Check(source);
-        if (!fails)
-        {
-            Assert.True(result.Accepted);
-            return;
-        }
-
-        var error = Assert.Single(result.Diagnostics);
+        var use = string.Format(CultureInfo.InvariantCulture, form, "(ref/i32 during static) -> i32");
+        var source = string.Format(CultureInfo.InvariantCulture, template, use);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), DiagnosticCategory.Proof, use), (error.Code, error.Category, Text(source, error.Span)));
         Assert.Equal(["subject", "constraint", "member", "relation", "longer", "shorter"], error.Reason!.Select(static x => x.Name));
         Assert.Equal(["F is Callable<(ref/i32) -> i32>", "the 1st parameter", "outlives", "ref/i32", "static"], error.Reason!.Skip(1).Select(static x => x.Value));
+        var fits = string.Format(CultureInfo.InvariantCulture, template, string.Format(CultureInfo.InvariantCulture, form, "(ref/i32) -> i32"));
+        Assert.True(DiagnosticCorpus.Check(fits).Accepted);
     }
 
     // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.
