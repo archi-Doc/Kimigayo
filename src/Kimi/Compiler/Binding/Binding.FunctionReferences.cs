@@ -533,9 +533,9 @@ public sealed partial class Binding
         var count = function.GenericArguments.Count;
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count), failureUse: failureUse);
         var clauses = failureUse is null ? null : this.HoldUnknown(); // The clause list's U fact, for the reference's record.
-        var held = failureUse is null ? null : this.HoldClause(null); // Each clause list's clause fact (G351a).
+        var held = this.HoldClause(null); // Each clause list's clause fact (G351a), for the reference's record and its trial's (G352).
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, failureUse), true);
-        held = failureUse is null ? null : this.HoldClause(held);
+        held = this.HoldClause(held);
         proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
         if (container is not null)
         {
@@ -619,8 +619,7 @@ public sealed partial class Binding
 
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
             {
-                failure = this.CandidateConstraintFailure(function, arguments ?? [], lengths ?? [], scope, null, container, proof) is { } fact
-                    ? fact with { Declaration = null } : null;
+                failure = ClauseFailure(this.HoldClause(null), null); // The fact ReferenceArgumentProof left at the trial's verdict.
             }
 
             return proof switch

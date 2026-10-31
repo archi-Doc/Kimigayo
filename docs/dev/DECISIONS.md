@@ -6796,6 +6796,8 @@ resumed by R4-M86 (2026-10-20).
   `CandidateConstraintFailure` reads a clause whose L decides nothing), a solve per strongly connected set (a conformance binding can
   name a declaration no written storage of the set names), option 1 (the owner's X-2 candidate). Not temporary; the guard and the
   bound keep their conditions above.
+  - Amendment (G352, U2.1 round 2, 2026-10-31; BU): `CandidateConstraintFailure` is deleted; a failed candidate's explanation reads
+    its trial's clause fact (U2.1 r2-4's frame; PLAN G352).
 
 - **BU-23** (2026-10-22; the BU planning session's ruling on bu20's verify-first S1, R4 agreeing; PLAN G178; unit bu20 C0c) A
   constructor's or destructor's receiver `self` is a Place of its own: its symbol takes the reserved slot `ReceiverSlot`

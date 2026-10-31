@@ -141,7 +141,7 @@ public sealed partial class Binding
             evaluation.PendingCount++;
             evaluation.PremisesOnly &= premiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
-            evaluation.ConstraintFailure ??= this.CandidateConstraintFailure(function, evaluation.Scratch, evaluation.LengthArguments, scope, evaluation.Self, declaringType, ConstraintProof.Unknown);
+            evaluation.ConstraintFailure ??= rejectedConstraint;
         }
 
         if (trial >= 0)

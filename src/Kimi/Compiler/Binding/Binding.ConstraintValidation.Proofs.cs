@@ -46,7 +46,7 @@ public sealed partial class Binding
 
     // The clause fact (design-r2 G351a, R4-M155): the clause a clause list's combined verdict rests on, handed one step outward
     // (clauseRead, the scope's), left by a settled clause list for its check (failedClause) and kept by a candidate trial (trialClause),
-    // each diagnostic payload only; no reader yet.
+    // each diagnostic payload only; a failed candidate's explanation reads its trial's (ClauseFailure, G352).
     private ClauseFact? clauseRead;
     private ClauseFact? failedClause;
     private ClauseFact? trialClause;

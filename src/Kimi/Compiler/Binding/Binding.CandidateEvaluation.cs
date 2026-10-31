@@ -154,6 +154,12 @@ public sealed partial class Binding
         return false;
     }
 
+    // A failed candidate's explanation is its trial's clause fact (G351a; PLAN G352): the first clause at the trial's verdict
+    // (E > R > L > U), read where the trial left it and never proven again (AGENTS Diagnostics). None when the trial left no fact, as for
+    // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
+    private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
+        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
+
     // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
     private bool BetterCandidate(
         in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
@@ -225,55 +231,6 @@ public sealed partial class Binding
     {
         this.MarkWaitingHeaders(call);
         return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
-    }
-
-    // The first clause with the outcome.
-    private ReferenceConstraintFailure? CandidateConstraintFailure(FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType, ConstraintProof outcome)
-    {
-        for (var i = 0; i < function.TypeConstraints.Count; i++)
-        {
-            if (function.TypeConstraints[i] is not IsKoto { BoundConstraint: { HasUnresolved: false } bound } clause)
-            {
-                continue;
-            }
-
-            var substituted = this.SubstituteCandidateConstraint(bound, function, slots, lengths, scope, self, declaringType);
-            if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == outcome)
-            {
-                return new(clause, substituted, outcome, function.BoundSymbol);
-            }
-        }
-
-        if (function.BoundSymbol is { ConditionalDeclaration: { } declaration } member)
-        {
-            declaringType ??= this.SelfType(member.Scope.Owner.BoundSymbol!);
-            foreach (IsKoto clause in ((SyntaxFormKoto)declaration.Operands[1]).Operands)
-            {
-                if (clause.BoundConstraint is not { HasUnresolved: false } bound)
-                {
-                    continue;
-                }
-
-                var substituted = this.ContractConstraint(this.SubstituteConstraint(bound, member.Scope.Owner, (BoundType[])declaringType.Components), scope, declaringType);
-                if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == outcome)
-                {
-                    return new(clause, substituted, outcome, member);
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private BoundConstraint SubstituteCandidateConstraint(BoundConstraint constraint, FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType)
-    {
-        var substituted = this.SubstituteConstraint(constraint, CallSlotOwner(function), slots.AsSpan(0, CallSlotCount(function)), lengths.AsSpan(0, CallOwnSlots(function).Count), incomplete: true);
-        if (!function.IsConstructor && declaringType?.Symbol?.Declaration is { } owner)
-        {
-            substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
-        }
-
-        return this.ContractConstraint(substituted, scope, self);
     }
 
     // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking

@@ -526,10 +526,13 @@ public sealed partial class Binding
             }
 
             var proof = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables, unsolvedSlots);
+            var failure = ClauseFailure(this.trialClause, function.BoundSymbol); // The trial's clause fact, read before a later proof replaces it.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;
             }
+
+            constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
                 this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, CallSlotCount(function)), scope, self, function.IsConstructor ? null : declaringType, lengths.AsSpan(0, CallOwnSlots(function).Count), slotOwner: CallSlotOwner(function)))
@@ -569,10 +572,10 @@ public sealed partial class Binding
                 }
             }
 
-            // Retain only a condition actually reached after the argument/result checks, before scratch is reused.
+            // Retain only a condition actually reached after the argument/result checks.
             if (proof == ConstraintProof.Refuted && closureReceiver is null)
             {
-                constraintFailure = this.CandidateConstraintFailure(function, arguments, lengths, scope, self, declaringType, ConstraintProof.Refuted);
+                constraintFailure = failure;
             }
 
             unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty;
