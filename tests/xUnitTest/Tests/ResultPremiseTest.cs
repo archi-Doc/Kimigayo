@@ -238,13 +238,16 @@ public partial class ResultPremiseTest
 
         var item = Pin + "func forward(x: ref/i32 during static) -> ref/i32 during static\n    let fr = pin\n    let g: (ref/i32) -> ref/i32 during static = fr\n    return g(x)\n" + Main;
         var reference = item.Replace("    let fr = pin\n    let g: (ref/i32) -> ref/i32 during static = fr\n", "    let g: (ref/i32) -> ref/i32 during static = pin\n", StringComparison.Ordinal);
-        foreach (var (source, at) in new[] { (item, "fr"), (reference, "pin") })
+        // The reference's record names its comparison's first failing position (G216 (a) U2.1 e2a: the Item's solve gives its own fact,
+        // DIAGNOSTICS' first failing position under design-r2 §2, with no second walk): the 1st parameter, whose required input must
+        // outlive p, which the clause makes outlive static; it was the clause, which only the explanation's representative solve reached.
+        foreach (var (source, at, member, shorter) in new[] { (item, "fr", "the clause 'origin p outlives static'", "static"), (reference, "pin", "the 1st parameter", "p") })
         {
             var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
             Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), DiagnosticCategory.Proof), (error.Code, error.Category));
             Assert.Equal(at, Text(source, error.Span));
-            Assert.Equal("the clause 'origin p outlives static' requires the omitted Origin of ref/i32 outlives static, which is not proven", error.Label);
-            Assert.Equal(["conversion", "the clause 'origin p outlives static'", "outlives", "ref/i32", "static"], error.Reason!.Select(static x => x.Value));
+            Assert.Equal($"{member} requires the omitted Origin of ref/i32 outlives {shorter}, which is not proven", error.Label);
+            Assert.Equal(["conversion", member, "outlives", "ref/i32", shorter], error.Reason!.Select(static x => x.Value));
             var related = Assert.Single(error.Related!);
             Assert.Equal(("origin", "ref/i32"), (related.Role, Text(source, related.Span)));
             Assert.True(DiagnosticCorpus.Check(source.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);

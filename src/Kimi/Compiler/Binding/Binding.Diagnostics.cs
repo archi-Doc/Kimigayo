@@ -485,14 +485,14 @@ public sealed partial class Binding
         var positions = !failure.IsCondition;
         if (failure.IsCondition)
         {
-            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure));
+            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure, node));
         }
 
         for (var i = 1; i < count; i++)
         {
             if (facts[i].IsCondition)
             {
-                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i])));
+                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
             }
             else
             {

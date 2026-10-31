@@ -562,6 +562,7 @@ public sealed partial class Binding
             var b = Substitute(relation.Shorter);
             if (!this.ProvesOriginOutlives(a, b, use, comparison) || (relation.Equality && !this.ProvesOriginOutlives(b, a, use, comparison)))
             {
+                this.failedCallClause = (a, b, relation.Equality, relation.Syntax);
                 return false;
             }
         }
