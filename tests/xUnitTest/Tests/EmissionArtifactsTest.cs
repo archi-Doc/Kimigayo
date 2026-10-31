@@ -286,6 +286,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         if (output)
         {
             Assert.False(EmissionArtifacts.GenerateInto(c, writer));
+            var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+            Assert.Equal((nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), DiagnosticCategory.Input), (record.Code, record.Category));
             Assert.Equal("failure", PublicationFailure(c));
             return;
         }
