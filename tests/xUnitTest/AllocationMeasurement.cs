@@ -68,12 +68,7 @@ internal static class AllocationMeasurement
                     var readings = new long[run + 8 + 1];
                     var events = Pool.OnCurrentThread;
                     var marker = CompileEvents.Start();
-
-                    // A runtime pause that is not a collection can charge the unused tail of a partially used
-                    // allocation context (up to ~8 KB) to this thread. Retire it so zero-allocation work holds none.
-                    // A gen0 collection retires it; a full one would also trim shared pools (gen2 callbacks) under
-                    // the measurements running on other threads.
-                    GC.Collect(0, GCCollectionMode.Forced, blocking: true);
+                    RetireAllocationContext();
                     var compiled = JitInfo.GetCompiledMethodCount(currentThread: true);
                     readings[0] = GC.GetAllocatedBytesForCurrentThread();
                     for (var i = 1; i < readings.Length; i++)
@@ -123,6 +118,23 @@ internal static class AllocationMeasurement
 
         return allocated;
     }
+
+    // The allocation of one run of an operation that cannot repeat on its state: a cold first build or analysis, or a designed
+    // second pass. Measure is the rule otherwise. It runs on the calling thread, after the step that retires the thread's
+    // allocation context; no warm-up, no repeated or retried window and no excused cause.
+    internal static long MeasureOnce(Action operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        RetireAllocationContext();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        operation();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to ~8 KB)
+    // to this thread. Retire it so zero-allocation work holds none. A gen0 collection retires it; a full one would also trim
+    // shared pools (gen2 callbacks) under the measurements running on other threads.
+    private static void RetireAllocationContext() => GC.Collect(0, GCCollectionMode.Forced, blocking: true);
 
     // The largest allocation of MeasuredOperations consecutive operations of a window's readings.
     private static long Largest(long[] readings)

@@ -250,9 +250,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             }
 
             c = Compile(text.Append("    return -1\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            MirBody body = null!;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work"));
             work[i] = body.Blocks.Length + body.Statements.Length;
             Assert.Equal(sizes[i] * 2, body.Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
         }
@@ -288,10 +287,13 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             }
 
             c = Compile(text.Append("    return total\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var program = c.BuildMir();
-            var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            MirProgram program = null!;
+            MirBody body = null!;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
+            {
+                program = c.BuildMir();
+                body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+            });
             work[i] = body.Blocks.Length + body.Statements.Length;
             Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
             var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());

@@ -254,19 +254,22 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         for (var i = 0; i < sizes.Length; i++)
         {
             var runs = new int[sizes[i] + 1];
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var sets = new MirLoanSets();
-            for (var w = 0; w < runs.Length; w++)
+            MirLoanSets sets = null!;
+            long made = 0;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
             {
-                for (var element = w; element < w + K; element++)
+                sets = new MirLoanSets();
+                for (var w = 0; w < runs.Length; w++)
                 {
-                    runs[w] = sets.Add(runs[w], element);
+                    for (var element = w; element < w + K; element++)
+                    {
+                        runs[w] = sets.Add(runs[w], element);
+                    }
                 }
-            }
 
-            var made = sets.Bytes;
-            Unions(sets, runs);
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+                made = sets.Bytes;
+                Unions(sets, runs);
+            });
             bytes[i] = sets.Bytes - made;
             Assert.Equal(sizes[i] * (K + 1) * sizeof(int), bytes[i]);
             Unions(sets, runs);

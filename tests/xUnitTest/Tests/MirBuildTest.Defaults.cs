@@ -254,9 +254,8 @@ public sealed partial class MirBuildTest
             }
 
             c = Compile(text.Append("    return total\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            MirBody body = null!;
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" }));
             work[i] = body.Blocks.Length + body.Statements.Length;
             Assert.Equal(sizes[i] * 2, body.Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
         }
