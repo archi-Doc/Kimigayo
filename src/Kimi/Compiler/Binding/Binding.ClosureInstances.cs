@@ -57,7 +57,7 @@ public sealed partial class Binding
     // reads a call in the definition's world).
     internal BoundType? ClosureDefinitionSignature(BoundType type)
         => BoundClosure.Of(type) is { } closure
-            ? type.ClosureContext is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
+            ? TyCtxt.ClosureInstance(type) is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
     // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal

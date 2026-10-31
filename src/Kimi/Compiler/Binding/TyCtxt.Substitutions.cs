@@ -41,6 +41,10 @@ internal sealed partial class TyCtxt
     internal static BoundType? HeldType(BoundType closure)
         => closure.ClosureContext is { Declaring: { } held } context && ReferenceEquals(context.Target, closure.Symbol) ? held : null;
 
+    // SPEC 6.1.3, 15.8.2: the substitution a Closure Type's readers apply, the one view of its context that its signature
+    // (Binding.ClosureDefinitionSignature), its environment (ClosureEnvironment) and its body (SubstOfClosure) read.
+    internal static Subst? ClosureInstance(BoundType closure) => closure.ClosureContext;
+
     // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
     // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.
     internal bool Readable(BoundType type, Binding.StorageOutcome storage) => binding.Readable(type, storage);
@@ -62,7 +66,7 @@ internal sealed partial class TyCtxt
     // DECISIONS R5-M63, R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
         => closure is { Symbol: { Declaration: FunctionKoto { ClosureDefinition: not null } } symbol }
-            ? closure.ClosureContext ?? this.Identity((this.EnclosingDeclaration(symbol) ?? symbol).Declaration) : null;
+            ? ClosureInstance(closure) ?? this.Identity((this.EnclosingDeclaration(symbol) ?? symbol).Declaration) : null;
 
     // DECISIONS BU-60: the context of a closure a Type's instance holds (a Field initializer's): that instance, which has no Origin position
     // (Binding.HeldContext stages one that has), as the declaring Type of a substitution whose target is the closure itself; open
