@@ -83,15 +83,30 @@ internal sealed partial class MirBorrows
             return this.reads[set].Chain - 1;
         }
 
-        MirDataflow.Grow(ref this.queuedBy, this.holderCount);
-        MirDataflow.Grow(ref this.partlyBy, this.holderCount);
-        this.closures++;
-        this.chained.Clear();
+        this.Closing();
         if (!this.Queue(set))
         {
             this.Queued(Escaped, whole: false); // content's rule: E where S carries no direct Loan.
         }
 
+        var chain = this.Closure(state);
+        this.Memo(set).Chain = chain + 1;
+        return chain;
+    }
+
+    // A new closure, before its seeds are queued (Chain's set seed, or a destroyed Place's holder).
+    private void Closing()
+    {
+        MirDataflow.Grow(ref this.queuedBy, this.holderCount);
+        MirDataflow.Grow(ref this.partlyBy, this.holderCount);
+        this.closures++;
+        this.chained.Clear();
+    }
+
+    // The closure's reach from its queued seeds: each holder a state read names is queued once, then every queued holder read through
+    // rule W's clause, joined by one n-ary union.
+    private int Closure(ulong[] state)
+    {
         for (var i = 0; i < this.chained.Count; i++)
         {
             this.Queue((int)state[this.chained[i]]);
@@ -103,9 +118,7 @@ internal sealed partial class MirBorrows
             this.parts.Add(this.ReadThrough(state, holder, whole: this.partlyBy[holder] != this.closures));
         }
 
-        var chain = this.sets.Union(CollectionsMarshal.AsSpan(this.parts));
-        this.Memo(set).Chain = chain + 1;
-        return chain;
+        return this.sets.Union(CollectionsMarshal.AsSpan(this.parts));
     }
 
     // Queues for Chain the holders a set names, those its direct Loans and addresses name and E where it carries Φ_E; whether it has a
@@ -217,6 +230,12 @@ internal sealed partial class MirBorrows
     private int Referents(int set)
     {
         this.Refs(set);
+        return this.Walking();
+    }
+
+    // A new W walk from the holders in the targets (W's seeds: refs(S), or a destroyed Place's holder), each once; their count.
+    private int Walking()
+    {
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingKind, this.holderCount);
         MirDataflow.Grow(ref this.writingVia, this.holderCount);
@@ -248,6 +267,12 @@ internal sealed partial class MirBorrows
     private (bool Limit, bool Deep) Writes(ulong[] state, int set)
     {
         this.Write(set, ViaRoot); // The kinds of refs(S)'s holders, which Referents put in the targets.
+        return this.Passes(state);
+    }
+
+    // W's passes past its seeds (Writes'), each holder's kind set: the holders past each one whose guard passes, then the two facts.
+    private (bool Limit, bool Deep) Passes(ulong[] state)
+    {
         var limited = false;
         for (var i = 0; i < this.targets.Count; i++)
         {
