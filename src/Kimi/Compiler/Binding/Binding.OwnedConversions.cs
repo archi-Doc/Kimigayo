@@ -39,7 +39,7 @@ public sealed partial class Binding
         }
 
         this.failedCause = null;
-        var proof = this.ProveOwned(implementation, use);
+        var proof = this.ProveOwned(this.EnvironmentTypeG353(implementation), use);
         if (proof == ConstraintProof.Proven)
         {
             return false;
@@ -122,4 +122,11 @@ public sealed partial class Binding
 
         return null;
     }
+}
+
+// PROTOTYPE G353: SPEC 7.7.4's complete environment.
+public sealed partial class Binding
+{
+    internal BoundType EnvironmentTypeG353(BoundType callable)
+        => callable.Kind == BoundTypeKind.Closure ? this.types.Tuple((BoundType[])callable.Components) : callable;
 }
