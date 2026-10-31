@@ -11443,6 +11443,12 @@ structure is recorded here by the unit that first implements it.
     unsigned position (a second encoding of an unresolved position).
   - Superseded in part by R5-M154 (G167): a Type parameter's position is compared with 0 in its own Type and with isize's maximum
     in u128, not a located `Unsupported_Kd`.
+  - Amended (PLAN G168, 2026-10-31; design `draft/Sketches/R5/G168-design.md` revision 4, R4's review ACCEPT): the rule also covers a
+    Field that forms no Place after its receiver was built (`MirBuilder.Field`: a Place of a Type parameter an identity premise makes
+    a struct, SPEC 8.2.3, stays the located `Unsupported_Kd`; a Field without a stored Type stays derived) and `Reborrowed`'s
+    `InternalInvariant_Kd` value: the Opaque temp's site names only the receiver's (the Place's) root. A1 no longer reports the
+    dependent `MovedPlace_Kd` at the member for a root the receiver's index moved; the independent ones (a later use of that root, a
+    use of a moved receiver) stay.
 - **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
   form 1; temporary: the stage that makes an `Expect`'s target the default reduces it to the target, G2 for acceptance-time records
   such as this entry's (the collector runs on the default pipeline from G2, R5-M41) and G3 for generated output; G4 removes the form

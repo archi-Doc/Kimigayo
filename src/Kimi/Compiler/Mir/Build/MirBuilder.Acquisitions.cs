@@ -90,14 +90,20 @@ internal sealed partial class MirBuilder
     // SPEC 15.1.5, 15.6.3 (DECISIONS BU-27): a stored exclusive reference Reborrowed in its own mode, of the Type its consumer expects,
     // which is Binding's name for the Reborrow (a receiver's, an argument's or a payload's AdaptedType, a Subject's borrow, a destination's
     // Type) and a same-mode reference to the stored referent; as Acquired types every other borrow by `expected`. Any other expected Type is
-    // a broken contract: InternalInvariant_Kd, the value a derived Opaque of the stored Type.
+    // a broken contract: InternalInvariant_Kd, the value a derived Opaque of the stored Type in an Opaque temp, whose site names only the
+    // Place's root, built already (R5-M63, R5-M84).
     private MirOperand Reborrowed(MirPlace place, BoundType stored, BoundType? expected, bool input, Koto node, MirPlace? into)
     {
         if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
             stored.Components is not [var referent] || !MirTypes.Agree(named, referent))
         {
             this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
-            return MirOperand.Move(this.Unsupported(node, derived: true, stored));
+            var temp = this.Temp(stored, node);
+            this.opaqueTemps.Add(temp.Root);
+            this.roots.Clear();
+            this.roots.Add(place.Root);
+            this.Site(node, temp, Completes(node));
+            return MirOperand.Move(temp);
         }
 
         return this.Temporary(expected, this.Ref(place, expected, input), node, into);

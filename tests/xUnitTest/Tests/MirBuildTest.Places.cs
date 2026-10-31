@@ -171,6 +171,35 @@ public sealed partial class MirBuildTest
         Assert.Contains(" = copy _ as u128 (Integer) proven", body, StringComparison.Ordinal);
     }
 
+    // SPEC 8.2.3, 23.1.2 (DECISIONS R5-M63, R5-M84; PLAN G168): a Field of a Place whose Type an identity premise makes a struct (`T is
+    // Pair`) is a located Unsupported_Kd whose Opaque site names only the receiver's root, built already, so a root the receiver's index
+    // moved is not used again there and A1 reports no MovedPlace_Kd at the member, while the independent ones stay: a later use of the
+    // moved root, a use of a moved receiver (fail-before: the site named the member's syntax roots, `_1 _2`, and A1 added MovedPlace_Kd at
+    // the member in c1 and c1Used). Each row: the parameters, the statements, the module-0 problems.
+    [Theory]
+    [InlineData("xs: ref/Array<T>, t: string", "return xs[pos(t@move)].a", "")]
+    [InlineData("xs: ref/Array<T>, t: string", "let v = xs[pos(t@move)].a\n    use(t@move)\n    return v", "MovedPlace_Kd t")]
+    [InlineData("s: T", "let m = s@move\n    return s.a", "MovedPlace_Kd s.a")]
+    [InlineData("s: ref/T", "return s.a", "")]
+    [InlineData("s: T", "return s.a", "")]
+    public void AnUnsupportedFieldsSiteNamesItsReceiversRoot(string parameters, string statements, string problems)
+    {
+        var c = Compile("struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\n" +
+            $"func pos(y: string) -> isize => 0\nfunc use(y: string) => ()\nfunc f<T>({parameters}) -> i32\n    T is Pair\n    {statements}\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var member = Assert.Single(program.Records, static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, ".a"), (member.Code, c.SyntaxOf(member.Subject).ToString()![^2..]));
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
+        Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+    }
+
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one
     // check, after every boundary is evaluated, at the selection: the range's one Fail follows the later boundary's call (fail-before: ^x
     // failed where it was evaluated, at ^x, before next() was called).
