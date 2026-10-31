@@ -382,6 +382,44 @@ public sealed partial class MirBorrowsTest
             b = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))@obj/EBase
             y = 5
             usep(slot)
+        func rcCellBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var cell: raw/u8 = null
+            var x = Writer.init(q: null)
+            x.q = cell@raw@raw/u8
+            x.p = slot@raw
+            var h = x@move@rc
+            cell = w@raw@raw/u8
+            h = Writer.init(q: null)@rc
+            y = 5
+            usep(slot)
+        func rcCellQuietOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var cell: raw/u8 = null
+            var x = Quiet.init(q: null)
+            x.q = cell@raw@raw/u8
+            x.p = slot@raw
+            var h = x@move@rc
+            cell = w@raw@raw/u8
+            h = Quiet.init(q: null)@rc
+            y = 5
+            usep(slot)
+        func rcCellNullOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var cell: raw/u8 = null
+            var x = Writer.init(q: null)
+            x.q = cell@raw@raw/u8
+            x.p = slot@raw
+            var h = x@move@rc
+            h = Writer.init(q: null)@rc
+            y = 5
+            usep(slot)
         func dictReassignBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -546,13 +584,16 @@ public sealed partial class MirBorrowsTest
     // - A drop writing through a borrow Field (Setter, no raw layer): retention is per argument (SPEC 15.6.4), so the receiver's Content,
     //   its own `t@uniq` Loan included, reaches t, and `t@ref` errs after it (setterScopeBad, setterScopeContentBad).
     // The stated and Setter rows read one rule, a destruction giving what its drop's body called as a `uniq/Self` method gives: PLAN
-    // G338's open reading of 5.7 Calls ("that storage retains as the borrow would") is BU's; if it excludes the covering borrow's own
-    // Loan, statedSlotBad and setterScopeContentBad become valid and their Bad twins keep only `y = 5`, with the call forms (one rule).
+    // G338's open reading of 5.7 Calls ("that storage retains as the borrow would", asked for `put`'s argument) is BU's; if it extends
+    // to a borrow held inside the receiver and excludes that borrow's own Loan, statedSlotBad and setterScopeContentBad become valid and
+    // their Bad twins keep only `y = 5`, with the call forms (one rule).
     // - Parts: a Field (fieldBad); an outer drop and its Field's drop both composed (orderBad: the inner Writer reaches that storage
     //   whether or not OuterD's drop rewrites its slot first, so no verdict observes SPEC 16.3.2's order); a base (baseBad respelled
     //   `: base(q: q)`); Tuple and Option payloads; a generic Type's drop (holderBad); a Closure capture (closureBad respelled: the
     //   Closure ends with its `do` block); a Sealed handle payload walked on and an erased destruction of a non-Sealed handle's payload
-    //   (sealedLateBad, erasedLateBad: q is set after makeObj, whose by-value call would decide the verdict by itself); Array elements
+    //   (sealedLateBad, erasedLateBad: q is set after makeObj, whose by-value call would decide the verdict by itself); an `rc` payload
+    //   at a possibly final release (SPEC 16.3.3; rcCellBad: q addresses a local cell written only after `@rc`, whose conversion would
+    //   otherwise decide the verdict by itself; rcCellQuietOk has no drop, rcCellNullOk never writes the cell); Array elements
     //   (arrReassignBad, also scopeDrop2Bad; litScopeBad adds the Array literal's own construction, R5-M129); Dictionary values and keys
     //   (dictReassignBad, dictKeyReassignBad); fixed-array elements (fixedReassignBad).
     [Theory]
@@ -584,6 +625,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("sealedLateNullOk", "")] // Sealed handle payload
     [InlineData("erasedLateBad", "erasedLateBad: y = 5")] // erased destruction (non-Sealed handle payload)
     [InlineData("erasedLateNullOk", "")] // erased destruction (non-Sealed handle payload)
+    [InlineData("rcCellBad", "rcCellBad: y = 5")] // rc payload at a possibly final release
+    [InlineData("rcCellQuietOk", "")] // rc payload at a possibly final release
+    [InlineData("rcCellNullOk", "")] // rc payload at a possibly final release
     [InlineData("arrReassignBad", "arrReassignBad: y = 5")] // Array elements at `=`
     [InlineData("litScopeBad", "litScopeBad: y = 5")] // Array literal's elements at a scope end
     [InlineData("dictReassignBad", "dictReassignBad: y = 5")] // Dictionary values at `=`
@@ -640,8 +684,8 @@ public sealed partial class MirBorrowsTest
     public void AWarmDestructionAllocatesNothing()
     {
         string[] forms = ["localBad", "tempOnlyBad", "scopeBad", "discardBad", "escapeBad", "setterScopeBad", "statedBad", "fieldBad", "orderBad",
-            "baseBad", "tupleBad", "optionBad", "holderBad", "closureBad", "sealedLateBad", "erasedLateBad", "arrReassignBad", "litScopeBad",
-            "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad"];
+            "baseBad", "tupleBad", "optionBad", "holderBad", "closureBad", "sealedLateBad", "erasedLateBad", "rcCellBad", "arrReassignBad",
+            "litScopeBad", "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad"];
         var c = MirBuildTest.Compile(DropShapes + string.Concat(forms.Select(static x => Form(DropForms, x))) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
