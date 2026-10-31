@@ -168,7 +168,46 @@ internal sealed partial class MirBuilder
     {
         var receiver = this.Place(member.Left, input);
         return HirTables.PlanOf(member).Folded is { } element
-            ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
+            ? this.Selected(receiver, member.Left, MirProjectionKind.Field, (int)element, member) : this.Field(receiver, HirTables.Symbol(member), member);
+    }
+
+    // A projection of a receiver's Place a node selects, or the identity premise's Unsupported where Binding selected on the premise's Type
+    // (Identical).
+    private MirPlace Selected(MirPlace receiver, Koto receiverNode, MirProjectionKind kind, int arg, Koto node)
+        => this.Identical(receiver, receiverNode, node) ? this.Unidentified(receiver, node) : this.body.Project(receiver, kind, arg);
+
+    // SPEC 8.2.3 (DECISIONS BU-72): whether Binding resolved a selection through an identity premise whose subject is the Type parameter the
+    // receiver's Place has, on exactly the premise's Type: the receiver node's published Type through its Layers (TyCtxt.Layer, as Follow).
+    // A MIR Place keeps the parameter, from which no projection selects; any other typeless projection is formed, a broken contract
+    // MirValidator reports. Temporary (PLAN G168b): G170's identity query, giving the Place the identical Type, removes it and its callers'
+    // branches.
+    private bool Identical(MirPlace receiver, Koto receiverNode, Koto node)
+    {
+        if (this.body.TypeOf(receiver) is not { Kind: BoundTypeKind.Parameter } parameter || HirTables.IdentityPremise(node) is not { } premise ||
+            !ReferenceEquals(premise.Subject, parameter))
+        {
+            return false;
+        }
+
+        var published = HirTables.Meaning(receiverNode) as BoundType;
+        for (var layers = HirTables.PlaceOf(receiverNode).Layers; layers > 0 && TyCtxt.Layer(published, out var below, out _) != HirPlaceKind.Value; layers--)
+        {
+            published = below;
+        }
+
+        return published is not null && MirTypes.Agree(published, premise.RequiredType);
+    }
+
+    // The located Unsupported of a selection on an identity premise's Type (Identical): an Opaque in an Opaque temp of its Type whose site
+    // names only the receiver's root, as Field's (R5-M63, R5-M84).
+    private MirPlace Unidentified(MirPlace receiver, Koto node)
+    {
+        var temp = this.Temp(TypeOf(node), node);
+        this.opaqueTemps.Add(temp.Root);
+        this.roots.Clear();
+        this.roots.Add(receiver.Root);
+        this.Unsupported(node, temp, node);
+        return temp;
     }
 
     // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp

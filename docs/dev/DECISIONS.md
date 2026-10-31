@@ -11475,6 +11475,14 @@ structure is recorded here by the unit that first implements it.
     `InternalInvariant_Kd` value: the Opaque temp's site names only the receiver's (the Place's) root. A1 no longer reports the
     dependent `MovedPlace_Kd` at the member for a root the receiver's index moved; the independent ones (a later use of that root, a
     use of a moved receiver) stay.
+  - Amended (PLAN G168b, 2026-11-01; the owner's 「(a) 今行う」; temporary): a Tuple element, an index or a constant index Binding
+    resolved through an identity premise (BU-72's `HirTables.IdentityPremise`) whose subject is the Type parameter of the receiver's
+    Place, on exactly the premise's Type (the receiver node's published Type through its Layers), forms no projection and reads nothing
+    of the receiver (an index's length or key resolution included; its index keeps its own code): it is the located `Unsupported_Kd` of
+    an Opaque whose site names only the receiver's root (`MirBuilder.Identical`, `Unidentified`), not a typeless projection or length
+    MirValidator rejects (`InternalInvariant_Kd`); a range selection (`Slice`) the same, its boundaries or key built. Any other typeless projection still reaches MirValidator; a parameter nested in the
+    receiver's Type has no fact (BU-72's limit) and keeps that defect (STATUS). Removal: G170's identity query, which gives the Place
+    the identical Type, removes the premise test with BU-72.
 - **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
   form 1; temporary: the stage that makes an `Expect`'s target the default reduces it to the target, G2 for acceptance-time records
   such as this entry's (the collector runs on the default pipeline from G2, R5-M41) and G3 for generated output; G4 removes the form
