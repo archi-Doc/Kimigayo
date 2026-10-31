@@ -312,24 +312,21 @@ internal sealed partial class MirEffects
     // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
     private void Destroy(BoundType type, int depth)
     {
-        if (type.IsAbstract)
+        switch (MirTypes.Destroys(type, types, this.definition))
         {
-            this.AddAtom(type, Drop);
-        }
-        else if (type.Kind == BoundTypeKind.Function)
-        {
-            this.found |= Unknown;
-        }
-        else if (type.Kind == BoundTypeKind.Semantics)
-        {
-            var glue = new Glue(this);
-            var proven = types.Sealed(this.definition, type.Components[0]);
-            this.found |= proven ? (byte)0 : Unknown;
-            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue, depth + 1);
-        }
-        else if (AdtDef.DestructorSymbol(type) is { } destructor)
-        {
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, []), destructor);
+            case MirDestroyedPart.Abstract:
+                this.AddAtom(type, Drop);
+                break;
+            case MirDestroyedPart.Erased:
+                this.found |= Unknown;
+                break;
+            case MirDestroyedPart.Payload:
+                var glue = new Glue(this);
+                MirTypes.Destruction(type.Components[0], ref glue, depth + 1);
+                break;
+            case MirDestroyedPart.Drop when AdtDef.DestructorSymbol(type) is { } destructor:
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, []), destructor);
+                break;
         }
     }
 

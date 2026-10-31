@@ -7,6 +7,17 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
+/// <summary>What destroying a part the destruction walk reports runs (SPEC 16.3.1-16.3.3; <see cref="MirTypes.Destroys"/>), the one
+/// classification its readers share (DECISIONS R4-M150).</summary>
+internal enum MirDestroyedPart : byte
+{
+    Releases, // A string's, an Array's or a Dictionary's storage is released; its elements are parts of their own.
+    Drop, // A struct's declared drop runs (R4-M6b: its body alone destroys the parts).
+    Erased, // An erased destruction (SPEC 16.3.3): a Function value's environment, or an owning handle whose payload is not proven Sealed.
+    Payload, // An owning handle whose payload is proven Sealed: its payload is destroyed, which the walk goes on into below the handle.
+    Abstract, // An abstract part: its instance decides; each reader applies the Copy proof (SPEC 16.3.3 "unless the Type is Copy").
+}
+
 /// <summary>What the destruction walk of a Type reports (<see cref="MirTypes.Destruction"/>).</summary>
 internal interface IMirDestruction
 {
@@ -66,6 +77,21 @@ internal static partial class MirTypes
         Destruction(type, ref observer);
         return observer.Answer;
     }
+
+    /// <summary>Classifies a part <see cref="Destruction"/> reports (SPEC 16.3.1-16.3.3): an abstract Type; a Function value, erased; an
+    /// owning handle, whose payload is destroyed where it is proven Sealed and any more-derived destructor may run otherwise (erased); a
+    /// struct's declared drop; else a storage release.</summary>
+    /// <param name="type">The reported part's Type.</param>
+    /// <param name="types">The Type context, whose Sealed proofs Binding publishes.</param>
+    /// <param name="definition">The definition whose premises prove Sealed.</param>
+    /// <returns>What destroying the part runs.</returns>
+    internal static MirDestroyedPart Destroys(BoundType type, TyCtxt types, BindingSymbol? definition) => type switch
+    {
+        { IsAbstract: true } => MirDestroyedPart.Abstract,
+        { Kind: BoundTypeKind.Function } => MirDestroyedPart.Erased,
+        { Kind: BoundTypeKind.Semantics } => types.Sealed(definition, type.Components[0]) ? MirDestroyedPart.Payload : MirDestroyedPart.Erased,
+        _ => AdtDef.Destructor(type) is not null ? MirDestroyedPart.Drop : MirDestroyedPart.Releases,
+    };
 
     /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
     /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
@@ -168,19 +194,18 @@ internal static partial class MirTypes
 
         public bool Visit(BoundType type, int depth)
         {
-            if (type.IsAbstract)
+            switch (Destroys(type, types, definition))
             {
-                this.Outcome = this.Outcome.Join(types.Copy(definition, type) ? MirOutcome.None : MirOutcome.Limit);
-                return false;
+                case MirDestroyedPart.Abstract:
+                    this.Outcome = this.Outcome.Join(types.Copy(definition, type) ? MirOutcome.None : MirOutcome.Limit);
+                    return false;
+                case MirDestroyedPart.Drop or MirDestroyedPart.Erased:
+                    return this.Decide();
+                case MirDestroyedPart.Payload:
+                    return Destruction(type.Components[0], ref this, depth + 1);
+                default:
+                    return false;
             }
-
-            if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)
-            {
-                return this.Decide();
-            }
-
-            var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
-            return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : Destruction(payload, ref this, depth + 1));
         }
 
         public readonly bool Deep(BoundType type)

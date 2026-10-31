@@ -5887,6 +5887,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: a Closure returned from a named function's call may keep the function's per-call atoms in its signature (design §3.1; no
     reproducer).
   - Numbering: R4-M159 was reserved for G273 by the planning session.
+- **R4-M150 G264, a destruction retains as a call of each `drop` it runs: shared structure first (U1)** (2026-10-31; R4's
+  design-first candidate, design `g264-u1-df/design.md`; started by U1a, completed by each later U1 commit before landing).
+  - One per-part classification (U1a-1): `MirTypes.Destroys` gives each part `MirTypes.Destruction` reports a `MirDestroyedPart`
+    (Releases, Drop, Erased, Payload, Abstract; SPEC 16.3.1-16.3.3), owned by MirTypes; `MirTypes.Observation`'s visitor and A4's
+    `Destroy` switch over it (each applies the Copy proof of an abstract part its own way: A4 keeps an atom, the observation reads
+    `TyCtxt.Copy`). `MayNeedDrop` needs no classification. Rejected: classifying inside `Destruction` (MayNeedDrop has no TyCtxt); a
+    visitor adapter (a wrapper over the same switch).
+  - A2 publishes what a Drop destroys (U1a-1): `MirDropTable.Destroyed` with `IMirDropped.Part(type, depth)` reads a Drop's verdict
+    group under a view (Elide nothing, Keep/Flag the node's Type, Open each child row and each part without one; a check-only Drop
+    nothing; a runtime Drop without a group its Place's case Type at depth 0); A4's private reading (`MirEffects.Dropped`,
+    `Destroyed`, `Covers`) moved there unchanged in meaning (responsibility A4 → A2). Code generation's own reading
+    (`FunctionCodegen.Drops`, flag tests and glue) is another contract and stays.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
