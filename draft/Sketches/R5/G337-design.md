@@ -119,3 +119,90 @@ every allocation baseline. Not a G337 unit: a PLAN candidate after R7.
 2. Schedule: O1 and O2 edit R4's hold files; under R4's hold protocol now, or at R6-check after R4's exit?
 3. PLAN G337 and DECISIONS R5-M167 state "+72 to +120 ms"; correct them to "+9 to +15 ms per compilation" with the summarizer fix?
 4. O3 as a PLAN candidate after R7?
+
+## 7. §O1: A3 and A5 judge the root modules' bodies (design under R4's conditions)
+
+The coordinator's go (2026-10-31): O1 only, under R4's hold; R4 owns `Mir/Analysis`, agreed to O1 and reviews the A3/A5 side; O2 waits
+for O1's measurement. The implementation unit asks R4 first; this section edits no source.
+
+### 7.1 The predicate and its owner
+
+A skipped body is one whose MIR is the same in every program. In this MIR there is no other kind of library body:
+
+- `MirBuilder` builds exactly one body per definition whose value node the HIR publishes (its contract header), keyed by `MirDefKey`
+  and built from that definition's own syntax; an instance is the collector's replay of that body under `MonoItem.Representative`, never
+  a body of its own, so no library body is built for a program instance or specialized over a program Type.
+- A Closure body is keyed by its own symbol and built from its definition in its module, so a library Closure captures library locals.
+- The library module is bound in the library's scope, which names no program declaration (SPEC 18: a module names only the modules it
+  depends on; `Kimi` depends on none of the program's).
+
+So the predicate is a module range read from published facts, not from syntax: steps 1 and 4 judge a body when
+`body.Source.Module < rootModules`. `MirBuilder` publishes `MirBody.Source` (the definition's `SourceRef`, its module ordinal);
+`Compilation` publishes the module order (the source modules are ordinals `[0, SourceModules.Length)`, the library the next, which
+`MirModelTest` asserts) and passes `rootModules = SourceModules.Length`, exactly the range it already passes to
+`InstanceCollector.Run(program, rootModules)` ("a range of Source.Module, not a mode"). The invariant O1 rests on, stated in the DECISIONS
+entry: a body outside the root range is built from its definition alone; a builder change that builds a library-owned body from program
+facts (a per-instance or specialized body, R8's monomorphization included) must place it in the root range or end this rule.
+
+Measured precondition (`C:\Users\bwff1\AppData\Local\Temp\claude\r5\g337\census-134.txt`, probe `LibraryCensus.cs` beside it): 134
+programs (tests/milestones 44, tests/mir 32, docs/examples 39, src/Benchmark/Kimi 15 and the four inputs above; 8 with incomplete
+Binding), each compiled fresh through `Compilation.Analyze`, every step on every body:
+
+| Fact | Result |
+| --- | --- |
+| Library bodies per program | 215 in all 134 |
+| Program declarations a library body names (its locals' Types and their components, its callee symbols) | 0 |
+| Problems at library bodies, any step (A1-A5, A4's rows and the C1-F4 findings at library sites) | 0 in all 134 |
+| Construction records and validator findings at library sites | 0 |
+| Library MIR dump (`MirDump.Write`, the library module) | 132 identical; Milestone27 and Milestone30 differ only in two location ids |
+
+The two differing dumps are identical with locations normalized: synthesized library nodes (the `for` expansion in `contains`) get their
+`SourceRef` id on first use (`SourceRef.Of`: "the next id of its module"), in an order the program can change. A3 and A5 read no id but
+as a problem's subject, so their verdicts are program-independent; the ids matter to O2's or O3's reuse, which must assign them when the
+library is built. The ledger's own program set was not enumerated (it is the test suite's); the full ledger run of O1-L covers it.
+
+### 7.2 The driver rule (MirAnalysis.cs; contract header and DECISIONS)
+
+`MirAnalysis.Run(MirProgram program, int rootModules)`: step 1 (A3) and step 4 (A5: the Origin judgment, the Loans and their block order
+and move paths) visit the bodies with `Source.Module < rootModules`; step 2 (block order, move paths, A1, A2, A4's local facts) and step 3
+(A4 over the program) keep visiting every body, and `origins.Findings` stays once per program. A4 stays whole because step 3 composes
+callee summaries from library bodies' local facts (`MirEffects.Local` and `Solve`: Fn callees, Closures, implementations, destructors,
+static initializers), and code generation reads A2's table of generated library bodies: O1 never leaves step 3 reading a fact step 2 did
+not produce. Nothing reads A3's or A5's results but the body's own problems (A5 reads A4's keys; A4 reads no A5 fact; A3 and the
+dataflow each clear the one `MirReach` before walking). The C1-F4 view's findings that only library judgments raise move to the library
+check (7.3).
+
+Contract header addition (under "Runs them once per version"): "Input rule: steps 1 and 4 judge the bodies of the root modules
+(`Source.Module < rootModules`, the collector's range), whose problems are the program's; steps 2 and 3 visit every body, since A4
+composes library callees' local facts and code generation reads A2's tables; MirAnalysisTest's library check judges the library."
+
+DECISIONS: one R5 entry (number at landing) naming R4's agreement and its review of the A3/A5 side and the owner's G337 acceptance: the
+rule, 7.1's invariant, the measured precondition, the moved check, and the rejected alternatives (a syntax test in `MirAnalysis`; a
+per-body library flag, a second copy of the module order; skipping A1, A2 or A4 too, which A4 and code generation read).
+
+### 7.3 The library check (one test per target)
+
+`MirAnalysisTest.TheLibraryHasNoAnalysisProblem(target)`, a Theory over the supported targets (today `x86_64-pc-windows-msvc`): a
+compilation of an empty program, `BuildMir`, then a fresh `MirAnalysis` run with `rootModules = SourceModules.Length + 1`, so steps 1 and 4
+judge every library body at full strength through exactly the driver check uses. It fails on any construction record, validator finding
+or problem at a library site, A1's arena limit stopping a body's views and the C1-F4 findings included, each named by code, body and
+subject. A library defect becomes a compiler-test failure, not a user record (acceptable at H3 and after: the library ships with the
+compiler). That check uses the range is shown by the deterministic cold-allocation drop of 7.4 (no test-only counter is added).
+
+### 7.4 Checks and expected saving (per fresh compilation)
+
+- MirAnalysisTest, MirInitTest, MirBuildTest, PipelineSwitchTest, KimiLibraryShapeTest and the `Purpose=Allocation` tests whose cold MIR
+  bytes fall (baselines updated in the unit, the drop stated); the full mir ledger (`-Pipeline mir`): no change in program records, the
+  library rows that disappear classified in the commit (the census expects none); snapshot and semantic snapshot 0; a Session.
+- `src/Benchmark` builds (`CollectionCostMeasurements` calls `MirAnalysis.Run`).
+- Saving per compilation (not per 8-compilation sample): 39-42 % of stage 3, about 5 ms of the pinned 12.7 ms on Scalar 1 (B's total
+  30.1 ms to about 25 ms against A's 17.1 ms) and 0.64-0.77 MB of 3.9-4.1 MB cold; the same time per warm rebuild, warm 0 B unchanged.
+  A pinned quiet-slot retake confirms it (O1-M).
+
+### 7.5 Implementation sizing (units of at most one hour)
+
+| Unit | Content | Files (holds) |
+| --- | --- | --- |
+| O1-U1 | `Run(program, rootModules)`, steps 1 and 4 over the range; callers pass `SourceModules.Length`; contract header; DECISIONS entry; the library check; allocation baselines; unit checks | `Mir/Analysis/MirAnalysis.cs` (R4), `Core/Compilation.Pipeline.cs` (hold), `tests/xUnitTest/Tests/MirAnalysisTest.cs`, `MirInitTest.cs` (two callers), `src/Benchmark/Benchmarks/CollectionCostMeasurements.cs`, `docs/dev/DECISIONS.md` |
+| O1-L | The full mir ledger and the Session (heavy runs, not counted); R4's review of the A3/A5 side | - |
+| O1-M | Pinned `--compiler-pipeline` and `--analyze-cost` retake on the quiet-slot GO, with the fixed summarizer | - |
