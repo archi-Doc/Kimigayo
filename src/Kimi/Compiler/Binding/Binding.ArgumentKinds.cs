@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -16,9 +17,10 @@ namespace Kimi.Compiler;
 //   name at a result of the probe's control flow (P2), unless every such result is the same declaration that needs no S, which P4
 //   binds as its Function Item (BindAgreeingReferences). Case: a contextual `.Case(...)` (it resolves only in its expected enum).
 //   Call: a nested call or construction the argument probe deferred.
-//   A part its producer records as a Join, Case, Reference, Function or Call awaits its call (AwaitsCall) until its call completes it,
-//   its core bound or failed; all but a Join are SPEC 10.5.1's waiting parts, which the selected candidate completes. Typed: every
-//   other part.
+//   A part its producer records as a Join, Case, Reference, Function or Call awaits its call (CallRelation.Awaits, AwaitsCall) while
+//   its core is unbound and has no failure of its own. A join's step 3 may bind it while its call classifies the argument (SPEC
+//   14.9.2), so its binding is not its completion. All but a Join are SPEC 10.5.1's waiting parts, which the selected candidate
+//   completes. Typed: every other part.
 // - Inputs: the part's syntax and binding state; ControlFlow's survey of a control-flow part's result sources (SurveyResult); the
 //   argument probe (BindIndependentArgument), which reaches the result sources of a control-flow part (UnderArgumentProbe) and under
 //   which each part that is not an Aggregate or Join is bound: a nested call that only an outer expectation could type defers
@@ -36,8 +38,10 @@ namespace Kimi.Compiler;
 //   each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies the defaults
 //   (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the Constraints over it
 //   (Prove).
-// - Invariants: a recorded part (ArgumentPart: its kind and a Literal's default) is keyed by its core's syntax identity (PartCore,
-//   SourceRef) and lives for one pass; a producer records every part that awaits its call and a Literal control-flow part: P1
+// - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
+//   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
+//   row (every kind awaits but Literal), and a writer of another column keeps the relation (SlotSolution.Default records a Literal's
+//   default through RecordPart); a producer records every part that awaits its call and a Literal control-flow part: P1
 //   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function or Case result (AwaitsCallAtResult) or a Reference one
 //   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
@@ -54,6 +58,15 @@ public sealed partial class Binding
     private Koto? argumentProbe;
     private InvocationKoto? nestedOperandProbe;
 
+    // A recorded part's relation to its call (DECISIONS BU-74), a column of its record: Awaits, its producer recorded it as awaiting its
+    // call (RecordPart's row), read by Awaits alone.
+    [Flags]
+    private enum CallRelation : byte
+    {
+        None = 0,
+        Awaits = 1,
+    }
+
     private enum PartKind : byte
     {
         Typed,
@@ -66,13 +79,13 @@ public sealed partial class Binding
         Call,
     }
 
-    // SPEC 10.5.1: whether a part whose producer recorded it as `recorded` awaits its call, whose selected candidate completes it: a Join,
-    // Case, Reference, Function or Call (no Typed, Literal or Aggregate part waits) until its core is bound or has a failure of its own. Of
-    // these, all but a Join are SPEC 10.5.1's waiting parts (the SPEC word, which CompleteWaiting, TakeWaiting and IsWaitingPart keep); a
-    // Join keeps its own rows (FitArgument, CompleteWaiting).
-    private static bool Awaits(Koto core, PartKind recorded)
-        => recorded is not (PartKind.Typed or PartKind.Literal or PartKind.Aggregate) && core.BoundType is null &&
-            core.BindingFailure == BindingFailure.None;
+    // SPEC 10.5.1: whether a recorded part awaits its call, whose selected candidate completes it: its record holds Awaits (a Join, Case,
+    // Reference, Function or Call; no Typed, Literal or Aggregate part waits) while its core is unbound and has no failure of its own. A
+    // join's step 3 may bind it first (SPEC 14.9.2), so a bound part is not one its call completed. Of these, all but a Join are SPEC
+    // 10.5.1's waiting parts (the SPEC word, which CompleteWaiting, TakeWaiting and IsWaitingPart keep); a Join keeps its own rows
+    // (FitArgument, CompleteWaiting).
+    private static bool Awaits(Koto core, ArgumentPart record)
+        => (record.Relation & CallRelation.Awaits) != 0 && core.BoundType is null && core.BindingFailure == BindingFailure.None;
 
     // SPEC 10.5.1: the kind a part's form gives it: an unfitted literal, a Tuple or array literal or mixed range, an anonymous function, a
     // contextual Case, or Typed. A Join, a Call, a Reference and a Literal control-flow part are their producers' records instead
@@ -102,7 +115,7 @@ public sealed partial class Binding
     // unbound core, for AwaitsCall and the readers that also ask the kind (IsWaiting, IsWaitingCallable). An awaiting part's KindOf is
     // that recorded kind.
     private PartKind? AwaitedKind(Koto part)
-        => PartCore(part) is { BoundType: null } core && this.RecordedPart(core).Kind is var recorded && Awaits(core, recorded) ? recorded : null;
+        => PartCore(part) is { BoundType: null } core && this.RecordedPart(core) is var record && Awaits(core, record) ? record.Kind : null;
 
     // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far: a literal or an aggregate by its form, an unbound
     // part by the kind its producer recorded while it awaits its call (Awaits) or a Literal one, else ClassifyPart's. The only reader
@@ -116,8 +129,8 @@ public sealed partial class Binding
             return kind;
         }
 
-        var recorded = this.RecordedPart(part).Kind;
-        return recorded == PartKind.Literal || Awaits(part, recorded) ? recorded : kind;
+        var record = this.RecordedPart(part);
+        return record.Kind == PartKind.Literal || Awaits(part, record) ? record.Kind : kind;
     }
 
     // Whether the argument probe deferred the part (a recorded Call): it stays so after its completion, so its Type is never evidence
@@ -156,9 +169,14 @@ public sealed partial class Binding
         => this.RecordedPart(part) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
-    // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass; DefaultLiteral adds a
-    // Literal's default later.
-    private void RecordPart(Koto part, PartKind kind) => this.argumentParts[SourceRef.Of(PartCore(part))] = new(kind, null);
+    // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
+    // every recorded kind awaits its call but Literal. SlotSolution.Default records a Literal through it and adds its default.
+    private ref ArgumentPart RecordPart(Koto part, PartKind kind)
+    {
+        ref var record = ref CollectionsMarshal.GetValueRefOrAddDefault(this.argumentParts, SourceRef.Of(PartCore(part)), out _);
+        record = new(kind, null, kind == PartKind.Literal ? CallRelation.None : CallRelation.Awaits);
+        return ref record;
+    }
 
     private ArgumentPart RecordedPart(Koto node)
         => PartCore(node) is { SyntaxOwner: { } owner } core && this.argumentParts.TryGetValue(new(owner.Module, core.SyntaxId), out var part)
@@ -710,7 +728,7 @@ public sealed partial class Binding
         return valid;
     }
 
-    // A part's kind as the pass recorded it where its syntax does not give it, and the default a Literal part takes for the selected
-    // candidate (SPEC 10.2.1).
-    private readonly record struct ArgumentPart(PartKind Kind, BoundType? Default);
+    // A part's kind as the pass recorded it where its syntax does not give it, the default a Literal part takes for the selected
+    // candidate (SPEC 10.2.1), and its relation to its call (CallRelation).
+    private readonly record struct ArgumentPart(PartKind Kind, BoundType? Default, CallRelation Relation);
 }

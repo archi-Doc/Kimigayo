@@ -513,7 +513,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            binding.argumentParts[SourceRef.Of(PartCore(literal))] = new(PartKind.Literal, type);
+            ref var record = ref binding.RecordPart(literal, PartKind.Literal); // A Literal does not await its call (RecordPart's row).
+            record = record with { Default = type };
             applied = true;
             if (binding.FitsLiteralPart(literal, type, this.Scope))
             {
