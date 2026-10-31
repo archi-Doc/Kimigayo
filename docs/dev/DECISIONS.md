@@ -12011,6 +12011,15 @@ structure is recorded here by the unit that first implements it.
     bodies (PD3); a MIR box for large environments (held MIR; IMPL leaves layout to the backend); a `MonoKind` per runtime routine.
   - Superseded by R5-M108 (C5c): the adapter entry under its source's own signature, ruling Q3's descriptor-arity test and the temporary
     structure above (an adapter item is keyed also by its erased target Function Type and its entry defined under that Type's signature).
+  - Amended (2026-10-31, G182 U1; the planning session's ruling, option A of `draft/Sketches/R5/G182-design.md` revision 1, accepted at
+    its re-review): the Function glue calls the drop entry at the address of a copy of the environment word, a slot of its entry block,
+    not at the Function value's address, which escaped into every non-inlined drop and kept the value's table store, its table and an
+    entry no call reached at O2 (30 entries in the design's census). The signature is unchanged (`DropGlue.Parameters`, one destruction
+    signature), and an inline environment's glue stays its drop entry; under A it destroys a copy of the word, which the rejection of the
+    old generator's entry above counted against it: the value is dead after its drop, and every call already passes an inline word as a
+    spilled copy (`FunctionCodegen.Environment`). Rejected: option B, the word by value (a second destruction signature and a drop-entry
+    function per inline environment, reversing both rejections above, for the design's -248 further O2 instructions, all off the
+    measured hot path).
 - **R5-M105 The owner confirms C5b's departure** (owner, 2026-10-22, on the R5 planning session's explanation before C5b landed;
   verbatim 「C5b の逸脱（ErasedCalls の corpus O2 A/B を C8d と C9c の遅い方へ移し、C5b は固定配列版で参考測定する）を承認します。」;
   the consequences are the planning session's) The departure R5-M104 records is confirmed: plan row C5b's verification "the ErasedCalls
