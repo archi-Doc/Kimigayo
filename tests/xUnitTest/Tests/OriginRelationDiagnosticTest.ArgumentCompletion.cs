@@ -43,6 +43,10 @@ public partial class OriginRelationDiagnosticTest
 
     private const string KXB = "func k(c: bool, x: i64, b: bool) -> i32\n";
 
+    private const string Twice = "func twice(v: i64) -> i64 => v\n";
+
+    private const string FFnPair = "func f(x: ((i64) -> i64, i32)) -> i32 => 0\n";
+
     private const string D2Join = "(if c => (identity(1), 2) else => (x, 3))";
 
     private const string FPairs = "func f(x: i64, y: i32) -> i32 => 0\nfunc f(x: bool, y: i32) -> i32 => 1\n";
@@ -211,6 +215,17 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
     [InlineData("U1.6g", "sc_let", KXB + "    let v = if c => x else => b\n    return 0\n", "TypeMismatch_Kd if c => x else => b")]
     public void TypedPartsInConflictAtACallArgumentWaitForTheCall(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // U1.6g2 (SPEC 10.5.1's last paragraph, 14.9.2 step 3, 7.7.4): step 3 applies at every position of a join's results, so at a child
+    // position typed at a Function Item's Type the anonymous function beside it takes that Type, with no call, and fails at itself (c1;
+    // the Closure value c2). Parts that do not wait keep the position's Type and are adapted at the call (c3, ch_same: valid).
+    [Theory]
+    [InlineData("U1.6g2", "c1", Twice + FFnPair + KHead + "    let t = twice\n    return f(if c => (t, 3) else => (func [] (v) => v, 4))\n", "TypeMismatch_Kd func [] (v) => v")]
+    [InlineData("U1.6g2", "c2", Twice + FFnPair + KHead + "    let cl = func [] (v: i64) -> i64 => v\n    return f(if c => (cl@move, 3) else => (func [] (v) => v, 4))\n", "TypeMismatch_Kd func [] (v) => v")]
+    [InlineData("U1.6g2", "c3", Twice + FFnPair + KHead + "    let t = twice\n    return f(if c => (t, 3) else => (t, 4))\n", "")]
+    [InlineData("U1.6g2", "ch_same", Twice + FFnPair + KHead + "    return f(if c => (twice, 3) else => (twice, 4))\n", "")]
+    public void StepThreeTypesTheWaitingPartsOfEveryTypedPosition(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // U1.6f (the owner, 2026-10-31, reading I): a join's array results are classified per index at every number of sources (SPEC

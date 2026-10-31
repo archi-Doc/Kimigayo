@@ -502,17 +502,27 @@ public sealed partial class Binding
         return awaiting;
     }
 
-    // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. At `type`, the
-    // Target Result Type the join or its position decided (a failed join's too): a source that waited unbound is bound at it, which
-    // checks its literals, and fits it; a bound one that awaits, or does not fit as it is, takes it when its late Type fits (U1.6g (b)),
-    // a bound one that does not await failing at itself otherwise (the join resting on it). With no Type, the join having failed
-    // (Conflict, Dependent) or formed nothing: a waited source holding a literal takes its defaults, and one holding a join that waited
-    // (HoldsWaitedResult) is bound so that the join honours its outcome (DecideWaiting); under a failed join, a source holding neither
-    // rests on the join's record or cause (CompleteDependent). The first misfit is returned.
+    // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. Step 3 at every
+    // position comes first when a Type is decided and the join has not failed (BindStepThree); the loop is that walk's Literal, Call and
+    // whole-aggregate row, not a second binder: a source the walk bound waits no more, and an aggregate source adapts the parts it bound
+    // to its element Type. At `type`, the Target Result Type the join or its position decided (a failed join's too): a source that
+    // waited unbound is bound at it, which checks its literals, and fits it; a bound one that awaits, or does not fit as it is, takes it
+    // when its late Type fits (U1.6g (b)), a bound one that does not await failing at itself otherwise (the join resting on it). With no
+    // Type, the join having failed (Conflict, Dependent) or formed nothing: a waited source holding a literal takes its defaults, and
+    // one holding a join that waited (HoldsWaitedResult) is bound so that the join honours its outcome (DecideWaiting); under a failed
+    // join, a source holding neither rests on the join's record or cause (CompleteDependent). The first misfit is returned.
     private BoundType? BindWaitedSources(Koto node, ResultContext context, BoundType? type)
     {
         BoundType? failed = null;
         var rests = context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent;
+        if (type is not null && !rests)
+        {
+            var start = this.positionParts.Count;
+            this.AddResults(node);
+            this.BindStepThree(start, this.positionParts.Count, type);
+            this.ClosePosition(start);
+        }
+
         for (var i = 0; i < context.Sources.Count; i++)
         {
             if (context.SourceNodes[i] is not { } source || ReferenceEquals(context.Sources[i], BoundType.Never))
@@ -560,6 +570,45 @@ public sealed partial class Binding
         }
 
         return failed;
+    }
+
+    // SPEC 10.5.1, 14.9.2 step 3 at every position (U1.6g2): the join's own position (depth 0) and each child position of its Tuple and
+    // array results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take its typed parts' common Type, with no
+    // call; at depth 0 that is DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no
+    // part (Never or failed parts only), and a waiting part there is a broken contract. Aggregate: each child position at its element of
+    // `target`. The sources are then bound at `target` as wholes (BindWaitedSources), each aggregate adapting its bound parts to its
+    // element Type (7.7.4, per element).
+    private void BindStepThree(int start, int end, BoundType? target)
+    {
+        switch (this.PositionKind(start, end, out var common))
+        {
+            case PartKind.Typed:
+                for (var i = start; i < end; i++)
+                {
+                    if (this.positionParts[i] is { BoundType: null } part && this.Deferred(part))
+                    {
+                        _ = common is null ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, common);
+                    }
+                }
+
+                return;
+            case PartKind.Aggregate when this.PartsShape(start, end) is not DictionaryLiteralKoto:
+                for (int i = 0, count = this.ChildPositions(start, end); i < count; i++)
+                {
+                    var child = this.positionParts.Count;
+                    var element = this.AddChildPosition(start, end, i, target);
+                    this.BindStepThree(child, this.positionParts.Count, element);
+                    this.ClosePosition(child);
+                }
+
+                return;
+            case PartKind.Aggregate: // A Dictionary, taken whole (BU-43): its source's binding at `target`, BindWaitedSources' loop.
+            case PartKind.Literal: // Its literals take `target` with their sources, BindWaitedSources' loop.
+            case PartKind.Call: // Its parts await the call, which binds them at its candidate's Type (CompleteArguments, the loop).
+                return;
+            default:
+                throw new InvalidOperationException("A position is Typed, Aggregate, Literal or Call (PositionKind).");
+        }
     }
 
     // SPEC 14.9.2 step 3: the Type an expression that awaits takes at `target`; null when it cannot take it.
