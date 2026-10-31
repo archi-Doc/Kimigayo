@@ -285,7 +285,7 @@ public class CompilationSpecificationTest
         Assert.Same(second, items[1].CodeContext.SourceDocument);
         Assert.Null(entryPoint.SourceDocument);
         items[0].AddDiagnostic(DiagnosticCode.TypeMismatch_Kd);
-        Assert.Equal(first.Path, Assert.Single(TestDiagnostics.Of(compilation)).Path);
+        Assert.Equal(first.Path, Assert.Single(TestDiagnostics.Of(compilation, first)).Path);
         Assert.Throws<InvalidOperationException>(() => items[0].CodeContext.Parse(root, second));
     }
 
