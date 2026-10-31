@@ -168,23 +168,40 @@ internal sealed partial class MirBuilder
     {
         var receiver = this.Place(member.Left, input);
         return HirTables.PlanOf(member).Folded is { } element
-            ? this.Selected(receiver, MirProjectionKind.Field, (int)element, member) : this.Field(receiver, HirTables.Symbol(member), member);
+            ? this.Selected(receiver, member.Left, MirProjectionKind.Field, (int)element, member) : this.Field(receiver, HirTables.Symbol(member), member);
     }
 
-    // A projection of a receiver's Place a node selects, unless Binding resolved the node through an identity premise (SPEC 8.2.3;
-    // DECISIONS BU-72) whose subject is the Type parameter the Place has and whose Type has the node's Type at the projection: a MIR Place
-    // keeps the parameter, from which no projection selects, so the node is the located Unsupported of an Opaque in an Opaque temp whose
-    // site names only the receiver's root, as Field's (R5-M63, R5-M84). Any other projection is formed, a typeless one a broken contract
-    // MirValidator reports. Temporary (PLAN G168b): G170's identity query, giving the Place the identical Type, removes the premise test.
-    private MirPlace Selected(MirPlace receiver, MirProjectionKind kind, int arg, Koto node)
+    // A projection of a receiver's Place a node selects, or the identity premise's Unsupported where Binding selected on the premise's Type
+    // (Identical).
+    private MirPlace Selected(MirPlace receiver, Koto receiverNode, MirProjectionKind kind, int arg, Koto node)
+        => this.Identical(receiver, receiverNode, node) ? this.Unidentified(receiver, node) : this.body.Project(receiver, kind, arg);
+
+    // SPEC 8.2.3 (DECISIONS BU-72): whether Binding resolved a selection through an identity premise whose subject is the Type parameter the
+    // receiver's Place has, on exactly the premise's Type: the receiver node's published Type through its Layers (TyCtxt.Layer, as Follow).
+    // A MIR Place keeps the parameter, from which no projection selects; any other typeless projection is formed, a broken contract
+    // MirValidator reports. Temporary (PLAN G168b): G170's identity query, giving the Place the identical Type, removes it and its callers'
+    // branches.
+    private bool Identical(MirPlace receiver, Koto receiverNode, Koto node)
     {
         if (this.body.TypeOf(receiver) is not { Kind: BoundTypeKind.Parameter } parameter || HirTables.IdentityPremise(node) is not { } premise ||
-            !ReferenceEquals(premise.Subject, parameter) || this.body.ProjectedType(premise.RequiredType, kind, arg) is not { } part ||
-            !MirTypes.Agree(part, TypeOf(node)))
+            !ReferenceEquals(premise.Subject, parameter))
         {
-            return this.body.Project(receiver, kind, arg);
+            return false;
         }
 
+        var published = HirTables.Meaning(receiverNode) as BoundType;
+        for (var layers = HirTables.PlaceOf(receiverNode).Layers; layers > 0 && TyCtxt.Layer(published, out var below, out _) != HirPlaceKind.Value; layers--)
+        {
+            published = below;
+        }
+
+        return published is not null && MirTypes.Agree(published, premise.RequiredType);
+    }
+
+    // The located Unsupported of a selection on an identity premise's Type (Identical): an Opaque in an Opaque temp of its Type whose site
+    // names only the receiver's root, as Field's (R5-M63, R5-M84).
+    private MirPlace Unidentified(MirPlace receiver, Koto node)
+    {
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
         this.roots.Clear();
