@@ -28,7 +28,7 @@ public sealed partial class Binding
     private readonly List<Koto> positionParts = new();
 
     // SPEC 3.8, 10.5.1: whether a Tuple literal has the Type's shape, a Tuple of its length: the one Tuple shape rule of the walks, the
-    // fit and the late Type (TupleShapeAt; arrays: ArrayShapeAt).
+    // fit, the late Type, BindTuple and the shape evidence (arrays: ArrayShapeAt).
     private static bool TupleShapeAt(TupleLiteralKoto tuple, BoundType? type)
         => type is { Kind: BoundTypeKind.Tuple } && type.Components.Count == tuple.Elements.Count;
 

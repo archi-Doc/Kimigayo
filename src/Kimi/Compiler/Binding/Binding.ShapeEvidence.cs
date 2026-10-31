@@ -233,7 +233,7 @@ public sealed partial class Binding
                         pattern = referent;
                     }
 
-                    if (source is TupleLiteralKoto tuple && pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count)
+                    if (source is TupleLiteralKoto tuple && TupleShapeAt(tuple, pattern))
                     {
                         for (var e = 0; e < tuple.Elements.Count; e++)
                         {

@@ -95,7 +95,13 @@ public sealed partial class Binding
             ((range.Start is { } start && IsLiteralOnlyPosition(start)) || (range.End is { } end && IsLiteralOnlyPosition(end)));
 
     // SPEC 10.5.1: whether the part awaits its call, from its producer's record (Awaits): the one query of call waiting.
-    private bool AwaitsCall(Koto part) => Awaits(PartCore(part), this.RecordedPart(part).Kind);
+    private bool AwaitsCall(Koto part) => this.AwaitedKind(part) is not null;
+
+    // The kind its producer recorded for a part that awaits its call (Awaits), else null: the record is read once, and only for an
+    // unbound core, for AwaitsCall and the readers that also ask the kind (IsWaiting, IsWaitingCallable). An awaiting part's KindOf is
+    // that recorded kind.
+    private PartKind? AwaitedKind(Koto part)
+        => PartCore(part) is { BoundType: null } core && this.RecordedPart(core).Kind is var recorded && Awaits(core, recorded) ? recorded : null;
 
     // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far: a literal or an aggregate by its form, an unbound
     // part by the kind its producer recorded while it awaits its call (Awaits) or a Literal one, else ClassifyPart's. The only reader
@@ -119,7 +125,7 @@ public sealed partial class Binding
 
     // SPEC 10.5.1: whether the part is waiting, which the selected candidate completes: it awaits its call and is not a Join, which keeps
     // its own rows.
-    private bool IsWaiting(Koto part) => this.AwaitsCall(part) && this.KindOf(part) != PartKind.Join;
+    private bool IsWaiting(Koto part) => this.AwaitedKind(part) is not (null or PartKind.Join);
 
     // SPEC 10.5.1 (DECISIONS BU-43), P2: whether an anonymous function or a contextual Case reached without an expected Type is a result
     // of a call's control-flow argument at a position its call completes (CallableTarget): it then awaits that call, its kind recorded
@@ -142,7 +148,7 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5: whether the part is a waiting callable, a Function or Reference that awaits its call.
-    private bool IsWaitingCallable(Koto part) => this.AwaitsCall(part) && this.KindOf(part) is PartKind.Function or PartKind.Reference;
+    private bool IsWaitingCallable(Koto part) => this.AwaitedKind(part) is PartKind.Function or PartKind.Reference;
 
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)

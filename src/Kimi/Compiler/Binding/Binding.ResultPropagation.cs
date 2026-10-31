@@ -97,9 +97,10 @@ public sealed partial class Binding
         try
         {
             var complete = true;
+            var shaped = TupleShapeAt(tuple, expected);
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
+                var element = shaped ? expected!.Components[i] : null;
                 this.PropagateBound(tuple.Elements[i], element);
                 var type = this.BindNode(tuple.Elements[i], scope, element);
                 buffer[i] = type!;

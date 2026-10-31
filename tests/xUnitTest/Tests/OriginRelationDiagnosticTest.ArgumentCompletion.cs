@@ -61,6 +61,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string SgJoin = "if d => identity(1) else => 2";
 
+    private const string N3Join = "if c => [identity(1), 3] else => [x, 4]";
+
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
     // (`h(a)` and a value call `h(a)` give NoApplicableOverload_Kd at the call); its twins pass sources of the parameter Type.
@@ -157,7 +159,8 @@ public partial class OriginRelationDiagnosticTest
     // D2 (R4's U1.5 design review 2): a position with a typed part is typed at its typed parts' common Type whatever else it holds, and
     // the waiting `identity(1)` beside `x` takes it (SPEC 14.9.2 steps 2-3), at a join's child position (d2, its `match` d2_m, d2_lit3)
     // as at its root (d2_root) and as an element (d2_elem); so it is evidence for a slot (d2_g; d2_g_t writes it), and with no candidate
-    // of that Type the call has none (d2_n).
+    // of that Type the call has none (d2_n). U1.6 (R4's U1.5 check B3): typed parts that conflict at a position are the join's own record,
+    // on which the call rests with none of its own (e4; SPEC 14.9.2 step 2, 23.1.2).
     [Theory]
     [InlineData("U1.5", "d2", IdentityT + FTuples + KX + "    return f" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_m", IdentityT + FTuples + KX + "    return f(match c\n        true => (identity(1), 2)\n        false => (x, 3)\n    )\n", "")]
@@ -167,7 +170,18 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "d2_g", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_g_t", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g<i64>" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
+    [InlineData("U1.6", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "TypeMismatch_Kd match c")]
     public void ATypedPartGivesItsPositionItsType(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // R4's N3 (U1.6): `[x, 4]` holds no Never and no waiting part, so it is independently typable as Array<i64> (SPEC 4.3.1, 12.3.1) and
+    // supplies the join its Type (14.9.2 step 2). No `[N of T]` parameter admits an established Array (4.1, 10.2, 4.4.1), so the call has
+    // no candidate at a named call (n3) as at a value call (n3_v); an Array<i64> parameter admits it (n3_arr).
+    [Theory]
+    [InlineData("U1.6", "n3", IdentityT + "func f(x: [2 of i64]) -> i32 => 0\n" + KX + "    return f(" + N3Join + ")\n", "NoApplicableOverload_Kd f(" + N3Join + ")")]
+    [InlineData("U1.6", "n3_v", IdentityT + "func g(x: [2 of i64]) -> i32 => 0\n" + KX + "    let h = g\n    return h(" + N3Join + ")\n", "NoApplicableOverload_Kd h(" + N3Join + ")")]
+    [InlineData("U1.6", "n3_arr", IdentityT + "func f(x: Array<i64>) -> i32 => 0\n" + KX + "    return f(" + N3Join + ")\n", "")]
+    public void ATypedArraySourceTypesItsJoinAsAWhole(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B1 (R4's G1b B1 and U1.5 design review D1): a join its call classifies fits position by position (SPEC 10.5.1 last paragraph,
