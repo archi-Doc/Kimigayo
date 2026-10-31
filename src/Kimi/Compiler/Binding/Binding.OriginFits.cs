@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 // - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
-//   other chains through RecordMoreRelation, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
+//   other chains through RecordFurtherOriginRecord, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
 //   or fails it Unsupported, and returns whether a position failed; a record at a body chain adds the fit's position rows
 //   (CheckTypeUse, DECISIONS R4-M108) and makes its node a twin (IsTwinRecord, DECISIONS R4-M111).
 // - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state;
@@ -55,7 +55,7 @@ public sealed partial class Binding
     private void ResetOriginRecords()
     {
         this.originRelations?.Clear();
-        this.callRelations?.Clear();
+        this.furtherOriginRecords?.Clear();
         this.originTwins?.Clear();
     }
 
@@ -120,7 +120,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 23.1.2 (DECISIONS R4-M133): the one recording of an Origin relation failure's chains, a fit's at binding time and a
     // pending relation's at its Closure's classification: the chains in `relationScratch`, `recorded` the node's own record and the
-    // others published with it (RecordMoreRelation), each at `at` with the destination Type (none for a relation without one). A
+    // others published with it (RecordFurtherOriginRecord), each at `at` with the destination Type (none for a relation without one). A
     // failure with a `cause`, the failed clause it rests on (UnrefutedCause), is that clause's dependent instead. Returns whether a
     // recorded chain is a body chain of `body`, its ends resolved at the use; the node is then a twin (DECISIONS R4-M108, R4-M111).
     private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded, Koto? cause)
@@ -140,7 +140,7 @@ public sealed partial class Binding
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
             if (!all[i].Equals(recorded))
             {
-                this.RecordMoreRelation(node, new(all[i] with { At = at, Destination = destination }, null));
+                this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));
             }
         }
 

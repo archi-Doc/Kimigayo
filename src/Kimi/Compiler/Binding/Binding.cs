@@ -875,12 +875,12 @@ public sealed partial class Binding
         else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
         {
             ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.OmittedResultNote(issue.Node));
-            this.ReportMoreCallRelations(issue.Node, requirement);
+            this.ReportFurtherOriginRecords(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
         {
             ReportOriginContract(issue.Node, contract, requirement, issue.Code);
-            this.ReportMoreCallRelations(issue.Node, requirement);
+            this.ReportFurtherOriginRecords(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
         {

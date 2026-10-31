@@ -9,15 +9,15 @@ namespace Kimi.Compiler;
 // judgment in Binding.CallRelations.cs).
 // - Responsibility: the Origin relation records that one judgment collects (callRelationScratch: a selected call's JudgeCallPosition,
 //   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record (PublishCallRelations); and the
-//   one channel of a node's records beyond its first, Origin relation and Origin contract records alike (callRelations,
-//   RecordMoreRelation, also for RecordOriginFitFailure's other chains), reported after the node's first record, whichever its kind,
-//   each with its own condition (ReportMoreCallRelations); whether a node has a collected record (HasCallRelation).
+//   one channel of a node's records beyond its first, Origin relation and Origin contract records alike (furtherOriginRecords,
+//   RecordFurtherOriginRecord, also for RecordOriginFitFailure's other chains), reported after the node's first record, whichever its kind,
+//   each with its own condition (ReportFurtherOriginRecords); whether a node has a collected record (HasCallRelation).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
 //   originContracts.
 // - Outputs: the OriginRelation failure of each collected node and every node's further records.
 // - Invariants: callRelationScratch is empty after PublishCallRelations; one kind-agnostic list per node, which excludes the node's first
 //   record and holds no duplicate; each record keeps its kind, subject and location, and the adapter publishes it by its kind; no record
-//   of one kind is dropped, merged or reordered because of another kind's first record (SPEC 23.1.2); callRelations is reset with the
+//   of one kind is dropped, merged or reordered because of another kind's first record (SPEC 23.1.2); furtherOriginRecords is reset with the
 //   pass's Origin records (ResetOriginRecords).
 // - Prohibitions: no judgment of a relation or a comparison (CallRelations, OriginFits, OriginClauses and the Type relation judge); no
 //   second list for one kind; no message text.
@@ -25,12 +25,12 @@ public sealed partial class Binding
 {
     // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
-    private Dictionary<Koto, List<OriginRecord>>? callRelations;
+    private Dictionary<Koto, List<OriginRecord>>? furtherOriginRecords;
 
     // The records of one node beyond the first, each by its kind and with its own condition so that it stays an independent problem.
-    private void ReportMoreCallRelations(Koto node, DiagnosticRequirement requirement)
+    private void ReportFurtherOriginRecords(Koto node, DiagnosticRequirement requirement)
     {
-        if (this.callRelations?.TryGetValue(node, out var more) != true)
+        if (this.furtherOriginRecords?.TryGetValue(node, out var more) != true)
         {
             return;
         }
@@ -79,20 +79,20 @@ public sealed partial class Binding
             }
             else if (this.originRelations?.TryGetValue(node, out var primary) == true && !primary.Equals(fact))
             {
-                this.RecordMoreRelation(node, new(fact, null));
+                this.RecordFurtherOriginRecord(node, new(fact, null));
             }
         }
 
         this.callRelationScratch.Clear();
     }
 
-    // A record of `node` after its first, of either kind, published with it (ReportMoreCallRelations).
-    private void RecordMoreRelation(Koto node, OriginRecord record)
+    // A record of `node` after its first, of either kind, published with it (ReportFurtherOriginRecords).
+    private void RecordFurtherOriginRecord(Koto node, OriginRecord record)
     {
-        var callRelations = this.callRelations ??= new(ReferenceEqualityComparer.Instance);
-        if (!callRelations.TryGetValue(node, out var more))
+        var records = this.furtherOriginRecords ??= new(ReferenceEqualityComparer.Instance);
+        if (!records.TryGetValue(node, out var more))
         {
-            callRelations.Add(node, more = new());
+            records.Add(node, more = new());
         }
 
         if (!more.Contains(record))
