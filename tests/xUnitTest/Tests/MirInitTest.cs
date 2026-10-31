@@ -299,7 +299,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
         }
 
-        new MirAnalysis(c.Types).Run(program);
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
@@ -338,7 +338,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal((MirOperandKind.Move, MirLocalKind.Temp), (secured.Kind, body.Locals[secured.Place.Root].Kind));
         ref readonly var local = ref body.Locals[secured.Place.Root];
         Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
-        new MirAnalysis(c.Types).Run(program);
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
