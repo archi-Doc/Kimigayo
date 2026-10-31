@@ -552,7 +552,7 @@ public sealed partial class Binding
         }
 
         if (BoundClosure.Of(implementation) is { Receiver: SemanticsKind.Ref } &&
-            this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
+            this.ClosureSignature(implementation) is { } closure && this.ProveOwned(this.EnvironmentTypeG353(implementation), use) == ConstraintProof.Proven)
         {
             signature = closure;
             return true;

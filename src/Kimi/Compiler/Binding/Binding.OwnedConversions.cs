@@ -39,7 +39,7 @@ public sealed partial class Binding
         }
 
         this.failedCause = null;
-        var proof = this.ProveOwned(implementation, use);
+        var proof = this.ProveOwned(this.EnvironmentTypeG353(implementation), use);
         if (proof == ConstraintProof.Proven)
         {
             return false;
@@ -121,5 +121,78 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+}
+
+// PROTOTYPE G353: SPEC 7.7.4's complete environment.
+public sealed partial class Binding
+{
+    internal BoundType EnvironmentTypeG353(BoundType callable)
+        => callable.Kind == BoundTypeKind.Closure ? this.types.Tuple((BoundType[])callable.Components) : callable;
+}
+
+// PROTOTYPE G353 rev 1: whether a Type holds a Closure whose value signature names an enclosing container's Origin.
+public sealed partial class Binding
+{
+    internal bool HoldsContainerOriginG353(BoundType type)
+    {
+        if (type.Kind == BoundTypeKind.Closure && this.ClosureSignature(type) is { } signature && Names(signature))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (type.Components[i].ContainsClosure && this.HoldsContainerOriginG353(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool Names(BoundType type)
+        {
+            if (Container(OwnedOrigin(type)))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (Container(type.OriginArguments[i]))
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Names(type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool Container(BoundOrigin? origin)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Container(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return origin.Binder is DeclarationContainerKoto;
+        }
     }
 }

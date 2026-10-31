@@ -470,6 +470,29 @@ public sealed partial class Binding
             result = CombineProof(result, proof, true);
         }
 
+        // PROTOTYPE G353: a Closure's call signature, its own Origins closed to static.
+        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Kind == BoundTypeKind.Closure &&
+            work.Type.Symbol?.Declaration is FunctionKoto closureKoto && this.ClosureSignature(work.Type) is { } closureSignature)
+        {
+            var count = InputOriginCount(closureKoto);
+            var inputs = this.originScratch.Rent(count);
+            try
+            {
+                inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
+                var closed = this.SubstituteStoredOrigins(closureSignature, closureKoto, [], new PerCallImages(inputs.AsSpan(0, count), BoundOrigin.Static, BoundOrigin.Static));
+                if (Environment.GetEnvironmentVariable("G353_TRACE") is not null)
+                {
+                    Console.Error.WriteLine($"G353 {work.Type} sig={closureSignature} closed={closed}");
+                }
+
+                result = CombineProof(result, this.RequestCapability(closed, work.Intrinsic, work.Scope), true);
+            }
+            finally
+            {
+                this.originScratch.Return(inputs, clearArray: true);
+            }
+        }
+
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
