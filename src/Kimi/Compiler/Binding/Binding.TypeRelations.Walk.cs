@@ -77,6 +77,10 @@ public sealed partial class Binding
         internal bool IsCondition => this.Kind is ComparisonFailureKind.Origin or ComparisonFailureKind.WellFormedness or ComparisonFailureKind.Clause or
             ComparisonFailureKind.ResultPremise;
 
+        // Whether `other` is this failure: the same condition at the same position with the same ends (without the record's boxing Equals).
+        internal bool Same(in ComparisonFailure other) => this.Kind == other.Kind && ReferenceEquals(this.Longer, other.Longer) &&
+            ReferenceEquals(this.Shorter, other.Shorter) && this.Path == other.Path && this.Depth == other.Depth;
+
         // The failure as the enclosing comparison sees it: within its member `step`.
         internal ComparisonFailure Within(byte step) => this.Depth == 8 ? this :
             this with { Path = this.Path | ((ulong)step << (8 * this.Depth)), Depth = (byte)(this.Depth + 1) };

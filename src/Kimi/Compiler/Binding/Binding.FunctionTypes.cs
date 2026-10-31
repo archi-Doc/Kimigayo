@@ -286,12 +286,20 @@ public sealed partial class Binding
     {
         var failure = default(ComparisonFailure);
         var signature = actual.Kind == BoundTypeKind.Closure ? this.ClosureSignature(actual) : this.FunctionItemSignature(actual);
-        if (actual.Kind == BoundTypeKind.Closure
+        var fits = actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && signature is not null &&
                 this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
-            : this.ErasureSignatureFits(actual, expected, node, out failure))
+            : this.ErasureSignatureFits(actual, expected, node, out failure);
+        if (fits && this.ProveOwned(actual, node) == ConstraintProof.Proven)
         {
-            return this.ProveOwned(actual, node) == ConstraintProof.Proven;
+            return true;
+        }
+
+        // A failure publishes whether the signature part fit, for its Note (ClosureConversionNote).
+        (this.erasureSignatures ??= new(ReferenceEqualityComparer.Instance))[node] = fits;
+        if (fits)
+        {
+            return false;
         }
 
         // SPEC 15.2.3: an environment that is not Owned is the conversion's record first (RecordMismatch's Constraint record). A judged

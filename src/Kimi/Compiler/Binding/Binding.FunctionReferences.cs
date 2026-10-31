@@ -131,10 +131,11 @@ public sealed partial class Binding
                 {
                     // SPEC 10.7, 15.6.1: when the one candidate's signature matches and only its Origin contract fails, the record names
                     // that contract, with the candidate's own inputs instantiated: a member, else a condition of the candidate.
+                    var contract = ComparisonFailure.Shape;
                     return ReferenceTypes.StorageMatches(required, actual) &&
-                        !this.ItemContractFits(candidateItem, actual, required, use, out var contract) && contract.IsCondition
+                        !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
                         ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
-                        : this.FailMismatch(use, use, actual, required, default);
+                        : this.FailMismatch(use, use, actual, required, contract);
                 }
 
                 var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];

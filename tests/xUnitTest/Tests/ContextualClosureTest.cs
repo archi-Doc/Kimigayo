@@ -113,6 +113,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
     // failures are Constraint records (ErasureOwnedDiagnosticTest).
     [Theory]
     [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "expected (i32) -> i32, found closure (i32) -> i32", "This closure requires an Exclusive call; a common Function value permits Shared calls only")]
+    [InlineData("public func main() -> ()\n    let c = func [] (n: i32) -> i32 => n\n    let g: (i64) -> i32 = c\n", "expected (i64) -> i32, found closure (i32) -> i32", "The closure's parameter or result contract does not match the expected common Function signature")]
     public void AFailedClosureConversionShowsTheClosure(string source, string label, string note)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

@@ -41,6 +41,9 @@ public sealed partial class Binding
     // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
     private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
 
+    // SPEC 7.7.4: a failed erasure's own outcome where it was judged (ErasesToFunction): whether its signature part fit, for its Note.
+    private Dictionary<Koto, bool>? erasureSignatures;
+
     // The selected iteration entry and the range whose boundary Types cannot supply it.
     private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
 
@@ -437,8 +440,7 @@ public sealed partial class Binding
         }
 
         var facts = this.comparisonFacts;
-        var count = facts.Count != 0 && facts[0] is var head && head.Kind == failure.Kind && ReferenceEquals(head.Longer, failure.Longer) &&
-            ReferenceEquals(head.Shorter, failure.Shorter) && head.Path == failure.Path && head.Depth == failure.Depth ? facts.Count : 1;
+        var count = facts.Count != 0 && facts[0].Same(failure) ? facts.Count : 1;
         var positions = !failure.IsCondition;
         if (!positions)
         {
@@ -602,6 +604,7 @@ public sealed partial class Binding
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
+        this.erasureSignatures?.Clear();
         this.callableConstraints?.Clear();
         this.referenceConstraints?.Clear();
         this.operatorOperands?.Clear();

@@ -9,17 +9,20 @@ namespace Kimi.Compiler;
 // - Responsibility: the Note that says why a Function Item, Closure or Function value does not convert to the expected Function Type
 //   (ClosureConversionNote), an Owned failure's Constraint record (ReportOwnedConversion), and a failed condition's one record from the
 //   comparison's own failure (ContractFact, RecordsCondition).
-// - Inputs: the mismatch's Types, the comparison's ComparisonFailure and the Owned fact (OwnedConversionFact); the conversion rules are
-//   judged in Binding.FunctionTypes and Binding.OwnedConversions.
+// - Inputs: the mismatch's Types, the comparison's ComparisonFailure, a failed erasure's outcome (erasureSignatures, published by
+//   ErasesToFunction) and the Owned fact (OwnedConversionFact); the conversion rules are judged in Binding.FunctionTypes and
+//   Binding.OwnedConversions.
 // - Outputs: the Note text, and the Owned record with its evidence alternative.
 // - Invariants: a record is made only for a conversion that already failed.
-// - Prohibitions: no new judgment of the conversion. ClosureConversionNote still compares the signatures again (CallableSignatureFits,
-//   CallableSubtype) to choose its Note until it reads the comparison's failure, which PLAN G216 (a) U2.1 publishes.
+// - Prohibitions: no new judgment of the conversion; a Note reads the judgment's own outcome.
 public sealed partial class Binding
 {
-    private string? ClosureConversionNote(Koto node, object actual, object expected)
+    // SPEC 7.7.4, 23.1.2: the Note of a failed common Function conversion, read from its erasure's own outcome where it was judged at
+    // the mismatch's location (erasureSignatures) and the closure's receiver; nothing is judged again.
+    private string? ClosureConversionNote(Koto node, (Koto At, object Actual, object Expected) mismatch)
     {
-        if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)
+        var (at, actual, expected) = mismatch;
+        if (expected is not BoundType { Kind: BoundTypeKind.Function })
         {
             return null;
         }
@@ -28,7 +31,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
-            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSubtype(itemSignature, signature, SignatureOwner(item), out _)
+            return this.erasureSignatures?.GetValueOrDefault(at) == true
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -39,7 +42,7 @@ public sealed partial class Binding
         }
 
         // The definition, not the closure as created: a closure that failed at a call argument or a default keeps it (SPEC 7.7.4).
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { } closure } declaration })
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { } closure } })
         {
             return null;
         }
@@ -48,7 +51,7 @@ public sealed partial class Binding
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration, node, out _)
+            _ => this.erasureSignatures?.GetValueOrDefault(at) != true
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
