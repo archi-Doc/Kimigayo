@@ -1,6 +1,7 @@
 # G332 design: the instance collector's depth rule
 
-Status: design phase of PLAN G332 (R5, 2026-10-31), revision 2 after design reviews 1 and 2 (both REVISE). Working record, not
+Status: design phase of PLAN G332 (R5, 2026-10-31), revision 3: design reviews 1 and 2 REVISE, review 3 ACCEPT with the planning
+session's rulings folded. Working record, not
 authority: what it decides becomes authority only as a DECISIONS entry in the commit that implements it. Base: `origin/dev`
 `def70d15d`. No source change committed; throwaway prototypes (uncommitted, reverted; revision 2's is
 `C:\Users\bwff1\AppData\Local\Temp\claude\r5\g332\proto3.py`, the collector's height memo standing in for BU's `BoundType.Height`) and
@@ -17,6 +18,10 @@ CLI probes under `...\r5\g332\probes\` and the reviewer's scratchpad.
 | 2 | N2: written growth without recurrence (helpergrow) still GRL | a Known limit (§5) |
 | 2 | N3: ushort wrap | `Generation` and `Peak` are saturating bytes (type-driven heights <= 128 by the cap, body heights by Binding's storage bound) |
 | 2 | N4: U1 carried unread fields and a memo | BU publishes `BoundType.Height` (owner's approval); no memo; units re-cut after BU's unit (§6) |
+| 3 | Review 3 ACCEPT; planning ruling (1) | one window-free breadth rule for every item: a global count of 1,024 per type-driven identity (DropGlue, declaration), the bodies' SetLimit rule (the reviewer's prototype: b = 2 stops at 1,025 items in 3.4 s; ring 50, nest16s, cyc130, cycd130 unchanged) |
+| 3 | Ruling (2) | Known limits corrected: the branching bound is b^16 within W; a written Type above height 128 reaches the cap only behind a handle (hnest130, tnest130: GRL on dev too, no regression) |
+| 3 | Ruling (3) | U1 changes behavior: it carries `StorageRingsMeetTheGlueDepth`'s expectation change and the fail-first rows |
+| 3 | Ruling (4) | the b = 3 three-shape program hangs on dev before the collector: BU's open issue, outside G332 (the planning session records it) |
 
 ## 1. Required meaning
 
@@ -53,7 +58,10 @@ as Grows today (placement only, G153).
   for cycles past W and length-slot growth.
 - **Type-driven items:** a key whose Type's `BoundType.Height` exceeds 128 is `GenerationResourceLimit_Kd` at the requesting site
   (window-free; replaces `Repeats`). DropGlue items of a Nominal, Constructed or Closure Type also take the generation rule (identity
-  = (DropGlue, declaration)) for the early stop; every other type-driven kind has no identity (its parts are subterms or bodies).
+  = (DropGlue, declaration)) for the early stop and SetLimit's breadth rule: the 1,025th item of one identity, counted globally, is
+  `GenerationResourceLimit_Kd` (revision 3: one breadth rule for every item; it refuses only a program with more than 1,024
+  drop-needing instantiations of one declaration, the scale the bodies' SetLimit already refuses); every other type-driven kind has
+  no identity (its parts are subterms or bodies).
 - **Why 128:** every Type an accepted program stores, passes, creates or compares by value is Prepared under Binding's storage height
   64 (BU-12), and each nesting level adds at least one storage level, so its `BoundType.Height` stays near 64; 128 leaves the
   factor two. A Type past it arises only from type-driven growth (a non-regular Type behind a handle) or from a Type Binding already
@@ -90,9 +98,9 @@ generic generation row follow. Known limits: (1) growth written into a non-recur
 adding `Option`) is GRL at generation 17, since the generation measures height growth per definition on the chain, not recurrence;
 (2) a Type past Binding's storage walk (ring 120) is G128's `Unsupported_Kd` at the call, not this rule's; (3) a body cycle that grows
 but repeats only past W meets Binding's storage bound first (`Unsupported_Kd`) or SetLimit; W from the A/B (the planning session leans
-to 1,024); (4) a branching non-regular Type whose cycle exceeds W is bounded only by the cap (breadth up to branching^128 in
-principle): an open question whether a global per-declaration count (like SetLimit) is wanted, at revision 1's cost (it counted
-1,024 sideways `Option` glue items).
+to 1,024); (4) a branching non-regular Type (b growing Fields) is bounded by b^16 items within W and by the global count of 1,024
+items per declaration (revision 3); (5) a written Type above height 128 reaches the cap only behind a handle (hnest130, tnest130),
+GRL on dev too.
 
 ## 6. Classification and units
 
@@ -101,8 +109,8 @@ not ride. After BU's `BoundType.Height` unit:
 
 | Unit (each <= 1 h) | Content | Checks |
 | --- | --- | --- |
-| U1 | the rule reading `BoundType.Height`; the depth and Grows' walk deleted; `ComponentSummaryTest`'s comment | InstanceCollectorTest and the GRL classes (ComponentSummary, GenericStorage/GenericDestructorEmission, RecursiveDefault, VirtualGenericDispatch, MinimalEmission, TypeDagScaling); snapshot (only programs dev refuses change) |
-| U2 | rows: p1, p2, helper20, rings 50 and the largest under the storage cap, an 800-function chain with `Work` linear (fail-first); p7, p11, cycd130 at W, helpergrow (Known limit), the cap row; A/B (Generic 128, the 800 chain, cycd130) choosing W; DECISIONS, DIAGNOSTICS, STATUS, PLAN | the same classes; measurement; Session |
+| U1 | the rule reading `BoundType.Height`, the global count per type-driven identity; the depth and Grows' walk deleted; `ComponentSummaryTest`'s comment; behavior change: `StorageRingsMeetTheGlueDepth`'s expectation (OQ1) and the fail-first rows p1, p2, helper20 and the ring | InstanceCollectorTest and the GRL classes (ComponentSummary, GenericStorage/GenericDestructorEmission, RecursiveDefault, VirtualGenericDispatch, MinimalEmission, TypeDagScaling); snapshot (only programs dev refuses change) |
+| U2 | rows: the largest ring under the storage cap, an 800-function chain with `Work` linear; p7, p11, cycd130 at W, helpergrow (Known limit), the cap row, a b = 2 breadth row; A/B (Generic 128, the 800 chain, cycd130) choosing W; DECISIONS, DIAGNOSTICS, STATUS, PLAN | the same classes; measurement; Session |
 
 No native fixture: only programs dev refuses change.
 
@@ -110,4 +118,5 @@ No native fixture: only programs dev refuses change.
 
 - **OQ1 (owner, asked):** depart from KD9 (depth deleted; growth generations and SetLimit for bodies, a height cap and generations for
   type-driven items; `StorageRingsMeetTheGlueDepth`'s 50-ring accepted)?
-- Planning: W (lean 1,024); Known limit (4)'s breadth count.
+- Planning: W by U2's A/B (lean 1,024). Implementation waits for OQ1 and BU's `BoundType.Height` unit.
+- Outside G332 (BU's open issue, recorded by the planning session): the b = 3 three-shape program hangs on dev before the collector.
