@@ -9396,6 +9396,30 @@ resumed by R4-M86 (2026-10-20).
     its instance grows, leaving only the per-definition limit); a table in the collector (a consumer computing its owner's fact); a
     stored Subst height (+8 B per Subst, BuildMir +1.9 / +2.0 KB, for a read that costs one load per bound Type).
 
+- **BU-72 Binding publishes the Type identity a member or element access was resolved through, `HirTables.IdentityPremise`**
+  (2026-10-31; temporary; unit bu94; the owner, verbatim 「(a) 今行う」, relayed by R5, on "BU publishes the identity-premise fact
+  before C3, and R5 does the interim G168b now")
+  - Fact: on a `MemberAccessKoto` (a Field, a Tuple element, any member) or an `IndexKoto` whose receiver's Type, through its
+    Semantics layers, is a Type parameter P that the scope's identity premises make a complete Type U (SPEC 8.2.3, a chain `T is U`,
+    `U is Pair` included), the node's plan row (`Second`, unused on these classes) holds the interned `BoundConstraint` `P is U`:
+    TypeIdentity, Subject P, RequiredType U, the Type Binding resolved the access on. Null otherwise: no premise, a non-identity
+    premise (`T is Owned`), or a parameter nested in the receiver's Type (`xs: ref/Array<T>` with `T is Pair`: `xs[i]` is resolved
+    on `Pair` through `xs`'s substitution, so neither `xs[i]` nor `xs[i].a` has the fact).
+  - Writer: `Binding.PublishIdentityPremise`, called once where `BindAndAdaptNode` substitutes the receiver's Type (no second walk;
+    the receiver may be parenthesized). The index pass clears it, so each pass, a warm rebind included, publishes it again; the
+    constraint is interned (a direct premise's own object), warm Bind 0 B.
+  - Reader: R5's G168b MIR-builder guard. Where a projection's receiver Place has a Type parameter P through its Layers, it reads
+    `HirTables.IdentityPremise(node)`, requires Subject == P and checks the projected shape on RequiredType against the node's
+    Meaning (an Array's or fixed array's element, the Tuple element at the node's Folded position, a stored Field of the node's
+    symbol) before its located `Unsupported_Kd`; it never infers the identity from a Type mismatch (R4's reviews of G168).
+  - Reason: the premises sit in Binding's internal `ConstraintEnvironment`, availability is the private `AvailableConstraintFact`,
+    and Meaning carries only the substitution's result. The access's existing plan row carries the fact; no table.
+  - Removal: when G170's identity query lands, when TyCtxt answers the identical Type under premises and the projection gets its
+    Type; the writer, its reset, the reader and this entry go.
+  - Tests (`TypeIdentityTest.AnAccessPublishesTheIdentityItsReceiverWasResolvedThrough`): published for `T is Pair` (`s.a`,
+    `(s).a`, the chain), `T is Array<Pair>` (`s[i]`) and `T is (Pair, i32)` (`s.0`), the same object after a warm rebind; absent
+    without a premise and under `T is Owned`.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

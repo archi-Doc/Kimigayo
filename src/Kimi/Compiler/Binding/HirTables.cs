@@ -82,6 +82,13 @@ internal struct HirTables
 
     internal static HirPlace PlaceOf(Koto node) => node.SyntaxOwner?.Hir.Places is { } places && node.SyntaxId < places.Length ? places[node.SyntaxId] : default;
 
+    /// <summary>Gets the Type identity a member access or an element access was resolved through (SPEC 8.2.3; DECISIONS BU-72, temporary
+    /// until G170's identity query): <c>P is U</c>, whose Subject P is the Type parameter its receiver's Type has through its Semantics
+    /// layers and whose RequiredType U is the identical complete Type Binding resolved the access on; null for any other node.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The interned identity, or null.</returns>
+    internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
+
     /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
