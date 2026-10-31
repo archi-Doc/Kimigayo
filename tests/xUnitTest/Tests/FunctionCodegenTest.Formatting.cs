@@ -356,7 +356,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module that calls a formatting row, and is the text the
-    // old generator writes.
+    // old generator wrote.
     [Fact]
     public void TheFormattingRuntimeIsWrittenOnRequest()
     {

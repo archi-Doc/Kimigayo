@@ -33,8 +33,7 @@ public sealed class ChildMoveActivationTest
     public void AParentIsUsableAfterItsMovedChildsLastUse(string name, string source)
         => ScalarEmissionTest.EmitFixture("ChildMove" + name, source, string.Empty);
 
-    // A direct exclusive borrow placed into a literal is the same case without a Move; reading it back through the slot
-    // is not lowered yet, so the acceptance is verified by analysis alone.
+    // A direct exclusive borrow placed into a literal is the same case without a Move, its acceptance verified by analysis.
     [Theory]
     [InlineData("var n: i32 = 1\nvar p = n@uniq\nvar pair = (p@uniq, 1)\n_ = pair.0@follow\np@follow = 2")]
     [InlineData("var n: i32 = 1\nvar m: i32 = 3\nvar p = n@uniq\nlet c = p\nlet items: [2 of uniq/i32] = [c@move, m@uniq]\n_ = items[0]\np@follow = 2")]

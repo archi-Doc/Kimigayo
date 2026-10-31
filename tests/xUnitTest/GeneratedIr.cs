@@ -6,7 +6,7 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A generated module's LLVM text read for generated-code requirement tests (R5 E15; DECISIONS R5-M12 class R), the one helper
-/// through which a requirement holds for both generators wherever both are correct. A test selects a function by its signature, its
+/// through which a requirement holds for any correct code generation. A test selects a function by its signature, its
 /// startup role or a runtime contract symbol, a block by position, terminator or successor, a call by its callee and an instruction by its
 /// <see cref="IrValue.Shape"/>, in which every value, label and symbol is abstracted, and relates a value to its definition: it never names a
 /// generated function, a value, a label or a generator's helper.</summary>
@@ -228,7 +228,7 @@ internal sealed partial class GeneratedIr
             return;
         }
 
-        Assert.True(function.Blocks.Count != 0, "Both generators label every block: " + line);
+        Assert.True(function.Blocks.Count != 0, "Code generation labels every block: " + line);
         var result = Result().Match(line);
         var text = line[result.Length..];
         var words = text.Split(' ', 3);
