@@ -52,6 +52,15 @@ internal readonly record struct MirDropRow(int Block, ulong Views, MirDropVerdic
 /// <param name="Views">The views, bit i for view i.</param>
 internal readonly record struct MirFlagPoint(MirLocation At, int First, int Count, bool Set, ulong Views);
 
+/// <summary>What a Drop destroys under a view (<see cref="MirDropTable.Destroyed"/>), part by part.</summary>
+internal interface IMirDropped
+{
+    /// <summary>A part the Drop destroys whole.</summary>
+    /// <param name="type">The part's case Type, null where its row's projection has none.</param>
+    /// <param name="depth">The part's depth below the dropped Place (0: the Place).</param>
+    void Part(BoundType? type, int depth);
+}
+
 /// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (its index in
 /// <see cref="MirProgram.Bodies"/>): the body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
 /// points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
@@ -126,6 +135,33 @@ internal sealed class MirDropTable
         return -1;
     }
 
+    /// <summary>Reports what a Drop destroys under a view (DECISIONS R4-M6a, R4-M150), the one reading of its verdict group that A4 and A5
+    /// share: a verdict row and its subtree, Elide nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
+    /// A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child
+    /// row of its argument (a mask below 64 parts, past them the rows themselves). A part Binding rejected (a null Field or Case, DECISIONS
+    /// BU-37) without a row destroys nothing, never a limit (R4-M139); a row whose projection has no Type is reported null. A Drop only the checks reach runs no destructor (SPEC 14.10.3 as R4-M6a reads it); a runtime Drop
+    /// without a row (a body over the analyses' arena limit, R4-M15a) destroys its Place's case Type, at depth 0.</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="body">The body.</param>
+    /// <param name="block">The block whose terminator is the Drop.</param>
+    /// <param name="view">The view.</param>
+    /// <param name="type">The Drop's Place's case Type in the view.</param>
+    /// <param name="flow">The dataflow begun with the body: the blocks the runtime edges reach.</param>
+    /// <param name="visitor">The visitor, given each destroyed part's Type and depth below the Place.</param>
+    internal void Destroyed<TVisitor>(MirBody body, int block, long view, BoundType type, MirDataflow flow, ref TVisitor visitor)
+        where TVisitor : struct, IMirDropped
+    {
+        var group = this.Group(body.Ordinal, block, view);
+        if (group >= 0)
+        {
+            _ = Subtree(this.RowsOf(body.Ordinal), group, body, type, ref visitor);
+        }
+        else if (flow.Runtime(block))
+        {
+            visitor.Part(type, 0);
+        }
+    }
+
     /// <summary>Closes the next body: its rows and points are the ones added since the last body.</summary>
     /// <param name="flags">Its number of flags.</param>
     /// <param name="views">The views judged, from view 0.</param>
@@ -139,6 +175,78 @@ internal sealed class MirDropTable
         this.Rows.Clear();
         this.Points.Clear();
         this.ends.Clear();
+    }
+
+    // Whether a direct child row of a verdict row, between it and the row after its subtree, covers its part of an argument.
+    private static bool Covers(ReadOnlySpan<MirDropRow> rows, int row, int next, int part)
+    {
+        for (var i = row + 1; i < next; i++)
+        {
+            if (rows[i].Depth == rows[row].Depth + 1 && rows[i].Step != MirProjectionKind.Base && rows[i].Arg == part)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // A verdict row and its subtree (Destroyed's rule); the row after the subtree.
+    private static int Subtree<TVisitor>(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type, ref TVisitor visitor)
+        where TVisitor : struct, IMirDropped
+    {
+        var node = rows[row];
+        var next = row + 1;
+        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag)
+        {
+            visitor.Part(type, node.Depth);
+        }
+
+        var (covered, based) = (0UL, false);
+        while (next < rows.Length && rows[next].Depth > node.Depth)
+        {
+            var child = rows[next];
+            covered |= child.Step == MirProjectionKind.Base || child.Arg > 63 ? 0UL : 1UL << child.Arg;
+            based |= child.Step == MirProjectionKind.Base;
+            next = Subtree(rows, next, body, body.ProjectedType(type, child.Step, child.Arg), ref visitor);
+        }
+
+        if (node.Verdict != MirDropVerdict.Open || type is null)
+        {
+            return next;
+        }
+
+        // The parts as move paths name them: a Tuple's or Closure's elements and a struct's Fields, a fixed array's elements (one Type), an
+        // enum's Case payloads, and a struct's base.
+        var (kind, count) = type switch
+        {
+            { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count),
+            { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, (int)type.Length),
+            _ when AdtDef.CaseTypes(type) is { } payloads => (MirProjectionKind.Downcast, payloads.Length),
+            _ => (MirProjectionKind.Field, AdtDef.Count(type)),
+        };
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
+            {
+                if (body.ProjectedType(type, kind, i) is { } part)
+                {
+                    visitor.Part(part, node.Depth + 1);
+                }
+
+                if (kind == MirProjectionKind.ConstIndex)
+                {
+                    break; // A fixed array's elements share one Type.
+                }
+            }
+        }
+
+        if (!based && AdtDef.Base(type) is { } parent)
+        {
+            visitor.Part(parent, node.Depth + 1);
+        }
+
+        return next;
     }
 
     // Where a closed body's rows and points begin: the previous body's ends.

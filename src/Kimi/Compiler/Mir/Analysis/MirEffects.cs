@@ -124,33 +124,20 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         _ => Limit,
     };
 
-    // Whether a direct child row of a verdict row, between it and the row after its subtree, covers its part of an argument.
-    private static bool Covers(ReadOnlySpan<MirDropRow> rows, int row, int next, int part)
-    {
-        for (var i = row + 1; i < next; i++)
-        {
-            if (rows[i].Depth == rows[row].Depth + 1 && rows[i].Step != MirProjectionKind.Base && rows[i].Arg == part)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
     // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A tuple operator's call runs its parts'
     // comparisons (Compared). A requirement call that selects a built-in
     // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
     // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
-    // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
+    // the static's initializer; a Drop destroys what A2 publishes it destroys (MirDropTable.Destroyed).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
         if (terminator.Kind == MirTerminatorKind.Drop)
         {
-            this.Dropped(program, body, block, view, cases.Type(body.TypeOf(terminator.Place)!));
+            var dropped = new Dropped(this);
+            program.Drops.Destroyed(body, block, view, cases.Type(body.TypeOf(terminator.Place)!), flow, ref dropped);
         }
         else if (terminator.Kind != MirTerminatorKind.Call)
         {
@@ -289,82 +276,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return below;
     }
 
-    // R4-M6a: what a Drop destroys in the view, by A2's verdict group. One only the checks reach runs no destructor (drop elaboration and
-    // the destructor rule apply to runtime paths only, SPEC 14.10.3 as R4-M6a reads it), though the check-only statements' own effects
-    // count; a runtime Drop without a row (a body over the analyses' arena limit, R4-M15a) destroys its Place's case Type.
-    private void Dropped(MirProgram program, MirBody body, int block, long view, BoundType type)
-    {
-        var group = program.Drops.Group(body.Ordinal, block, view);
-        if (group >= 0)
-        {
-            _ = this.Destroyed(program.Drops.RowsOf(body.Ordinal), group, body, type);
-        }
-        else if (flow.Runtime(block))
-        {
-            this.Item(type, Drop);
-        }
-    }
-
-    // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
-    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child row
-    // of its argument (a mask below 64 parts, past them the rows themselves). A part Binding rejected (a null Field or Case, DECISIONS
-    // BU-37) destroys nothing, as MirTypes.Destruction reads it, never a limit (R4-M139). Returns the row after the subtree.
-    private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
-    {
-        var node = rows[row];
-        var next = row + 1;
-        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag)
-        {
-            this.Item(type, Drop);
-        }
-
-        var (covered, based) = (0UL, false);
-        while (next < rows.Length && rows[next].Depth > node.Depth)
-        {
-            var child = rows[next];
-            covered |= child.Step == MirProjectionKind.Base || child.Arg > 63 ? 0UL : 1UL << child.Arg;
-            based |= child.Step == MirProjectionKind.Base;
-            next = this.Destroyed(rows, next, body, body.ProjectedType(type, child.Step, child.Arg));
-        }
-
-        if (node.Verdict != MirDropVerdict.Open || type is null)
-        {
-            return next;
-        }
-
-        // The parts as move paths name them: a Tuple's or Closure's elements and a struct's Fields, a fixed array's elements (one Type), an
-        // enum's Case payloads, and a struct's base.
-        var (kind, count) = type switch
-        {
-            { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count),
-            { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, (int)type.Length),
-            _ when AdtDef.CaseTypes(type) is { } payloads => (MirProjectionKind.Downcast, payloads.Length),
-            _ => (MirProjectionKind.Field, AdtDef.Count(type)),
-        };
-        for (var i = 0; i < count; i++)
-        {
-            if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
-            {
-                if (body.ProjectedType(type, kind, i) is { } part)
-                {
-                    this.Item(part, Drop);
-                }
-
-                if (kind == MirProjectionKind.ConstIndex)
-                {
-                    break; // A fixed array's elements share one Type.
-                }
-            }
-        }
-
-        if (!based && AdtDef.Base(type) is { } parent)
-        {
-            this.Item(parent, Drop);
-        }
-
-        return next;
-    }
-
     // SPEC 8.11.3 rule 1: a call the caller's premises bound may destroy each value moved into it.
     private void Given(MirBody body, in MirTerminator terminator)
     {
@@ -400,6 +311,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
+
+    // A2's destroyed parts of a Drop (MirDropTable.Destroyed): each a Drop item of its Type, a Limit for a part with none.
+    private readonly struct Dropped(MirEffects owner) : IMirDropped
+    {
+        public void Part(BoundType? type, int depth) => owner.Item(type, Drop);
+    }
 
     // The local facts of a location: an environment effect (an access to a mutable static, Console output, an integer made a pointer, a
     // raw pointer read from an immutable static) or an Opaque site's unknown effect, a dependent of the error that made it (R4-M10).
