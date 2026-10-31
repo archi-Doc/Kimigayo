@@ -134,5 +134,44 @@ public sealed partial class Binding
 // PROTOTYPE G353 rev 1: whether a Type holds a Closure whose value signature names an enclosing container's Origin.
 public sealed partial class Binding
 {
-    private readonly HashSet<PropertyKoto> refusedFieldsG353 = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<PropertyKoto, Koto> refusedFieldsG353 = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, ComponentSite> gapSitesG353 = new(ReferenceEqualityComparer.Instance);
+
+    // The first Closure part of a Field's inferred Type through which the walk reaches an enclosing container's Origin: its literal.
+    private Koto? ReachedClosureG353(BoundType type, Koto subject)
+    {
+        if (type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto literal &&
+            this.FixedAtoms(type, subject, EnclosingContainer, null, 0, this.visitedParts.Begin(this.storageVersion)) > 0)
+        {
+            return literal;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (type.Components[i].ContainsClosure && this.ReachedClosureG353(type.Components[i], subject) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    // BU-60's gap: a held context its readers' view withholds; the signature is not readable in its instance (a limit at the literal).
+    private ComponentSite? GapSiteG353(BoundType closure)
+    {
+        if (closure.ClosureContext is null || TyCtxt.HeldType(closure) is null || TyCtxt.ClosureInstance(closure) is not null ||
+            closure.Symbol?.Declaration is not FunctionKoto literal)
+        {
+            return null;
+        }
+
+        if (!this.gapSitesG353.TryGetValue(literal, out var site))
+        {
+            site = new(this.neededSites) { Use = literal };
+            this.gapSitesG353[literal] = site;
+        }
+
+        return site;
+    }
 }

@@ -122,8 +122,9 @@ public sealed partial class Binding
                 // Origin is Unsupported_Kd at the Field (the Type would leave the container's world unimaged).
                 if (property.Symbol.Type is { ContainsClosure: true } inferred && this.FixedAtoms(inferred, syntax, EnclosingContainer, null, 0, this.visitedParts.Begin(this.storageVersion)) > 0)
                 {
-                    this.Fail(initializer, BindingFailure.Unsupported, true);
-                    this.refusedFieldsG353.Add(syntax);
+                    var literal = this.ReachedClosureG353(inferred, syntax) ?? initializer;
+                    this.Fail(literal, BindingFailure.Unsupported, true);
+                    this.refusedFieldsG353[syntax] = literal;
                 }
             }
             finally

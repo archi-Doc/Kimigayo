@@ -472,6 +472,11 @@ public sealed partial class Binding
 
         // PROTOTYPE G353: a Closure's call signature, its own Origins closed to static.
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Kind == BoundTypeKind.Closure &&
+            this.GapSiteG353(work.Type) is { } gap)
+        {
+            result = CombineProof(result, this.ReadVerdict(ConstraintProof.Unknown, gap), true);
+        }
+        else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Kind == BoundTypeKind.Closure &&
             work.Type.Symbol?.Declaration is FunctionKoto closureKoto && this.ClosureSignature(work.Type) is { } closureSignature)
         {
             var count = InputOriginCount(closureKoto);
