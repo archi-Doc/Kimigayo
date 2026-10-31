@@ -91,6 +91,7 @@ public sealed partial class Binding
         var independentRejection = false;
         var premiseUnknown = false;
         ReferenceConstraintFailure? rejectedConstraint = null;
+        var trial = -1;
         // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
         var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
         if (accessible)
@@ -102,6 +103,7 @@ public sealed partial class Binding
             }
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
+            trial = this.OpenFrame(); // A candidate trial is a frame (design-r2 Amendment 5).
             state = this.TryCandidate(
                 this.Solution(evaluation, function, declaringType),
                 evaluation.ExplicitLengths,
@@ -138,8 +140,13 @@ public sealed partial class Binding
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
             evaluation.PremisesOnly &= premiseUnknown;
-            evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Scratch, evaluation.LengthArguments, evaluation.Mapping, scope, evaluation.Self, declaringType) : null;
+            evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
             evaluation.ConstraintFailure ??= this.CandidateConstraintFailure(function, evaluation.Scratch, evaluation.LengthArguments, scope, evaluation.Self, declaringType, ConstraintProof.Unknown);
+        }
+
+        if (trial >= 0)
+        {
+            this.CloseFrame(trial);
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;

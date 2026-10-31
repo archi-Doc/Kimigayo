@@ -214,7 +214,16 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.SlotProof(slots, i, unbound), true);
             }
 
-            return binding.EndProof(outer, CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true));
+            proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
+            var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
+            proof = binding.EndProof(outer, proof);
+            if (fact is not null)
+            {
+                fact.Epoch = binding.frameEpoch; // The candidate trial's frame, whose consumer explains it (CallableOriginFailure).
+            }
+
+            binding.trialUnknown = fact;
+            return proof;
         }
 
         // SPEC 10.7, 10.8, 15.3.6: a callable value at a common Function Type that fits only once its per-call input is instantiated at

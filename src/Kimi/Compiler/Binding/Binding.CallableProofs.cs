@@ -75,35 +75,27 @@ public sealed partial class Binding
         };
     }
 
-    // SPEC 8.3, 15.6.1: the first Callable Constraint of a candidate whose proof is Unknown because only the Origin part of its whole-contract
-    // comparison fails, explained at the argument whose Type binds F; null when no such clause is found.
-    private CallableConstraintFact? CallableOriginFailure(InvocationKoto call, FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, BindingScope scope, BoundType? self, BoundType? declaringType)
+    // SPEC 8.3, 15.6.1: the Callable Constraint of a Pending candidate whose proof is Unknown because only the Origin part of its
+    // whole-contract comparison fails, explained at the argument whose Type binds F, from its own trial's U fact (design-r2 Amendments 4
+    // and 5): nothing is proven or compared again. SPEC 15.3.7: with matching members, a Function Item's failing condition (a clause or a
+    // result premise) is the member. Null when the trial left no such fact (a normal state); a foreign fact is a broken contract.
+    private CallableConstraintFact? CallableOriginFailure(InvocationKoto call, FunctionKoto function, int[] mapping)
     {
-        for (var i = 0; i < function.TypeConstraints.Count; i++)
+        var fact = this.trialUnknown;
+        this.trialUnknown = null;
+        if (fact is not null && fact.Epoch != this.frameEpoch)
         {
-            if (function.TypeConstraints[i] is not IsKoto { BoundConstraint: { Kind: ConstraintKind.Callable, Subject: { Kind: BoundTypeKind.Parameter, Symbol: { } slot } } bound } clause)
-            {
-                continue;
-            }
-
-            var substituted = this.SubstituteCandidateConstraint(bound, function, slots, lengths, scope, self, declaringType);
-            if (substituted is not { Kind: ConstraintKind.Callable, Subject: { } subject, RequiredType: { } required } || this.ProveConstraint(substituted, scope) != ConstraintProof.Unknown)
-            {
-                continue;
-            }
-
-            var signature = (subject.Kind == BoundTypeKind.Closure ? this.ClosureSignature(subject) : null) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
-            var at = ArgumentBinding(call, function, mapping, slot) ?? call;
-            // SPEC 15.3.7: with matching members, a Function Item's failing condition (a clause or a result premise) is the member.
-            var failure = default(ComparisonFailure);
-            if (signature is not null && !(subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, required, call, out failure)
-                : this.CallableSignatureFits(signature, required, SignatureOwner(subject), call, out failure)) && failure.IsCondition)
-            {
-                return new(at, clause, subject, this.ContractFact(at, failure, call));
-            }
+            this.Fail(call, BindingFailure.Internal);
+            return null;
         }
 
-        return null;
+        if (fact is not { Clause: { BoundConstraint.Subject: { Kind: BoundTypeKind.Parameter, Symbol: { } slot } } clause } || !fact.Failure.IsCondition)
+        {
+            return null;
+        }
+
+        var at = ArgumentBinding(call, function, mapping, slot) ?? call;
+        return new(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, call));
 
         static Koto? ArgumentBinding(InvocationKoto call, FunctionKoto function, int[] mapping, BindingSymbol slot)
         {

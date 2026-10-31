@@ -189,7 +189,7 @@ public sealed partial class Binding
                 return ConstraintProof.Refuted;
             }
 
-            this.unknownRead ??= new(subject, proposition.RequiredType!, failure);
+            this.unknownRead ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };
             return ConstraintProof.Unknown;
         }
 
