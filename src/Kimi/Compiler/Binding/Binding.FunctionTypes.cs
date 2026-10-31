@@ -278,38 +278,35 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
-    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits under its conditions
-    // (CallableSignatureFits), its minimum receiver is Shared and its complete environment is Owned. Initializations, returns and call
-    // arguments share this judgment.
-    // A condition that fails is the conversion's one record at `node`, made here from the judgment's failure (RecordsCondition).
+    // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
+    // its signature fits under its conditions (CallableSignatureFits) and its complete environment is Owned. Initializations, returns and
+    // call arguments share this judgment. A failure publishes its first failed part for its record and Note (erasureOutcomes): the
+    // receiver, the signature's structure, Owned (an environment that is not Owned is the record first, its Error's cause held), then a
+    // condition, the conversion's one record at `node`, made here from the judgment's failure (RecordCondition).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
         var failure = default(ComparisonFailure);
-        var signature = actual.Kind == BoundTypeKind.Closure ? this.ClosureSignature(actual) : this.FunctionItemSignature(actual);
+        var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
+        var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         var fits = actual.Kind == BoundTypeKind.Closure
-            ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && signature is not null &&
+            ? expected.Kind == BoundTypeKind.Function && receiver == SemanticsKind.Ref && signature is not null &&
                 this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
             : this.ErasureSignatureFits(actual, expected, node, out failure);
-        if (fits && this.ProveOwned(actual, node) == ConstraintProof.Proven)
+        ICheckCause? cause = null;
+        var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
+        var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
+            : shape && !fits ? ErasurePart.Shape
+            : this.ProveErasedOwned(actual, node, out cause) == ConstraintProof.Proven ? ErasurePart.Condition
+            : shape ? ErasurePart.Shape : ErasurePart.Owned;
+        if (part == ErasurePart.Condition && fits)
         {
             return true;
         }
 
-        // A failure publishes whether the signature part fit, for its Note (ClosureConversionNote).
-        (this.erasureSignatures ??= new(ReferenceEqualityComparer.Instance))[node] = fits;
-        if (fits)
+        (this.erasureOutcomes ??= new(ErasureKey.Instance))[(actual, expected)] = new(part, fits, receiver, cause);
+        if (part == ErasurePart.Condition)
         {
-            return false;
-        }
-
-        // SPEC 15.2.3: an environment that is not Owned is the conversion's record first (RecordMismatch's Constraint record). A judged
-        // erasure whose structure holds fails with its fact: a condition is its record, a limit the located Unsupported_Kd (design-r2 A1),
-        // and none a broken contract (design-r2 §2); a Closure whose receiver is not Shared is judged by no comparison.
-        if (signature is not null && this.ProveOwned(actual, node) == ConstraintProof.Proven && !this.RecordsCondition(node, failure, signature, expected) &&
-            failure.Kind != ComparisonFailureKind.Shape && ReferenceTypes.StorageMatches(expected, signature) &&
-            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }))
-        {
-            this.Fail(node, failure.Kind == ComparisonFailureKind.Limit ? BindingFailure.Unsupported : BindingFailure.Internal);
+            this.RecordCondition(node, failure, signature!, expected);
         }
 
         return false;

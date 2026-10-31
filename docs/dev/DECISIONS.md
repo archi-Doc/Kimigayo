@@ -5933,6 +5933,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reproducer).
   - Numbering: R4-M159 was reserved for G273 by the planning session.
   - Amendment (R4 agrees): Collect and Occurrences walk each shared part once (G309, bu90).
+- **R4-M161 The erasure's outcome: a failed erasure publishes its part for its two Types (G216 (a) U2.1 r2-1a)** (2026-10-31;
+  R4's r2-1 design `r4-notes\g216a-u21\r2-1-design.md` with Revision 1, BU's design review 2 ACCEPT; r2-1b adds the engine's Owned
+  fact) SPEC 7.7.4, 15.2.3, 23.1.2. Amends R4-M155 (Owned's record).
+  - The erasure's row. `ErasesToFunction` decides once, in SPEC 7.7.4's order, which part failed (Receiver, Shape, Owned,
+    Condition) and publishes it with today's `SignatureFits`, the closure's receiver and an Owned Error's cause, held and not rested
+    (`HoldCause`: an erasure records nothing). The row is keyed by the converted and expected Types by identity (`erasureOutcomes`,
+    `ErasureKey`), because a join records from Types; it replaces the node-keyed `erasureSignatures`, which a join's record could not
+    find. One Owned proof (`ProveErasedOwned`, the channel cleared before it) replaces two; a Condition part's record is
+    `RecordCondition`'s.
+  - Limit: the last erasure of a pair in the pass wins. Within one body nothing changes (Owned's premises are the body's declared
+    Constraints); two bodies converting one closure value to the same Type could swap the explaining member and its R/U class. The
+    body is not keyed because the Note reads at publication, with no forming body.
+  - Readers prove nothing: `FailOwnedConversion` reads the part and rests the held cause, and `ClosureConversionNote` reads
+    `SignatureFits` and the receiver, with today's texts. A missing row for a Closure or Item against a Function Type is
+    `InternalInvariant_Kd`. Temporary until r2-1b: `FailOwnedConversion`'s member loop and `FirstUnownedOrigin` still prove each
+    member to find the explaining one (removal: the erasure publishes the member from the proof that decided).
+  - Rejected: the reader's cache read in its own scope (a join's scope can differ from its arm's); node keys; R/U in the engine.
+  - Removes: `erasureSignatures`, two receiver re-tests, the second Owned proof of the erasure and the gate's Owned proof.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 // The proof frame's failure channel (DECISIONS BU-22, N3-1; SPEC 8.3.3, 23.1.1, 23.1.2), a part of constraint validation.
 // - Responsibility: the proof scopes (BeginProof, EndProof) and the causes they carry: the first limit (L) and Error cause a scope read,
 //   kept by the scope whose answer rests on them (ProofCause, ReadVerdict); the one failed cause a settled proof leaves for the check
-//   that failed on it (failedCause, TakeFailedCause); the reset of each pass (ClearProofScopes).
+//   that failed on it (failedCause, TakeFailedCause) or for a later record (HoldCause); the reset of each pass (ClearProofScopes).
 // - Inputs: a proof's answers and the causes its producers met (ICheckCause: a conformance on its specification or limited by OCC-X, a
 //   component summary's site or stored Type); the capability engine's consumer, under which a scope stays combined.
 // - Outputs: each scope's answer combined as P < U < L < R < E; where an answer is no longer combined, an L as Error resting on its site
@@ -134,6 +134,15 @@ public sealed partial class Binding
         var fact = this.failedUnknown;
         this.failedUnknown = null;
         return fact;
+    }
+
+    // The Error cause a settled proof left, held without resting on it (an erasure's Owned proof, r2-1a): an erasure publishes no limit
+    // (it may be judged where nothing records); its record rests on it (FailOwnedConversion).
+    private ICheckCause? HoldCause()
+    {
+        var cause = this.failedCause;
+        this.failedCause = null;
+        return cause;
     }
 
     private void LeaveUnknown(CallableUnknown? fact, ConstraintProof proof)

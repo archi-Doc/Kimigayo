@@ -16,13 +16,17 @@ public class ErasureOwnedDiagnosticTest
 {
     private const string Main = "public func main() -> ()\n";
 
-    // A let annotation, a default, a call argument and a captured reference value give the same record at the converted value.
+    // A join's arms are erased at the join's expected Type, and the join records from the two Types (SPEC 7.7.4).
+    private const string Join = Main + "    require k(true) == 0 else => $abort(\"j\")\n\nfunc k(c: bool) -> i32\n";
+
+    // A let annotation, a default, a call argument, a captured reference value and a join give the same record at the converted value.
     [Theory]
     [InlineData(Main + "    let text = \"a\"\n    let f: () -> () = func [text@ref] () => ()\n    f()\n", "func [text@ref] () => ()", "text", "text@ref", "text@ref")]
     [InlineData("func runH(text: string, action: () -> () = func [text@ref] () => ()) -> () => action()\n\n" + Main + "    runH(\"a\")\n", "func [text@ref] () => ()", "text", "text@ref", "text@ref")]
     [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let y: i32 = 2\n    require call(func [y@ref] (n) => n + y@follow, 1) == 3 else => $abort(\"k1\")\n", "func [y@ref] (n) => n + y@follow", "y", "y@ref", "y@ref")]
     [InlineData(Main + "    var n = 7\n    let view = n@uniq\n    let f = func [view] () => view@follow@ref\n    let e: () -> ref/i32 = f@move\n", "f@move", "view", "n@uniq", "n@uniq")]
     [InlineData(Main + "    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let g: (i32) -> i32 = f\n", "f", "y", "y@ref", "y@ref")]
+    [InlineData(Join + "    let v = 1\n    let r = v@ref\n    let g: () -> i32 = if c => func [r] () -> i32 => 0 else => func [] () -> i32 => 1\n    return 0\n", "if c => func [r] () -> i32 => 0 else => func [] () -> i32 => 1", "r", "v@ref", "v@ref")]
     public void ACaptureOverABorrowIsAnUnsatisfiedConstraint(string source, string text, string member, string origin, string related)
     {
         var output = DiagnosticCorpus.Check(source);
@@ -59,10 +63,14 @@ public class ErasureOwnedDiagnosticTest
     public void AnOwnedConstraintProvesTheConversion()
         => Assert.Empty(DiagnosticCorpus.Check("func identity<T>(value: T) -> T => value@move\n\nfunc keepOwned<T>(value: T) -> (T) -> T\n    T is Owned\n    let f: (T) -> T = identity\n    return f@move\n\n" + Main + "    let f = keepOwned(1)\n    require f(2) == 2 else => $abort(\"f\")\n").Diagnostics);
 
-    [Fact]
-    public void AnExclusiveClosureStaysATypeMismatch()
+    // A call argument, a join's arm, and a closure whose receiver and environment both fail (the receiver is its record).
+    [Theory]
+    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n")]
+    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => func [var n] () -> i32\n        n += 1\n        return n\n    else => func [] () -> i32 => 1\n    return 0\n")]
+    [InlineData(Join + "    var n: i32 = 0\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [var n, r] () -> i32\n        n += 1\n        return n\n    return 0\n")]
+    public void AnExclusiveClosureStaysATypeMismatch(string source)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n").Diagnostics);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "This closure requires an Exclusive call; a common Function value permits Shared calls only"), (error.Code, error.Note));
     }
 

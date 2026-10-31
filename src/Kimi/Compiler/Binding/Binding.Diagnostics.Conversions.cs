@@ -1,28 +1,42 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 // The records of a failed common Function conversion (SPEC 7.7.4, 10.7, 15.2.3), a part of the diagnostics adapter.
-// - Responsibility: the Note that says why a Function Item, Closure or Function value does not convert to the expected Function Type
-//   (ClosureConversionNote), an Owned failure's Constraint record (ReportOwnedConversion), and a failed condition's one record from the
-//   comparison's own failure (ContractFact, RecordsCondition).
-// - Inputs: the mismatch's Types, the comparison's ComparisonFailure, a failed erasure's outcome (erasureSignatures, published by
-//   ErasesToFunction) and the Owned fact (OwnedConversionFact); the conversion rules are judged in Binding.FunctionTypes and
-//   Binding.OwnedConversions.
+// - Responsibility: a failed erasure's published outcome (erasureOutcomes); the Note that says why a Function Item, Closure or Function
+//   value does not convert to the expected Function Type (ClosureConversionNote), an Owned failure's Constraint record
+//   (ReportOwnedConversion), and a failed condition's one record from the comparison's own failure (ContractFact, RecordCondition).
+// - Inputs: the mismatch's Types, the comparison's ComparisonFailure, a failed erasure's outcome (ErasureOutcome, published by
+//   ErasesToFunction for its two Types) and the Owned fact (OwnedConversionFact); the conversion rules are judged in
+//   Binding.FunctionTypes and Binding.OwnedConversions.
 // - Outputs: the Note text, and the Owned record with its evidence alternative.
 // - Invariants: a record is made only for a conversion that already failed.
 // - Prohibitions: no new judgment of the conversion; a Note reads the judgment's own outcome.
 public sealed partial class Binding
 {
-    // SPEC 7.7.4, 23.1.2: the Note of a failed common Function conversion, read from its erasure's own outcome where it was judged at
-    // the mismatch's location (erasureSignatures) and the closure's receiver; nothing is judged again.
+    // SPEC 7.7.4: a failed erasure's own outcome (ErasesToFunction), keyed by its two Types (a join records from Types), for its record
+    // and Note; the last erasure of a pair in the pass wins (DECISIONS R4-M161).
+    private Dictionary<(BoundType Actual, BoundType Expected), ErasureOutcome>? erasureOutcomes;
+
+    // SPEC 7.7.4: the part of a failed erasure, in the erasure's order.
+    private enum ErasurePart : byte
+    {
+        Receiver,
+        Shape,
+        Owned,
+        Condition,
+    }
+
+    // SPEC 7.7.4, 23.1.2: the Note of a failed common Function conversion, read from its erasure's own outcome for the mismatch's two
+    // Types (erasureOutcomes); nothing is judged again.
     private string? ClosureConversionNote(Koto node, (Koto At, object Actual, object Expected) mismatch)
     {
-        var (at, actual, expected) = mismatch;
-        if (expected is not BoundType { Kind: BoundTypeKind.Function })
+        var (_, actual, expected) = mismatch;
+        if (expected is not BoundType { Kind: BoundTypeKind.Function } required)
         {
             return null;
         }
@@ -31,7 +45,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
-            return this.erasureSignatures?.GetValueOrDefault(at) == true
+            return this.ErasureOf(item, required)?.SignatureFits == true
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -43,16 +57,17 @@ public sealed partial class Binding
         }
 
         // The definition, not the closure as created: a closure that failed at a call argument or a default keeps it (SPEC 7.7.4).
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { } closure } })
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: not null } } closure ||
+            this.ErasureOf(closure, required) is not { } erasure)
         {
             return null;
         }
 
-        return closure.Receiver switch
+        return erasure.Receiver switch
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => this.erasureSignatures?.GetValueOrDefault(at) != true
+            _ => !erasure.SignatureFits
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
@@ -89,6 +104,10 @@ public sealed partial class Binding
     // SPEC 10.7, 15.6.1, 23.1: the one record of a whole-contract comparison that failed in a condition, from the failure its walk found:
     // the member from the nearest comparison ("the 1st parameter's 1st parameter's well-formedness"), with both ends instantiated under
     // the comparison.
+    // A failed erasure's outcome for its two Types (ErasesToFunction), if one was published in this pass.
+    private ErasureOutcome? ErasureOf(BoundType actual, BoundType expected)
+        => this.erasureOutcomes is { } outcomes && outcomes.TryGetValue((actual, expected), out var outcome) ? outcome : null;
+
     private OriginContractFact ContractFact(Koto at, in ComparisonFailure failure, Koto use)
     {
         var member = string.Empty;
@@ -121,18 +140,20 @@ public sealed partial class Binding
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
-    // SPEC 10.7, 15.6.1: whether a failed comparison of `implementation` with `required` is that comparison's one record at `node`, which
-    // it then is: a condition, with the comparison's structure holding (a structural difference is a Type mismatch, even where the walk
-    // met an Origin first).
-    private bool RecordsCondition(Koto node, in ComparisonFailure failure, BoundType implementation, BoundType required)
+    // SPEC 10.7, 15.6.1: the record of an erasure that failed only its signature's fit (ErasesToFunction's Condition part): a condition,
+    // with the comparison's structure holding, is the comparison's one record at `node`; a structural difference is left to the
+    // consumer's Type mismatch (even where the walk met an Origin first), a limit is the located Unsupported_Kd (design-r2 A1), and no
+    // fact a broken contract (design-r2 §2).
+    private void RecordCondition(Koto node, in ComparisonFailure failure, BoundType implementation, BoundType required)
     {
-        if (!failure.IsCondition || !ReferenceTypes.StorageMatches(required, implementation))
+        if (failure.IsCondition && ReferenceTypes.StorageMatches(required, implementation))
         {
-            return false;
+            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
         }
-
-        this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
-        return true;
+        else if (failure.Kind != ComparisonFailureKind.Shape)
+        {
+            this.Fail(node, failure.Kind == ComparisonFailureKind.Limit ? BindingFailure.Unsupported : BindingFailure.Internal);
+        }
     }
 
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
@@ -209,5 +230,21 @@ public sealed partial class Binding
             "closure" => "the closure's " + origin.Text,
             _ => origin.Text,
         };
+    }
+
+    // A failed erasure's outcome (ErasesToFunction): its first failed part, whether its receiver and signature fit (the Note's input),
+    // the closure's minimum receiver, and an Owned Error's held cause. Diagnostic payload only; no decision reads it.
+    private readonly record struct ErasureOutcome(ErasurePart Part, bool SignatureFits, SemanticsKind Receiver, ICheckCause? Cause);
+
+    // An erasure's two Types compared by reference: both are interned, and a Closure Type holds its whole context (BU-60, BU-71).
+    private sealed class ErasureKey : IEqualityComparer<(BoundType Actual, BoundType Expected)>
+    {
+        internal static readonly ErasureKey Instance = new();
+
+        public bool Equals((BoundType Actual, BoundType Expected) x, (BoundType Actual, BoundType Expected) y)
+            => ReferenceEquals(x.Actual, y.Actual) && ReferenceEquals(x.Expected, y.Expected);
+
+        public int GetHashCode((BoundType Actual, BoundType Expected) obj)
+            => HashCode.Combine(RuntimeHelpers.GetHashCode(obj.Actual), RuntimeHelpers.GetHashCode(obj.Expected));
     }
 }
