@@ -54,7 +54,7 @@ public sealed partial class Binding
         var summary = this.Summary(symbol);
         if (summary.Error)
         {
-            return this.ReadVerdict(ConstraintProof.Error, summary);
+            return this.ReadVerdict(ConstraintProof.Error, summary, null);
         }
 
         var result = summary.ExcludesOwned ? ConstraintProof.Refuted : summary.Unresolved ? ConstraintProof.Unknown : ConstraintProof.Proven;
@@ -80,7 +80,7 @@ public sealed partial class Binding
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
-            ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0]) : result;
+            ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0], null) : result;
     }
 
     // SPEC 23.1.1: each site a settled proof needed, recorded once at its stored Type after Binding.Check's loop, whose checks can still

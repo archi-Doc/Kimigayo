@@ -494,7 +494,7 @@ public sealed partial class Binding
     // SPEC 15.4.2, 23.1.2: a result Origin needs its inputs Owned; one that is not is a missing Origin, unless its Error rests on a cause.
     private BoundOrigin? MissingOrigin(Koto use, ConstraintProof unowned)
     {
-        if (unowned == ConstraintProof.Error && this.TakeFailedCause() is { } cause)
+        if (unowned == ConstraintProof.Error && this.TakeFailedCause().Use is { } cause)
         {
             this.CompleteDependent(use, cause);
         }

@@ -45,7 +45,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (proof == ConstraintProof.Error && this.TakeFailedCause() is { } cause)
+        if (proof == ConstraintProof.Error && this.TakeFailedCause().Use is { } cause)
         {
             this.CompleteDependent(use, cause);
             return true;

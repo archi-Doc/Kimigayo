@@ -76,10 +76,16 @@ public sealed partial class Binding
 
             // Associated identities also need normalization for calls without a receiver.
             substituted = this.ContractConstraint(substituted, scope, self);
+            var unknown = this.unknownRead;
             var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
+                this.unknownRead = unknown; // A clause that is not judged contributes no U fact.
+            }
+            else if (this.unknownRead is { } fact && !ReferenceEquals(fact, unknown))
+            {
+                fact.Clause = constraint; // The outermost clause list's stamp is the last (design-r2 Amendment 4).
             }
 
             if (failureUse is not null)

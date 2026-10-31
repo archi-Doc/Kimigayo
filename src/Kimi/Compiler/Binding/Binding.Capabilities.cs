@@ -288,7 +288,7 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
-            return this.ReadVerdict(work.Result, work.Cause);
+            return this.ReadVerdict(work.Result, work.Cause, work.Fact);
         }
 
         var outer = this.BeginProof();
@@ -301,8 +301,10 @@ public sealed partial class Binding
                 this.capabilityConsumer = next;
                 this.limitRead = null;
                 this.errorRead = null;
+                this.unknownRead = null;
                 var result = this.ComputeCapability(next);
                 var cause = result == ConstraintProof.Unknown ? this.limitRead : result == ConstraintProof.Error ? this.errorRead : null;
+                next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
                 if (result == next.Result && ReferenceEquals(cause, next.Cause))
                 {
                     continue;
@@ -328,7 +330,8 @@ public sealed partial class Binding
 
         this.limitRead = null;
         this.errorRead = null;
-        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause));
+        this.unknownRead = null;
+        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)
@@ -673,6 +676,9 @@ public sealed partial class Binding
 
         // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
         internal ICheckCause? Cause { get; set; }
+
+        // The U fact its Unknown rests on, from the final iteration; never compared (design-r2 Amendment 4).
+        internal CallableUnknown? Fact { get; set; }
 
         internal List<CapabilityWork> Dependents { get; } = new();
 

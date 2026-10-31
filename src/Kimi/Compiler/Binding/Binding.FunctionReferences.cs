@@ -98,7 +98,8 @@ public sealed partial class Binding
 
             if (error)
             {
-                return (invalid ?? this.TakeFailedCause()) is { } cause ? this.CompleteDependent(use, cause) : this.Fail(use, BindingFailure.InvalidConstraint);
+                return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
+                    : this.Fail(use, BindingFailure.InvalidConstraint);
             }
 
             if (pendingProof)

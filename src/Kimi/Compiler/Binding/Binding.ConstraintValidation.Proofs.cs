@@ -31,12 +31,18 @@ public sealed partial class Binding
     private ICheckCause? errorRead;
     private int proofNesting;
 
+    // The U fact (design-r2 Amendment 4): the first Callable comparison failure the Unknown answer of the proof scope in progress rests on
+    // (unknownRead), and the one a settled Unknown leaves for its check (failedUnknown), each diagnostic payload only.
+    private CallableUnknown? unknownRead;
+    private CallableUnknown? failedUnknown;
+
     // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request.
-    private (ICheckCause? Limit, ICheckCause? Error) BeginProof()
+    private (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown) BeginProof()
     {
-        var outer = (this.limitRead, this.errorRead);
+        var outer = (this.limitRead, this.errorRead, this.unknownRead);
         this.limitRead = null;
         this.errorRead = null;
+        this.unknownRead = null;
         this.proofNesting++;
         return outer;
     }
@@ -45,17 +51,21 @@ public sealed partial class Binding
     // the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is no longer combined,
     // an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes it (TakeFailedCause),
     // which publishes a site.
-    private ConstraintProof EndProof((ICheckCause? Limit, ICheckCause? Error) outer, ConstraintProof proof)
+    private ConstraintProof EndProof((ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown) outer, ConstraintProof proof)
     {
         this.proofNesting--;
         var cause = this.ProofCause(proof);
+        var fact = this.ProofFact(proof);
         this.limitRead = outer.Limit;
         this.errorRead = outer.Error;
+        this.unknownRead = outer.Unknown;
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
-            return this.ReadVerdict(proof, cause);
+            return this.ReadVerdict(proof, cause, fact);
         }
 
+        // Where the answer is no longer combined, an untaken U fact is dropped and an Unknown without a limit leaves its own.
+        this.failedUnknown = cause is null ? fact : null;
         if (cause is null)
         {
             return proof;
@@ -69,12 +79,16 @@ public sealed partial class Binding
     private ICheckCause? ProofCause(ConstraintProof proof)
         => proof switch { ConstraintProof.Unknown => this.limitRead, ConstraintProof.Error => this.errorRead, _ => null };
 
-    // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit, an Error's cause.
-    private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause)
+    // The U fact the answer of the proof scope in progress rests on (EndProof, a cache entry).
+    private CallableUnknown? ProofFact(ConstraintProof proof) => proof == ConstraintProof.Unknown ? this.unknownRead : null;
+
+    // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit and U fact, an Error's cause.
+    private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause, CallableUnknown? fact)
     {
         if (proof == ConstraintProof.Unknown)
         {
             this.limitRead ??= cause;
+            this.unknownRead ??= fact;
         }
         else if (proof == ConstraintProof.Error)
         {
@@ -89,20 +103,37 @@ public sealed partial class Binding
         this.failedCause = null;
         this.limitRead = null;
         this.errorRead = null;
+        this.unknownRead = null;
+        this.failedUnknown = null;
         this.proofNesting = 0;
     }
 
-    // SPEC 23.1.2: the Use of the cause that the Error a check just consumed rests on; a limit a failing check needs is published by
-    // Binding.Check.
-    private Koto? TakeFailedCause()
+    // SPEC 23.1.2: the Use of the cause that the Error a check just consumed rests on, and the U fact a settled Unknown left (no fact is a
+    // normal state); a limit a failing check needs is published by Binding.Check.
+    private (Koto? Use, CallableUnknown? Fact) TakeFailedCause()
     {
+        var fact = this.failedUnknown;
+        this.failedUnknown = null;
         if (this.failedCause is not { } cause)
         {
-            return null;
+            return (null, fact);
         }
 
         this.failedCause = null;
         cause.Rest();
-        return cause.Use;
+        return (cause.Use, fact);
+    }
+
+    // SPEC 15.6.1 (design-r2 Amendment 4): a Callable proof that is Unknown only in the Origin part of its whole-contract comparison, with
+    // that comparison's failure, stamped with the outermost CheckConstraints clause it was proven for. Diagnostic payload only.
+    internal sealed class CallableUnknown(BoundType subject, BoundType required, ComparisonFailure failure)
+    {
+        internal BoundType Subject { get; } = subject;
+
+        internal BoundType Required { get; } = required;
+
+        internal ComparisonFailure Failure { get; } = failure;
+
+        internal IsKoto? Clause { get; set; }
     }
 }

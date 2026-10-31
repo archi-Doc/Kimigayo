@@ -354,6 +354,9 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets what <see cref="SourceState"/> rests on (an Unknown's limit, an Error's cause).</summary>
     internal ICheckCause? SourceCause { get; set; }
 
+    /// <summary>Gets or sets the U fact an Unknown <see cref="SourceState"/> rests on, stored with it (design-r2 Amendment 4).</summary>
+    internal Binding.CallableUnknown? SourceFact { get; set; }
+
     internal int Slot { get; set; }
 
     internal bool MutableCapture { get; set; }

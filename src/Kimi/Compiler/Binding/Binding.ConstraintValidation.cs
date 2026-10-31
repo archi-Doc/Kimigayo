@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // CheckTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on (DECISIONS BU-55).
-    private readonly TypeMemo<(ConstraintProof Proof, ICheckCause? Cause)> formedParts = new();
+    private readonly TypeMemo<(ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact)> formedParts = new();
 
     // The causes of each pair occurrence that a final check failed with a Language cause, for its evidence and for the separate record
     // of an unproven target role (Check).
@@ -206,11 +206,11 @@ public sealed partial class Binding
         if (!this.formedParts.TryGet(part, query, out var known))
         {
             var proof = this.CheckTypeConstraints(part, scope, query);
-            known = (proof, this.ProofCause(proof));
+            known = (proof, this.ProofCause(proof), this.ProofFact(proof));
             this.formedParts.Set(part, query, known);
         }
 
-        return this.EndProof(outer, this.ReadVerdict(known.Proof, known.Cause));
+        return this.EndProof(outer, this.ReadVerdict(known.Proof, known.Cause, known.Fact));
     }
 
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
@@ -580,7 +580,7 @@ public sealed partial class Binding
     {
         if (proof == ConstraintProof.Error)
         {
-            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedCause());
+            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedCause().Use);
         }
         else if (proof == ConstraintProof.Refuted)
         {
