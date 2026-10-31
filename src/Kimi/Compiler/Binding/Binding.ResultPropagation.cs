@@ -146,9 +146,7 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.PartsAwait(array.Elements),
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
-            FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited } => Awaiting.Callable,
-            _ when node.BindingState == BindingState.Unvisited && this.RecordedPart(node).Kind == PartKind.Case =>
-                Awaiting.Callable, // A Case result its call completes (P2).
+            _ when this.AwaitsCall(node) && this.KindOf(node) is PartKind.Function or PartKind.Case => Awaiting.Callable,
             _ => node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) ? Awaiting.Literal : Awaiting.None,
         };
     }
@@ -252,9 +250,8 @@ public sealed partial class Binding
 
     // The same with the source's Awaiting (AwaitsFor) when the caller already has it, so the source is not walked twice.
     private bool Deferred(Koto source, Awaiting? awaits)
-        => !this.PartFailed(source) && (this.KindOf(source) is var kind && kind is PartKind.Call or PartKind.Reference ? AwaitsCall(source, kind) :
-            source.BindingState is BindingState.Unvisited or BindingState.Unresolved &&
-            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source)));
+        => !this.PartFailed(source) && (this.AwaitsCall(source) || (source.BindingState is BindingState.Unvisited or BindingState.Unresolved &&
+            ((awaits ?? this.AwaitsFor(source)) != Awaiting.None || this.Completed(source))));
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
@@ -641,8 +638,7 @@ public sealed partial class Binding
             return target; // SPEC 3.8: a Never expression fits; the literal around it takes its position's Type.
         }
 
-        var kind = this.KindOf(node);
-        if (!AwaitsCall(node, kind) && !this.AwaitsPosition(node) && !this.Deferred(node))
+        if (!this.AwaitsCall(node) && !this.AwaitsPosition(node) && !this.Deferred(node))
         {
             return this.LateAdaptation(node, target); // A bound part; one holding what its call completed is formed from its parts below.
         }
@@ -652,6 +648,7 @@ public sealed partial class Binding
             return this.LateWrite(node, this.LateType(operand, target));
         }
 
+        var kind = this.KindOf(node);
         var late = node switch
         {
             TupleLiteralKoto tuple => this.LateTupleType(tuple, target),

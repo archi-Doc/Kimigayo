@@ -105,7 +105,7 @@ public sealed partial class Binding
             {
                 literal = true;
             }
-            else if (!this.IsAggregatePart(part) && AwaitsCall(part, this.KindOf(part)))
+            else if (!this.IsAggregatePart(part) && this.AwaitsCall(part))
             {
                 return PartKind.Call;
             }

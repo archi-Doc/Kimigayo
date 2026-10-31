@@ -180,7 +180,7 @@ public sealed partial class Binding
                         waiting = argument;
                     }
 
-                    if (kind == PartKind.Function && AwaitsCall(inner, kind) && inner is FunctionKoto closure)
+                    if (kind == PartKind.Function && this.AwaitsCall(inner) && inner is FunctionKoto closure)
                     {
                         var parameters = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } ? this.CallType(signature.Components[0], selected, slots, scope, self, origins, inputs, declaringType, lengths) : null;
                         var result = parameters is null ? null : this.CallType(signature!.Components[1], selected, slots, scope, self, origins, inputs, declaringType, lengths);

@@ -19,7 +19,7 @@ public sealed partial class Binding
         var kind = this.KindOf(node);
         switch (kind)
         {
-            case PartKind.Function when AwaitsCall(node, kind) && node is FunctionKoto closure:
+            case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -39,7 +39,7 @@ public sealed partial class Binding
                 return this.FitComposite(part, node, type, scope, out operation);
             case PartKind.Literal:
                 return this.FitLiteral(part, node, type, scope, out operation);
-            case PartKind.Case or PartKind.Call when AwaitsCall(node, kind):
+            case PartKind.Case or PartKind.Call when this.AwaitsCall(node):
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
                 return CandidateApplicability.Waiting;
             default:

@@ -190,8 +190,7 @@ public sealed partial class Binding
         var holds = false;
         for (var i = start; !holds && i < this.positionParts.Count; i++)
         {
-            var part = this.positionParts[i];
-            holds = AwaitsCall(part, this.KindOf(part));
+            holds = this.AwaitsCall(this.positionParts[i]);
         }
 
         this.ClosePosition(start);
