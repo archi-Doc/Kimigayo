@@ -403,7 +403,8 @@ public sealed partial class Binding
     // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
     // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
-    // position is its relation record (RecordOriginFitFailure), which must find it; any other failure is a Type mismatch.
+    // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
+    // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
@@ -414,16 +415,10 @@ public sealed partial class Binding
         }
 
         var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
-        if (storage && failure.Kind is ComparisonFailureKind.Origin or ComparisonFailureKind.WellFormedness or ComparisonFailureKind.Limit or
-            ComparisonFailureKind.Position)
+        if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
-            return this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
-        }
-
-        // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
-        if (storage && this.RecordOriginFitFailure(node, at, (BoundType)actual, (BoundType)expected))
-        {
-            return null;
+            return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
+                : this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
         }
 
         return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
@@ -462,8 +457,9 @@ public sealed partial class Binding
             }
         }
 
+        // A plain position the walk met is always found by its search; one that is not is a broken contract (design-r2 §2).
         return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && node.BindingFailure == BindingFailure.None
-            ? this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected)) : null;
+            ? this.Fail(node, BindingFailure.Internal) : null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.

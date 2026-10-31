@@ -294,8 +294,16 @@ public sealed partial class Binding
             return this.ProveOwned(actual, node) == ConstraintProof.Proven;
         }
 
-        // SPEC 15.2.3: an environment that is not Owned is the conversion's record first (RecordMismatch's Constraint record).
-        _ = signature is not null && this.ProveOwned(actual, node) == ConstraintProof.Proven && this.RecordsCondition(node, failure, signature, expected);
+        // SPEC 15.2.3: an environment that is not Owned is the conversion's record first (RecordMismatch's Constraint record). A judged
+        // erasure whose structure holds fails with its fact: a condition is its record, a limit the located Unsupported_Kd (design-r2 A1),
+        // and none a broken contract (design-r2 §2); a Closure whose receiver is not Shared is judged by no comparison.
+        if (signature is not null && this.ProveOwned(actual, node) == ConstraintProof.Proven && !this.RecordsCondition(node, failure, signature, expected) &&
+            failure.Kind != ComparisonFailureKind.Shape && ReferenceTypes.StorageMatches(expected, signature) &&
+            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }))
+        {
+            this.Fail(node, failure.Kind == ComparisonFailureKind.Limit ? BindingFailure.Unsupported : BindingFailure.Internal);
+        }
+
         return false;
     }
 
