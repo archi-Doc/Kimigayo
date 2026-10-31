@@ -205,7 +205,7 @@ internal sealed partial class MirBorrows
         this.Pass(Seeded);
         foreach (var (local, _, _) in this.reserving)
         {
-            this.Seed((int)state[this.slots[local]]);
+            this.Seed(this.Set(state[this.slots[local]]));
             this.Drain(state);
         }
 
@@ -274,7 +274,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        this.Scan(value, via);
+        this.Scan(State(value, 0), via);
         this.Drain(state);
     }
 
@@ -346,7 +346,7 @@ internal sealed partial class MirBorrows
         {
             var slot = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
-            this.Scan((int)state[slot], slot);
+            this.Scan(state[slot], slot);
             this.Work++;
         }
     }
@@ -371,7 +371,7 @@ internal sealed partial class MirBorrows
     {
         if (!entry.Issue && !this.Took(entry.Value, -1))
         {
-            this.Scan(entry.Value, -1);
+            this.Scan(State(entry.Value, 0), -1);
         }
 
         this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own);

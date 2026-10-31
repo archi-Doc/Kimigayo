@@ -247,8 +247,9 @@ internal sealed partial class MirBorrows
 
     // Whether a carrier keeps an element found in it (a holder, -1 for a transit value): a W element, found in a transit value, in a holder
     // other than an escape holder, or in an escape holder as no Copy of the borrow (its marker).
-    private bool Kept(int set, int element, int via)
-        => this.wCount > 0 && this.W(element) is var w and >= 0 && (via < 0 || !this.escape[via] || this.sets.Contains(set, this.Mark(w)));
+    private bool Kept(ulong found, int element, int via)
+        => this.wCount > 0 && this.W(element) is var w and >= 0 && (via < 0 || !this.escape[via] ||
+            this.sets.Contains(Placed(found), this.Mark(w)) || this.sets.Contains(Shared(found), this.Mark(w)));
 
     // Whether a conflicting candidate is a W element no carrier keeps; its causes then join the conflict's.
     private bool Derived(int candidate)

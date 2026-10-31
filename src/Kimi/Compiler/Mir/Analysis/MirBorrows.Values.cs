@@ -58,7 +58,7 @@ internal sealed partial class MirBorrows
             return this.escapedSet;
         }
 
-        return this.slots[root] >= 0 ? (int)state[this.slots[root]] : 0;
+        return this.slots[root] >= 0 ? this.Set(state[this.slots[root]]) : 0;
     }
 
     // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it.

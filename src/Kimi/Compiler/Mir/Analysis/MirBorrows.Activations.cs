@@ -49,9 +49,9 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var held = (int)state[slot];
-        this.Work += this.sets.Count(held);
-        foreach (var element in this.sets.Elements(held))
+        var held = state[slot];
+        this.Work += this.Count(held);
+        foreach (var element in this.ElementsOf(held))
         {
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Mode: MirRefKind.TwoPhaseUniq } loan && loan.Holder == slot)
             {

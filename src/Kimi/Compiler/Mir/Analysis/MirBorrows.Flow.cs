@@ -68,8 +68,8 @@ internal sealed partial class MirBorrows
             state[slot] = op switch
             {
                 Cleared => 0,
-                Replaced => (ulong)value,
-                _ => (ulong)this.sets.Union((int)state[slot], value),
+                Replaced => State(value, 0),
+                _ => State(this.sets.Union(Placed(state[slot]), value), Shared(state[slot])),
             };
         }
     }

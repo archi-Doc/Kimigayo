@@ -70,12 +70,12 @@ internal sealed partial class MirBorrows
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
-        state[Escaped] = (ulong)this.escapedSet;
+        state[Escaped] = State(this.escapedSet, 0);
         for (var i = 1; i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
             if (this.slots[i] >= 0)
             {
-                state[this.slots[i]] = (ulong)this.escapedSet;
+                state[this.slots[i]] = State(this.escapedSet, 0);
             }
         }
     }
@@ -129,7 +129,7 @@ internal sealed partial class MirBorrows
 
         for (var s = 0; s < this.holderCount; s++)
         {
-            state[s] = (ulong)this.sets.Remove((int)state[s], ended);
+            state[s] = State(this.sets.Remove(Placed(state[s]), ended), this.sets.Remove(Shared(state[s]), ended));
         }
 
         this.Work += this.holderCount;
@@ -141,7 +141,7 @@ internal sealed partial class MirBorrows
         var grew = false;
         for (var s = 0; s < target.Length; s++)
         {
-            var union = (ulong)this.sets.Union((int)target[s], (int)incoming[s]);
+            var union = State(this.sets.Union(Placed(target[s]), Placed(incoming[s])), this.sets.Union(Shared(target[s]), Shared(incoming[s])));
             grew |= union != target[s];
             target[s] = union;
         }
