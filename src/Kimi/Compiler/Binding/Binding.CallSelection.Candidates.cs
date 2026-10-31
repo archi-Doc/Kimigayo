@@ -556,20 +556,9 @@ public sealed partial class Binding
                 return CandidateApplicability.Waiting;
             }
 
-            if (proof == ConstraintProof.Refuted && this.ClosureReceiverMismatch(call, function, mapping) is { } mismatch)
+            if (proof == ConstraintProof.Refuted)
             {
-                // SPEC 7.7.3, 8.10: a closure's minimum call receiver is the candidate's failure only when the candidate applies once that
-                // receiver is permitted; a rejected candidate then names both receivers (NoApplicableOverload_Kd).
-                this.permitClosureReceivers = true;
-                try
-                {
-                    var permitted = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables);
-                    closureReceiver = permitted == ConstraintProof.Proven ? mismatch : null;
-                }
-                finally
-                {
-                    this.permitClosureReceivers = false;
-                }
+                closureReceiver = this.PermittedClosureReceiver(mapping, solution, waitingCallables);
             }
 
             // Retain only a condition actually reached after the argument/result checks.

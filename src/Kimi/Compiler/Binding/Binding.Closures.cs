@@ -5,7 +5,8 @@
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
 //   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
 //   (BindConcreteClosure); a Closure argument bound under a consultation (BindClosureArgument); for TryCandidate, the one Closure
-//   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers).
+//   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
+//   PermittedClosureReceiver).
 // - Inputs: the literal, its scope, an expected Type and whether its result is open, the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
@@ -50,6 +51,28 @@ public sealed partial class Binding
 
     // Set only while TryCandidate asks whether a rejected candidate applies once its closure argument's minimum receiver is permitted.
     private bool permitClosureReceivers;
+
+    // SPEC 7.7.3, 8.10: a refuted candidate's closure argument whose minimum call receiver its Callable Constraint does not permit is the
+    // candidate's failure only when the candidate applies once that receiver is permitted (TryCandidate); a rejected candidate then names
+    // both receivers (NoApplicableOverload_Kd).
+    private ClosureReceiverRefutation? PermittedClosureReceiver(int[] mapping, in SlotSolution solution, bool waitingCallables)
+    {
+        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, mapping) is not { } mismatch)
+        {
+            return null;
+        }
+
+        this.permitClosureReceivers = true;
+        try
+        {
+            var permitted = solution.Prove(solution.Types.AsSpan(0, CallOwnSlots(solution.Function).Count), waitingCallables);
+            return permitted == ConstraintProof.Proven ? mismatch : null;
+        }
+        finally
+        {
+            this.permitClosureReceivers = false;
+        }
+    }
 
     // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
