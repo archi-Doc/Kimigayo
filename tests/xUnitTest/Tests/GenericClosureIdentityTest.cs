@@ -13,6 +13,7 @@ public class GenericClosureIdentityTest
         "    return first(value) * 10 + second(value)\nrequire pair(3) == 12 and pair(true) == 12 else => $abort(\"two closures\")";
 
     private const string Identity = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n    return action(value)\n";
+    private const string Ok = "Console.writeLine(\"ok\")";
 
     // A Contract whose static requirement tells A (1) from B (2), and a struct whose stored Field initializer's Closure returns T's tag.
     private static readonly string[] Tagged =
@@ -106,7 +107,31 @@ public class GenericClosureIdentityTest
                 "require outer(a@ref) == 1 and a.n() == 5 else => $abort(\"forwarded\")", "Console.writeLine(\"ok\")",
             ]
         },
+        { "Context", HeldContext },
+        { "ContextRef", HeldContextRef },
+        { "ContextNested", HeldContextNested },
     };
+
+    // R5's B1 (DECISIONS BU-60): a generic function's Closure held in Holder<F>'s instance, whose Field initializer's Closure calls it, so
+    // the held instance Holder<C> is closed in each instance of the function (InstanceCollectorTest reads them too); also in a function
+    // with an Origin parameter, and inside a second held context, Keep<H> holding the held Closure.
+    internal static string[] HeldContext
+        => [.. Holding, "func outer<V>() -> isize", .. Outer, "    return g(h.f@ref)", "require outer<A>() == 1 and outer<B>() == 2 else => $abort(\"context\")", Ok];
+
+    internal static string[] HeldContextRef
+        => [.. Holding, "func outer<V>(y: ref/i32) -> isize", .. Outer, "    return g(h.f@ref)", "let y = 1", "require outer<A>(y@ref) == 1 and outer<B>(y@ref) == 2 else => $abort(\"ref\")", Ok];
+
+    internal static string[] HeldContextNested
+        => [
+            .. Holding, "struct Keep<H>", "    public var h: H", "    public var k = func [] () -> isize => 10", "    public init(h: H) => self.h = h@move",
+            "func outer<V>() -> isize", .. Outer, "    let kp = Keep.init(h: g)", "    let k = kp.k", "    let gg = kp.h", "    return k() + gg(h.f@ref)",
+            "require outer<A>() == 11 and outer<B>() == 12 else => $abort(\"nested\")", Ok,
+        ];
+
+    private static string[] Holding
+        => [.. Tagged, "struct Holder<F>", "    F is Callable<() -> isize>", "    public var f: F", "    public var g = func [] (x: ref/F) -> isize => x()", "    public init(f: F) => self.f = f@move"];
+
+    private static string[] Outer => ["    V is Tag", "    let c = func [] () -> isize => V.tag()", "    let h = Holder.init(f: c)", "    let g = h.g"];
 
     [Fact]
     public void EmptyEnvironmentsKeepLengthOnlyAbiSubstitutions()

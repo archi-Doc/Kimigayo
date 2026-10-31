@@ -54,6 +54,9 @@ public sealed partial class InstanceCollectorTest
         { "stored, read through another instance", $"struct Box<T>\n    var f = {Sized}{Init}{Cross}", 2, string.Empty },
         { "owners with an Origin position, joined", Staged("let g = if c => bs.f else => bx.f"), 0, $"Unsupported_Kd {Pass}" },
         { "owners with an Origin position, assigned", Staged("var g = bx.f\n    g = bs.f"), 0, $"Unsupported_Kd {Pass}" },
+        { "a function's Closure in a held context", Program(GenericClosureIdentityTest.HeldContext), 4, string.Empty },
+        { "the same with an Origin parameter", Program(GenericClosureIdentityTest.HeldContextRef), 4, string.Empty },
+        { "a held context in a held context", Program(GenericClosureIdentityTest.HeldContextNested), 6, string.Empty },
     };
 
     // A stored Closure of Box<i64> read and called in Box<i32>'s method.
@@ -99,7 +102,9 @@ public sealed partial class InstanceCollectorTest
     // instantiates in. A Closure in a generic struct's Field initializer (also a nested struct's), wherever it is made, called, erased or
     // stored and called from a method's instance, and whether or not its body names a slot, holds its Type's instance: one item per
     // instance, shared by every constructor and member, also when read through another instance (before: each request of its body was
-    // the EnclosingInstance gap). An owner instance with an Origin position stays that gap, as before, until a use opens it (PLAN G300). A
+    // the EnclosingInstance gap). Its held instance holding a generic function's Closure (Holder<C>), also through a function with an Origin
+    // parameter or inside a second held context, is closed in each of the function's instances: one key per instance, none open (before:
+    // InternalInvariant_Kd, R5's B1). An owner instance with an Origin position stays that gap, as before, until a use opens it (PLAN G300). A
     // function nested in such an initializer or in a generic getter is the gap at its call, as in a method (PLAN G149). A Closure in a
     // getter, a constructor or a method has one item per instance, a closed struct's initializer Closure is a root and an initializer
     // without a definition has none, each without a record. Every admitted representative closes its body.
@@ -142,6 +147,8 @@ public sealed partial class InstanceCollectorTest
     private static string Staged(string body)
         => $"{PassBox}func pick(c: bool, s: ref/i32 during static, x: ref/i32) -> i32\n    let bs = Box<ref/i32 during static>.init(v: s)\n" +
             $"    let bx = Box<ref/i32>.init(v: x)\n    {body}\n    return 1\nConsole.writeLine(\"ok\")\n";
+
+    private static string Program(string[] lines) => string.Join('\n', lines) + "\n";
 
     // The check's records: code and source text, joined by "; ".
     private static string CheckRecords(string source)

@@ -200,14 +200,16 @@ public sealed partial class Binding
     // SPEC 6.1.3, 6.3.3: each closure without a context gets the instance of the declaration whose instance it holds
     // (TyCtxt.EnclosingDeclaration), when the inputs carry it: a function's is the instance when that is its binder, its conforming Self
     // included (DECISIONS R5-M36), its result there the failure check; a Type's is what the one producer (TyCtxt.HeldContext; BU-60) makes
-    // of its identity's image in the environment Type, an instance of it or of a declaration it encloses (EnvironmentInstance); a group has
-    // none (its statics are R5-M82's gap).
+    // of its identity's image in the environment Type, an instance of it or of a declaration it encloses (EnvironmentInstance), the instance
+    // closed first in the same query; a group has none (its statics are R5-M82's gap). A held context is closed again: its instance closed
+    // in this query and given back through the producer (DECISIONS BU-60), so a held instance inside a held context is closed per instance.
+    // A Type without a Closure, and a Closure whose context a function's instance made (closed with its parts by that instance), are kept.
     private BoundType? Close(BoundType type, Subst? instance, BoundType? environment)
         => this.ClosePart(type, instance, environment, this.closedParts.Begin(this.storageVersion));
 
     private BoundType? ClosePart(BoundType type, Subst? instance, BoundType? environment, uint query)
     {
-        if (type.ClosureContext is not null || (type.Components.Count == 0 && type.Kind != BoundTypeKind.Closure))
+        if (!type.ContainsClosure || (type.ClosureContext is not null && TyCtxt.HeldType(type) is null))
         {
             return type;
         }
@@ -238,7 +240,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(part, type.Components[i]);
             }
 
-            Subst? context = null;
+            var context = type.ClosureContext;
             if (BoundClosure.Of(type) is { } closure && type.Symbol is { } symbol && this.types.Instantiates(symbol))
             {
                 switch (this.types.EnclosingDeclaration(symbol))
@@ -251,13 +253,19 @@ public sealed partial class Binding
 
                         context = instance;
                         break;
-                    case { Kind: BindingSymbolKind.Type } declaration when this.EnvironmentInstance(declaration, environment) is { } held:
-                        context = this.types.HeldContext(symbol, held);
+                    case { Kind: BindingSymbolKind.Type } declaration
+                        when (TyCtxt.HeldType(type) ?? this.EnvironmentInstance(declaration, environment)) is { } held:
+                        if (this.ClosePart(held, instance, environment, query) is not { } closed)
+                        {
+                            return null;
+                        }
+
+                        context = this.types.HeldContext(symbol, closed);
                         break;
                 }
             }
 
-            return changed || context is not null ? this.WithContext(type, scratch.AsSpan(0, type.Components.Count), context) : type;
+            return changed || !ReferenceEquals(context, type.ClosureContext) ? this.WithContext(type, scratch.AsSpan(0, type.Components.Count), context) : type;
         }
         finally
         {

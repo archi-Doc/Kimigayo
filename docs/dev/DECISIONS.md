@@ -8914,6 +8914,10 @@ resumed by R4-M86 (2026-10-20).
     map I as a part and give it back through the producer. KeptType substitutes, completes, then closes a stored part's Closures under its
     owner (a `ContainsClosure` summary gates it); StorageInstance closes the rest under the instance's declaring Type, last. A group
     has none.
+  - One closing step (R5's B1): ClosePart keeps a Type without a Closure and a Closure whose context a function's instance made (closed
+    with its parts by that instance, R5-M36); a held context is closed again, its instance (its own, else the environment's image)
+    closed in the same query (BU-19's memo covers it), then given to the producer. In `outer[A]`, `Holder<C>`'s held Closure gets
+    `Holder<C{outer[A]}>`: one key per instance of `outer`, a closed representative (before: InternalInvariant_Kd).
   - The owner's (a), read: one lossless producer on Erase(I); every instance Type a reader or the collector reads ends with the closing
     step; the walks re-intern through the producer. The literal "formed only by the closing step" would need an ordering rule across
     about 70 callers (CaseType in Semantics adaptations, SubstituteIdentity in proofs, about 50 ContractType callers), which is not local.
@@ -8940,12 +8944,13 @@ resumed by R4-M86 (2026-10-20).
     closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the capture
     storage (`Binding.Closures.cs`).
   - Tests: InstanceCollectorTest's R5-M157 rows flipped (one item per instance, a function in an initializer R5-M43's gap at its call),
-    a read through another instance, `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records) and
+    a read through another instance, held contexts holding a function's Closure (also with an Origin parameter, and inside a second held
+    context: one item per instance), `AnOwnerWithAnOriginPositionStaysTheGap` (joined, assigned, called: dev's records) and
     `OneInstanceModuloOriginsHasOneClosureType` (D's own instance joined and assigned through another path: dev's records; two instances:
     TypeMismatch_Kd; erased reads: the gap at each); TyCtxtTest `EnclosingDeclarationIsTheDeclarationWhoseInstanceTheDefinitionHolds` and
     `AFieldInitializersClosureHoldsItsOwnersInstance`; GenericClosureIdentityTest's native fixtures `GenericClosureHeld*` (another
     instance, erased, a generic function, a nested Type, a base Field, a projection, also joined through R{o}.Item, a signature naming T,
-    a forwarded holder), each observing T.
+    a forwarded holder, the three held contexts of a function's Closure), each observing T.
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
