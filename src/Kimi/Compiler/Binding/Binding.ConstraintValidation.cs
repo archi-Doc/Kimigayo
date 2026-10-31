@@ -588,10 +588,25 @@ public sealed partial class Binding
         }
         else if (proof == ConstraintProof.Unknown)
         {
-            // The provisional pass can gain bindings/conformance evidence across the Mod boundary.
+            // The provisional pass can gain bindings/conformance evidence across the Mod boundary; it leaves the U fact to its frame's
+            // end. The final record is the one record after a Callable clause's proof (census #25): with the proof's U fact, the clause
+            // and its comparison's failing condition (design-r2 Amendments 4 and 5); without one, the Constraint alone.
             if (mode == BindingMode.Final)
             {
-                this.Fail(use, BindingFailure.UnprovenConstraint);
+                var fact = this.TakeFailedCause().Fact;
+                if (fact is not null && fact.Epoch != this.frameEpoch)
+                {
+                    this.Fail(use, BindingFailure.Internal); // A foreign fact is a broken contract.
+                }
+                else if (fact is { Clause: { } clause } && fact.Failure.IsCondition)
+                {
+                    var contract = this.ContractFact(use, fact.Failure, use);
+                    this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, new(use, clause, fact.Subject, contract));
+                }
+                else
+                {
+                    this.Fail(use, BindingFailure.UnprovenConstraint);
+                }
             }
             else if (use.BindingState != BindingState.Invalid)
             {
