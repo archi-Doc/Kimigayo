@@ -552,16 +552,21 @@ public sealed partial class Binding
         return fitLiterals ? this.DefaultOf(source) : null;
     }
 
-    // The independent Type an aggregate shape forms from its child positions' (ShapeType), none when one has none.
+    // The independent Type an aggregate shape forms from its child positions' (ShapeType), as a join's Type is formed (SPEC 14.9.2
+    // step 2: an array's one element position, AddPartsAt), none when one has none.
     private BoundType? IndependentShapeType(int start, int end, Koto shape, bool fitLiterals)
     {
-        var count = this.ChildPositions(start, end);
+        var count = ShapeChildren(shape);
         var children = this.RentTypes(count);
         try
         {
             for (var i = 0; i < count; i++)
             {
-                if (this.IndependentChildType(start, end, i, fitLiterals) is not { } child)
+                var position = this.positionParts.Count;
+                this.AddPartsAt(start, end, i);
+                var child = this.IndependentPositionType(position, fitLiterals);
+                this.ClosePosition(position);
+                if (child is null)
                 {
                     return null;
                 }
