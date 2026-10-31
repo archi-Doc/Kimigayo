@@ -168,7 +168,29 @@ internal sealed partial class MirBuilder
     {
         var receiver = this.Place(member.Left, input);
         return HirTables.PlanOf(member).Folded is { } element
-            ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
+            ? this.Selected(receiver, MirProjectionKind.Field, (int)element, member) : this.Field(receiver, HirTables.Symbol(member), member);
+    }
+
+    // A projection of a receiver's Place a node selects, unless Binding resolved the node through an identity premise (SPEC 8.2.3;
+    // DECISIONS BU-72) whose subject is the Type parameter the Place has and whose Type has the node's Type at the projection: a MIR Place
+    // keeps the parameter, from which no projection selects, so the node is the located Unsupported of an Opaque in an Opaque temp whose
+    // site names only the receiver's root, as Field's (R5-M63, R5-M84). Any other projection is formed, a typeless one a broken contract
+    // MirValidator reports. Temporary (PLAN G168b): G170's identity query, giving the Place the identical Type, removes the premise test.
+    private MirPlace Selected(MirPlace receiver, MirProjectionKind kind, int arg, Koto node)
+    {
+        if (this.body.TypeOf(receiver) is not { Kind: BoundTypeKind.Parameter } parameter || HirTables.IdentityPremise(node) is not { } premise ||
+            !ReferenceEquals(premise.Subject, parameter) || this.body.ProjectedType(premise.RequiredType, kind, arg) is not { } part ||
+            !MirTypes.Agree(part, TypeOf(node)))
+        {
+            return this.body.Project(receiver, kind, arg);
+        }
+
+        var temp = this.Temp(TypeOf(node), node);
+        this.opaqueTemps.Add(temp.Root);
+        this.roots.Clear();
+        this.roots.Add(receiver.Root);
+        this.Unsupported(node, temp, node);
+        return temp;
     }
 
     // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp

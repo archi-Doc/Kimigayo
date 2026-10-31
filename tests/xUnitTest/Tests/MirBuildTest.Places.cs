@@ -6,6 +6,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -193,6 +194,47 @@ public sealed partial class MirBuildTest
         Assert.Equal(
             problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
+        Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+    }
+
+    // SPEC 8.2.3 (DECISIONS BU-72; PLAN G168b): a selection Binding resolved through an identity premise whose subject is the Type
+    // parameter of its receiver's Place (an Array, a fixed array or a Tuple, also through a chain) is one located Unsupported_Kd at the
+    // selection on every pipeline, its Opaque site naming only the receiver's root, with no projection the MIR validator rejects and no
+    // InternalInvariant_Kd (fail-before: a typeless projection, its Projection finding and InternalInvariant_Kd at the function beside
+    // Unsupported_Kd at the member); a struct Field of such a Place stays Unsupported_Kd (chainTU). Each row: the Type parameters, the
+    // premises, the parameters, the statement and the selection.
+    [Theory]
+    [InlineData("T", "T is Array<Pair>", "s: ref/T, t: string", "return s[pos(t@move)].a", "s[pos(t@move)]")]
+    [InlineData("T", "T is (Pair, i32)", "s: ref/T", "return s.0.a", "s.0")]
+    [InlineData("T", "T is [2 of Pair]", "s: ref/T", "return s[0].a", "s[0]")]
+    [InlineData("T, U", "T is U\n    U is Array<Pair>", "s: ref/T, t: string", "return s[pos(t@move)].a", "s[pos(t@move)]")]
+    [InlineData("T, U", "T is U\n    U is Pair", "s: ref/T", "return s.a", "s.a")]
+    public void AnIdentityPremisesSelectionIsOneUnsupported(string types, string premises, string parameters, string statement, string selection)
+    {
+        var source = "struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\nfunc pos(y: string) -> isize => 0\n" +
+            $"func f<{types}>({parameters}) -> i32\n    {premises}\n    {statement}\npublic func main() => ()\n";
+        foreach (var pipeline in (CompilerPipeline[])[CompilerPipeline.Legacy, CompilerPipeline.Mir])
+        {
+            var c = Compilation.CreateForTest();
+            c.Pipeline = pipeline;
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+            c.Bind();
+            c.Binding.CheckStartup(OutputKind.Application);
+            c.Analyze();
+            c.Binding.ReportDiagnostics();
+            c.ReportAnalysis();
+            var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
+            Assert.Equal([("Unsupported_Kd", selection)], errors);
+        }
+
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var dump = text.ToString();
