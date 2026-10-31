@@ -744,7 +744,7 @@ public sealed partial class InstanceCollectorTest
             "cycle" => string.Concat(Enumerable.Range(1, 130).Select(static k =>
                 $"struct C{k}<T>\n    public var next: obj/C{(k % 130) + 1}<{(k == 130 ? "(T, T)" : "T")}>\n")) +
                 "public func main() -> ()\n    let v: Option<obj/C1<i32>> = .None\n    return\n",
-            "height" => "struct W<T>\n    public var next: Option<T>\npublic func main() -> ()\n    let v: Option<obj/" +
+            "height" => "struct W<T>\n    public var next: Option<obj/T>\npublic func main() -> ()\n    let v: Option<obj/" +
                 string.Concat(Enumerable.Repeat("W<", 130)) + "i32" + new string('>', 130) + "> = .None\n    return\n",
             "breadth" => "struct Nest<T>\n    public let a: Option<obj/Nest<(T, i8)>>\n    public let b: Option<obj/Nest<(i8, T)>>\n" +
                 "public func main() -> ()\n    let v: Option<obj/Nest<i32>> = .None\n    return\n",
@@ -754,13 +754,18 @@ public sealed partial class InstanceCollectorTest
                 $"    public func run(self: ref/Self) -> i32 => {(k == 20 ? "0" : $"Helpers.wrap(A{k + 1}<Option<T>>.init())")}\n")) +
                 "public func main() -> ()\n    let r = Helpers.wrap(A1<i32>.init())\n    return\n",
         });
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         var actual = string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
         Assert.True(shape == "height" ? actual.StartsWith(records, StringComparison.Ordinal) && set.Records.Count() == 1 : actual == records, actual);
+        if (shape == "breadth")
+        {
+            Assert.Equal(1024, set.Items.ToArray().Count(x => Label(program, x).StartsWith("DropGlue Nest<", StringComparison.Ordinal)));
+        }
     }
 
     // DECISIONS R5-M170, V16: a chain of 200, 400 and 800 distinct generic functions has no record, and the collector's items and Work grow
-    // in proportion (the walk for each new key reads at most the window's identity items).
+    // in proportion; Work counts admission's walk, which a key of an identity without an admitted item skips (no ancestor can share it).
     [Fact]
     public void AChainWithoutGrowthScalesLinearly()
     {

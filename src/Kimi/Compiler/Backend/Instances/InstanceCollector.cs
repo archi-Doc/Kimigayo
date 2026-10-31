@@ -109,7 +109,8 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the checked set of the latest run.</summary>
     internal CheckedSet Set { get; } = new();
 
-    /// <summary>Gets the work of the latest run: the sites replayed and the items admitted, which grow linearly with the instances.</summary>
+    /// <summary>Gets the work of the latest run: the sites replayed, the items admitted and the identity items admission reads (at most the
+    /// window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>

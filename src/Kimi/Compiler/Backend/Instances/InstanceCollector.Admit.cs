@@ -253,7 +253,8 @@ internal sealed partial class InstanceCollector
     private int Above(int item) => Identity(this.Set.Items[item]) is null ? this.Set.Items[item].Growth.Above : item;
 
     // SPEC 8.15.3, IMPL 21.3.2 (DECISIONS R5-M170, superseding K 4.6's depth): whether a new key of an identity, requested below an item,
-    // stays within the growth limits. The nearest item of its identity among the Window identity items above (the Above links) gives its
+    // stays within the growth limits. The nearest item of its identity among the Window identity items above (the Above links; a walk only
+    // when the identity has an admitted item, each step counted in Work, so at most Window per key, review 1's N5) gives its
     // generation, one more when the key's height passes that item's peak (growth; both saturate at 255, past which no growth is seen and
     // SetLimit stops the identity), else the same (a repeat at a height already reached);
     // none within the Window is the first generation. Past GrowthLimit generations, or past SetLimit items of the identity, it is
@@ -264,9 +265,11 @@ internal sealed partial class InstanceCollector
         var items = this.Set.Items;
         var above = this.Above(parent);
         growth = new(1, (byte)Math.Min(height, byte.MaxValue), above);
-        var current = above;
+        this.counts.TryGetValue(identity, out var count);
+        var current = count == 0 ? -1 : above; // No admitted item of the identity: none above (a root is closed, one key).
         for (var steps = 0; current >= 0 && steps < Window; steps++, current = items[current].Growth.Above)
         {
+            this.Work++;
             if (Identity(items[current]) == identity)
             {
                 var found = items[current].Growth;
@@ -275,7 +278,6 @@ internal sealed partial class InstanceCollector
             }
         }
 
-        this.counts.TryGetValue(identity, out var count);
         if (growth.Generation > GrowthLimit || count >= SetLimit)
         {
             this.refused.Add(key);
