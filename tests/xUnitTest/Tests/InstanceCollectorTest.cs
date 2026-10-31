@@ -665,13 +665,12 @@ public sealed partial class InstanceCollectorTest
         };
     }
 
-    // DECISIONS BU-12: a ring of structs linked by Option<rc/…> is an instance up to the storage walk's cap, so a value of it reaches the
-    // collector's drop glue, whose depth limit it meets past 42 structs: GenerationResourceLimit_Kd at the destroyed value, and no
-    // storage-nesting gap at the call.
+    // DECISIONS BU-12, R5-M170 (the owner's approval names this row): a ring of structs linked by Option<rc/…> is an instance up to the
+    // storage walk's cap, so a value of it reaches the collector's drop glue; its glue items repeat Option at one height, no growth, so 50
+    // structs, past K 4.6's former depth of 128 items, have no record and no storage-nesting gap at the call.
     [Theory]
-    [InlineData(42, "")]
-    [InlineData(50, "GenerationResourceLimit_Kd v@move")]
-    public void StorageRingsMeetTheGlueDepth(int ring, string records)
+    [InlineData(50, "")]
+    public void StorageRingsHaveNoGrowth(int ring, string records)
     {
         var c = MirBuildTest.Compile(
             Ring(ring) + "func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: Option<rc/S1> = .None\n    let w = pick(v@move)\n" +
@@ -680,6 +679,37 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
+    }
+
+    // DECISIONS R5-M170: nesting without growth has no limit, where K 4.6's depth counted every admission: an 80-deep generic chain comparing
+    // a closed 50-deep Tuple nest (R5-M166's parts), the chain ending in 50 nested generic constructors, and 20 Runner structs each run
+    // through one shared generic helper, whose items repeat at one substitution height.
+    [Theory]
+    [InlineData("compare")]
+    [InlineData("constructors")]
+    [InlineData("helper")]
+    public void NestingWithoutGrowthHasNoLimit(string shape)
+    {
+        var c = MirBuildTest.Compile(shape switch
+        {
+            "compare" => Chain("    let x = " + new string('(', 50) + "\"s\"" + string.Concat(Enumerable.Repeat(", 1)", 50)) + "\n    return x == x\n"),
+            "constructors" => string.Concat(Enumerable.Range(1, 49).Select(static k => $"struct D{k}<T>\n    T is Copy\n    public var x: D{k + 1}<T>\n" +
+                $"    public init(value: T) => self.x = D{k + 1}<T>.init(value)\n    drop => ()\n")) +
+                "struct D50<T>\n    T is Copy\n    public var v: T\n    public init(value: T) => self.v = value\n    drop => ()\n" +
+                Chain("    let x = D1<T>.init(a)\n    return true\n"),
+            _ => "contract Runner\n    func run(self: ref/Self) -> i32\ngroup Helpers\n    public func wrap<T>(x: T) -> i32\n        T is Runner\n" +
+                "        return x.run()\n" + string.Concat(Enumerable.Range(1, 20).Select(static k =>
+                $"struct A{k}<T>\n    Self is Runner\n    public init() => ()\n" +
+                $"    public func run(self: ref/Self) -> i32 => {(k == 20 ? "0" : $"Helpers.wrap(A{k + 1}<T>.init())")}\n")) +
+                "public func main() -> ()\n    let r = Helpers.wrap(A1<i32>.init())\n    return\n",
+        });
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(string.Empty, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
+
+        static string Chain(string last)
+            => string.Concat(Enumerable.Range(1, 79).Select(static i => $"func g{i}<T>(a: T) -> bool\n    T is Copy\n    return g{i + 1}(a)\n")) +
+                "func g80<T>(a: T) -> bool\n    T is Copy\n" + last + "func start() -> bool => g1(1)\n";
     }
 
     // DECISIONS BU-38 (R5's guard), R5-M151: the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row map
@@ -2025,16 +2055,18 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
-    // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.
+    // X19, DECISIONS R5-M170 (superseding K 4.6's depth 128): a chain of 130 distinct generic functions has no growth, so no limit; the
+    // 1,025th item of one definition is GenerationResourceLimit_Kd at its call.
     [Fact]
-    public void TheDepthAndSetLimitsStopAtTheirCalls()
+    public void AChainWithoutGrowthHasNoLimitAndTheSetLimitStopsAtItsCall()
     {
         var chain = string.Concat(Enumerable.Range(0, 130).Select(static i => $"func step{i}<T>(value: T) -> T => {(i == 129 ? "value@move" : $"step{i + 1}<T>(value@move)")}\n"));
         var c = MirBuildTest.Compile(chain + "let x = step0<i32>(1)\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal([(DiagnosticCode.GenerationResourceLimit_Kd, "step128<T>(value@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-        Assert.Equal(128, set.Items.ToArray().Max(static x => x.Depth));
+        var steps = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(steps, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(130, set.Items.ToArray().Count(x => Label(steps, x).StartsWith("Fn step", StringComparison.Ordinal)));
 
         var sizes = string.Concat(Enumerable.Range(1, 1025).Select(static n => $"_ = size<{n}>()\n"));
         c = MirBuildTest.Compile("func size<length N>() -> isize => N\n" + sizes);

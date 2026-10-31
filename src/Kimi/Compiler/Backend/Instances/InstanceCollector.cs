@@ -59,9 +59,10 @@
 // Closure no instance closed, in its own identity: a held instance with an Origin position or a generic container's group static,
 // R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
-// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors
-// of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its
-// body open, and a requirement call of a closed Self without a witness, are broken contracts.
+// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
+// a type-driven key whose Type is higher than 128, a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's
+// declaration) on an admission chain, its height grown at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd; a
+// representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
@@ -87,7 +88,7 @@ internal sealed partial class InstanceCollector
     private readonly MirCases cases;
     private readonly Layout layout;
     private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
-    private readonly Dictionary<MirDefKey, int> counts = new(); // Items per definition (X19).
+    private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
@@ -137,7 +138,7 @@ internal sealed partial class InstanceCollector
             if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
             {
                 var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
-                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
+                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
             }
         }
 

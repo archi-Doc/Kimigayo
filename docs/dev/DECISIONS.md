@@ -14361,6 +14361,7 @@ structure is recorded here by the unit that first implements it.
     composite nesting (Tuples and reference layers) deeper than 128 less the admission chain's depth reaches `GenerationResourceLimit_Kd` at the comparison, as a constructor chain of
     that depth already does (probes: an 80-deep generic chain comparing a closed 50-deep nest; nested generic constructors 50 deep at
     the end of the same chain give it on the base too). Counting only recurring instantiation steps is a collector unit of its own.
+  - Amended by R5-M170 (G332): the depth is gone; a comparison's composite parts have no identity and no limit but the height cap.
   - Owner: the departure from K package 4.3's Builtin row (the comparison mode in `Variant`; an operator node with an abstract part
     keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
     「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.
@@ -14513,3 +14514,33 @@ structure is recorded here by the unit that first implements it.
     exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
     (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
     the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
+- **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, R5; PLAN G332, design
+  `draft/Sketches/R5/G332-design.md` revision 3, accepted at its third review; the owner approved the departure from K package 4.6/KD9
+  together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known limit)
+  - Cause: KD9's depth 128 counted every admission (a call of a distinct definition, a comparison's part, a glue's part), so valid
+    programs without growth reached `GenerationResourceLimit_Kd` (SPEC 6.1: only growth of distinct instantiations reaches a generation
+    limit; IMPL 21.3.2), while it was the only bound on a DropGlue chain through a non-regular Type behind an owning handle (without it,
+    `Binding.OperandContexts` overflowed the host stack). Keys grow in two ways: a body's substitution in height or in a function length
+    slot; a type-driven key only in Type height (a struct has no length slot).
+  - Rule (`InstanceCollector.Admit.cs`): an identity is a body's or LegacyRow's definition, or a DropGlue's declaration (a Nominal,
+    Constructed or Closure Type); other items have none. A new key finds the nearest item of its identity among 1,024 identity items
+    above it (`Growth.Above` links); its generation is that item's, plus one when its height (`Subst.Height`, a DropGlue's
+    `BoundType.Height`, BU-71) passes that item's peak; none found is generation 1. A 17th generation, or a 1,025th item of an identity
+    (counted globally: bodies' SetLimit, now one breadth rule for every identity), is `GenerationResourceLimit_Kd` at the requesting
+    site; so is any type-driven key whose Type is higher than 128. Generation and peak saturate (bytes).
+  - Deleted: `DepthLimit`, its three checks, `MonoItem.Depth` and Grows' walk of the whole chain (a walk now reads at most 1,024
+    identity items).
+  - Known limits: written growth on a non-recursive chain (17 distinct functions each adding `Option`) is GRL at generation 17; a Type
+    past Binding's storage walk (a 120-struct ring) is G128's `Unsupported_Kd` at the call; a body cycle that grows but repeats only
+    past the window meets Binding's storage bound (`Unsupported_Kd`) or SetLimit; a branching non-regular Type is bounded by b^16 items
+    within the window and the per-declaration count; a written Type above height 128 reaches the cap only behind a handle, as dev did.
+    The window's size is U2's measured choice (it amends this entry).
+  - Rejected: type-driven items inheriting the depth, a depth only on substitution-changing calls (both keep the overflow and an
+    order-dependent depth); type-driven parts reading a storage verdict (leans on G128's interim bound); static recurrence over the
+    definition graph; a per-definition height cap for bodies (Binding's storage bound turns polymorphic recursion into `Unsupported_Kd`
+    first); a repeat count along the window (a long cycle resets it, review 2).
+  - Tests: `InstanceCollectorTest.NestingWithoutGrowthHasNoLimit` (an 80-deep chain comparing a 50-deep Tuple nest; the chain ending in
+    50 nested constructors; 20 structs through one shared helper) and `StorageRingsHaveNoGrowth` (50 structs; the owner's approval names
+    this expectation change) fail on dev with `GenerationResourceLimit_Kd`; `AChainWithoutGrowthHasNoLimitAndTheSetLimitStopsAtItsCall`
+    replaces the depth row (130 distinct functions, no record); the growth rows (`grow<Box<T>>`, the growing destructor, the tables'
+    growing key, `ComponentSummaryTest`'s non-regular value, now stopped by the generation) are unchanged.
