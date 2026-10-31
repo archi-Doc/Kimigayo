@@ -1450,10 +1450,7 @@ public sealed partial class Binding
                     arithmetic.Active = false;
                 }
 
-                if (binary is MemberAccessKoto or IndexKoto)
-                {
-                    HirTables.PlanFor(binary, written: false).Second = null; // Each pass publishes its identity premise again (DECISIONS BU-72).
-                }
+                ClearIdentityPremise(binary);
             }
 
             if (node is UnaryKoto { ArithmeticStorage: { } unaryArithmetic })

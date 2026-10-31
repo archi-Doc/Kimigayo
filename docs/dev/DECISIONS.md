@@ -9403,11 +9403,12 @@ resumed by R4-M86 (2026-10-20).
     Semantics layers, is a Type parameter P that the scope's identity premises make a complete Type U (SPEC 8.2.3, a chain `T is U`,
     `U is Pair` included), the node's plan row (`Second`, unused on these classes) holds the interned `BoundConstraint` `P is U`:
     TypeIdentity, Subject P, RequiredType U, the Type Binding resolved the access on. Null otherwise: no premise, a non-identity
-    premise (`T is Owned`), or a parameter nested in the receiver's Type (`xs: ref/Array<T>` with `T is Pair`: `xs[i]` is resolved
-    on `Pair` through `xs`'s substitution, so neither `xs[i]` nor `xs[i].a` has the fact).
+    premise (a Contract, `T is Pick`), or a parameter nested in the receiver's Type (`xs: ref/Array<T>` with `T is Pair`: `xs[i]` is
+    resolved on `Pair` through `xs`'s substitution, so neither `xs[i]` nor `xs[i].a` has the fact).
   - Writer: `Binding.PublishIdentityPremise`, called once where `BindAndAdaptNode` substitutes the receiver's Type (no second walk;
-    the receiver may be parenthesized). The index pass clears it, so each pass, a warm rebind included, publishes it again; the
-    constraint is interned (a direct premise's own object), warm Bind 0 B.
+    the receiver may be parenthesized). The index pass clears it (`Binding.ClearIdentityPremise`), so each pass, a warm rebind
+    included, publishes it again. The constraint is interned in the compilation's table: a direct premise's own object, or for a
+    chain (`T is U`, `U is Pair`) a new derived `T is Pair`, made at the first pass and retained across passes; warm Bind 0 B.
   - Reader: R5's G168b MIR-builder guard. Where a projection's receiver Place has a Type parameter P through its Layers, it reads
     `HirTables.IdentityPremise(node)`, requires Subject == P and checks the projected shape on RequiredType against the node's
     Meaning (an Array's or fixed array's element, the Tuple element at the node's Folded position, a stored Field of the node's
@@ -9415,10 +9416,11 @@ resumed by R4-M86 (2026-10-20).
   - Reason: the premises sit in Binding's internal `ConstraintEnvironment`, availability is the private `AvailableConstraintFact`,
     and Meaning carries only the substitution's result. The access's existing plan row carries the fact; no table.
   - Removal: when G170's identity query lands, when TyCtxt answers the identical Type under premises and the projection gets its
-    Type; the writer, its reset, the reader and this entry go.
-  - Tests (`TypeIdentityTest.AnAccessPublishesTheIdentityItsReceiverWasResolvedThrough`): published for `T is Pair` (`s.a`,
+    Type; the writer, its reset, the reader and this entry go. Each is `[Transitional("R4")]`, G170's stage (its R4-exit row).
+  - Tests (`TypeIdentityTest`): `AnAccessPublishesTheIdentityItsReceiverWasResolvedThrough`, published for `T is Pair` (`s.a`,
     `(s).a`, the chain), `T is Array<Pair>` (`s[i]`) and `T is (Pair, i32)` (`s.0`), the same object after a warm rebind; absent
-    without a premise and under `T is Owned`.
+    without a premise, under `T is Pick` and at c1's `xs[i]` and `xs[i].a`; `AWarmRebindRepublishesAnAccesssIdentityWithoutAllocating`
+    (Purpose=Allocation, a chain to `Array<Pair>`).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

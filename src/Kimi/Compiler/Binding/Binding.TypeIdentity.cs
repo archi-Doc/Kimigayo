@@ -24,6 +24,16 @@ public sealed partial class Binding
         return false;
     }
 
+    // The index pass's reset of a member or element access's identity premise, which each pass publishes again (DECISIONS BU-72).
+    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
+    private static void ClearIdentityPremise(Koto node)
+    {
+        if (node is MemberAccessKoto or IndexKoto)
+        {
+            HirTables.PlanFor(node, written: false).Second = null;
+        }
+    }
+
     /// <summary>Substitutes the Type-identity premises available in <paramref name="scope"/> into <paramref name="type"/>.</summary>
     /// <param name="type">A bound expression Type.</param>
     /// <param name="scope">The scope whose Constraint environments supply the premises.</param>
@@ -38,9 +48,10 @@ public sealed partial class Binding
         return this.SubstituteIdentity(type, scope);
     }
 
-    // DECISIONS BU-72, temporary: removed when G170's identity query lands, when TyCtxt answers the identical Type under premises. A member
-    // access or an element access whose receiver's Type, through its Semantics layers, is a Type parameter P that the premises make the
-    // complete Type U was resolved on U; it publishes the interned `P is U` (HirTables.IdentityPremise), since a MIR Place keeps P.
+    // DECISIONS BU-72: a member access or an element access whose receiver's Type, through its Semantics layers, is a Type parameter P
+    // that the premises make the complete Type U was resolved on U; it publishes the interned `P is U` (HirTables.IdentityPremise), since
+    // a MIR Place keeps P.
+    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     private void PublishIdentityPremise(Koto receiver, BoundType actual, BoundType substituted)
     {
         var access = receiver.Parent;
