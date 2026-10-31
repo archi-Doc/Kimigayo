@@ -73,6 +73,24 @@ public partial class TypeDagScalingTest
         Assert.Equal(BoundTypeKind.Parameter, read.Kind);
     }
 
+    // SPEC 8.4: a Contract's requirement over a projection chain of its Type parameter, conformed by `struct X<U>` with `Self is Get<U>`,
+    // reaches the shared parts through the conformance path: ApplyContractEnvironment's StoredType query per distinct part, quadratic in
+    // distinct parts (DECISIONS BU-64's open limit, PLAN G309), milliseconds at n = 40.
+    [Fact]
+    public void AConformanceOverAProjectionDagFinishes()
+    {
+        var (required, written) = ("T", "U");
+        for (var i = 0; i < 40; i++)
+        {
+            (required, written) = ($"Dup<{required}>.Item", $"Dup<{written}>.Item");
+        }
+
+        var c = MirBuildTest.Compile("contract HasItem\n    associate Item\nstruct Dup<T>\n    Self is HasItem\n    associate HasItem.Item is (T, T)\n" +
+            $"contract Get<T>\n    func get(self: ref/Self, x: ref/{required}) -> ()\nstruct X<U>\n    Self is Get<U>\n    var n: i32\n" +
+            $"    public func get(self: ref/Self, x: ref/{written}) -> () => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
     // PLAN G310 (DECISIONS BU-65): the chain closed by Dn storing D1<T> puts every declaration on one inline cycle, each reported once;
     // each declaration's walk visits its own written storage and the summaries it reads, and the component settles in a bounded number
     // of rounds, so 40 declarations whose instances hold 2^39-leaf Tuple trees stay linear.
