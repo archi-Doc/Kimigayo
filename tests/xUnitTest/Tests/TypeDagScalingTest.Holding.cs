@@ -198,14 +198,14 @@ public partial class TypeDagScalingTest
 
     // R4 (BU's B1 form): a closed associated projection's resolution writes H's part as a Tuple DAG of 2^n positions from O(n) text, so
     // the written Type is shared too: each level is one key with its written Type in H, in Own mode (a uniq reference to H decides at its
-    // `loan` Field first). The raw leaves' rows wait for Binding's walks of that chain (PLAN G309).
+    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309.
     [Theory]
     [InlineData("i32", 12, "True None", 12)]
     [InlineData("i32", 40, "True Deep", 33)]
     [InlineData("raw/i32 during static", 12, "True None", 12)]
-    [InlineData("raw/i32 during static", 30, "True None", 30, Explicit = true)]
+    [InlineData("raw/i32 during static", 30, "True None", 30)]
     [InlineData("raw/i32 during s", 12, "True None", 12)]
-    [InlineData("raw/i32 during s", 30, "True None", 30, Explicit = true)]
+    [InlineData("raw/i32 during s", 30, "True None", 30)]
     public void AWrittenTypeDagIsWalkedOncePerWrittenType(string leaf, int size, string answer, int keys)
     {
         var type = leaf;

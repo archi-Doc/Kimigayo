@@ -61,7 +61,9 @@ public sealed partial class Binding
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
     // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal
-    // occurrences keep their variance, different ones are invariant.
+    // occurrences keep their variance, different ones are invariant. One query of `visitedParts` meets each distinct part once per
+    // polarity (a state bit per polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The
+    // table is the definition's compilation's Binding's, whether or not the caller reads premises (`binding`).
     private static OriginVariance ClosureArgumentVariance(BoundType type, int index, Binding? binding)
     {
         if (BoundClosure.Of(type) is not { Signature: { } signature, EnvironmentType: { } definition } || index >= definition.OriginArguments.Count)
@@ -69,10 +71,12 @@ public sealed partial class Binding
             return OriginVariance.Invariant;
         }
 
-        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused);
+        var owner = type.Symbol!.Declaration!.CodeContext.Compilation.Binding;
+        var query = owner.visitedParts.Begin(owner.storageVersion);
+        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused, owner, query);
         return variance == OriginVariance.Unused ? OriginVariance.Invariant : variance;
 
-        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen)
+        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
         {
             if (!type.CarriesAnyOrigin)
             {
@@ -87,7 +91,12 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                seen = Occurrences(type.Components[i], atom, ComposeVariance(polarity, ComponentVariance(type, i, binding)), binding, seen);
+                var part = type.Components[i];
+                var position = ComposeVariance(polarity, ComponentVariance(type, i, binding));
+                if (part.CarriesAnyOrigin && owner.FirstVisit(part, query, (byte)(1 << (int)position)))
+                {
+                    seen = Occurrences(part, atom, position, binding, seen, owner, query);
+                }
             }
 
             return seen;
@@ -117,13 +126,14 @@ public sealed partial class Binding
 
     // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
     // arguments are each atom of another Closure (an enclosing one) the signature names, in first-occurrence order, raw layers and nested
-    // arguments included.
+    // arguments included. The bound pass and the fill pass are each one query of `visitedParts`, which meets each distinct part once: a part
+    // met again adds no atom its first visit did not, so the order of first occurrence is kept (DECISIONS BU-63).
     private BoundType ClosureType(BindingSymbol symbol, FunctionKoto function, BoundType signature, ReadOnlySpan<BoundType> environment)
     {
-        var scratch = this.originScratch.Rent(Collect(signature, function, null, 0));
+        var scratch = this.originScratch.Rent(Collect(signature, function, null, 0, this.visitedParts.Begin(this.storageVersion)));
         try
         {
-            var count = Collect(signature, function, scratch, 0);
+            var count = Collect(signature, function, scratch, 0, this.visitedParts.Begin(this.storageVersion));
             return this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, environment, originArguments: scratch.AsSpan(0, count));
         }
         finally
@@ -132,7 +142,7 @@ public sealed partial class Binding
         }
 
         // With no scratch, an upper bound: the candidate occurrences.
-        static int Collect(BoundType type, FunctionKoto function, BoundOrigin[]? scratch, int count)
+        int Collect(BoundType type, FunctionKoto function, BoundOrigin[]? scratch, int count, uint query)
         {
             if (!type.CarriesAnyOrigin)
             {
@@ -147,7 +157,11 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                count = Collect(type.Components[i], function, scratch, count);
+                var part = type.Components[i];
+                if (part.CarriesAnyOrigin && this.FirstVisit(part, query))
+                {
+                    count = Collect(part, function, scratch, count, query);
+                }
             }
 
             return count;

@@ -9,29 +9,14 @@ namespace Kimi.Compiler;
 // (ReadHolder, ReplaceHolder), and the allowlist of its Place reached through no dereference (HolderPlaceFailure, HolderWriteFailure).
 public sealed partial class Binding
 {
-    // Whether a Type holds a `during self` layer in its inline storage.
-    private static bool HoldsHolder(BoundType type)
-    {
-        if (type.RawOrigin?.Kind == OriginKind.Holder)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count && type.CarriesRawOrigin && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray; i++)
-        {
-            if (HoldsHolder(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // Whether a Type holds a `during self` layer in its inline storage: the layer, or a Tuple or fixed array with a component holding one
+    // (its Origin summary's bit, Binding.OriginSummaries).
+    private bool HoldsHolder(BoundType type) => this.SummaryOf(type).HoldsHolder;
 
     // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
     // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
     // recursively; any other source reaches the layers as a whole. Null when every layer receives null.
-    private static Koto? NonNullAtLayers(BoundType stored, Koto source)
+    private Koto? NonNullAtLayers(BoundType stored, Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
         if (stored.RawOrigin?.Kind == OriginKind.Holder)
@@ -48,7 +33,7 @@ public sealed partial class Binding
         for (var i = 0; elements is not null && i < elements.Count; i++)
         {
             var part = stored.Components[stored.Kind == BoundTypeKind.FixedArray ? 0 : i];
-            if (HoldsHolder(part) && NonNullAtLayers(part, elements[i]) is { } written)
+            if (this.HoldsHolder(part) && this.NonNullAtLayers(part, elements[i]) is { } written)
             {
                 return written;
             }
@@ -62,7 +47,7 @@ public sealed partial class Binding
     // drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
     private BoundType? ReadHolder(BoundType type, Koto place, Koto node)
     {
-        if (!type.CarriesRawOrigin || !HoldsHolder(type))
+        if (!type.CarriesRawOrigin || !this.HoldsHolder(type))
         {
             return type;
         }
@@ -77,6 +62,9 @@ public sealed partial class Binding
         return this.ReplaceHolder(type, path.Origin);
     }
 
+    // A part holding no `during self` layer is its own image (HoldsHolder, its Origin summary's bit), so only the parts holding one are
+    // rebuilt, each a Tuple or fixed array a declaration writes inline: no Type argument or projection states `during self` (SPEC 5.7;
+    // PLAN G309).
     private BoundType ReplaceHolder(BoundType type, BoundOrigin? image)
     {
         if (type.RawOrigin?.Kind == OriginKind.Holder)
@@ -84,7 +72,7 @@ public sealed partial class Binding
             return this.types.Pointer(type.Components[0], image);
         }
 
-        if (!type.CarriesRawOrigin || type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
+        if (!this.HoldsHolder(type))
         {
             return type;
         }
@@ -111,7 +99,7 @@ public sealed partial class Binding
     // `place`, writing `source`, failed at `at` (HolderWriteFailure), for a write, an update, a written exclusive borrow, a receiver's
     // implicit one (JudgeCallFit) and a Move; PathOrigin publishes the stored Field and the Place's stored Type.
     private bool HolderPlaceFailure(Koto place, HolderAccess access, Koto? source, Koto at)
-        => this.PathOrigin(place) is { Dereferences: false, Field: { } field, Stored: { } stored } && HoldsHolder(stored) && Receiver(field.Left) is null &&
+        => this.PathOrigin(place) is { Dereferences: false, Field: { } field, Stored: { } stored } && this.HoldsHolder(stored) && Receiver(field.Left) is null &&
             this.HolderWriteFailure(stored, access, source, at);
 
     // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. Admitted: a write
@@ -122,7 +110,7 @@ public sealed partial class Binding
     // reaching the layer, none for an update or a borrow, which admit the Place's read Type.
     private bool HolderWriteFailure(BoundType stored, HolderAccess access, Koto? source, Koto at)
     {
-        var written = access == HolderAccess.Write && source is not null ? NonNullAtLayers(stored, source) : null;
+        var written = access == HolderAccess.Write && source is not null ? this.NonNullAtLayers(stored, source) : null;
         if ((access == HolderAccess.Write && written is null) || (access == HolderAccess.Move && stored.Kind == BoundTypeKind.Semantics))
         {
             return false; // A Semantics `stored` is the layer itself; an enclosing one is a Tuple or fixed array (HoldsHolder).

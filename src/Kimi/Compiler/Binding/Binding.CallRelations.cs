@@ -10,58 +10,13 @@ namespace Kimi.Compiler;
 // a node beyond the first).
 public sealed partial class Binding
 {
-    private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (!type.CarriesOrigin)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } outer && MentionsOrigin(outer, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (MentionsOrigin(type.OriginArguments[i], origin))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (MentionsOrigin(type.Components[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool MentionsOrigin(BoundOrigin expression, BoundOrigin origin)
-    {
-        if (ReferenceEquals(expression, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < expression.Operands.Count; i++)
-        {
-            if (ReferenceEquals(expression.Operands[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // Whether the Origins and Origin arguments of a Type's parts name `origin`, a meet's operand included (a meet's operands are atoms,
+    // Meet); raw layers' Origins are not read. A test of its Origin summary's Nodes (Binding.OriginSummaries).
+    private bool MentionsOrigin(BoundType type, BoundOrigin origin) => Array.IndexOf(this.SummaryOf(type).Nodes, origin) >= 0;
 
     // The input, other than the failing one, whose parameter names the callee's Type parameter `slot` and whose adapted Type carries
     // `value`, the Origin of the slot's solution: the input whose invariant binding fixed it. Receiver first, then the arguments.
-    private static Koto? SlotEqualitySource(in CallFit context, BoundType slot, BoundOrigin value)
+    private Koto? SlotEqualitySource(in CallFit context, BoundType slot, BoundOrigin value)
     {
         for (var n = 0; n <= context.ArgumentCount; n++)
         {
@@ -69,7 +24,7 @@ public sealed partial class Binding
             var operation = context.Operations[i];
             if (operation is { Source: { } source, AdaptedType: { } adapted } && !ReferenceEquals(source, context.At) &&
                 operation.ParameterIndex >= 0 && operation.ParameterIndex < context.Selected.Parameters.Count &&
-                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsSlot(pattern, slot.Symbol!) && MentionsOrigin(adapted, value))
+                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsSlot(pattern, slot.Symbol!) && this.MentionsOrigin(adapted, value))
             {
                 return source;
             }
@@ -343,7 +298,7 @@ public sealed partial class Binding
             // Location; SPEC 10.8: the first invariant binding of a slot is its solution).
             var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
                 : variable is not null ? this.EqualitySource(context, variable, shorter)
-                : slot is not null ? SlotEqualitySource(context, slot, shorter) : null;
+                : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
             var destination = declared ? null : context.Parameter;
             var supplier = this.SuppliedAtUse(longer, at);
@@ -380,7 +335,7 @@ public sealed partial class Binding
             var operation = context.Operations[i];
             if (operation is { Source: { } source, AdaptedType: { } adapted } && !ReferenceEquals(source, context.At) &&
                 operation.ParameterIndex >= 0 && operation.ParameterIndex < context.Selected.Parameters.Count &&
-                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsOrigin(pattern, variable) && MentionsOrigin(adapted, value))
+                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && this.MentionsOrigin(pattern, variable) && this.MentionsOrigin(adapted, value))
             {
                 return source;
             }
@@ -396,7 +351,7 @@ public sealed partial class Binding
         {
             var operation = operations[n == 0 ? argumentCount : n - 1];
             if (operation is { Source: { } source, ParameterIndex: >= 0 } && operation.ParameterIndex < selected.Parameters.Count &&
-                selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsOrigin(pattern, origin))
+                selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && this.MentionsOrigin(pattern, origin))
             {
                 return source;
             }

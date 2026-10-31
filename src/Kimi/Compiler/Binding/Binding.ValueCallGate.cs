@@ -38,61 +38,27 @@ public sealed partial class Binding
     internal ReadOnlySpan<InvocationKoto> ReceiverDependentCalls
         => this.receiverDependentPass == this.storageVersion ? CollectionsMarshal.AsSpan(this.receiverDependentCalls) : default;
 
+    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
+    private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
+        => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
+            (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
+
     // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
-    // which the callee's body was checked against.
-    private static bool FixedInBody(BoundType type, Koto use)
+    // which the callee's body was checked against: a test of its Origin summary's Nodes (Binding.OriginSummaries), a meet node passed over
+    // since its operands are nodes of their own.
+    private bool FixedInBody(BoundType type, Koto use)
     {
-        if (!FixedOrigin(type.Origin, use))
+        var nodes = this.SummaryOf(type).Nodes;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            return false;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (!FixedOrigin(type.OriginArguments[i], use))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (!FixedInBody(type.Components[i], use))
+            if (nodes[i].Kind is not (OriginKind.Static or OriginKind.Intersection) && !FixedInBodyOrigin(nodes[i], use))
             {
                 return false;
             }
         }
 
         return true;
-
-        static bool FixedOrigin(BoundOrigin? origin, Koto use)
-        {
-            if (origin is null || origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!FixedOrigin(origin.Operands[i], use))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            return FixedInBodyOrigin(origin, use);
-        }
     }
-
-    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
-    private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
-        => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
-            (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
 
     // R1's condition at a value call's binding: the fact on its plan, overwritten by each binding (a consultation's and a candidate
     // trial's included), and the call listed once per pass when the fact holds, the pass's first listing starting the list afresh.
@@ -138,7 +104,7 @@ public sealed partial class Binding
         type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
         if (type.Kind != BoundTypeKind.Closure)
         {
-            return FixedInBody(result, use);
+            return this.FixedInBody(result, use);
         }
 
         if (BoundClosure.Of(type) is not { } closure)
@@ -146,60 +112,27 @@ public sealed partial class Binding
             return false;
         }
 
+        // Each node of the result's Origin summary (Binding.OriginSummaries), in the order a walk of its parts meets it first; a meet node
+        // is passed over, its operands being nodes of their own.
         var copy = this.ProveCopy(result, receiver) == ConstraintProof.Proven;
-        return FixedType(result);
-
-        bool FixedType(BoundType part)
+        var nodes = this.SummaryOf(result).Nodes;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            if (!FixedOrigin(part.Origin))
+            if (nodes[i].Kind is not (OriginKind.Static or OriginKind.Intersection) && !FixedOrigin(nodes[i]))
             {
                 return false;
             }
-
-            for (var i = 0; i < part.OriginArguments.Count; i++)
-            {
-                if (!FixedOrigin(part.OriginArguments[i]))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < part.Components.Count; i++)
-            {
-                if (!FixedType(part.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
 
-        bool FixedOrigin(BoundOrigin? origin)
+        return true;
+
+        bool FixedOrigin(BoundOrigin origin)
         {
-            if (origin is null || origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!FixedOrigin(origin.Operands[i]))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
             var carried = false;
             for (var i = 0; i < closure.Captures.Count; i++)
             {
                 var captured = closure.Captures[i].Environment.Type!;
-                if (ContainsOrigin(captured, origin))
+                if (this.MentionsOrigin(captured, origin))
                 {
                     if (this.ProveCopy(captured, receiver) != ConstraintProof.Proven)
                     {

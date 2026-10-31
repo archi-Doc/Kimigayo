@@ -127,159 +127,81 @@ public sealed partial class Binding
         return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
     }
 
-    // Whether a result still names a per-call input or a universal Origin of `binder`; a part carrying no Origin names none, which bounds
-    // the walk over a shared Origin-free part (DECISIONS BU-19's exact gate, BU-55).
-    private static bool HasUnsubstitutedInput(BoundType type, Koto binder)
+    // One node's atom (CallAtomsOf); a meet node is none, its operands being nodes of their own.
+    private static CallAtoms CallAtomOf(BoundOrigin node, FunctionKoto closure, Koto call)
     {
-        if (!type.CarriesOrigin)
+        if (node.Kind is not (OriginKind.Projection or OriginKind.Input or OriginKind.Parameter) ||
+            node.Binder is not FunctionKoto { IsAnonymous: true } binder)
         {
-            return false;
+            return CallAtoms.None;
         }
 
-        if (InputAtom(type.Origin, binder))
+        if (!ReferenceEquals(binder, closure))
         {
-            return true;
+            return IsWithin(call, binder) ? CallAtoms.None : CallAtoms.Foreign;
         }
 
-        for (var i = 0; i < type.OriginArguments.Count; i++)
+        return node.Kind != OriginKind.Projection ? CallAtoms.None : node.Slot switch
         {
-            if (InputAtom(type.OriginArguments[i], binder))
-            {
-                return true;
-            }
-        }
+            ClosureValueSlot => CallAtoms.Receiver,
+            CallResultSlot => CallAtoms.Result,
+            _ => CallAtoms.None,
+        };
+    }
 
-        for (var i = 0; i < type.Components.Count; i++)
+    // Whether a result still names a per-call input or a universal Origin of `binder`: a test of its Origin summary's Nodes, which
+    // raw layers' Origins are not (Binding.OriginSummaries).
+    private bool HasUnsubstitutedInput(BoundType type, Koto binder)
+    {
+        var nodes = this.SummaryOf(type).Nodes;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            if (HasUnsubstitutedInput(type.Components[i], binder))
+            if (nodes[i].Kind is OriginKind.Input or OriginKind.Parameter && ReferenceEquals(nodes[i].Binder, binder))
             {
                 return true;
             }
         }
 
         return false;
-
-        static bool InputAtom(BoundOrigin? origin, Koto binder)
-        {
-            if (origin is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (InputAtom(origin.Operands[i], binder))
-                {
-                    return true;
-                }
-            }
-
-            return origin.Kind is OriginKind.Input or OriginKind.Parameter && ReferenceEquals(origin.Binder, binder);
-        }
     }
 
     // Whether a result names an environment binding of the closure `function` or its call receiver Origin ρ, so it depends on the
-    // receiver (SPEC 15.8.2, 7.7.4; DECISIONS R4-M126 P12).
-    private static bool HasEnvironmentOrigin(BoundType type, Koto function)
+    // receiver (SPEC 15.8.2, 7.7.4; DECISIONS R4-M126 P12): a test of its Origin summary's Nodes.
+    private bool HasEnvironmentOrigin(BoundType type, Koto function)
     {
-        if (EnvironmentAtom(type.Origin, function))
+        var nodes = this.SummaryOf(type).Nodes;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (EnvironmentAtom(type.OriginArguments[i], function))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasEnvironmentOrigin(type.Components[i], function))
+            if (ReferenceEquals(nodes[i].Binder, function) && ReceiverAtom(nodes[i]))
             {
                 return true;
             }
         }
 
         return false;
-
-        static bool EnvironmentAtom(BoundOrigin? origin, Koto function)
-        {
-            if (origin is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (EnvironmentAtom(origin.Operands[i], function))
-                {
-                    return true;
-                }
-            }
-
-            return ReferenceEquals(origin.Binder, function) && ReceiverAtom(origin);
-        }
     }
 
     // The atoms of Closures a value call's result names in its Origin positions, raw layers included (SPEC 15.8.2, 5.7; DECISIONS R4-M152,
     // R4-M159): its callee Closure's call receiver ρ and call result, each of which the call substitutes, and F1's located limit, an atom
     // of another Closure that does not enclose the call, which no image reached: a Closure value returned from its maker's call reads that
     // call's images through its Type's Origin arguments (ClosureSignature), so only a value that reached the call without passing its
-    // maker's call can still name one (the owner's 「2c-5 F1: (c')」).
-    private static CallAtoms CallAtomsOf(BoundType type, FunctionKoto closure, Koto call)
+    // maker's call can still name one (the owner's 「2c-5 F1: (c')」). The atoms of its Origin summary's Nodes and RawNodes
+    // (Binding.OriginSummaries), a meet's operands each a node.
+    private CallAtoms CallAtomsOf(BoundType type, FunctionKoto closure, Koto call)
     {
-        if (!type.CarriesAnyOrigin)
+        var summary = this.SummaryOf(type);
+        var atoms = CallAtoms.None;
+        for (var i = 0; i < summary.Nodes.Length; i++)
         {
-            return CallAtoms.None;
+            atoms |= CallAtomOf(summary.Nodes[i], closure, call);
         }
 
-        var atoms = CallAtomsOf(OwnedOrigin(type), closure, call);
-        for (var i = 0; i < type.OriginArguments.Count; i++)
+        for (var i = 0; i < summary.RawNodes.Length; i++)
         {
-            atoms |= CallAtomsOf(type.OriginArguments[i], closure, call);
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            atoms |= CallAtomsOf(type.Components[i], closure, call);
+            atoms |= CallAtomOf(summary.RawNodes[i], closure, call);
         }
 
         return atoms;
-    }
-
-    private static CallAtoms CallAtomsOf(BoundOrigin? origin, FunctionKoto closure, Koto call)
-    {
-        if (origin is null)
-        {
-            return CallAtoms.None;
-        }
-
-        var atoms = CallAtoms.None;
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            atoms |= CallAtomsOf(origin.Operands[i], closure, call);
-        }
-
-        if (origin.Kind is not (OriginKind.Projection or OriginKind.Input or OriginKind.Parameter) ||
-            origin.Binder is not FunctionKoto { IsAnonymous: true } binder)
-        {
-            return atoms;
-        }
-
-        if (!ReferenceEquals(binder, closure))
-        {
-            return IsWithin(call, binder) ? atoms : atoms | CallAtoms.Foreign;
-        }
-
-        return origin.Kind != OriginKind.Projection ? atoms : atoms | origin.Slot switch
-        {
-            ClosureValueSlot => CallAtoms.Receiver,
-            CallResultSlot => CallAtoms.Result,
-            _ => CallAtoms.None,
-        };
     }
 
     // SPEC 7.7.3, 15.8.2 (DECISIONS R4-M152): the Origin of a Closure call's receiver acquisition, which a result naming ρ takes: the
@@ -546,7 +468,7 @@ public sealed partial class Binding
             // Collect the complete parameter structure, including nested slots, through the ordinary call solver.
             // Scratch inputs hold acquired Types until substitution commits the one selected call's contract.
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
-            if (ownBinder is not null && HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
+            if (ownBinder is not null && this.HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
             {
                 if (conditioned is not null)
                 {
@@ -682,12 +604,12 @@ public sealed partial class Binding
         in BoundArgumentOperation acquisition)
     {
         var result = signature.Components[1];
-        var inputBinder = ownBinder is not null && HasUnsubstitutedOrigin(result, ownBinder) ? ownBinder : null;
+        var inputBinder = ownBinder is not null && this.HasUnsubstitutedOrigin(result, ownBinder) ? ownBinder : null;
         var dependent = inputBinder is null
             ? !PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(result, call.Method, call)
-            : HasEnvironmentOrigin(result, inputBinder);
+            : this.HasEnvironmentOrigin(result, inputBinder);
         var closure = ownBinder is FunctionKoto { IsAnonymous: true, ClosureDefinition: not null } binder ? binder : null;
-        var atoms = closure is null ? CallAtoms.None : CallAtomsOf(result, closure, call);
+        var atoms = closure is null ? CallAtoms.None : this.CallAtomsOf(result, closure, call);
         if ((atoms & CallAtoms.Foreign) != 0)
         {
             return this.Fail(call, BindingFailure.Unsupported); // F1's located limit (DECISIONS R4-M152): the owner's (c').
@@ -698,7 +620,7 @@ public sealed partial class Binding
             var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, closure!, acquisition) : null;
             var unbound = (atoms & CallAtoms.Result) != 0 ? this.OriginAtom(call, OriginKind.Unbound, 0) : null;
             result = this.SubstituteStoredOrigins(result, ownBinder!, origins, new(inputs, image, unbound));
-            if (inputBinder is not null && HasUnsubstitutedInput(result, inputBinder))
+            if (inputBinder is not null && this.HasUnsubstitutedInput(result, inputBinder))
             {
                 return this.Fail(call, BindingFailure.Unsupported);
             }

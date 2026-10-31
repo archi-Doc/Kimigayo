@@ -5887,6 +5887,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: a Closure returned from a named function's call may keep the function's per-call atoms in its signature (design §3.1; no
     reproducer).
   - Numbering: R4-M159 was reserved for G273 by the planning session.
+  - Amendment (R4 agrees): Collect and Occurrences walk each shared part once (G309, bu90).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6674,7 +6675,8 @@ resumed by R4-M86 (2026-10-20).
   open parts, so the table is still needed); a memo across queries (one `Apply` still walks its DAG as a tree); a cap on a Type's
   tree size (narrows accepted programs); waiting for R6 and R7; a per-query `Clear` (very many small substitution queries would pay
   the table's capacity); one stamp shared by nested calls through a field (exact only if every nested call closes in the same
-  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape).
+  instance); a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the gate suffices on every shape;
+  superseded by BU-64, a per-query table).
   U2, the old analysis, under the owner's D5 exception of 2026-10-21 (the owner's choice 「例外を認める (推奨)」: performance fixes of
   its walks W1 and W5 with identical verdicts, the Origin-carrying shared Tuples of letr included; nothing else of the frozen path;
   they go with the old analysis at R6-check): `CleanupObservesBorrows` keeps one query per Place, its source and context fixed; its
@@ -8953,6 +8955,115 @@ resumed by R4-M86 (2026-10-20).
     copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
+
+- **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
+  them read it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` and
+  `design-r1.md`, design review 1 REVISE (B1: the summary as BoundType fields; B2: ReplaceHolder), re-check ACCEPT) SPEC 3.8, R4's V16:
+  a walk's work is linear in the distinct parts of an interned Type. This entry makes the walks it names so (the summary's readers and
+  the walks taking BU-19's tables, below); it does not make every Origin walk linear (Open, below).
+  - Census (BU-55's instrumentation, with root entries told apart from entries once per visit of an outer walk; `g309\census\`): on
+    `D1<ref/i32 during a>` (a member path, a generic callee, `T is Copy`, called Closures) at n = 16 the root walks HasUnsubstitutedOrigin
+    (688,997 visits), HasUnsubstitutedInput, CallAtomsOf and ResultFixedForCall's FixedType (about 98,300 each) grow as 2^n; FixedType
+    asks ContainsOrigin and ProveCopy once per Origin position (ContainsOrigin 524,288 visits, OperandContexts 1.69 M through the Copy
+    proofs). A Closure with two captures (`func [v, u] () => v`, u `during b`) makes ContainsOrigin 4^n (201 M visits, Bind 7.1 s at n =
+    14). On BU-58's projection chains with raw leaves HoldsHolder takes 131,247 visits at n = 16.
+  - The summary (`Binding.OriginSummaries`): per interned Type the Origin expression nodes its parts' Origins and Origin arguments state
+    (Nodes) and those its raw layers state (RawNodes), each distinct, a meet node and its operands included, in the order a walk of the
+    parts meets them first (own Origin, Origin arguments, then each component's), and the holder bit (a `during self` layer inline: the
+    layer, or a Tuple or fixed array with a component holding one). It is formed on its first read from the components' summaries; a Type
+    without CarriesAnyOrigin has the empty summary and no entry; an array equal element by element to a component's is that component's.
+  - Readers, each a loop over the nodes with its own per-node test, a meet node passed over where the walk recursed into its operands
+    (Meet's operands are atoms): HasUnsubstitutedOrigin (both roles), HasUnsubstitutedInput, HasEnvironmentOrigin, CallAtomsOf (CallAtomOf
+    per node), ResultFixedForCall (its FixedOrigin per node), FixedInBody, MentionsOrigin (also Binding's two ContainsOrigin calls:
+    FixedOrigin's capture test and OriginDiagnostics), HoldsHolder (its six sites and NonNullAtLayers). Each becomes an instance member.
+    ∃, ∀ and ∪ folds of a pure per-node test are equal over the set of nodes, and the first-visit order keeps ResultFixedForCall's Copy
+    proofs in dev's order, repeats removed. BU-24's raw-role sites (ArchitectureRulesTest) follow the reads: HasUnsubstitutedOrigin's
+    (ContractCalls) and HoldsHolder's (RawOrigins.Holder) move to the summary, two sites out and two in (OriginSummaries).
+  - Stay walks (the sweep of BU-19's ungated Origin walks): ContainsOrigin's static walk for the old analysis's three calls, marked
+    `[Transitional("R6-check")]` (PLAN G309's residue; the Origin-expression overload it calls is Binding's own since G306 and stays);
+    StaticOnly and OverInputs, reached from the static Type relation (`PerCallShape`) without a Binding; OriginInheritance's local
+    MentionsOrigin, which compares whole expressions, not meet operands; FirstUnownedOrigin (a depth bound, a Function stop, components
+    before arguments); HasLocalRegion, CarrierOf and RegionBoundsPart, which stop at Function and FunctionItem parts (HasLocalRegion takes
+    BU-55's table in G309's next unit).
+  - Open (implementation review 1's B1, 2026-10-31; PLAN G309, its unit G309-R): the sweep missed walks that still take 2^n on an
+    Origin-carrying projection-chain DAG under a written borrow layer, CHAIN = `Dup<…Dup<ref/i32 during static>.Item…>.Item`: `let y:
+    ref/CHAIN = x` (Bind 15.6 s at n = 22), `func p(x: ref/CHAIN)` (5.7 s at n = 26) and `r<T>(x: ref/Dup<…T…>.Item)` called at `ref/i32
+    during static` (6.5 s at n = 22), through RetainInnerOutlives, RewriteOrigins (ResolveOrigin and TyCtxt.Intern per visit),
+    AddTypeClauseObligations, LocalOrigins' Match, and CallSlots' Infer with its proofs and OperandContexts per visit. Not a regression:
+    dev is as slow or slower on these forms.
+  - Not a shared representation (B1): BoundType's fields, constructor and interning are unchanged; the table is private to Binding, keyed
+    by identity as TypeMemo is, derived only from fields BoundType holds, and read by no other phase. BU-19's rejection of new BoundType
+    summaries and BU-58's of a BoundType bit stand. Nor is it BU-19's rejected "memo across queries (one `Apply` still walks its DAG as a
+    tree)": no query input enters a summary, which is built components-first through the table, so no walk of a DAG as a tree remains.
+    A summary is a function of its Type alone (an interned Type and its Origins never change; a test that reads a binding state, such as
+    PendingAtom or BorrowCondition, runs when a walk reads the nodes), so the table is never cleared, as interning is not (Binding's
+    constructor creates its TyCtxt), and a warm pass allocates nothing.
+  - The walks no summary answers take BU-19's tables, each entry call a query (G309's second unit): HasLocalRegion on `visitedParts`, as
+    RegionBoundsPart is; AddStoredPremises on `visitedParts` (a revisit adds the same premise edges, which the closure reaches anyway);
+    AccumulateRequirements on `visitedParts` with one state bit per polarity (a revisit at a met polarity repeats joins and keepers,
+    duplicates only, and a join a revisit would have made after a slot it reads changed is made when the declaration is visited again,
+    its self-edge queueing it, so the least fixed point is the same); and the leaf rewrites SubstituteStoredOrigins, WithoutUnstated and
+    PublishedResult on `rewrittenParts`, with WithoutRawOrigins and WithUnstatedOrigins (none calls a user of the table while it walks).
+    ReplaceHolder reads the holder bit: a part holding no `during self` layer is its own image (Rebuild of unchanged components returns
+    the interned part), which replaces its copy of HoldsHolder's rule; a declaration writes the parts holding one inline (no Type
+    argument or projection states `during self`, InvalidOriginBinding_Kd), so they form a tree of the text's size and need no table.
+    G273's walks (R4-M159; unit bu90) take `visitedParts` as well: ClosureType's Collect, its bound pass and its fill pass each a query
+    (a part met again adds no atom, so the distinct atoms keep their first-occurrence order), and ClosureArgumentVariance's Occurrences
+    with one state bit per polarity (Join is idempotent). The static Type relation reads a variance without a Binding, so Occurrences
+    takes the table of its definition's compilation's Binding, the table's one owner, whatever premises its caller reads. On dev
+    Collect took 24,580 / 393,220 / 6,291,460 calls per Bind on PLAN's `ref` form at n = 12 / 16 / 20; it takes 52 / 68 / 84.
+  - Cost: with BU-64's, G309's three units together. Pinned Bind A/B of bu82 merged with dev 06a74fe9d (b0fcb291d; BU's quiet slot,
+    2026-10-31, 7 rounds; `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\trim-report.md`): B/A' median 1.012-1.015 cold and
+    1.004-1.010 warm on Hello / Milestone 26 / Milestone 27, cold +45 KB, warm 0 B, above the 1.01 gate; the trim unit bu88 kept no
+    trim. The owner accepted the cost (2026-10-31, verbatim 「(a) Accept, fix, land」; PLAN G309).
+  - Tests: TypeDagScalingTest's raw projection-chain rows (`AWrittenProjectionDagIsWalkedOncePerPart` at n = 40,
+    `AWrittenTypeDagIsWalkedOncePerWrittenType` at n = 30) lose Explicit; `AHolderReadRebuildsOnlyThePartsHoldingTheLayer` (n = 40: an
+    instance's holder Field at the end of the chain D_i, and a projection chain beside the layer). The summary's readers' verdicts are
+    dev's (diagnostic snapshot and Unit runs on both pipelines).
+
+- **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of a
+  table for it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` item 4,
+  design review 1 (its prototype found 0 mismatches in 8,721,555 memo-versus-tree root checks over 847 focused tests and the census
+  forms) and re-check ACCEPT) SPEC 8.2, 8.4; R4's V16.
+  - Census: on `D1<ref/i32 during a>` ContractType/ContractTypeCore took 3,453,264 visits at n = 16 in Bind (7,035 root calls:
+    candidates, adaptations, constraint instantiations) and 4,231,059 in BuildMir (through TyCtxt.Instance -> Binding.StorageInstance
+    and TyCtxt.Retains), ApplyContractEnvironment once per ContractTypeCore visit. On a projection chain over a Type parameter in a
+    generic body (the guard path) the review counted 11,868 / 18,012 / 42,588 / 140,892 ContractTypeCore visits at n = 8 to 14.
+  - The rule: one outermost ContractType call is a query of `contractParts` (BU-19's TypeMemo), its scope, Self, normalize flag,
+    activeRequirementContract and normalizingAssociated's set fixed. ContractTypeCore's component loop continues it (ContractPart), a
+    component with components recorded (BU-55: a leaf is cheaper to rewrite again, a root is met once). The normalizations under a
+    guard push (ProjectionSpecification, the specified Type's and a Type-identity fact's ContractType) enter afresh: nested queries.
+    The associated collection's batch keeps its place at every call (BatchedContractType).
+  - BU-19's rejection re-examined. Its text: "a table for `ContractType` (its `normalizingAssociated` guard is path-dependent; the
+    gate suffices on every shape)". Neither reason holds. (i) The guard's set changes only by a push after a part's component loop,
+    popped before that part returns, and what runs under the push is a nested query; so within one query the set is the one the query
+    began with, and an answer is a function of the part and the query's fixed inputs. The writers of activeRequirementContract and
+    collectingAssociated (call binding, associated inference) restore them and run inside no query's component walk. A memo across
+    queries stays rejected. (ii) The gate passes every Origin-carrying part (the census above). This supersedes that clause of BU-19;
+    the rest of BU-19 stands.
+  - Exact as SubstituteType's table is: each answer is the one the recursion gives (the review's prototype compared them root by root),
+    and a nested query can only evict outer entries, which are then recomputed.
+  - Open limit (N2): ApplyContractEnvironment runs once per distinct part, and under a conformance path each run is a StoredType query
+    over the part's subtree; the guard path runs one nested query per normalized level. Both stay O(sum of subtree sizes), quadratic in
+    distinct parts (the review's prototype: +50 / +58 / +66 ContractTypeCore visits per +2), short of BU-55's linear rule. A conformance
+    path reaches a shared part (implementation review 1's B2): `contract Get<T>` requiring `func get(self: ref/Self, x:
+    ref/Dup<…T…>.Item)`, conformed by `struct X<U>` with `Self is Get<U>` and the matching `get`; SubstituteTypeCore takes +445 / +877 /
+    +2,221 / +6,829 / +10,093 visits over the base level at n = 4 / 8 / 16 / 32 / 40, quadratic (Bind 61 ms at n = 40; dev 2,185 ms at
+    n = 18). The rows below, this form's included, pass in milliseconds at n = 40.
+  - Tests: TypeDagScalingTest `InstanceChainWalksAreLinearInDistinctParts`'s `ref` row (n = 40: the summary's readers, the published
+    result, a Closure with two captures and G273's walks, BU-63's Collect and Occurrences, as well) and
+    `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); with the table undone both exceed the runner's 120 s
+    timeout, as the `ref` row does with dev's Collect. `AConformanceOverAProjectionDagFinishes` (n = 40, B2's conformance path;
+    G309-F1) bounds the open limit.
+  - Cost of G309's three units (BU-63, BU-64; unpinned A/B from one folder, full JIT, A = dev 1f2d7dea6; two other sessions' heavy runs
+    were registered, so no pinned timing): cold Bind +44,776 / +44,808 / +45,808 B and BuildMir +14,904 / +14,904 / +30,472 B on Hello /
+    Milestone 26 / Milestone 27, the heap with the compilation alive +35,024 / +35,032 / +45,504 B, warm Bind 0 B. Entries after
+    Bind: originSummaries 142 / 143 / 175 (12,224 / 12,256 / 13,256 B, byte-exact), contractParts 159 / 159 / 176, rewrittenParts
+    121 / 121 / 143, visitedParts 161 / 161 / 181 (dev 159 / 159 / 178); BuildMir in the same pass raises contractParts to 287 / 287 /
+    341 (431 slots) and rewrittenParts to 155 / 155 / 221, its +14.9 / +14.9 / +30.5 KB (implementation review 1's N2). Recording a query's root too gave 737 / 743 / 833 contractParts
+    entries and +93 KB cold Bind on Hello, so roots are not recorded. Cold Bind (one run each after a warm-up): PLAN's `ref` form 49 /
+    150 / 2,457 ms at n = 12 / 16 / 20 on dev, 14 to 17 ms up to n = 40; the two-capture form 206 ms / 3.3 s / 73.6 s at n = 12 / 14 /
+    16 on dev, 19 ms at n = 40; the raw chain (`during s`) 12.2 s at n = 24 on dev, 14 ms at n = 40.
 
 - **BU-65 A declaration's finite inline storage is judged on per-node summaries by Tarjan over the edges the walks discover**
   (2026-10-30; PLAN G310, unit bu76; designs `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g310\design.md`, `design-r1.md`,
