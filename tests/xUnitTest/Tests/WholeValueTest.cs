@@ -110,7 +110,7 @@ public class WholeValueTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("WholeValue" + name, source, stdout);
     }
 
@@ -154,7 +154,7 @@ public class WholeValueTest
         var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref/S during x => x@follow@ref\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -166,7 +166,7 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -176,7 +176,7 @@ public class WholeValueTest
         var c = MinimalEmissionTest.Analyze("struct S\n    public var value: i32 = 0\n    public init(value: i32) => self.value = value\n" + function + "\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -243,7 +243,7 @@ public class WholeValueTest
             Assert.True(c.Bind().IsComplete, Describe(c));
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 

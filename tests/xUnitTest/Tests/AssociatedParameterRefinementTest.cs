@@ -13,7 +13,7 @@ public class AssociatedParameterRefinementTest
     {
         var source = "contract A\n    associate Element\ncontract C<E>\n    E is A\n    associate Item(a) is ref/E.Element during a\nfunc f<U, E>(value: " + input + ", other: ref/i32 during a) -> U.(C<E>).Item(a)\n    E is A\n    U is C<E>\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public class AssociatedParameterRefinementTest
     {
         var source = "contract A\n    associate Element\nstruct S\n    Self is A\n    associate Element is i32\n    public init() => ()\nfunc accept<T>(value: ref/T.Element, marker: ref/T)\n    T is A\n    ()\nfunc only<T>(value: ref/T.Element)\n    T is A\n    ()\nlet marker = S.init()\n" + call;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class AssociatedParameterRefinementTest
     {
         var source = "contract C<E>\n    associate Item(a)" + domain + "\ncontract D<F>: C<F>\n    associate C.Item(b) is ref/F during b";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -90,6 +90,6 @@ public class AssociatedParameterRefinementTest
     {
         var source = "contract C<E>\n    associate Item(a) is E\ncontract D<F>: C<F>\nfunc f<U>(source: ref/U during a, value: U.(" + constraint + ").Item(a)) -> " + result + "\n    U is D<i32>\n    return value";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

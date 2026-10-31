@@ -123,20 +123,6 @@ internal sealed class AdtDef
         return false;
     }
 
-    // Whether a Type is the given Type or inherits it through its bases.
-    internal static bool IsOrInherits(BoundType type, BoundType ancestor)
-    {
-        for (BoundType? current = type; current is not null; current = Base(current))
-        {
-            if (ReferenceEquals(current, ancestor))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     internal static PropertyKoto Field(BoundType type, int index) => Struct(type)!.Fields[index];
 
     // SPEC 11.7: whether a constructor may place a stored Field only once: a let Field, or a var with a custom set.

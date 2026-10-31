@@ -156,7 +156,7 @@ public sealed partial class Binding
         this.AddRetentionAtom(here with { Origin = OwnedOrigin(type) }, callable);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            var position = ComposeVariance(variance, type.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant);
+            var position = ComposeVariance(variance, OriginArgumentVariance(type, i, this));
             this.AddRetentionAtom(at with { Origin = type.OriginArguments[i], Writable = at.Writable && position == OriginVariance.Invariant }, callable);
         }
 
@@ -188,7 +188,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);
+            this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
         }
     }
 

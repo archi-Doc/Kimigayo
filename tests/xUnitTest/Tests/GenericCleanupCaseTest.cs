@@ -26,10 +26,10 @@ public class GenericCleanupCaseTest
             "struct Worker\n    Self is Runner\n" +
             $"    public func run(self: ref/Self, pair: ({element}, {element})) -> {result}\n        return Helpers.select(pair@move)\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (valid)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
         else
         {
@@ -62,8 +62,8 @@ public class GenericCleanupCaseTest
             "contract Runner\n    func run(self: ref/Self, o: Option<Option<Payload>>) -> i32\n        effect confined\n" +
             "struct Worker\n    Self is Runner\n    public func run(self: ref/Self, o: Option<Option<Payload>>) -> i32\n        let m: i32 = 0\n        return Helpers.peek(o@move, m)\n()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or DiagnosticCode.Unsupported_Kd);
     }
 }

@@ -71,8 +71,8 @@ public class Utf8ConversionTest
     public void FixedResultRetainsExclusiveSourceAuthority(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("var bytes = [3 of 0@u8]\nlet result = Text.tryFormat(123, bytes@uniq)\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());

@@ -34,10 +34,10 @@ public class ObjectSlotUpdateTest
     {
         var source = Item + "\nvar owner = Kimi.Intrinsics." + factory + "(Item.init(1))\nlet view = owner@objref\nKimi.Intrinsics.replace(owner@uniq, with: Kimi.Intrinsics." + factory + "(Item.init(2)))\nrequire view.id == 1 else => $abort(\"view\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -47,10 +47,10 @@ public class ObjectSlotUpdateTest
     public void WarmSlotUpdatesAllocateNothing(string factory)
     {
         var c = MinimalEmissionTest.Analyze(Source(factory, "@uniq"));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

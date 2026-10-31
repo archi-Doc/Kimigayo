@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class FunctionCodegen
 {
     // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the runtime's empty handle, then for its n
-    // elements one growth to n (the Array runtime's grow, as the old generator calls it) and the length n in the handle's length word; its
+    // elements one growth to n (the Array runtime's grow, as the old generator called it) and the length n in the handle's length word; its
     // buffer, where the aggregate writer puts each element, the handle for `[]`, which allocates nothing; null after a record. No element is
     // observable before all are put: the puts run no user code and cannot fail.
     private Value? ArrayBuffer(in SourceInfo source, Value handle, BoundType array, ValueLowering record, int count)

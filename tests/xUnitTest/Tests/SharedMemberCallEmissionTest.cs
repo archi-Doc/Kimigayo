@@ -34,8 +34,8 @@ public class SharedMemberCallEmissionTest
     public void ExclusiveReceiverAllowsPreparedSharedInspection()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func run<T>(value: ref/T, c: uniq/Counter)\n    c.add(c.read())\nlet v = true\nvar c = Counter.init(1)\nrun(v, c@uniq)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

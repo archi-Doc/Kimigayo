@@ -102,7 +102,7 @@ public class ConversionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -115,7 +115,7 @@ public class ConversionEmissionTest
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal("UnresolvedBinding_Kd", issue.Code.ToString());
         Assert.Equal("ref", issue.Node.ToString());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -127,7 +127,7 @@ public class ConversionEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, allocated);
@@ -176,7 +176,7 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.SymbolOf()?.Name == "x");
         Assert.Same(BoundType.I32, field.SymbolOf()!.Type);
     }

@@ -19,7 +19,7 @@ public class ProjectedConstraintCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(requirement, argument));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertCall(c, true);
         Assert.True(c.Bind().IsComplete);
         AssertCall(c, true);

@@ -46,6 +46,6 @@ public class Utf8DeclarationTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
+        => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
             "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString()));
 }

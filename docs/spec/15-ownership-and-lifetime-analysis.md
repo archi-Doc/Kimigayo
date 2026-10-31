@@ -618,14 +618,13 @@ struct Writer
     drop
         unsafe => *self.p = self.q          // Retains as drop(self: uniq/Writer) would.
 
-func reset()
-    var y: i32 = 1
-    let w = y@ref
+func reset(y: uniq/i32)
+    let w = y@follow@ref
     var slot: raw/u8 = null
-    var x = Writer.init(q: w@raw@raw/u8)    // x.q addresses w, which carries y's Loan.
+    var x = Writer.init(q: w@raw@raw/u8)    // x.q addresses w, which carries a Loan on y's referent.
     x.p = slot@raw
-    x = Writer.init(q: null)                // The old x's drop may store its q in slot.
-    // y = 5                                // Error: slot may retain q, which addresses w, which carries y's Loan.
+    x = Writer.init(q: null)                // The old x's drop may store q in slot or storage the body does not own.
+    // y@follow = 5                         // Error: the Loan w carries stays live, since that storage may retain q.
     usep(slot)
 ```
 

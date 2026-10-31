@@ -130,12 +130,12 @@ public class InheritedConformanceTest
     public void InheritedMappingsReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze(Arithmetic);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -257,7 +257,7 @@ public class InheritedConformanceTest
     public void ReplacingTheBaseRevokesItsInheritedMapping()
     {
         var c = MinimalEmissionTest.Analyze(Arithmetic);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var original = c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>().Single(x => x.Name == "Base");
         var donor = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    T is PrimitiveInteger\n    public let value: T\n    public init(value: T) => self.value = value\n    public func added(self: ref/Self, right: ref/T) -> T => self.value + right");
         var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
@@ -265,6 +265,6 @@ public class InheritedConformanceTest
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

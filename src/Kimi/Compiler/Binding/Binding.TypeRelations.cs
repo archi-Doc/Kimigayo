@@ -84,7 +84,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var variance = actual.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var variance = OriginArgumentVariance(actual, i, binding);
             if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
                 !OriginFits(a, b) || !OriginFits(b, a) : variance == OriginVariance.Covariant ? !OriginFits(a, b) : !OriginFits(b, a))
             {
@@ -292,7 +292,7 @@ public sealed partial class Binding
         {
             var a2 = longer.OriginArguments[i];
             var b2 = shorter.OriginArguments[i];
-            var variance = longer.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var variance = OriginArgumentVariance(longer, i, this);
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (!ReferenceEquals(a2, b2) && (both ? !InstanceOutlives(a2, b2, instance, this, use, 0) || !InstanceOutlives(b2, a2, instance, this, use, 0)
                 : variance == OriginVariance.Covariant ? !InstanceOutlives(a2, b2, instance, this, use, 0) : !InstanceOutlives(b2, a2, instance, this, use, 0)))

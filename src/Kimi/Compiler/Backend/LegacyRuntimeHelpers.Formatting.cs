@@ -16,8 +16,8 @@ internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAb
 
 /// <summary>The legacy runtime's estimate of an owning interpolation's private buffer (SPEC 22.10.5; the old utf8-formatting §5.1 and §6.1;
 /// DECISIONS R3-10): its literal bytes plus each value's maximum encoded bytes (<see cref="LegacyRuntimeHelpers.FormatBound"/>), an
-/// unbounded value counted 0 and making the estimate unbounded, a sum past the maximum object size discarding it. The one rule both
-/// generators read: the old one over its writes, MIR code generation over an interpolation step's operands.</summary>
+/// unbounded value counted 0 and making the estimate unbounded, a sum past the maximum object size discarding it. The one rule MIR code
+/// generation reads over an interpolation step's operands.</summary>
 /// <param name="Total">The sum, -1 once discarded.</param>
 /// <param name="Bounded">Whether every value added is bounded.</param>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
@@ -53,7 +53,7 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
 
 /// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer, formatting and floating-point runtime and the wrappers over user
 /// formatting witnesses (Windows x64 profile).</summary>
-internal sealed partial class LegacyRuntimeHelpers
+internal static partial class LegacyRuntimeHelpers
 {
     /// <summary>The windows-x64 limit of an owning interpolation's stack buffer, its literal bytes and value maxima included: a direct,
     /// bounded interpolation within it is formatted on the stack, after substitution as before (the old utf8-formatting §6.1; STATUS); any
@@ -99,19 +99,10 @@ internal sealed partial class LegacyRuntimeHelpers
     // view (16, 17) is unbounded.
     private static readonly int[] FormatBounds = [0, 4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 17, 24, 4, 5, 2];
 
-    // The writer adapter's write wrapper of each user formatting witness, and the conversions over them, in request order.
-    private readonly List<(FunctionAbi Wrapper, FunctionAbi Implementation)> formattingWrites = new();
-
-    private readonly List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> formattingConversions = new();
-
     /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): WriterWrite's
     /// row ABI under its own name; the text's size is checked at once and its static bytes kept at the adapter until its next reservation
     /// or its end. Initialized after the rows it reads.</summary>
     internal static FunctionAbi FormatLiteral { get; } = FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi.Named("__kimi_format_literal");
-
-    /// <summary>Gets or sets a value indicating whether the module holds the formatting runtime: a formatting row's request
-    /// needs it, and the old lowering requests it for its direct calls of formatting routines and for interpolation.</summary>
-    internal bool NeedsFormattingRuntime { get; set; }
 
     /// <summary>Gets the row of a formatting compiler function; a formatting kind without a row is a broken contract.</summary>
     /// <param name="kind">The compiler function.</param>
@@ -129,7 +120,7 @@ internal sealed partial class LegacyRuntimeHelpers
 
     /// <summary>Gets the formatting runtime's kind of a built-in formattable Type (SPEC 22.10.2), the number its built-in routines take as
     /// their kind Context and switch on (<c>__kimi_format_builtin</c>), the legacy runtime's own numbering, which R8 removes with it: an
-    /// integer's by its width and signedness, then f32, f64, char, bool, Unit, string and Utf8Slice. The one table both generators read.</summary>
+    /// integer's by its width and signedness, then f32, f64, char, bool, Unit, string and Utf8Slice. The one table code generation reads.</summary>
     /// <param name="type">A closed Type.</param>
     /// <returns>Its kind, or -1 for a Type without built-in formatting (a user or library formatter's).</returns>
     internal static int FormatKind(BoundType type)
@@ -163,7 +154,7 @@ internal sealed partial class LegacyRuntimeHelpers
     /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
     /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
     /// which R8 removes with it: a FixedBuffer 0 and a HeapBuffer 1, whose buffers the runtime reserves itself, and any other destination 2,
-    /// whose <c>reserve</c> witness the runtime calls through the adapter's dispatch word. The one table both generators read.</summary>
+    /// whose <c>reserve</c> witness the runtime calls through the adapter's dispatch word. The one table code generation reads.</summary>
     /// <param name="destination">The closed destination Type.</param>
     /// <returns>Its writer kind.</returns>
     internal static int WriterKind(BoundType destination) => destination.Symbol?.LibraryDeclaration switch
@@ -173,13 +164,13 @@ internal sealed partial class LegacyRuntimeHelpers
         _ => 2,
     };
 
-    /// <summary>Writes the formatting runtime: the templates with each row's routine defined once (both generators' one text).</summary>
+    /// <summary>Writes the formatting runtime: the templates with each row's routine defined once.</summary>
     /// <param name="output">The module text.</param>
     internal static void WriteFormattingRuntime(TextWriter output) => output.Write(FormattingRuntime);
 
     /// <summary>Writes a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a user formatter's write wrapper (SPEC 22.9.2):
     /// toString formats through a heap buffer and Aborts on BufferFull at its call's location; tryFormat formats into the caller's array and
-    /// returns its bytes or BufferFull. Both generators' one text (the old planner's conversions, MIR code generation's wrappers).</summary>
+    /// returns its bytes or BufferFull: MIR code generation's wrappers (the old planner's text).</summary>
     /// <param name="output">The module text.</param>
     /// <param name="wrapper">The conversion's ABI, its row's routine less the kind Context: the result slot, the value, tryFormat's
     /// destination and capacity, and the location.</param>
@@ -217,54 +208,6 @@ internal sealed partial class LegacyRuntimeHelpers
             output.Write("  call void @__kimi_abort(i32 ");
             WriteNumber(output, AbortReasons.Format);
             output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
-        }
-    }
-
-    /// <summary>Registers the writer adapter's write wrapper over a user formatting witness (SPEC 22.10.1): it is written in
-    /// request order, and the needs of WriterWrite's row join the module's. The planner requests each wrapper once.</summary>
-    /// <param name="wrapper">The wrapper's ABI.</param>
-    /// <param name="implementation">The witness's compiled format.</param>
-    internal void RequestFormattingWrite(FunctionAbi wrapper, FunctionAbi implementation)
-    {
-        this.JoinNeeds(FormattingRow(CompilerFunctionKind.WriterWrite)!.Needs);
-        this.formattingWrites.Add((wrapper, implementation));
-    }
-
-    /// <summary>Registers a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a write wrapper (SPEC 22.9.2): it is
-    /// written in request order, and the needs of its kind's row join the module's. The planner requests each conversion once;
-    /// any other kind is a broken contract.</summary>
-    /// <param name="kind">TextToString, which formats into a heap buffer, or TextTryFormat, into the caller's array.</param>
-    /// <param name="wrapper">The conversion's ABI.</param>
-    /// <param name="write">The write wrapper it calls.</param>
-    internal void RequestFormattingConversion(CompilerFunctionKind kind, FunctionAbi wrapper, FunctionAbi write)
-    {
-        var fixedBuffer = kind switch
-        {
-            CompilerFunctionKind.TextTryFormat => true,
-            CompilerFunctionKind.TextToString => false,
-            _ => throw new InvalidOperationException("A formatting conversion kind has no writer."),
-        };
-        this.JoinNeeds(FormattingRow(kind)!.Needs);
-        this.formattingConversions.Add((wrapper, write, fixedBuffer));
-    }
-
-    /// <summary>Writes the formatting runtime when the module needs it, then each requested write wrapper and conversion.</summary>
-    /// <param name="output">The module text.</param>
-    internal void WriteFormatting(TextWriter output)
-    {
-        if (this.NeedsFormattingRuntime)
-        {
-            WriteFormattingRuntime(output);
-        }
-
-        foreach (var (wrapper, implementation) in this.formattingWrites)
-        {
-            WriteFormattingWrite(output, wrapper, implementation);
-        }
-
-        foreach (var (wrapper, write, fixedBuffer) in this.formattingConversions)
-        {
-            WriteFormattingConversion(output, wrapper, write, fixedBuffer);
         }
     }
 
@@ -350,7 +293,7 @@ internal sealed partial class LegacyRuntimeHelpers
         string? text = null;
         foreach (var name in new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" })
         {
-            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name + ".ll.in")!;
+            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + name + ".ll.in")!;
             using var reader = new StreamReader(resource);
             var part = reader.ReadToEnd();
             text = text is null ? part : text + "\n" + part;
@@ -367,37 +310,5 @@ internal sealed partial class LegacyRuntimeHelpers
         }
 
         return ExpandRuntime(text!, CollectionsMarshal.AsSpan(definitions));
-    }
-
-    // SPEC 22.10.1: a write that the adapter's recorded failure blocks, and whose returned or nested failure it records.
-    private static void WriteFormattingWrite(TextWriter output, FunctionAbi wrapper, FunctionAbi implementation)
-    {
-        output.Write(wrapper.GetDefinition(exported: false));
-        output.Write("""
-            entry:
-              %failed = getelementptr i8, ptr %self, i64 56
-              %before = load i8, ptr %failed
-              %blocked = icmp ne i8 %before, 0
-              br i1 %blocked, label %error, label %format
-            format:
-              call void @
-            """);
-        output.Write(implementation.Name);
-        output.Write("""
-            (ptr %ret, ptr %value, ptr %self)
-              %tag = load i32, ptr %ret
-              %after = load i8, ptr %failed
-              %returned_error = icmp ne i32 %tag, 0
-              %nested_error = icmp ne i8 %after, 0
-              %any_error = or i1 %returned_error, %nested_error
-              br i1 %any_error, label %error, label %done
-            error:
-              call void @__kimi_writer_fail(ptr %ret, ptr %self)
-              br label %done
-            done:
-              ret void
-            }
-
-            """);
     }
 }

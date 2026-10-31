@@ -9,6 +9,7 @@ public sealed partial class Binding
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
+    private readonly Dictionary<(BoundType Type, BindingScope Scope), Koto> projectionForms = new(); // ProjectionUseOf
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -164,6 +165,7 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Clear();
+        this.projectionForms.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.associatedAmbiguities?.Clear();

@@ -94,24 +94,6 @@ public sealed partial class Binding
         }
 
         return false;
-
-        static bool ContainsOrigin(BoundOrigin expression, BoundOrigin atom)
-        {
-            if (ReferenceEquals(expression, atom))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < expression.Operands.Count; i++)
-            {
-                if (ContainsOrigin(expression.Operands[i], atom))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     private static BoundOrigin? InferenceAtom(BoundOrigin origin)

@@ -56,12 +56,12 @@ public class ScalarEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Counter);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bytes);

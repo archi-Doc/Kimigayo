@@ -36,7 +36,7 @@ public class HeapClosureErasureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -116,9 +116,9 @@ public class HeapClosureErasureTest
     public void WarmHeapErasureEmissionReusesItsPlans()
     {
         var c = MinimalEmissionTest.Analyze("let text = \"owned\"\nlet concrete = func [text@move] () => text == \"owned\"\nlet erased: () -> bool = concrete@move\nrequire erased() else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

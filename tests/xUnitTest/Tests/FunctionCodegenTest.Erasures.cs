@@ -25,7 +25,7 @@ public sealed partial class FunctionCodegenTest
         "func nn() -> () -> Never => fail\nfunc ra() -> (isize) -> raw/u8 => Raw.allocate\nfunc wl() -> (ref/string) -> () => Console.writeLine\n";
 
     // SPEC 7.7.4 (DECISIONS R5-M104): erased values called twice and destroyed once, in reverse declaration order: an inline environment, an
-    // inline drop-needing one, a heap one holding a drop-declaring struct and a function Item, also under the old generator.
+    // inline drop-needing one, a heap one holding a drop-declaring struct and a function Item.
     public static TheoryData<string, string, string> ErasurePrograms => new()
     {
         {
@@ -232,7 +232,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 7.7.4, 10.7, 22.5.1 (DECISIONS R5-M108): erased compiler functions' Items and a Never Item erased into two results run natively, the
-    // Never one called through a borrowed string-result value; also under the old generator.
+    // Never one called through a borrowed string-result value.
     [Fact]
     public void ErasedTargetsRun()
         => ScalarEmissionTest.EmitFixture("ErasureTargets", ErasureTargets, "write\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: never\n");

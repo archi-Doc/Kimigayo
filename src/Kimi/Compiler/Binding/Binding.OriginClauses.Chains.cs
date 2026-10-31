@@ -44,7 +44,6 @@ public sealed partial class Binding
     private int[] chainEndHead = [];
     private int[] chainRecorded = []; // Per edge: the source search that recorded at it.
     private int chainSearch;
-    private bool judgingDeclarationRows;
 
     // A node of a declaration row's graph is Dependent when an Unbound atom is in it.
     private static bool Dependent(BoundOrigin origin) => UnboundAtom(origin) is not null;

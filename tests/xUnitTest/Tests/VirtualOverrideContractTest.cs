@@ -24,7 +24,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
         Assert.Same(implementation.Parameters[1].Type.TypeOf()!.Origin, implementation.SymbolOf()!.Type!.Origin);
         Assert.NotSame(implementation.Parameters[0].Type.TypeOf()!.Origin, implementation.SymbolOf()!.Type!.Origin);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -53,7 +53,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Original + "override func choose(self: objref/Self, value: ref/i32) -> ref/i32 => value\n()");
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -97,7 +97,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> ref/i32 during b\n        origin a outlives b\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> ref/i32 during b\n" + repeated + "        return a\n()");
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.IsVerifiedOriginObligation(new(BindingObligationKind.OriginOutlives, implementation, BindingDeadline.BodyOrigins, Longer: implementation.Parameters[1].Type.TypeOf()!.Origin, Shorter: implementation.Parameters[2].Type.TypeOf()!.Origin)));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -121,7 +121,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
     {
         second ??= first;
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during first\n        origin first == second\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32" + first + ", b: ref/i32" + second + ") -> ref/i32" + first + " => a\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -132,7 +132,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Source);
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

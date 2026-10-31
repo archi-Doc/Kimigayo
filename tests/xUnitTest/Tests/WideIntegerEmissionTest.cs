@@ -108,7 +108,7 @@ public class WideIntegerEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Unsupported);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -121,7 +121,7 @@ public class WideIntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"let x: {type} = {value}");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -129,13 +129,13 @@ public class WideIntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"let x: u128 = {UnsignedMax}\nlet y: i128 = {Min}\nif x >> 127 == 1 and y >> 127 == -1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var roundTrip = new StringWriter();
-        Assert.True(restored.WriteIr(roundTrip, out error), error);
+        Assert.True(restored.Generate(roundTrip), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), roundTrip.ToString());
         ScalarEmissionTest.WriteFixture("WideRoundTrip", roundTrip.ToString(), "ok\n");
     }
@@ -146,10 +146,10 @@ public class WideIntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func f(x: u128) -> u128 => x * 1\nvar x: u128 = {UnsignedMax}\nlet y = if true => f(x) else => 0\nlet z = y@i128");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Wide integer analysis or emission failed.");
             }

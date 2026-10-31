@@ -104,7 +104,7 @@ public class RequirementFunctionItemTest
     public void ConfinedUsesPublishedPremisesAndIsLostOnErasure(bool bounded, bool erased)
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(bounded, erased));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(bounded && !erased, c.Analysis.IsVerified);
         if (!bounded || erased)
         {
@@ -116,13 +116,13 @@ public class RequirementFunctionItemTest
     public void ChangedPremisesRevokeTheStoredItemGuarantee()
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(true, false));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var donor = MinimalEmissionTest.Analyze(ConfinedProgram(false, false), "donor.kimi");
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
         ParseTestHelper.Detach(changed, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analyze().IsVerified);
         Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
@@ -132,12 +132,12 @@ public class RequirementFunctionItemTest
     public void WarmItemSignaturesAndWitnessContextsReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

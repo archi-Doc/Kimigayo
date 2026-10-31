@@ -44,9 +44,9 @@ public class DictionaryRemainderTest
             Console.writeLine("dictionary storage")
             """);
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, Probe);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.WriteFixture("DictionaryRemainderShared", CompilationTestHelper.WriteIr(c), "dictionary storage\n");
     }
 
@@ -187,14 +187,14 @@ public class DictionaryRemainderTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             var valid = stage switch
             {
                 "Binding" => c.Bind().IsComplete,
                 "Ownership" => c.Analyze().IsVerified,
-                _ => c.WriteIr(TextWriter.Null, out _),
+                _ => c.Generate(TextWriter.Null),
             };
             if (!valid)
             {
@@ -298,9 +298,9 @@ public class DictionaryRemainderTest
                     return total
             """;
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, probe);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.WriteFixture("DictionaryRemainderOffsets", CompilationTestHelper.WriteIr(c), "offsets\n");
     }
 }

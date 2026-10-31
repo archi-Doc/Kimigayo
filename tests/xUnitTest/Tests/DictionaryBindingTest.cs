@@ -27,7 +27,7 @@ public class DictionaryBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -40,6 +40,6 @@ public class DictionaryBindingTest
     public void BindsDesignatedOperations(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

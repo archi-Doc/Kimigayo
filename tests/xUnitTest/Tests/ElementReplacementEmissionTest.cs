@@ -121,7 +121,7 @@ public class ElementReplacementEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -135,7 +135,7 @@ public class ElementReplacementEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -147,14 +147,14 @@ public class ElementReplacementEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);

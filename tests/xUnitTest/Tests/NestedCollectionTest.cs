@@ -98,7 +98,10 @@ public class NestedCollectionTest
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            if (!c.Generate(TextWriter.Null))
+            {
+                Assert.Fail(MinimalEmissionTest.Describe(c)); // only on failure: the function is measured
+            }
         }
 
         Compile();
@@ -111,7 +114,7 @@ public class NestedCollectionTest
         var c = MinimalEmissionTest.Analyze("let inner = [1: 2]\nlet values = [1: inner@move]\nlet again = inner@move");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -120,10 +123,10 @@ public class NestedCollectionTest
     public void RetainedInnerHandleBorrowsProtectTheOuterStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -134,6 +137,6 @@ public class NestedCollectionTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

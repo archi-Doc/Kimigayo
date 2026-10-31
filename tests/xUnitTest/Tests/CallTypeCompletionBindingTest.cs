@@ -54,7 +54,7 @@ public class CallTypeCompletionBindingTest
     public void ValidInstantiatedTypesRetainCallPlan(string type)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: " + type + ") => take(value@move)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -69,7 +69,7 @@ public class CallTypeCompletionBindingTest
         var constraint = generic.Length == 0 ? string.Empty : "\n        U is i32";
         var body = generic.Length == 0 ? " => value.take()" : constraint + "\n        value.take()";
         var c = MinimalEmissionTest.Analyze("struct Owner<T>\n    T is i32\n    public func take(self: ref/Self) => ()\ngroup Consumer\n    func call" + generic + "(value: ref/Owner<" + type + ">)" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

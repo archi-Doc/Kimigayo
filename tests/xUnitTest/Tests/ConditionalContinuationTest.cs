@@ -46,7 +46,7 @@ public class ConditionalContinuationTest
                 c.Analyze();
             }
 
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
             if (reload)
             {
                 Assert.Equal(MirDumpTest.Dump(MinimalEmissionTest.Analyze(source)), MirDumpTest.Dump(c));
@@ -55,11 +55,11 @@ public class ConditionalContinuationTest
             c.Bind();
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out _));
+            Assert.True(c.Generate(TextWriter.Null));
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 c.Analyze();
-                c.WriteIr(TextWriter.Null, out _);
+                c.Generate(TextWriter.Null);
             }));
         }
     }

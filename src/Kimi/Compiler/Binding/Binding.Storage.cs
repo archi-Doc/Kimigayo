@@ -494,6 +494,11 @@ public sealed partial class Binding
     private BoundOrigin SubstituteStoredOrigin(
         BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, ReadOnlySpan<BoundType?> types = default)
     {
+        if (images.Argument(origin) is { } valueArgument)
+        {
+            return valueArgument;
+        }
+
         if (origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, binder) && images.Reserved(origin.Slot) is { } reserved)
         {
             return reserved;
@@ -605,18 +610,41 @@ public sealed partial class Binding
         }
     }
 
-    // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152): its inputs, in parameter-slot
+    // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152, R4-M159): its inputs, in parameter-slot
     // order, and at a value call of a Closure its two reserved atoms', the call receiver ρ (the receiver acquisition's Origin) and the
     // call result (the call's Unbound atom, R4-M118), each built only where the result names its atom; a missing image keeps its atom.
-    private readonly ref struct PerCallImages(ReadOnlySpan<BoundOrigin> inputs, BoundOrigin? receiver, BoundOrigin? result)
+    // A Closure Type's Origin arguments are the images of its definition's (DECISIONS R4-M159): `definition[i]` becomes `value[i]`.
+    private readonly ref struct PerCallImages(
+        ReadOnlySpan<BoundOrigin> inputs,
+        BoundOrigin? receiver,
+        BoundOrigin? result,
+        ReadOnlySpan<BoundOrigin> definition = default,
+        ReadOnlySpan<BoundOrigin> value = default)
     {
+        private readonly ReadOnlySpan<BoundOrigin> definition = definition;
+        private readonly ReadOnlySpan<BoundOrigin> value = value;
+
         internal ReadOnlySpan<BoundOrigin> Inputs { get; } = inputs;
 
-        internal bool IsEmpty => this.Inputs.IsEmpty && receiver is null && result is null;
+        internal bool IsEmpty => this.Inputs.IsEmpty && receiver is null && result is null && this.definition.IsEmpty;
 
         public static implicit operator PerCallImages(ReadOnlySpan<BoundOrigin> inputs) => new(inputs, null, null);
 
         public static implicit operator PerCallImages(Span<BoundOrigin> inputs) => new(inputs, null, null);
+
+        // The image of a definition's Origin argument, null for any other atom.
+        internal BoundOrigin? Argument(BoundOrigin origin)
+        {
+            for (var i = 0; i < this.definition.Length; i++)
+            {
+                if (ReferenceEquals(this.definition[i], origin))
+                {
+                    return this.value[i];
+                }
+            }
+
+            return null;
+        }
 
         // The image of the binder's reserved atom at a Projection slot, null for any other slot.
         internal BoundOrigin? Reserved(int slot) => slot switch

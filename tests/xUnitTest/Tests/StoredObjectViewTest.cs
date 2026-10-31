@@ -35,20 +35,20 @@ public class StoredObjectViewTest
     public void StoredViewsKeepTheirHandleSlotProtected(string conflict)
     {
         var c = MinimalEmissionTest.Analyze(Item + "let owner = Kimi.Intrinsics.makeObj(Item.init())\nvar stored = (owner@move, 1)\nlet view = stored.0@objref\n" + conflict + "\nrequire view.id == 7 else => $abort(\"live\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void DynamicViewsKeepTheirArrayProtected()
     {
         var c = MinimalEmissionTest.Analyze(Item + "var stored: [1 of obj/Item] = [Kimi.Intrinsics.makeObj(Item.init())]\nfunc index() -> usize => 0\nlet view = stored[index()]@objref\nlet moved = stored@move\nrequire view.id == 7 else => $abort(\"live\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -58,10 +58,10 @@ public class StoredObjectViewTest
     public void WarmStoredViewAnalysisAndEmissionAllocateNothing(bool stored)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ObjectView(stored));
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -74,7 +74,7 @@ public class StoredObjectViewTest
         var initial = CompilationTestHelper.WriteIr(c);
         c.Project.ProjectFile.PackageId = "changed.identity";
         Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
         var changed = CompilationTestHelper.WriteIr(c);

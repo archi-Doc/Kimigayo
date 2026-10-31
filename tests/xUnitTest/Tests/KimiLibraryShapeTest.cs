@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -9,7 +10,7 @@ namespace XunitTest;
 
 /// <summary>The shapes of the embedded Kimi library that the compiler and the static <c>.ll.in</c> runtime rely on (SPEC 22.1).
 /// A shape is the declaration's source header with its direct member lines; Binding gives the same text the same meaning.</summary>
-public class KimiLibraryShapeTest
+public partial class KimiLibraryShapeTest
 {
     // Read-only: no test changes the library or its Binding.
     private static readonly Lazy<Compilation> Library = new(() =>
@@ -19,7 +20,7 @@ public class KimiLibraryShapeTest
         return c;
     });
 
-    // Code generation and the runtime call these bodiless functions by position (WindowsLowering): parameter order,
+    // Code generation and the runtime call these bodiless functions by position: parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
@@ -131,7 +132,7 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(186, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(187, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -323,21 +324,23 @@ public class KimiLibraryShapeTest
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
-    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), and whether in place,
-    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan).
+    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), whether in place,
+    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan), and the
+    // by-value Callable parameter it calls, `removeAll`'s `matching` only (PLAN G264 U0′: `truncate` destroys as `clear` does).
     [Fact]
     public void PublishedRowsAreFixed()
     {
         var c = Library.Value;
         var rows = KimiLibraryCatalog.Entries.ToArray().Where(static x => x.Row is not null)
-            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace}");
+            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace} {x.Row.Calls}");
         Assert.Equal(
             [
-                "Replace  -1 0 True", "ArrayClear  -1 0 False", "ArrayCapacityImplementation  -1 -1 False", "ArrayRepeatingImplementation  -1 -1 False",
-                "TextToString format 0 -1 False", "TextTryFormat format 0 -1 False", "WriterWrite format 1 -1 False", "DictionaryReserve  -1 -1 False",
-                "DictionaryTryInsert equals 1 -1 False", "DictionaryInsertOrReplace equals 1 1 False", "DictionaryRemove equals 1 -1 False",
-                "DictionaryTryGet equals 1 -1 False", "DictionaryClear  -1 0 False", "DictionaryShrinkToFit  -1 -1 False",
-                "DictionaryIndexUniq equals 1 -1 False", "DictionaryStorageFindEntry equals 1 -1 False",
+                "Replace  -1 0 True -1", "ArrayClear  -1 0 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
+                "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
+                "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
+                "DictionaryTryGet equals 1 -1 False -1", "DictionaryClear  -1 0 False -1", "DictionaryShrinkToFit  -1 -1 False -1",
+                "DictionaryIndexUniq equals 1 -1 False -1", "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayTruncate  -1 0 False -1",
+                "ArrayRemoveAll  -1 0 False 1",
             ],
             rows);
     }
@@ -455,7 +458,7 @@ public class KimiLibraryShapeTest
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
     // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
-    // (LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
+    // (Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
@@ -555,10 +558,10 @@ public class KimiLibraryShapeTest
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
         var (layout, type) = Layout(path);
-        Assert.Equal(size, layout.Value.Layout.Size);
+        Assert.Equal(size, layout.Size);
         for (var i = 0; i < offsets.Length; i += 2)
         {
-            Assert.Equal((int)offsets[i + 1], layout.Offset(type, (string)offsets[i]));
+            Assert.Equal((int)offsets[i + 1], layout.FieldOffsets.Span[AdtDef.IndexOf(type, (string)offsets[i])]);
         }
     }
 
@@ -580,10 +583,10 @@ public class KimiLibraryShapeTest
             """;
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         var (writer, writerType) = Layout("Utf8Writer");
-        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.Offset(writerType, "failed")}\n", ir, StringComparison.Ordinal);
+        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.FieldOffsets.Span[AdtDef.IndexOf(writerType, "failed")]}\n", ir, StringComparison.Ordinal);
         foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
         {
-            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Value.Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Value.Layout.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
+            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
         }
     }
 
@@ -666,17 +669,10 @@ public class KimiLibraryShapeTest
         }
     }
 
-    private static (AggregateLayout Layout, BoundType Type) Layout(string path)
+    private static (TypeLayout Layout, BoundType Type) Layout(string path)
     {
-        var record = Record(path);
-        var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
-        var pool = new AggregateLayoutPool(Library.Value.Layout);
-        if (AdtDef.Destructor(type) is { } destructor)
-        {
-            pool.RegisterDestructor(destructor, 0);
-        }
-
-        return (Assert.IsType<AggregateLayout>(pool.Get(type)), type);
+        var type = Library.Value.Binding.SelfType(Record(path).SymbolOf()!);
+        return (Library.Value.Layout.Of(type).Value!.Layout, type);
     }
 
     // The trimmed source line holding the node's start: a declaration header with its modifiers, or a Field.

@@ -23,12 +23,12 @@ public class AccessorReceiverBindingTest
     public void InvalidReceiversFailAtTheUnusedDeclaration(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         var accessor = (PropertyAccessorKoto)issue.Node;
         Assert.NotNull(accessor.ReceiverType!.TypeOf());
         Assert.False(((PropertyKoto)accessor.Parent!).SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 11.3: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
@@ -60,7 +60,7 @@ public class AccessorReceiverBindingTest
     public void ValidShorthandStaticAndRequirementReceiversRemainSupported(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Property(c).SymbolOf()!.Property!.IsVerified);
     }
 
@@ -104,7 +104,7 @@ public class AccessorReceiverBindingTest
         var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
         ParseTestHelper.Detach(replacement, new PropertyAccessorKoto(ref reader, default, default, PropertyAccessorKind.Get, null));
         Assert.True(KotoHelper.Replace(property, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Null(property.SymbolOf()!.Property!.Getter.Receiver);
         Assert.True(property.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));

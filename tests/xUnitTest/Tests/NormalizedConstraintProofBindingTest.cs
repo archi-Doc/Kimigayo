@@ -43,7 +43,7 @@ public class NormalizedConstraintProofBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Head + "func take<T>()\n    T is " + requirement + "\n    ()\nfunc caller<U>()\n    U is " + evidence + "\n    take<U>()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Assert.IsType<InvocationKoto>(Function(c, "caller").Body!.Items.Single()).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -55,7 +55,7 @@ public class NormalizedConstraintProofBindingTest
     public void ConcreteProofNormalizesTheAssociatedRequirement(string argument, ConstraintProof expected)
     {
         var c = MinimalEmissionTest.Analyze(Head + "func query<T>(value: T)\n    T is Source.Origin.Item\n    ()\nfunc context(value: " + argument + ") => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertProof(c, expected);
     }
 

@@ -15,9 +15,9 @@ public class EnumProjectionAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct Source\n    Self is C\n    associate C.Element is i32\npublic enum Api\n    Item(Source.C.Element)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class EnumProjectionAccessBindingTest
         var replacement = Payload(Check("public enum Api\n    Item(i32)", true)).Operands[0];
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(Payload(c), original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(KotoHelper.Replace(Payload(c), replacement, original));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingFailure.Access, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").FailureOf());
@@ -110,11 +110,11 @@ public class EnumProjectionAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
 
         return c;

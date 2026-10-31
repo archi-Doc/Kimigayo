@@ -35,9 +35,9 @@ public class ConstructorInferenceCompositionTest
     public void ConstructorSlotsComposeWithExistingStructuralEvidence(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -58,7 +58,7 @@ public class ConstructorInferenceCompositionTest
     {
         const string source = "struct Item<T>\n    public init(value: T, code: i32) => ()\n    public init(value: T, name: string) => ()\nlet item = Item.init(42, 0)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Last(x => x.IsConstructor);
         var original = function.Parameters[0].Type;
         var donor = MinimalEmissionTest.Analyze(source.Replace("value: T, name", "value: ref/T, name", StringComparison.Ordinal));
@@ -68,7 +68,7 @@ public class ConstructorInferenceCompositionTest
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.ParameterShapeMismatch);
         Assert.True(KotoHelper.Replace(function, replacement, original));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -83,10 +83,10 @@ public class ConstructorInferenceCompositionTest
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<InvocationKoto>()).ArgumentNodes[0];
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(call, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(BoundType.Boolean, call.CallOf()!.DeclaringType!.Components[0]);
         Assert.True(KotoHelper.Replace(call, replacement, original));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(BoundType.I32, call.CallOf()!.DeclaringType!.Components[0]);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

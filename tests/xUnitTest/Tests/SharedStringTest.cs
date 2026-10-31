@@ -66,7 +66,7 @@ public class SharedStringTest
         var c = MinimalEmissionTest.Analyze("var text = \"hello\"\nlet saved = text@ref\n" + invalidation + "\nConsole.writeLine(saved)");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

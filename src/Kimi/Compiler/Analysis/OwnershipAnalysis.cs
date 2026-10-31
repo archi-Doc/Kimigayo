@@ -22,6 +22,10 @@ public sealed partial class OwnershipAnalysis
     private readonly List<LoopFrame> loops = new();
     private readonly List<int> arguments = new();
     private readonly HashSet<InvocationKoto> referenceCalls = new(ReferenceEqualityComparer.Instance);
+
+    // The located Unsupported_Kd at which this analysis stops (Stop, Stopped).
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private readonly List<OwnershipIssue> stops = new();
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
     private bool fixedArrayWitnesses;
@@ -87,9 +91,10 @@ public sealed partial class OwnershipAnalysis
             return this.Result;
         }
 
-        if (this.GateReceiverDependentCalls(binding))
+        this.GateReceiverDependentCalls(binding);
+        if (this.stops.Count != 0)
         {
-            return this.Result = new(false, 0, this.issues.Count);
+            return this.Stopped();
         }
 
         if (this.ReportUnprovenOriginObligations())
@@ -114,6 +119,11 @@ public sealed partial class OwnershipAnalysis
 
         this.AnalyzeLibraryBodies(0);
         this.ValidateEffectBounds();
+        if (this.stops.Count != 0)
+        {
+            return this.Stopped();
+        }
+
         var verified = this.flow.Issues.Count == 0 && binding.LintErrors == 0 && this.flow.PendingBinding.Count == 0 && this.issues.Count == 0;
         if (!verified)
         {
@@ -151,28 +161,60 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
+        this.stops.Clear();
         this.invalidDefaults.Clear();
         this.checkedDefaults.Clear();
         this.candidates.Clear();
     }
 
     // SPEC 15.8.2 (DECISIONS R4-M126 §2.13, R4-M152; the owner's D5 exception, OQ-F7-1 (vi)): Binding binds a value call whose result
-    // depends on its call receiver, which this analysis cannot judge, so a program with one gets the located Unsupported_Kd at each such
-    // call, the call's current plan deciding (F4), and nothing else of it is analyzed, as R1's Binding failure left it.
+    // depends on its call receiver, which this analysis cannot judge, so a program with one stops at each such call (Stop), the call's
+    // current plan deciding (F4), before any body is analyzed, as R1's Binding failure left it.
     [Transitional("R6-check", Reason = "The old analysis's gate goes with the old analysis.")]
-    private bool GateReceiverDependentCalls(Binding binding)
+    private void GateReceiverDependentCalls(Binding binding)
     {
-        var gated = false;
         foreach (var call in binding.ReceiverDependentCalls)
         {
             if (call.BoundValueCall is { ReceiverDependentResult: true })
             {
-                this.issues.Add(new(call, OwnershipRequirement.Unsupported));
-                gated = true;
+                this.Stop(call);
+            }
+        }
+    }
+
+    // The old analysis's one stop (the owner's D5 exceptions until R6-check, which deletes this analysis): a program with a form this
+    // analysis cannot judge gets the located Unsupported_Kd at each such form and nothing else of it is reported, as if nothing else were
+    // analyzed: R1's receiver-dependent calls (the gate above, R4-M126 (vi)) and a Place whose Type SupportsType refuses for Origin
+    // arguments its symbol does not declare (TypeSupport.UndeclaredOriginArguments: a Closure Type with its maker's images, whose Loans
+    // this analysis would misjudge), by the owner's (a) of 2026-10-31, 「すべて推奨の内容でお願いします」 (DECISIONS R4-M159). Any other
+    // refusal (a Never-holding Type) keeps its located Unsupported_Kd and the analysis goes on, so its independent records stay
+    // (SPEC 23.1.2).
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private void Stop(Koto at)
+    {
+        foreach (var stop in this.stops)
+        {
+            if (ReferenceEquals(stop.Source, at))
+            {
+                return;
             }
         }
 
-        return gated;
+        this.stops.Add(new(at, OwnershipRequirement.Unsupported));
+    }
+
+    // The analysis result of a program that stopped: its stops' located Unsupported_Kd alone, no body verified.
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private OwnershipResult Stopped()
+    {
+        this.issues.Clear();
+        this.issues.AddRange(this.stops);
+        for (var i = 0; i < this.bodies.Count; i++)
+        {
+            this.bodies[i].IsVerified = false;
+        }
+
+        return this.Result = new(false, 0, this.issues.Count);
     }
 
     private void ReportDiagnostics(IReadOnlyList<OwnershipIssue> reportedIssues)
@@ -482,7 +524,6 @@ public sealed partial class OwnershipAnalysis
         this.placeValues.Clear();
         this.resultHeads.Clear();
         this.resultJoins.Clear();
-        this.resultDeclarations.Clear();
         this.pendingResults.Clear();
         this.selections.Clear();
         this.candidates.Clear();
@@ -526,9 +567,9 @@ public sealed partial class OwnershipAnalysis
             // checking neither destroys them nor applies the callee's return contract.
             var defaultValue = function.Parameters[declarationDefault].DefaultValue!;
             var reported = this.body.IssueStorage.Count;
-            var securedDefault = this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
+            this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
             this.Cleanup(0, parameterCount, defaultValue, CleanupReason.Return);
-            this.Deliver(function, securedDefault);
+            this.Deliver(function);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
             this.CompleteBody(function, declarationDefault);
             return;
@@ -551,7 +592,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.PrepareReceiverFields(function);
-        var secured = -1;
         if (function.Body is { } block)
         {
             this.Block(block);
@@ -571,7 +611,7 @@ public sealed partial class OwnershipAnalysis
             {
                 var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(expression);
-                secured = this.WriteResult(expression, this.resultPlace, value, reported);
+                this.WriteResult(expression, this.resultPlace, value, reported);
             }
         }
         else
@@ -582,7 +622,7 @@ public sealed partial class OwnershipAnalysis
         this.CheckEnvironmentMoves(function);
         this.CheckConstruction(function);
         this.Cleanup(0, 0, function, CleanupReason.Return);
-        this.Deliver(function, secured);
+        this.Deliver(function);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         this.CompleteBody(function);
     }
@@ -658,10 +698,15 @@ public sealed partial class OwnershipAnalysis
             DefaultContext = this.defaultContext,
             CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
-        this.body.IsConcrete &= !type.HasAbstractPart;
-        if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
+        var support = neverResult || type.Kind == BoundTypeKind.Parameter ? TypeSupport.Supported : this.Support(type);
+        if (invalidCopy || support != TypeSupport.Supported)
         {
             this.Unsupported(source);
+        }
+
+        if (support == TypeSupport.UndeclaredOriginArguments)
+        {
+            this.Stop(source); // The owner's (a) (DECISIONS R4-M159): the analysis stops at a Type whose Origins it cannot model.
         }
 
         return id;
@@ -692,7 +737,6 @@ public sealed partial class OwnershipAnalysis
     {
         this.body.PlaceStorage.Add(place);
         this.placeValues.Add(-1);
-        this.resultDeclarations.Add(-1);
         return place.Id;
     }
 
@@ -914,7 +958,7 @@ public sealed partial class OwnershipAnalysis
         if (node.ErasedFunctionType is { } erased)
         {
             if (node.BoundType?.Kind == BoundTypeKind.FunctionItem && node.BoundSymbol is { Declaration: FunctionKoto item } symbol &&
-                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType, requireClosed: false) is null :
+                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType) is null :
                     (item.Body ?? item.ExpressionBody) is null && symbol.CompilerFunction == CompilerFunctionKind.None))
             {
                 this.Unsupported(node); // A requirement without a selected executable entry cannot be erased.
@@ -1533,12 +1577,9 @@ public sealed partial class OwnershipAnalysis
         var mark = this.arguments.Count;
         var loanDepth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
-        var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            var prepared = this.PrepareCallArgument(call, receiver, plan.ReceiverOperation);
-            borrows |= this.HasCallInspection(prepared);
-            this.arguments.Add(prepared);
+            this.arguments.Add(this.PrepareCallArgument(call, receiver, plan.ReceiverOperation));
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -1549,7 +1590,6 @@ public sealed partial class OwnershipAnalysis
                 : accessor is not null && argument.ParameterIndex == 0 && accessor.Receiver is not null && preparedReceiver >= 0 ? preparedReceiver
                 : accessor?.Kind == PropertyAccessorKind.Set && preparedInput >= 0 ? preparedInput
                 : this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
-            borrows |= this.HasCallInspection(prepared);
             this.arguments.Add(prepared);
         }
 
@@ -1589,11 +1629,6 @@ public sealed partial class OwnershipAnalysis
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(call.BoundType, BoundType.Never))
         {
-            if (borrows)
-            {
-                this.body.CallLoans.Add(new(invoke, -1, -1, LoanRequirement.None));
-            }
-
             this.current = -1;
             this.EndComparisonLoans(loanDepth, call);
             this.comparisonDepth = loanDepth;
@@ -1618,12 +1653,7 @@ public sealed partial class OwnershipAnalysis
 
         // Result Origins retain their source Loans independently of call-argument Loans.
         // Secure the result before ending the latter.
-        var loanEnd = this.EndComparisonLoans(loanDepth, call);
-        if (borrows)
-        {
-            this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
-        }
-
+        this.EndComparisonLoans(loanDepth, call);
         this.comparisonDepth = loanDepth;
 
         return result;
@@ -1723,13 +1753,10 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    private int Condition(Koto condition) => this.Condition(condition, out _);
-
-    private int Condition(Koto condition, out int cleanupStart)
+    private int Condition(Koto condition)
     {
         var mark = this.temporaries.Count;
         var value = this.Value(this.Expression(condition, PlaceUseKind.Read));
-        cleanupStart = this.body.Operations.Count;
         this.Cleanup(mark, this.locals.Count, condition, CleanupReason.ExpressionEnd);
         this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
         return value;
@@ -1844,10 +1871,10 @@ public sealed partial class OwnershipAnalysis
         this.EndComparisonLoans(loanDepth, jump);
         if (returns)
         {
-            var secured = this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
+            this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
             this.CheckConstruction(jump);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
-            this.Deliver(jump, secured);
+            this.Deliver(jump);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
         else if (selected && jump is YieldKoto or ExitKoto)

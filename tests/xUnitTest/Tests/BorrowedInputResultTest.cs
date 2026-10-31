@@ -34,10 +34,10 @@ public class BorrowedInputResultTest
     public void TheResultKeepsTheLoansHeldInsideItsInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Problems);
         Assert.True(issue.Code.IsLoanConflict(), issue.Code.ToString());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class BorrowedInputResultTest
     public void ResultsMayEndBeforeTheInputsLoansAreReleased(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("BorrowedInputResult" + name, source, string.Empty);
     }
 
@@ -61,7 +61,7 @@ public class BorrowedInputResultTest
     public void APartBorrowBesideAStoredReferenceStaysPrecise()
     {
         var c = MinimalEmissionTest.Analyze("var n = 7\nlet item = (n@ref, 5)\nlet x = item.1@ref\nn = 9\nrequire x == 5 else => $abort(\"part\")");
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("n = 9")));
     }
 
@@ -70,9 +70,9 @@ public class BorrowedInputResultTest
     public void WarmOwnershipOverBorrowedInputResultsAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Holder + Free + "var n = 7\nlet h = H.init(item: n@ref)\nlet r = h.get()\nlet s = get(h@ref)\nrequire r == 7 and s == 7 else => $abort(\"read\")\nn = 9");
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

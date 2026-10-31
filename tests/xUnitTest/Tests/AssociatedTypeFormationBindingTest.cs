@@ -33,7 +33,7 @@ public class AssociatedTypeFormationBindingTest
     public void ValidAssociatedDefinitionsStillCertify(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + type);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -58,7 +58,7 @@ public class AssociatedTypeFormationBindingTest
     public void DependentDefinitionsUseTheirOwnConformanceEvidence(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\n" + declaration);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.All(Definition(c).Paths, path => Assert.True(path.IsVerified));
     }
 

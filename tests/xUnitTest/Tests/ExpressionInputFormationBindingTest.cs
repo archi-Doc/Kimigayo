@@ -50,10 +50,10 @@ public class ExpressionInputFormationBindingTest
     public void ValidInputsPreserveBothCertificates(string argument)
     {
         var call = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
-        Assert.True(call.Binding.Result.IsComplete, MinimalEmissionTest.Describe(call, null));
+        Assert.True(call.Binding.Result.IsComplete, MinimalEmissionTest.Describe(call));
         Assert.NotNull(Call(call).CallOf());
         var runtime = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
-        Assert.True(runtime.Binding.Result.IsComplete, MinimalEmissionTest.Describe(runtime, null));
+        Assert.True(runtime.Binding.Result.IsComplete, MinimalEmissionTest.Describe(runtime));
         Assert.NotNull(Test(runtime).RuntimeTestOf());
         var restoredCall = CompilationTestHelper.Reload(call);
         Assert.True(restoredCall.Bind().IsComplete);
@@ -72,7 +72,7 @@ public class ExpressionInputFormationBindingTest
             ? "struct Target<T>\ngroup G\n    func call<U>(x: objref/Target<i32>) -> bool\n        U is i32\n        return x is Target<Source<U>.Origin.Item>"
             : "group G\n    func take<T>() => ()\n    func call<U>()\n        U is i32\n        take<Source<U>.Origin.Item>()";
         var c = MinimalEmissionTest.Analyze(Prefix + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

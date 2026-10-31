@@ -301,8 +301,8 @@ public sealed partial class Binding
 
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
                 {
-                    // An entry whose binding failed derives from that failure and adds nothing to the repeats.
-                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, source.Declaration) : this.FailCaptureEntry(function, repeats, capture, BindingFailure.None, null, null)
+                    // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
+                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, capture, BindingFailure.None, null, null)
                         : this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, null, null);
                 }
 
@@ -389,7 +389,7 @@ public sealed partial class Binding
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {

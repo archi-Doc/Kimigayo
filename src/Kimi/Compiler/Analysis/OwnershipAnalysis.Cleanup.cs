@@ -125,7 +125,7 @@ public sealed partial class OwnershipAnalysis
         this.selections.RemoveAt(this.selections.Count - 1);
         var completes = this.flow!.Nodes[deferred].CanCompleteNormally;
         this.body.RecordCompletion(entry, join, completes);
-        this.body.DeferredPlanStorage[plan] = new(deferred, edge, entry, join, this.body.Operations.Count, parent, completes);
+        this.body.DeferredPlanStorage[plan] = new(deferred, edge, entry, this.body.Operations.Count, parent, completes);
         this.current = completes ? join : -1;
 
         this.activeDeferred = parent;

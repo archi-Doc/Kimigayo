@@ -16,7 +16,7 @@ public sealed partial class Binding
     internal static bool HasFormattingCallback(CallPlan call)
         => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat;
 
-    // The same finalized callback is consumed by effect checking and generation.
+    // The finalized callback is consumed by effect checking.
     // Text.writer retains its reserve callback; creating the adapter does not invoke it.
     internal bool TryResolveFormattingCallback(CallPlan site, out CallPlan? implementation)
     {
