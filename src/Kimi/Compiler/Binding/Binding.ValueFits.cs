@@ -41,9 +41,11 @@ public sealed partial class Binding
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(this, use, OriginPart.Judged);
+        var start = this.comparisonFacts.Count;
+        var walk = new RelationWalk(this, use, this.comparisonFacts);
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
+        this.comparisonFacts.RemoveRange(start, this.comparisonFacts.Count - start);
         return fits;
     }
 
@@ -83,11 +85,14 @@ public sealed partial class Binding
     private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref ComparisonFailure failure)
     {
         // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
-        var walk = new RelationWalk(this, use, OriginPart.Judged);
+        var start = this.comparisonFacts.Count;
+        var walk = new RelationWalk(this, use, this.comparisonFacts);
         var fits = polarity == OriginVariance.Contravariant ? walk.Fits(expected, actual) : walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        var first = walk.Failure;
+        this.comparisonFacts.RemoveRange(start, this.comparisonFacts.Count - start);
         if (!fits)
         {
-            failure = walk.Failure;
+            failure = first;
         }
         else if (!HasLocalRegion(actual) && !HasLocalRegion(expected))
         {

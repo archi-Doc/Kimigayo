@@ -10,14 +10,20 @@ namespace Kimi.Compiler;
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
-//   reader that records the failure takes from the walk that decided.
+//   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
+//   (comparisonFacts, design-r2 Amendment 1 A2).
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
-//   inputs, its result, then the implementation's own well-formedness. The walk stops at its first failure, which is the one record of
-//   a whole-contract comparison (SPEC 15.6.1).
+//   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
+//   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
+//   component's failure, keeping each in position order; a structural failure ends it. The first fact is the walk's failure.
 // - Prohibitions: no reader walks a relation again to explain it; a mode that changes what the relation is goes into the query, never
 //   into a parameter of one entry.
 public sealed partial class Binding
 {
+    // The facts of the recording roots' walks (FitsTypeAt, CheckTypeUse), one per failing position: each root reads its own, after its
+    // start, and truncates the list back to that start (warm 0 B).
+    private readonly List<ComparisonFailure> comparisonFacts = new();
+
     // What failed where a relation does not hold (SPEC 10.7, 15.6.1); the closed rows of ComparisonFailure.Kind.
     internal enum ComparisonFailureKind : byte
     {
@@ -80,8 +86,11 @@ public sealed partial class Binding
     {
         private readonly Binding? binding;
         private readonly Koto? use;
+        private readonly List<ComparisonFailure>? facts;
+        private readonly int start;
         private OriginPart part;
         private ComparisonFailure failure;
+        private bool ended;
 
         internal RelationWalk(Binding? binding, Koto? use, OriginPart part)
         {
@@ -90,8 +99,16 @@ public sealed partial class Binding
             this.part = part;
         }
 
+        // A recording root's walk: its facts follow `facts`' current end, which the root truncates back once it has read them.
+        internal RelationWalk(Binding binding, Koto use, List<ComparisonFailure> facts)
+            : this(binding, use, OriginPart.Judged)
+        {
+            this.facts = facts;
+            this.start = facts.Count;
+        }
+
         // The first failure of the walk's last false answer.
-        internal readonly ComparisonFailure Failure => this.failure;
+        internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
         // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
         // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
@@ -106,7 +123,7 @@ public sealed partial class Binding
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
             {
-                return this.Fail(ComparisonFailure.Shape);
+                return this.End(instance);
             }
 
             var structural = this.part != OriginPart.Judged;
@@ -119,13 +136,18 @@ public sealed partial class Binding
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use) : 0;
             if (outer == OuterOriginFit.Mismatch)
             {
-                return this.Fail(ComparisonFailure.Shape);
+                return this.End(instance);
             }
 
+            var holds = true;
             if (outer == OuterOriginFit.Relation && !structural &&
                 (!this.OriginFits(longer, shorter, instance, condition) || (invariant && !this.OriginFits(shorter, longer, instance, condition))))
             {
-                return this.Fail(this.OriginFailure(longer, shorter, invariant, instance));
+                holds = false;
+                if (!this.Keep(this.OriginFailure(longer, shorter, invariant, instance), instance))
+                {
+                    return false;
+                }
             }
 
             for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -142,13 +164,25 @@ public sealed partial class Binding
                 if (both ? !this.OriginFits(a, b, instance) || !this.OriginFits(b, a, instance) :
                     variance == OriginVariance.Covariant ? !this.OriginFits(a, b, instance) : !this.OriginFits(b, a, instance))
                 {
-                    return this.Fail(variance == OriginVariance.Contravariant && !both ? this.OriginFailure(b, a, false, instance) : this.OriginFailure(a, b, both, instance));
+                    holds = false;
+                    var failed = variance == OriginVariance.Contravariant && !both ? this.OriginFailure(b, a, false, instance) : this.OriginFailure(a, b, both, instance);
+                    if (!this.Keep(failed, instance))
+                    {
+                        return false;
+                    }
                 }
             }
 
             if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
             {
-                return this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance.Enclosing));
+                // A Function component is one comparison: its first failure is one fact of the walk that reached it.
+                if (this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance.Enclosing)))
+                {
+                    return holds;
+                }
+
+                _ = !this.ended && this.Keep(this.failure, instance);
+                return false;
             }
 
             for (var i = 0; i < actual.Components.Count; i++)
@@ -161,7 +195,11 @@ public sealed partial class Binding
                     var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
                     if (both || variance == OriginVariance.Covariant ? !this.Fits(a, b, both, instance: instance) : !this.Fits(b, a, instance: instance))
                     {
-                        return false;
+                        holds = false;
+                        if (!this.Goes(instance))
+                        {
+                            return false;
+                        }
                     }
 
                     continue;
@@ -169,11 +207,15 @@ public sealed partial class Binding
 
                 if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding), instance: instance))
                 {
-                    return false;
+                    holds = false;
+                    if (!this.Goes(instance))
+                    {
+                        return false;
+                    }
                 }
             }
 
-            return true;
+            return holds;
         }
 
         // The parts of the relation no Origin binding decides: Kind, Semantics, Symbol, Closure context, lengths and arity; an inferred
@@ -206,6 +248,32 @@ public sealed partial class Binding
         private bool Fail(in ComparisonFailure failure)
         {
             this.failure = failure;
+            return false;
+        }
+
+        // Whether a recording root's walk goes on past a failure at `instance`'s level: outside every Callable comparison, unless a
+        // structural failure ended it.
+        private readonly bool Goes(in CallableInstance instance) => this.facts is not null && instance.Expected is null && !this.ended;
+
+        // A failure at a position: outside every comparison a recording root keeps it and goes on (true); otherwise it is the
+        // comparison's failure (false).
+        private bool Keep(in ComparisonFailure failure, in CallableInstance instance)
+        {
+            this.failure = failure;
+            if (!this.Goes(instance))
+            {
+                return false;
+            }
+
+            this.facts!.Add(failure);
+            return true;
+        }
+
+        // A structural failure: the walk's last fact, and it ends the walk.
+        private bool End(in CallableInstance instance)
+        {
+            _ = this.Keep(ComparisonFailure.Shape, instance);
+            this.ended = true;
             return false;
         }
 
