@@ -55,6 +55,22 @@ public sealed partial class DiagnosticOwnerTest
         Assert.Equal(["ProjectPreparationFailed_Kd", "IndentationLevelMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal).Reverse());
     }
 
+    // PLAN G175: the owner keys sources by document, so two snapshots of one path are two sources; a record's text is read from the
+    // document its source names, never from the first document registered under its path.
+    [Theory]
+    [InlineData("let a = 1\n")]
+    [InlineData("abc")]
+    public void TheTextUnderARecordComesFromItsOwnSnapshotOfAPath(string earlier)
+    {
+        var c = Compilation.CreateForTest();
+        c.Diagnostics.AddInput(new SourceDocument("main.kimi", earlier), c.Kotonoha);
+        var later = new SourceDocument("main.kimi", "let value = 1\n");
+        c.Kotonoha.DiagnosticCollection.Add(new(4, 5), DiagnosticCode.IndentationLevelMismatch_Kd, sourceDocument: later);
+
+        var record = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal(("main.kimi", "value"), (record.Path, record.Text));
+    }
+
     [Fact]
     public void ALongLineIsClippedAroundItsUnderline()
     {
