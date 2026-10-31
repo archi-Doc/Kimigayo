@@ -14219,3 +14219,38 @@ structure is recorded here by the unit that first implements it.
     `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G336).
   - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
     R5-M163 (the folder).
+- **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, R5; PLAN G337, design
+  `draft/Sketches/R5/G337-design.md` §7 (`bde706c59`); R4, which owns `Mir/Analysis`, agreed to O1 under its hold, accepted §7 with five
+  conditions and reviews the A3/A5 side; the owner's G337 acceptance 「(a) 受け入れる」; under R4-M1, R4-M2a and R5-M156)
+  - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's (PLAN10-P3's
+    `--compiler-pipeline` figures are per 8 compilations: per compilation stage 3 is 12.7 ms of Scalar 1's 30.1 ms); A3 and A5 over them
+    are 39-42 % of it, while nothing reads a library body's A3 or A5 result (A5 reads A4's keys, A4 no A5 fact, code generation A2's tables).
+  - Input rule: `MirAnalysis.Run(program, rootModules)`, the range required: steps 1 (A3) and 4 (A5: the Origin judgment, the Loans and
+    their block order and move paths) judge the bodies with `Source.Module < rootModules`, the range Compilation already passes to
+    `InstanceCollector.Run`; steps 2 (block order, move paths, A1, A2, A4's local facts) and 3 (A4 over the program) visit every body, since
+    A4 composes library callees' local facts and code generation reads A2's tables of generated library bodies, so no step reads a fact step
+    2 did not produce. Every caller passes `SourceModules.Length` (`Compilation.BuildMir`, `MirInitTest`, `CollectionCostMeasurements`).
+  - Invariant: a body outside the root range is built from its library definition alone (`MirBuilder` builds one body per definition from
+    its own syntax; an instance is the collector's replay of it; a library Closure captures library locals; SPEC 18: the library names no
+    program module). A builder change that builds a library-owned body from program facts (a per-instance or specialized body, R8's
+    monomorphization included) must place it in the root range or end this rule.
+  - Precondition, measured over 134 programs (`tests/milestones`, `tests/mir`, `docs/examples`, `src/Benchmark/Kimi`), every step on every
+    body: 215 library bodies each; no program declaration named by a library body; no problem, record or finding at a library site; the
+    library MIR identical but for two synthesized location ids in Milestone27 and Milestone30 (`SourceRef.Of` numbers a synthesized node on
+    its first use, in an order the program can change; A3 and A5 read an id only as a subject); 117 program constructors, none with a
+    library layer.
+  - Findings: `TyCtxt.OriginFindings` holds (a) the pass walk's findings over every obligation (`Binding.OriginRows.cs:122-147`: rows formed
+    with no body, BU-26, and case masks), which do not depend on the views read and are unchanged by this rule, and (b) each view's findings
+    at its first read by step 4 (`Binding.OriginRows.Atoms.cs:108`, `:120`), keyed by `MirDefKey.Body`, at that view's own or its layer's
+    rows. A view's layer is its constructor's own struct (`LayerOf`, `Binding.ExecutableBodies.cs:53`: the constructor's scope owner);
+    fragments never merge across Kotonoha libraries (SPEC 6.1.2) and a conformance block declares no constructor (SPEC 8.8.1), so a program
+    view never reads a library layer's rows. No program body's finding depends on reading a library view; the library views' findings move
+    to the library check.
+  - Library check: `MirAnalysisTest.TheLibraryHasNoAnalysisProblem(target)`, one row per target, runs the driver with the library as a root
+    module and fails on any library construction record, validator finding or analysis problem, A1's arena limit and the C1-F4 view's
+    findings included: a library defect is a compiler-test failure, not a user record (acceptable at H3 and after: the library ships with
+    the compiler). Every unit changing A3 or A5 runs it (G264 U1's candidates, G338); `MirAnalysis`'s contract header names it.
+  - Rejected: a syntax test in `MirAnalysis`; a per-body library flag (a second copy of the module order); skipping A1, A2 or A4 too, which
+    A4 and code generation read; an optional or defaulted range.
+  - Saving per compilation (indicative, unpinned): 39-42 % of stage 3, about 5 ms of the pinned 12.7 ms on Scalar 1, 0.64-0.77 MB cold, the
+    same time per warm rebuild; G337's O1-M retakes it pinned, and O2 (library bodies built on demand) follows that measurement.
