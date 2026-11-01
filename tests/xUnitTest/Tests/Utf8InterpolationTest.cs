@@ -136,9 +136,9 @@ public class Utf8InterpolationTest
 
     // SPEC 22.10.5 (DECISIONS R5-M133): MIR code generation defers a segment's literal text exactly when a value follows, so these forms keep
     // the old generator's allocations and bytes: the O2 corpus kernel's line (literals before bounded values and a user
-    // formatter reserving twice), a deferred literal written at the first reservation, then grown by an unbounded string (a value that
-    // writes nothing before a deferred literal is AFormatterThatNeverReservesDoesNotLosePendingLiterals' rule), and an owning
-    // interpolation inside another (fail-before under MIR code generation: C9c's interim record).
+    // formatter reserving twice), a deferred literal written at the first reservation, then grown by an unbounded string (a literal before
+    // a bounded value after a value that writes nothing is OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix's Empty row), and an
+    // owning interpolation inside another (fail-before under MIR code generation: C9c's interim record).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(
