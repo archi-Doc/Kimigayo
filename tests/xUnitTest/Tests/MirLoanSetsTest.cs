@@ -250,15 +250,14 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
     public void UnionsScaleLinearlyInTheBytesCreated()
     {
         const int K = 8;
-        var (sizes, bytes, allocated) = (new[] { 256, 512, 1024 }, new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, bytes) = (new[] { 256, 512, 1024 }, new long[3]);
+        var (runsOf, setsOf, madeOf) = (new int[3][], new MirLoanSets[3], new long[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
-            var runs = new int[sizes[i] + 1];
-            MirLoanSets sets = null!;
-            long made = 0;
-            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
+            var runs = runsOf[i] = new int[sizes[i] + 1];
+            return () =>
             {
-                sets = new MirLoanSets();
+                var sets = setsOf[i] = new MirLoanSets();
                 for (var w = 0; w < runs.Length; w++)
                 {
                     for (var element = w; element < w + K; element++)
@@ -267,9 +266,13 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
                     }
                 }
 
-                made = sets.Bytes;
+                madeOf[i] = sets.Bytes;
                 Unions(sets, runs);
-            });
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (runs, sets, made) = (runsOf[i], setsOf[i], madeOf[i]);
             bytes[i] = sets.Bytes - made;
             Assert.Equal(sizes[i] * (K + 1) * sizeof(int), bytes[i]);
             Unions(sets, runs);

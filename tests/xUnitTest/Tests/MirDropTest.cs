@@ -274,8 +274,8 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     [Fact]
     public void DropFlagsScaleLinearly()
     {
-        var (sizes, flags, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, flags, sinks) = (new[] { 16, 32, 64 }, new long[3], new MirProgram[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc work(flag: bool)\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -285,10 +285,10 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
 
             var c = MirBuildTest.Compile(text.ToString());
             var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
+            var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), sinks[i] = new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
+            return () =>
             {
                 flow.Begin(body);
                 moves.Build(body, flow);
@@ -297,9 +297,12 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
                 Assert.True(init.Run(body, 0, sink.Problems));
                 drops.Judge(0);
                 drops.End();
-            });
-            Assert.Equal(0, sink.Problems.All.Length);
-            flags[i] = sink.Drops.FlagsOf(0);
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            Assert.Equal(0, sinks[i].Problems.All.Length);
+            flags[i] = sinks[i].Drops.FlagsOf(0);
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: flags {string.Join(", ", flags)}, cold analysis allocation {string.Join(", ", allocated)}");
