@@ -26,14 +26,28 @@ internal enum ArrayHelperKind : byte
     OwnFixedStorage,
 }
 
+/// <summary>What an Array helper's descriptor reads of its function's result, which its item's instance gives (ModuleCodegen.ResultParts;
+/// DECISIONS R5-M121): nothing; the Option payload offset (Pop: the Some Case's element); or a remainder record's Fields and its storage
+/// Field's size (SPEC 22.2), an owned remainder's with its capacity, a fixed array's, whose routine is given the array's length.</summary>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal enum ArrayHelperResult : byte
+{
+    None,
+    OptionPayload,
+    Remainder,
+    OwnedRemainder,
+    FixedRemainder,
+}
+
 /// <summary>The layout offsets of a storage remainder record's Fields {storage, position, count, capacity}, addressed by name,
 /// and the size of its storage Field (SPEC 22.2).</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
 
 /// <summary>The row of one Array helper kind, readable by kind before any representation exists (X4): the prefix of its helpers'
-/// names, its ABI shape over a helper's name, element descriptor and remainder Fields, its body's prologue and writer, and its
-/// declared needs. No Array helper calls a library function (F2c), so no row declares a library callee.</summary>
+/// names, its ABI shape over a helper's name, element descriptor and remainder Fields, its body's prologue and writer, its
+/// declared needs and what its descriptor reads of its function's result. No Array helper calls a library function (F2c), so no row
+/// declares a library callee.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record ArrayHelperRow(
     ArrayHelperKind Kind,
@@ -41,7 +55,8 @@ internal sealed record ArrayHelperRow(
     Func<string, StoredValue, RemainderFields, FunctionAbi> Shape,
     string Prologue,
     Action<TextWriter, ArrayHelper> Write,
-    HelperNeeds Needs);
+    HelperNeeds Needs,
+    ArrayHelperResult Result);
 
 /// <summary>A generated Array helper for one element: its ABI, element descriptor, for pop the Option payload offset (the tag is
 /// at offset 0), and for the storage boundary its remainder record's Fields.</summary>
@@ -237,77 +252,88 @@ internal static partial class LegacyRuntimeHelpers
             static (name, element, _) => AppendShape(name, element),
             ArrayHelperPrologue,
             WriteArrayAppend,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Insert,
             "__kimi_array_insert_",
             static (name, element, _) => InsertShape(name, element),
             ArrayHelperPrologue,
             WriteArrayInsert,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Pop,
             "__kimi_array_pop_",
             static (name, _, _) => Slotted(name, [Handle, Result]),
             ArrayHelperPrologue,
             WriteArrayPop,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.OptionPayload),
         new(
             ArrayHelperKind.Remove,
             "__kimi_array_remove_",
             static (name, element, _) => RemoveShape(name, element),
             ArrayHelperPrologue,
             WriteArrayRemove,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Place,
             "__kimi_array_place_",
             static (name, element, _) => PlaceShape(name, element),
             ArrayHelperPrologue,
             WriteArrayPlace,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Clear,
             "__kimi_array_clear_",
             static (name, _, _) => Located(name, []),
             ArrayHelperPrologue,
             WriteArrayClear,
-            HelperNeeds.ElementGlue),
+            HelperNeeds.ElementGlue,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Drop,
             "__kimi_array_drop_",
             static (name, _, _) => Located(name, []),
             ArrayHelperPrologue,
             WriteArrayClear,
-            HelperNeeds.ElementGlue),
+            HelperNeeds.ElementGlue,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Swap,
             "__kimi_array_swap_",
             static (name, _, _) => Located(name, [new("i64", "first", AbiParameterKind.Value, 1), new("i64", "second", AbiParameterKind.Value, 2)]),
             ArrayHelperPrologue,
             WriteArraySwap,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.None),
         new(
             ArrayHelperKind.BorrowStorage,
             "__kimi_array_borrow_",
             static (name, _, _) => Slotted(name, [Handle, Result]),
             ArrayHelperPrologue,
             WriteArrayBorrow,
-            HelperNeeds.None),
+            HelperNeeds.None,
+            ArrayHelperResult.Remainder),
         new(
             ArrayHelperKind.OwnStorage,
             "__kimi_array_own_",
             static (name, _, _) => Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), Result]),
             "entry:\n",
             WriteArrayOwn,
-            HelperNeeds.None),
+            HelperNeeds.None,
+            ArrayHelperResult.OwnedRemainder),
         new(
             ArrayHelperKind.OwnFixedStorage,
             "__kimi_fixed_own_",
             static (name, _, fields) => OwnFixedShape(name, fields),
             "entry:\n",
             WriteFixedOwn,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime,
+            ArrayHelperResult.FixedRemainder),
     ];
 
     /// <summary>Gets the row of an Array helper kind; a kind without a row is a broken contract.</summary>
