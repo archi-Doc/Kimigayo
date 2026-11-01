@@ -166,6 +166,25 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 - **2026-10-07 — Callable/local regions and constructor inference:** U1–U10 shared length/Origin inference, Place/function-value paths, compiler adapters and snapshot invalidation; constructor/common inference U0–U6 shared slot mapping, selection and fixed-binding validation. Detailed units and intermediate support boundaries are retained in archive lines 315–343. G65 was subsequently completed only within the scope above.
 - **2026-10-06 — G77/G72/G70 complete:** source `89da9e02`, Session `20261006-050738-516-session-g77-g72-g70-verified` passed warning-free Release, 17,760 tests and 962 related native executions. Earlier Sessions exposed stored-Loan, default-expectation and allocation failures; repairs and traces remain retained. Fixed Callable/object measurements allocate zero under unchanged conditions. Remaining expression/ancestry limits stay in STATUS.
 
+## Closed open issues
+
+PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, verbatim 「完了済みの行を PLAN_HISTORY に要約して移す」). A `PLAN Gnnn` reference in code, tests or test data resolves here; DECISIONS and the commits hold the details.
+
+<a id="g168"></a>
+- **G168, G168b (R5; batches 80 and 81):** an unsupported `Field`/`Reborrowed` Opaque site names only the receiver's root (R5-M84's amendment); a selection Binding resolved through an SPEC 8.2.3 identity premise ends at one located `Unsupported_Kd` before any receiver read (G168b, the owner's 「(a) 今行う」, with BU's bu94, BU-72), until G170's identity query (PLAN G355). N1 stays open in PLAN.
+<a id="g175"></a>
+- **G175 (R5; batch 79):** `DiagnosticOwner.FindDocument` throws when two snapshots of a path are registered; `TestDiagnostics.Text` is the one by-path readout; four tests name their snapshot. No production member.
+<a id="g182"></a>
+- **G182 (R5; batches 80 and 81; design `draft/Sketches/R5/G182-design.md`):** O2 growth under MIR code generation, correct code: (1) the u64/usize join kept (R5-M84); (3a) the erased drop entry gets the address of a copy of the environment word (R5-M104's amendment, option A); (3b) closed; (3c) kept; (2)+(3d) `compare-fixtures.ps1 -O2Metrics` ranks and totals by whole-module instructions.
+<a id="g330"></a>
+- **G330 (R5; batches 73 and 74; design `draft/Sketches/R5/G330-design.md`):** a code generation exception other than the output's I/O ends the Emission result as Faulted (`CheckFaulted_Kd`; R5-M169); command-layer fault tests without a production seam. Related open rows: G344, G345, G346.
+<a id="g332"></a>
+- **G332 (R5 with BU's bu91; batch 77; design `draft/Sketches/R5/G332-design.md`):** the collector limits instantiation growth, not depth (R5-M170, BU-71 `BoundType.Height`; the owner's 「まとめて承認します」): one record per refused key, W = 1,024.
+<a id="g336"></a>
+- **G336 (R5; batch 78):** `LLVM_OPTIMIZATION.md` §4 names the MIR and MIR code generation instead of the deleted `EmissionInstruction` (the owner's 「あとで修正して下さい」).
+<a id="g347"></a>
+- **G347 (R5; batch 75):** every test allocation window goes through `AllocationMeasurement.Measure` or `MeasureOnce`; an `ArchitectureRulesTest` ratchet keeps `GetAllocatedBytesForCurrentThread` in `AllocationMeasurement.cs`. Its 64 B MirBorrows item went to R4 (PLAN G350).
+
 ## Retired audit records
 
 <a id="diagnostics-checkpoints"></a>
