@@ -274,8 +274,9 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     [Fact]
     public void DropFlagsScaleLinearly()
     {
-        var (sizes, flags, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, flags) = (new[] { 16, 32, 64 }, new long[3]);
+        var analyses = new (MirBody Body, MirProgram Sink)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc work(flag: bool)\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -288,7 +289,8 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
             var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
+            analyses[i] = (body, sink);
+            return () =>
             {
                 flow.Begin(body);
                 moves.Build(body, flow);
@@ -297,7 +299,11 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
                 Assert.True(init.Run(body, 0, sink.Problems));
                 drops.Judge(0);
                 drops.End();
-            });
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (_, sink) = analyses[i];
             Assert.Equal(0, sink.Problems.All.Length);
             flags[i] = sink.Drops.FlagsOf(0);
         }

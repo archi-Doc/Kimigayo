@@ -217,16 +217,6 @@ internal static partial class LegacyRuntimeHelpers
 
         """;
 
-    // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy.
-    private static readonly string ArrayRuntime =
-        RuntimeAbi.ArrayGrow.GetDefinition(exported: false) +
-        ArrayGrowBody.Replace("REASON_SIZE", Number(AbortReasons.AllocationSize), StringComparison.Ordinal)
-            .Replace("ZERO_SIZED_BUFFER", Number(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +
-        RuntimeAbi.ArrayReserve.GetDefinition(exported: false) +
-        ArrayReserveBody.Replace("REASON_ARGUMENT", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
-            .Replace("REASON_OVERFLOW", Number(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
-        RuntimeAbi.ArrayShrink.GetDefinition(exported: false) + ArrayShrinkBody;
-
     // The parameters take the internal convention's kinds and logical indices (IMPL 21.3.1): the handle a Value at slot 0, an index, a second
     // input and an element at their slots, a value in memory an OwnedSlot, a stride or count given; MIR code generation's one call writer
     // places a call's operands by them (R5 plan C8d), and a definition prints only their types and names.
@@ -331,7 +321,7 @@ internal static partial class LegacyRuntimeHelpers
     /// <summary>Writes the Array runtime, the capacity routines (SPEC 4.9.5, 4.9.8), which a module holds once when a helper or call of it
     /// declares it.</summary>
     /// <param name="output">The module text.</param>
-    internal static void WriteArrayRuntime(TextWriter output) => output.Write(ArrayRuntime);
+    internal static void WriteArrayRuntime(TextWriter output) => output.Write(Texts.ArrayRuntime);
 
     /// <summary>Writes one Array helper's definition: its ABI, its kind row's prologue and writer (PD2).</summary>
     /// <param name="output">The module text.</param>
@@ -690,5 +680,18 @@ internal static partial class LegacyRuntimeHelpers
         output.Write("  call void @__kimi_abort(i32 ");
         WriteNumber(output, reason);
         output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n");
+    }
+
+    private static partial class Texts
+    {
+        // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy.
+        internal static readonly string ArrayRuntime =
+            RuntimeAbi.ArrayGrow.GetDefinition(exported: false) +
+            ArrayGrowBody.Replace("REASON_SIZE", Number(AbortReasons.AllocationSize), StringComparison.Ordinal)
+                .Replace("ZERO_SIZED_BUFFER", Number(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +
+            RuntimeAbi.ArrayReserve.GetDefinition(exported: false) +
+            ArrayReserveBody.Replace("REASON_ARGUMENT", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
+                .Replace("REASON_OVERFLOW", Number(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
+            RuntimeAbi.ArrayShrink.GetDefinition(exported: false) + ArrayShrinkBody;
     }
 }

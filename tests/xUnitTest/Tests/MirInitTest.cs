@@ -425,8 +425,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
     public void InitializationScalesLinearly(string group)
     {
-        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
             text.Append("func work(flag: bool)\n");
@@ -443,7 +444,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
             var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            allocated[i] = AllocationMeasurement.MeasureOnce(() =>
+            analyses[i] = (body, flow, moves, sink);
+            return () =>
             {
                 flow.Begin(body);
                 moves.Build(body, flow);
@@ -452,7 +454,11 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 Assert.True(init.Run(body, 0, sink.Problems));
                 drops.Judge(0);
                 drops.End();
-            });
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (body, flow, moves, sink) = analyses[i];
             Assert.Equal(0, sink.Problems.All.Length);
             arena[i] = ArenaWords(body, flow, moves);
         }

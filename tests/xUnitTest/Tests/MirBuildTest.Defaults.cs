@@ -242,9 +242,8 @@ public sealed partial class MirBuildTest
     [Fact]
     public void DefaultCopiesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc scale<T>(x: T, factor: i32 = next(2)) -> i32\n    T is Copy\n    return factor\n");
             text.Append("func work() -> i32\n    var total = 0\n");
@@ -253,20 +252,23 @@ public sealed partial class MirBuildTest
                 text.Append("    total += scale(").Append(n).Append(")\n");
             }
 
-            c = Compile(text.Append("    return total\n").ToString());
-            MirBody body = null!;
-            allocated[i] = AllocationMeasurement.MeasureOnce(() => body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" }));
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.Equal(sizes[i] * 2, body.Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
+            var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
+            return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
+            Assert.Equal(sizes[i] * 2, bodies[i].Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
     }
 
