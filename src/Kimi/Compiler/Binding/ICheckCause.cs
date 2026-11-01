@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // when the cause is a location-only limit, the mark by which Binding.Check publishes that limit's one Unsupported_Kd.
 // Input: a producer met while a check proved its requirement: a conformance path resting on its specification or limited by OCC-X; a
 // component summary's site (a limit, L, which a proof carries until its answer is no longer combined, DECISIONS BU-22); the node a
-// component summary's Error rests on (a stored Type that failed, or its failed operand context).
+// component summary's Error rests on (a stored Type that failed, its failed operand context, or the hops of a conformance resolution that
+// re-entered itself; an identity step is never a re-entry, DECISIONS BU-22).
 // Output: the Use a failing check's record rests on, the first of the cause's candidates (Next: a resolution's inner hops, none for a
 // single node); Rest, which records that a failing check needed it.
 // Invariants: a check clears Binding's one channel before its proof and takes the cause after it (Binding.TakeFailedCause); only that

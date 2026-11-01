@@ -14,9 +14,10 @@ namespace Kimi.Compiler;
 // Final prologue (SettleDerivedUses). Must not prove Owned again or select a conversion.
 public sealed partial class Binding
 {
-    // The uses FailDerived failed in this pass, each with the cause it holds (none for an operand context, recorded at once), settled in
-    // Binding.Check's Final prologue (DECISIONS BU-76; removed once the erasure's Owned failure is decided after the prologue).
-    private List<(Koto Use, ICheckCause? Held)>? derivedUses;
+    // The uses FailDerived failed in this pass, each with its held cause's candidates at failure, its first and the rest (none for an
+    // operand context, recorded at once), settled in Binding.Check's Final prologue (DECISIONS BU-76; removed once the erasure's Owned
+    // failure is decided after the prologue).
+    private List<(Koto Use, Koto? First, ICheckCause? Next)>? derivedUses;
 
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction); a recorded mismatch of a
     // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract. An Owned failure that
@@ -73,10 +74,11 @@ public sealed partial class Binding
     // no record: the part is its prerequisite, and IsDerived's row (InvalidConstraint whose part is Invalid) classifies it. A held cause's
     // use is listed and rests on its first candidate that failed by Binding.Check's Final prologue (SettleDerivedUses), since a held
     // cause's node fails only there (a Type node at the Definition deadline, a hop's clause at its binding's formation, a limit's Use when
-    // the prologue fails it), after the erasure ran in body binding.
+    // the prologue fails it), after the erasure ran in body binding. The candidates are read at failure: a summary re-solved in a later
+    // epoch may hold another cause by then.
     private void FailDerived(Koto use, ICheckCause held)
     {
-        (this.derivedUses ??= []).Add((use, held));
+        (this.derivedUses ??= []).Add((use, held.Use, held.Next));
         this.Fail(use, BindingFailure.InvalidConstraint);
     }
 
@@ -87,7 +89,7 @@ public sealed partial class Binding
         if (part is not null)
         {
             this.AddPendingPrerequisite(use, part);
-            (this.derivedUses ??= []).Add((use, null));
+            (this.derivedUses ??= []).Add((use, null, null));
         }
 
         this.Fail(use, part is not null ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
@@ -102,13 +104,16 @@ public sealed partial class Binding
     {
         for (var i = 0; this.derivedUses is { } uses && i < uses.Count; i++)
         {
-            var (use, held) = uses[i];
-            for (var candidate = held; candidate is not null && !this.partPrerequisites.ContainsKey(use); candidate = candidate.Next)
+            var (use, candidate, next) = uses[i];
+            while (candidate is not null && !this.partPrerequisites.ContainsKey(use))
             {
-                if (candidate.Use.BindingState == BindingState.Invalid)
+                if (candidate.BindingState == BindingState.Invalid)
                 {
-                    this.partPrerequisites.Add(use, candidate.Use);
+                    this.partPrerequisites.Add(use, candidate);
                 }
+
+                candidate = next?.Use;
+                next = next?.Next;
             }
 
             if (!(this.partPrerequisites.TryGetValue(use, out var part) && part.BindingState == BindingState.Invalid))

@@ -188,6 +188,45 @@ public class ErasureOwnedDiagnosticTest
         Assert.Equal(BindingFailure.Internal, c.Semantics.FailureOf(use));
     }
 
+    // DECISIONS BU-76: FailDerived snapshots the held cause's candidates in a pooled list, so a warm rebind that derives a use from the
+    // hops of a resolution using itself, and settles it, allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindSettlesADerivedUseWithoutAllocating()
+    {
+        var c = CompilationTestHelper.ParseSuccess("contract Has2\n    associate Out\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is PH<W<(X, X)>>\n" +
+            "struct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S\n    let p: Option<PH<W<i32>>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n" + Main + "    return\n");
+        Assert.False(c.Binding.Bind(BindingMode.Final).IsComplete);
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // SPEC 8.2.3, 8.3.3 (DECISIONS BU-22): a step resolved through an identity premise is no re-entry; the walk reads it and ends at an
+    // associated Type of a premise conformance that nothing in scope proves Owned, so the capture's record is independent (SPEC 15.2.3,
+    // 23.1.2) of the two at inspect's signature, whose premises inspect cannot prove. Two levels and 140 give the same records; both
+    // were InternalInvariant_Kd at the closure. The row with one conformance fewer (S is Invalid) pins a dependent UnprovenConstraint_Kd at
+    // the closure: an interim the owner approved under PLAN G354 (3), removed (leaving S's records and the pair at inspect's signature)
+    // with G354 (3)'s settle for Unknown Owned verdicts on a context that fails by the prologue.
+    [Theory]
+    [InlineData("(_, _)", 2, 3, "UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
+    [InlineData("Option<_>", 140, 141, "UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
+    [InlineData("(_, _)", 2, 2, "InvalidConstraint_Kd struct | InvalidConstraint_Kd W<Y>.(Has2).Out | InvalidConstraint_Kd W<(Y, Y)>.(Has2).Out | UnprovenConstraint_Kd PH<W<((Y, Y), (Y, Y))>> | PrerequisiteUnavailable_Kd let p: PH<W<Y>> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<Y>> | InvalidConstraint_Kd PH<W<Y>> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
+    public void AnIdentityStepIsWalkedNotTestedForReEntry(string wrap, int identities, int conformances, string records)
+    {
+        var types = new string[Math.Max(identities + 1, conformances)];
+        types[0] = "Y";
+        for (var i = 1; i < types.Length; i++)
+        {
+            types[i] = wrap.Replace("_", types[i - 1], StringComparison.Ordinal);
+        }
+
+        var source = "contract Has2\n    associate Out\nstruct W<X>\n    let x: X\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S<Y>\n" +
+            string.Concat(types.Take(conformances).Select(static x => $"    W<{x}> is Has2\n")) +
+            string.Concat(Enumerable.Range(0, identities).Select(i => $"    W<{types[i]}>.(Has2).Out is PH<W<{types[i + 1]}>>\n")) +
+            "    let p: PH<W<Y>>\nfunc inspect<Y>(a: S<Y>) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n" + Main + "    return\n";
+        Assert.Equal(records, string.Join(" | ", Records(source)));
+    }
+
     // SPEC 15.2.3, 5.7: a raw layer's Origin other than `self` is in OwnedOrigins, so a pointer stating a body or input Origin is not
     // Owned; `static` and a `during self` struct over an Owned T are.
     [Theory]

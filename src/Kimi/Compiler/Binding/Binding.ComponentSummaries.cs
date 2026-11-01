@@ -8,10 +8,11 @@ namespace Kimi.Compiler;
 // in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments (unit 2b-4 adds Transferable's half), as the
 // least fixed point over the declarations one solve reaches; Owned's judgment of a nominal instance through it; the sites of the located
 // Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
-// a proof carries until its answer is settled (EndProof), and the node a summary's Error rests on (ICheckCause): the stored Type it
-// reads that failed, or that Type's failed operand context (DECISIONS BU-76).
+// a proof carries until its answer is settled (EndProof), and the cause a summary's Error rests on (ICheckCause): the stored Type it
+// reads that failed, that Type's failed operand context, or the hops of a conformance resolution that re-entered itself (SPEC 8.3.3;
+// a step resolved through an identity premise is walked, never a re-entry; DECISIONS BU-22, BU-76).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
-// declarations its storage names; conformance bindings (ContractType) for a mapped projection whose base is not abstract.
+// declarations its storage names; ContractType's answer and hops for a mapped projection whose base is not abstract.
 // Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
 // PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
@@ -421,8 +422,9 @@ public sealed partial class Binding
         }
     }
 
-    // A projection based at D's formal or pair target is an obligation of D; one with a base that is not abstract is resolved by its
-    // conformance binding under D's premises and walked.
+    // A projection based at D's formal or pair target is an obligation of D; one with a base that is not abstract is resolved under D's
+    // premises, by a conformance binding or an identity premise, and walked; only a step resolved through a conformance is tested for
+    // re-entry.
     private void WalkProjection(ComponentSummary summary, BoundType projection, int stored, uint query)
     {
         var step = projection;
@@ -456,6 +458,15 @@ public sealed partial class Binding
             return;
         }
 
+        if (hops is null)
+        {
+            // SPEC 8.2.3 (DECISIONS BU-22): a step resolved through an identity premise, with no conformance hop, is no re-entry: it is
+            // walked, never pushed or tested. A scope's premise identities are finitely many, and a Contract's own are bounded by SPEC
+            // 8.3.3 (unbounded growth through them fails the Contract, and the walk then reads a failed operand context).
+            this.Walk(summary, resolved, stored, query);
+            return;
+        }
+
         foreach (var outer in this.resolvingSteps)
         {
             if (ReferenceEquals(outer.Symbol, step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
@@ -463,17 +474,8 @@ public sealed partial class Binding
             {
                 // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: a conformance of
                 // the resolution revisits itself and fails with its own record. Error, never a cap, resting on the hops ContractType
-                // resolved through (DECISIONS BU-76); a re-entry resolved through none (an identity fact) holds the stored Type it
-                // reads, and the settle reports it as InternalInvariant_Kd unless that Type failed by itself.
-                if (hops is not null)
-                {
-                    summary.Fail(hops);
-                }
-                else
-                {
-                    summary.Fail(summary.Declaration.Adt!.Types[stored]);
-                }
-
+                // resolved through (DECISIONS BU-76); every re-entry has hops, since an identity step is never tested.
+                summary.Fail(hops);
                 return;
             }
         }

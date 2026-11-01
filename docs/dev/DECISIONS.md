@@ -6827,7 +6827,11 @@ resumed by R4-M86 (2026-10-20).
   condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200). The walk resolving a concrete projection through a
   conformance binding it is already resolving through, at a deeper instance, is that conformance using itself (SPEC 8.3.3, review
   N2), which has its own record: the summary is Error resting on the stored Type; a deeper instance of a declaration reached through
-  another conformance is no such growth and stays exact. Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive
+  another conformance is no such growth and stays exact. A step resolved through an identity premise (SPEC 8.2.3) is no re-entry; the
+  walk reads it. A scope's premise identities are finitely many. A Contract's own identities are bounded by SPEC 8.3.3: unbounded
+  growth through them is a Language error at the Contract, after which the walk reads a failed operand context. Growth through a
+  conformance meets the hops test. Only a step with ContractType's hops (BU-76) is tested. The tested step is the innermost one, so a
+  false re-entry in a mixed chain ends as `InternalInvariant_Kd` through the settle (bu97 unit c). Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive
   Type is exact (Unknown → Proven for `Chain<i32>`, `Nest`, `Nest15`, `Ping`/`Pong`, `Grow`, `Fold`); a requirement resting on a
   projection family gets one located `Unsupported_Kd` at the family's stored Type, its use derived, in place of
   `UnprovenConstraint_Kd`; no old-path guard (R4's Q6): such a value meets the old Emission's existing generation depth limit.
@@ -9499,8 +9503,7 @@ resumed by R4-M86 (2026-10-20).
     names.
     - By SPEC 8.3.3 some hop revisits itself and fails with its own record.
     - By SPEC 23.1.2 any failed hop gives the same records (bu97: first and last give identical output on a two-hop failure, ch2).
-    - If none failed, the use is `InternalInvariant_Kd`. A re-entry resolved through no conformance (an identity fact; no probe
-      reaches it) holds the stored Type it reads, with no null Use, and is `InternalInvariant_Kd` unless that Type failed by itself.
+    - If none failed, the use is `InternalInvariant_Kd`. Every re-entry has hops: an identity step is no re-entry (BU-22).
   - A limit holds its Use. The prologue fails it (PublishNeededLimits, then FailNeededSites) and Check's loop publishes and counts it
     once; a site only the loop's checks need is recorded after the loop (PublishSites). The erasure that holds a limit runs in body
     binding, earlier (FailOwnedConversion's only caller is RecordMismatch).
@@ -9508,7 +9511,8 @@ resumed by R4-M86 (2026-10-20).
     `InternalInvariant_Kd`. The list is a temporary structure, separate from `specificationLinks` (that one chooses the node a
     conformance use rests on; this one checks a precondition). Removal condition: the erasure's Owned failure is decided after the
     prologue. An entry carries its held cause (none for an operand context, recorded at once); the settle reads only its candidates
-    and never replaces a part another site recorded first (BU-61); the contract and removal condition are unchanged.
+    and never replaces a part another site recorded first (BU-61); the contract and removal condition are unchanged. FailDerived
+    snapshots the held cause's candidates at failure (its Use and Next).
   - Rejected:
     - naming the outer stored Type (r-opt);
     - naming the binding's Type node (not kept per path);
