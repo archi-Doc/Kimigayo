@@ -187,11 +187,20 @@ public sealed partial class Binding
         return hop;
     }
 
-    // The conformance paths one ContractType answer resolved through, outermost hop first; interned (Hop), so one chain is one object.
-    internal sealed class ResolutionHops(BoundConformancePath path, ResolutionHops? inner)
+    // The conformance paths one ContractType answer resolved through, outermost hop first; interned (Hop), so one chain is one object. As
+    // a cause its candidates are the hops' clauses (DECISIONS BU-76).
+    internal sealed class ResolutionHops(BoundConformancePath path, ResolutionHops? inner) : ICheckCause
     {
+        public Koto Use => this.Path.Use;
+
+        public ICheckCause? Next => this.Inner;
+
         internal BoundConformancePath Path { get; } = path;
 
         internal ResolutionHops? Inner { get; } = inner;
+
+        public void Rest()
+        {
+        }
     }
 }

@@ -194,6 +194,8 @@ public sealed class BoundConformancePath : ICheckCause
 
     Koto ICheckCause.Use => this.Use;
 
+    ICheckCause? ICheckCause.Next => null;
+
     internal BoundConformance Identity { get; set; } = null!;
 
     internal BindingScope Scope { get; }

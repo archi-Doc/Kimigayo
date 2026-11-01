@@ -378,7 +378,7 @@ public sealed partial class Binding
         summary.Unresolved |= component.Unresolved;
         if (component.Error)
         {
-            summary.Fail(component.Use);
+            summary.Fail(component);
         }
 
         for (var i = 0; i < component.Sites.Count; i++)
@@ -449,7 +449,7 @@ public sealed partial class Binding
             return;
         }
 
-        var resolved = this.ContractType(projection, this.ConstraintScope(summary.Declaration.Declaration), out _);
+        var resolved = this.ContractType(projection, this.ConstraintScope(summary.Declaration.Declaration), out var hops);
         if (resolved.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(resolved, projection))
         {
             summary.Unresolved = true; // No conformance binding resolves it: Unknown, as an unresolved stored Type is.
@@ -461,9 +461,19 @@ public sealed partial class Binding
             if (ReferenceEquals(outer.Symbol, step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
                 this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
             {
-                // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: the conformance
-                // uses itself, which has its own record. Error, resting on the stored Type, never a cap.
-                summary.Fail(summary.Declaration.Adt!.Types[stored]);
+                // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: a conformance of
+                // the resolution revisits itself and fails with its own record. Error, never a cap, resting on the hops ContractType
+                // resolved through (DECISIONS BU-76); a re-entry resolved through none (an identity fact) holds the stored Type it
+                // reads, and the settle reports it as InternalInvariant_Kd unless that Type failed by itself.
+                if (hops is not null)
+                {
+                    summary.Fail(hops);
+                }
+                else
+                {
+                    summary.Fail(summary.Declaration.Adt!.Types[stored]);
+                }
+
                 return;
             }
         }
@@ -489,10 +499,13 @@ public sealed partial class Binding
     // A link of the projection-link graph: D's formal From reaches argument Index of To, through projection steps when Projection.
     private readonly record struct ComponentLink(int From, ComponentSummary To, int Index, bool Projection, int Stored);
 
-    // A summary is the cause its Error rests on: the stored Type that decided it, which has its own record.
+    // A summary is the cause its Error rests on: the node the walk read that decided it (a stored Type or its operand context), or the
+    // hops of a resolution that re-entered itself, whose candidates the summary carries (DECISIONS BU-76).
     private sealed class ComponentSummary(BindingSymbol declaration) : ICheckCause
     {
         public Koto Use { get; private set; } = null!;
+
+        public ICheckCause? Next { get; private set; }
 
         internal BindingSymbol Declaration { get; } = declaration;
 
@@ -527,6 +540,17 @@ public sealed partial class Binding
             {
                 this.Error = true;
                 this.Use = use;
+                this.Next = null;
+            }
+        }
+
+        internal void Fail(ICheckCause held)
+        {
+            if (!this.Error)
+            {
+                this.Error = true;
+                this.Use = held.Use;
+                this.Next = held.Next;
             }
         }
 
@@ -555,6 +579,8 @@ public sealed partial class Binding
     private sealed class ComponentSite(List<ComponentSite> needed) : ICheckCause
     {
         public Koto Use { get; set; } = null!;
+
+        public ICheckCause? Next => null;
 
         internal bool Needed { get; set; }
 
