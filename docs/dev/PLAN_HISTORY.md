@@ -170,18 +170,34 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 
 PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, verbatim 「完了済みの行を PLAN_HISTORY に要約して移す」). A `PLAN Gnnn` reference in code, tests or test data resolves here; DECISIONS and the commits hold the details.
 
+<a id="g161"></a>
+- **G161 (R4; window of 2026-10-30; DECISIONS R4-M156):** a raw Place borrow's Loan is its fresh anchor's (SPEC 5.2.2, 15.6.2), so eight valid raw forms lose a MIR-only false error; a constructor's result is live after its Return, so the Loans and own-step pointers the delivered receiver carries are checked there (refuted at the Return, valid in a `drop`). The default pipeline's remaining acceptances are G166's (with its B3), resolved by R6-check. G211 stays open in PLAN.
 <a id="g168"></a>
 - **G168, G168b (R5; batches 80 and 81):** an unsupported `Field`/`Reborrowed` Opaque site names only the receiver's root (R5-M84's amendment); a selection Binding resolved through an SPEC 8.2.3 identity premise ends at one located `Unsupported_Kd` before any receiver read (G168b, the owner's 「(a) 今行う」, with BU's bu94, BU-72), until G170's identity query (PLAN G355). N1 stays open in PLAN.
 <a id="g175"></a>
 - **G175 (R5; batch 79):** `DiagnosticOwner.FindDocument` throws when two snapshots of a path are registered; `TestDiagnostics.Text` is the one by-path readout; four tests name their snapshot. No production member.
 <a id="g182"></a>
 - **G182 (R5; batches 80 and 81; design `draft/Sketches/R5/G182-design.md`):** O2 growth under MIR code generation, correct code: (1) the u64/usize join kept (R5-M84); (3a) the erased drop entry gets the address of a copy of the environment word (R5-M104's amendment, option A); (3b) closed; (3c) kept; (2)+(3d) `compare-fixtures.ps1 -O2Metrics` ranks and totals by whole-module instructions.
+<a id="g272"></a>
+- **G272 (R4; window of 2026-10-29; DECISIONS R4-M153; Full, the design-first candidate):** A5's past-bound answers are one walk outcome with one join (`MirOutcome.Join`); an exceeded depth bound is the Resource record `OwnershipDepthLimit_Kd` (the owner's 「G272: (1)」), recorded only where it would change what a check decides; TypeDagScalingTest's depth-60 and depth-40 forms lose their MIR-only `ComparisonLoanConflict_Kd`. Review 4's N2, N3 and N5 stay open in PLAN.
+<a id="g273"></a>
+- **G273 (R4; window of 2026-10-31; DECISIONS R4-M159; Full, df's design):** a Closure Type carries, as Origin arguments, the atoms of enclosing Closures its signature names, imaged at the maker's call, P8 and instantiation, with their variance from their occurrences (SPEC 15.3.5); F1's located `Unsupported_Kd` remains only for an atom no image reaches; the default's old Analysis stops where `SupportsType` refuses such a Type (the D5 exception until R6-check); c4 is a correct `UnprovenOriginRelation_Kd`. Open items stay in PLAN (G273, G280, G353).
+<a id="g276"></a>
+- **G276 (R4; window of 2026-10-29, WK; DECISIONS R4-M154):** a call's retention is per storage (SPEC 15.6.4 reading (iii) with (β′)): an argument's own value is retained only by storage that can hold a value of its Type, of a part it holds by value, or a borrow formed through it; one StorageWalk; `TyCtxt.CoreContent` publishes `string`'s u8 content. The owner's 「受け入れる」 accepted A5 cold +38% on the census. Follow-up: G298.
+<a id="g279"></a>
+- **G279 (R4; with G276, DECISIONS R4-M154):** every callable a callee's contract hands its body retains as an erased callee, so `betaGBad`, `resultGBad`, `writerReqBad` and their family err on the MIR.
+<a id="g305"></a>
+- **G305 (R4; window of 2026-10-31; DECISIONS R4-M158):** A5's backward liveness is the transpose of its forward phases (`MirDataflow.Flows`), so a Loan used on a Never form's assumed path (SPEC 14.10.3) is live at the conflicting operation before it; the S4 false error goes. The old path accepts these forms until R6-check (STATUS, Unreachable code).
+<a id="g307"></a>
+- **G307 (R4 with BU; window of 2026-10-30; DECISIONS R4-M157, BU-58):** A5's Type walks visit a DAG of Types once per Type (`TyCtxt.WrittenAt`, `MirHoldingKey`, `Inline`'s visited set; at n = 24 the holding walk visits 1,746 nodes, dev 50.3 M); verdicts within the depth bound are unchanged. Open remainders: G309-R (PLAN G309) and `Encloses` per use (PLAN G136).
 <a id="g330"></a>
 - **G330 (R5; batches 73 and 74; design `draft/Sketches/R5/G330-design.md`):** a code generation exception other than the output's I/O ends the Emission result as Faulted (`CheckFaulted_Kd`; R5-M169); command-layer fault tests without a production seam. Related open rows: G344, G345, G346.
 <a id="g332"></a>
 - **G332 (R5 with BU's bu91; batch 77; design `draft/Sketches/R5/G332-design.md`):** the collector limits instantiation growth, not depth (R5-M170, BU-71 `BoundType.Height`; the owner's 「まとめて承認します」): one record per refused key, W = 1,024.
 <a id="g336"></a>
 - **G336 (R5; batch 78):** `LLVM_OPTIMIZATION.md` §4 names the MIR and MIR code generation instead of the deleted `EmissionInstruction` (the owner's 「あとで修正して下さい」).
+<a id="g342"></a>
+- **G342 (R4; window r4w3, 2026-10-31; DECISIONS R4-M160; Full, the design-first candidate):** A5 keeps a store's value past storage the body does not own once, as Shared, and reads each Shared id once; the five scaling rows grow 3.5-3.9x per doubling (bound 5); the mir ledger is identical. Its next step is G264 U1's (PLAN G264).
 <a id="g347"></a>
 - **G347 (R5; batch 75):** every test allocation window goes through `AllocationMeasurement.Measure` or `MeasureOnce`; an `ArchitectureRulesTest` ratchet keeps `GetAllocatedBytesForCurrentThread` in `AllocationMeasurement.cs`. Its 64 B MirBorrows item went to R4 (PLAN G350).
 
