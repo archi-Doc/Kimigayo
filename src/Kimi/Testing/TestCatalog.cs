@@ -259,7 +259,7 @@ internal sealed class TestCatalog
                 var containerName = string.Join('.', names);
                 var name = containerName.Length == 0 ? function.Name : containerName + "." + function.Name;
                 var position = source!.GetPosition(function.Span.Start);
-                var file = node.Kotonoha.LogicalName(source);
+                var file = node.CodeContext.SourceName!;
                 var testId = Hash("t1-", "kimi-test-v1", catalog.ProjectId, containerName, function.Name + "()->()", file);
                 catalog.Cases.Add(new(testId, Hash("c1-", "kimi-case-v1", testId, "default"), name, file, position.Line + 1, position.Character + 1, symbol));
             }
@@ -268,7 +268,7 @@ internal sealed class TestCatalog
             {
                 var position = source.GetPosition(verification.Span.Start);
                 var expression = source.SourceText.Substring(verification.Condition.Span.Start, verification.Condition.Span.Length);
-                catalog.Sites.Add(new(-1, node.Kotonoha.LogicalName(source), position.Line + 1, position.Character + 1, expression, verification));
+                catalog.Sites.Add(new(-1, node.CodeContext.SourceName!, position.Line + 1, position.Character + 1, expression, verification));
             }
 
             node.VisitChildren(this);

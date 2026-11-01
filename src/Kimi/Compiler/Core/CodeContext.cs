@@ -21,6 +21,7 @@ public sealed class CodeContext
     // syntax error it stands for. It lives with the nodes it maps and exists only after a recovery.
     private Dictionary<Koto, DiagnosticKey>? recoveries;
     private object? sourceIdentity;
+    private Kotonoha? sourceModule;
 
     /// <summary>
     /// Gets the diagnostic destination for this context.
@@ -50,6 +51,14 @@ public sealed class CodeContext
     /// Gets the root of the current Koto tree.
     /// </summary>
     public GroupKoto RootKoto => this.Kotonoha.RootKoto;
+
+    /// <summary>Gets the module whose document this context reads, which names it (<c>Kotonoha.LogicalName</c>): <see cref="Kotonoha"/>,
+    /// or after a cross-module move the module the document came from.</summary>
+    internal Kotonoha SourceModule => this.sourceModule ?? this.Kotonoha;
+
+    /// <summary>Gets the logical name of this context's document, asked of the module it came from (<see cref="SourceModule"/>), or
+    /// <see langword="null"/> for a source-less entry point: the one access path for every reader of a node's document name.</summary>
+    internal string? SourceName => this.SourceDocument is { } document ? this.SourceModule.LogicalName(document) : null;
 
     internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default, SourceDocument? sourceDocument = null)
     {
@@ -150,6 +159,7 @@ public sealed class CodeContext
         => new(destination.Kotonoha, destination.DiagnosticCollection, this.SourceDocument)
         {
             sourceIdentity = this.SourceDocument is null ? this.sourceIdentity ??= new object() : null,
+            sourceModule = this.SourceModule,
         };
 
     internal bool HasSameSource(CodeContext other)

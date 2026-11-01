@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the runtime location text of a syntax site, the `path:line:column` an Abort reports (SPEC 22.5.1, IMPL 21.4.2).
-// Input: a SourceRef of this compilation. Output: its source's logical name (Kotonoha.LogicalName, IMPL 20.1), escaped, with its
+// Input: a SourceRef of this compilation. Output: its source's logical name (CodeContext.SourceName, IMPL 20.1), escaped, with its
 // line and column. Texts are memoized per (document, offset) of the current program: the memo is cleared when the source analysis
 // is revoked (an edit, a parse or a reload; Compilation.InvalidateSourceAnalysis) and when the root module's Base changes (by
 // reference). Must not name a source itself (Kotonoha owns the name), key the memo by SourceRef (ids renumber on edit), decide
@@ -48,7 +48,7 @@ internal sealed class SourceLocationTable(Compilation compilation)
 
         var builder = this.buffer.Clear();
         Span<char> hex = stackalloc char[8];
-        foreach (var rune in node.Kotonoha.LogicalName(source).EnumerateRunes())
+        foreach (var rune in node.CodeContext.SourceName!.EnumerateRunes())
         {
             if (rune.Value == '\\')
             {

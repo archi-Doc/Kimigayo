@@ -14845,9 +14845,8 @@ structure is recorded here by the unit that first implements it.
     and a warm read is a lookup. Readers: the location table (its path code gone; its memo keyed by the root module's `Base`, by
     reference), `TestCatalog` (cases, sites and inputs; its copy gone, G289 (3)), `Kotonoha.ParseSource`'s collection name, and
     documentation, which stores the name its parse gave (`SetLocation(name)`, the library's sources included: their `compiler://`
-    path): a later directory change does not rename a parsed documentation source, while hover's names are live: `HoverSourceName`
-    is the query except for a generated or `://` document, a fully qualified path outside the base and a rooted relative path, which
-    have none until U9a-2 (`PhysicalLogicalName` deleted; no hover name throws).
+    path): a later directory change does not rename a parsed documentation source, while hover's names are live (`HoverSourceName`,
+    U9a-2; `PhysicalLogicalName` deleted).
   - Behavior (U9a-1b): a dependency's location and catalog input name its own project's source (`Lib.kimi`, not `../Lib/Lib.kimi`);
     a relative in-memory path is named as given, not resolved against the process's directory (catalog, collection name); a NUL path
     inside the project checks and its location is relative with `\u{0}` escaped (G346's check half); a path under `C:\p\AppX` is not
@@ -14860,8 +14859,47 @@ structure is recorded here by the unit that first implements it.
     program publishes (`EmissionArtifactsTest.ANulInsideTheProjectIsPublished`), so G330b's code-generation row lost its trigger, as
     R5-M169 foresaw, and leaves; U9b moves generation outside `Publish`'s classifying catches and deletes the exclusion.
   - U9b (the planning session's ruling (b)): a diagnostic's displayed path (`Kimigayo.DisplayPath`, SPEC 23.4) is its remainder
-    under the project directory by the same prefix rule (`Kotonoha.Under`), any other path as it is, so rendering a diagnostic at a
+    under the project directory by the same prefix rule (`SourceIdentity.Under`), any other path as it is, so rendering a diagnostic at a
     NUL path no longer throws out of a command (`SourceDocumentAndDiagnosticTest.RendersAPathWithANulRelativeToTheBase`, which threw).
+  - U9a-2: hover's rule: `Kotonoha.HoverSourceName(SourceDocument)` is the query, asked live, and none only for a built-in
+    (`compiler://`) or Mod-generated document, so an outside, other-drive or other `://` source is named by its own text, never
+    relative to the consuming project (`HoverImprovementsTest`, null before). A node's document is named, and its hover project
+    taken, by the module the document came from (`CodeContext.SourceModule`, which a cross-module move keeps): every reader of a
+    node's document name asks `CodeContext.SourceName`, the one access path (the location table, the test catalog's cases and
+    sites), and hover asks the same module (`AMovedDeclarationKeepsItsDocumentsName`, `AMovedFunctionsLocationKeepsItsDocumentsName`,
+    `AMovedTestKeepsItsDocumentsName`: the moved-into module before); `HoverBuilder`'s per-build name cache is deleted (a
+    repeated hover build of eight documents 265,952 -> 264,952 B; names stay memoized in their module). Path containment under the
+    host's comparison is `SourceIdentity.Under`, beside `PathComparison`, read by `LogicalName` and the displayed path.
+    A document whose path has no identity (NUL: no client can name it) has no hover, so a hover build over it no longer throws:
+    `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri`, the LSP's project setting and its TestSources
+    members also read (their copies gone); `FromPath` still rejects such a path (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
+  - U9a-3a: the check of a module's names, `Kotonoha.CheckNames` (memoized with the names, emptied when a document is recorded), at
+    one site, `Project.CheckFrontEnd` once every source is established, for every source module (the root's and each dependency's):
+    names equal under simple case folding (CaseFolding.txt's C and S, never full folding: ß and ss differ), twins included, are
+    `ProjectPreparationFailed_Kd` at the root project file, Blocked before the front end (`CheckServiceTest`, accepted before).
+    Each independent failure is its own record (SPEC 23.1.2; review B6): every module is checked, and each name not in NFC and each
+    group of names equal under folding is one record, a group of three naming all three (one failure: the names share one folded
+    spelling, and naming the group shows every name to rename; `DiagnosticOwner.Report` keeps records with different notes apart).
+    The note names the module (a dependency's failure is reported at the root project file, the one check site, rather than through
+    `DependencyResolver`). Names are compared within one module: a root `Main.kimi` beside a dependency's `main.kimi` is accepted.
+    TestSources are read only by test builds (SPEC 18.6), so a product source and a TestSources entry equal under folding are
+    reported by `kimi test`, not by `check` or `build`.
+    `OrdinalIgnoreCase` is not the rule: it misses U+1E9E/U+00DF and U+017F/s. The data are pinned like `MarkdownUnicodeData`:
+    Unicode 15.0.0 CaseFolding.txt (SHA-256 cdd49e55…a56f7, checked by `GenerateNameUnicode.ps1`, which writes
+    `UnicodeNameData.cs`), 1,454 pairs (11,632 B of data, a 25,135 B source file); `UnicodeNameHelper.SimpleCaseFolding` compares
+    without allocation, a lone surrogate being its own code unit. Folding compares names as given: two names equal after folding
+    only through different normalization (a precomposed and a decomposed letter) are distinct here, and U9a-3b's NFC check, which
+    `CheckNames` runs first, rejects the non-NFC one. Measured: 100 names, the first check 3,128 B and about 0.1 ms over their names;
+    a repeated check 0 B.
+  - U9a-3b: `CheckNames` first rejects a name not in NFC (or ill-formed UTF-16), then folds. NFC has one check,
+    `UnicodeIdentifierHelper.IsNormalized` (identifiers' too), whose canonical combining classes now come from the complete table
+    `UnicodeNameData.CombiningClasses` (UnicodeData.txt, SHA-256 806e9aed…f76a73; 388 ranges, 4,656 B) instead of the identifier
+    properties, which held them for identifier scalars only; identifiers' results are unchanged (their classes are equal). A probe
+    against the pinned UnicodeData.txt and DerivedNormalizationProps.txt (SHA-256 d5687a48…e12a29) confirmed the existing tables are
+    complete: 2,061 canonical decompositions, and 941 compositions, exactly the two-scalar decompositions outside
+    Full_Composition_Exclusion, none missing or extra; so no other data was added. Tests: a decomposed letter, U+037E (a non-identifier
+    singleton) and marks out of canonical order are rejected (`CheckServiceTest.SourceNamesAreInNfc`, accepted before). Measured:
+    100 non-ASCII names, the first check 3,128 B (NFC allocates nothing) and about 0.2 ms over their names; a repeated check 0 B.
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need
