@@ -14734,7 +14734,8 @@ structure is recorded here by the unit that first implements it.
   Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;
   it was one list searched by `Abi.Matches` on every call and never pruned.
   - Memo (`ModuleCodegen.Unnamed`): a Dictionary keyed by `Abi.Of`'s inputs (`UnnamedKey`: flags, the closed result Type, the closed
-    parameter Types in slot order; a BoundType is interned, so identity is equality), one ref lookup per call. The key is finer than the
+    parameter Types in slot order; a BoundType is interned, so identity is equality), one ref lookup per hit (a miss also adds the key).
+    The key is finer than the
     ABI shape `Matches` compares (two Types of one shape keep two equal signatures); that is sound because nothing reads an unnamed
     `FunctionAbi`'s identity (a call writes its content only). A new key owns a copy of its inputs: `Slot`'s are the signature scratch;
     `Erased`'s interned Components array would serve, and one rule copies both.
@@ -14755,9 +14756,10 @@ structure is recorded here by the unit that first implements it.
   - Tests: `FunctionCodegenTest.ADestructionWithoutItsGlueTargetIsABrokenContract` (a Keep Drop, `Replace` and `DestroyOld` without
     their glue target) and `ARequestNamingAnItemOutsideGeneratedIsABrokenContract` (`Ensure` and `Row` failing before; `Wrapper`'s target
     is also recorded by its definition's `Signature`).
-  - Measured (A/B interleaved in one folder): 216 Callable signatures x 4 erased calls, cold 3,003,888 -> 3,057,296 B, retained
+  - Measured (A/B interleaved from sibling folders of equal path length): 216 Callable signatures x 4 erased calls, cold 3,003,888 ->
+    3,057,296 B, retained
     2,560,840 -> 2,595,096 B, warm min 4.6-5.7 -> 2.1-2.3 ms; the O2 corpus' ErasedCalls, cold 114,024 -> 114,280 B, retained 93,224 ->
-    93,480 B, warm 0.18-0.36 ms in both (bimodal per process). Every fixture's `.ll` is unchanged.
+    93,480 B, warm 0.18-0.36 ms in both (bimodal per process). The 69 compared fixtures' `.ll` are unchanged.
 - **R5-M174 `WindowsProfile`, the target profile (Core), and `ToolchainIdentity`, the native build's (PLAN WP)** (2026-11-01, R5;
   design `draft/Sketches/R5/WP-design.md` revision 1; the owner's 「(b) 分割を認める」, 2026-11-01) Major, behavior-preserving.
   - Cause: the old Emission's `WindowsProfile` held two kinds of facts behind one type initializer: the windows-x64 target profile
