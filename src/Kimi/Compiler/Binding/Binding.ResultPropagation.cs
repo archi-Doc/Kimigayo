@@ -179,7 +179,8 @@ public sealed partial class Binding
     private Awaiting PartAwaits(Koto part) => ReferenceEquals(part.BoundType, BoundType.Never) ? Awaiting.Never : this.AwaitsFor(part);
 
     // A result target awaits when it delivers a value and each of its value sources awaits, has Type Never, or waited and holds only
-    // parts bound since (BoundSince), which await nothing but the join's decision.
+    // parts bound since (BoundSince), which await nothing but the join's decision. A failed source takes no part (U1.6h site 2): the join
+    // rests on it at its verdict (DecideRest).
     private Awaiting SourcesAwait(ResultContext context)
     {
         var awaiting = Awaiting.None;
@@ -188,6 +189,11 @@ public sealed partial class Binding
             if (context.SourceNodes[i] is not { } source)
             {
                 return Awaiting.None;
+            }
+
+            if (context.Sources[i] is null && this.PartFailed(source))
+            {
+                continue;
             }
 
             if (context.Sources[i] is null)
@@ -332,7 +338,8 @@ public sealed partial class Binding
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
     // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
     // delivers one, an aggregate each of whose parts at least one (CallableParts) was, or a waiting result target each of whose waited
-    // sources was. Position waiting (Deferred), not a call relation: it holds before any selection.
+    // sources was, a failed one taking no part (U1.6h site 2). Position waiting (Deferred), not a call relation: it holds before any
+    // selection.
     private bool BoundSince(Koto source)
     {
         if (DeliveredOperand(source) is { } operand)
@@ -347,7 +354,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.BoundSince(waited))
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.PartFailed(waited) && !this.BoundSince(waited))
             {
                 return false;
             }
@@ -571,6 +578,11 @@ public sealed partial class Binding
 
             context.Sources[i] = this.SuppliedType(source);
             context.Pending |= context.Sources[i] is null;
+            if (waited && context.Sources[i] is null && this.PartFailed(source))
+            {
+                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause.
+            }
+
             failed ??= fits ? null : context.Sources[i];
         }
 

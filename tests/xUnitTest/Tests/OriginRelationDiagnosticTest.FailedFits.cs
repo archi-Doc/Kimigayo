@@ -104,6 +104,24 @@ public partial class OriginRelationDiagnosticTest
     public void AFailedSourceRestsItsJoinOnlyAtItsVerdict(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
+    // U1.6h-4 (SPEC 14.9.2 steps 2-3, 23.1.2): a failed source takes no part in whether its join's sources await (SourcesAwait,
+    // BoundSince), and one that fails when its join decides is the join's cause. So in g192 the inner join J1 [twice, J2] takes twice's
+    // Item Type from twice alone, and J2's anonymous source fails at it on its own (TypeMismatch_Kd 4:89) beside the name's record and the
+    // call's (C2's written header at f's one candidate). Its twins: without the name (t1), with C2's header at (bool) -> bool (t2), with
+    // twice (t3) or an unwritten header (t4) for C2.
+    [Theory]
+    [InlineData("U1.6h-4", "g192", "undefinedName", "func [] (v: i64) -> i64 => v", "NoApplicableOverload_Kd f(label lp: if c3 => (if c2 => twice else => (if c1 => undefinedName else => func [] (v) => v)) else => func [] (v: i64) -> i64 => v); TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-4", "g192t1", "twice", "func [] (v: i64) -> i64 => v", "NoApplicableOverload_Kd f(label lp: if c3 => (if c2 => twice else => (if c1 => twice else => func [] (v) => v)) else => func [] (v: i64) -> i64 => v); TypeMismatch_Kd func [] (v) => v; TypeMismatch_Kd func [] (v: i64) -> i64 => v")]
+    [InlineData("U1.6h-4", "g192t2", "undefinedName", "func [] (v: bool) -> bool => v", "TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-4", "g192t3", "undefinedName", "twice", "TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-4", "g192t4", "undefinedName", "func [] (v) => v", "TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
+    public void AFailedSourceTakesNoPartInWhetherItsJoinAwaits(string unit, string form, string inner, string outer, string records)
+        => AssertRecords(
+            $"{form} [{unit}]",
+            $"{Twice}func f(x: (bool) -> bool) -> i32 => 1\nfunc k(c1: bool, c2: bool, c3: bool) -> i32\n    return f(label lp: if c3 => (if c2 => twice else => (if c1 => {inner} else => func [] (v) => v)) else => {outer})\n",
+            records,
+            null);
+
     // U1.6h-1 and U1.6h-2: a warm rebind publishes and releases FailedFit and compares the kept candidates' patterns in reused storage
     // (two calls whose slots rest on their failed parts, and an ambiguity that rests on its failed part).
     [Fact]

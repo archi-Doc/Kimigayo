@@ -9245,6 +9245,9 @@ resumed by R4-M86 (2026-10-20).
   join that decides by itself is not covered (PLAN).
   - Site 1, the verdict: RestOn records the cause during classification and decides nothing. `DecideRest`, the one writer of
     Dependent, writes the verdict when the join decides (DecideResult; DecideWaiting under a failed position). Conflict prevails.
+  - Sites 2 and 6 (U1.6h-4): a failed source takes no part in whether its join's sources await (SourcesAwait, BoundSince), and a
+    waited source that fails when its join decides (BindWaitedSources) is the join's cause (RestOn), so g192's J1 takes twice's Item
+    Type from twice alone and J2's anonymous source fails at it on its own.
   - Site 3: a failed part makes its position Call, Waiting under 10.5.1 (PositionKind). Supersedes BU-43 R6's "`PositionKind`'s row is
     deleted (a classified join holds no failed part)" and "a nested join with a failed part decides at once". The reason they rested
     on no longer holds: a join with a failed part was Dependent at once, one failed part, so no classified join held one. Now
