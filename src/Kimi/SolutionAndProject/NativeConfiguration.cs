@@ -49,7 +49,7 @@ internal static class NativeConfiguration
                     return "NativeLibraries requires nonempty logical names; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
                 }
 
-                if (name == Kernel32Imports.LibraryName)
+                if (name == WindowsProfile.Kernel32Library)
                 {
                     return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
                 }
@@ -80,7 +80,7 @@ internal static class NativeConfiguration
                     return "NativeLibraries records targeting a Package require a nonempty Name and a valid PackageId and PackageVersion; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
                 }
 
-                if (library.Name == Kernel32Imports.LibraryName)
+                if (library.Name == WindowsProfile.Kernel32Library)
                 {
                     return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
                 }

@@ -73,14 +73,9 @@ internal sealed partial class FunctionCodegen
     // A destruction's guard numbered id: its set path, where an i1 value holds, the block drop<id>; Join(id) closes it.
     private void Guard(int id, Value set)
     {
-        var output = this.output;
-        output.Write("  br i1 ");
-        this.WriteValue(set);
-        Name(output, ", label %drop", id);
-        Name(output, ", label %dropped", id);
-        output.Write('\n');
-        Name(output, "drop", id);
-        output.Write(":\n");
+        this.Branch(set, "%drop", "%dropped", id);
+        Name(this.output, "drop", id);
+        this.output.Write(":\n");
     }
 
     // The end of a destruction under a flag: its set path joins the other at dropped<id>; nothing without a guard.

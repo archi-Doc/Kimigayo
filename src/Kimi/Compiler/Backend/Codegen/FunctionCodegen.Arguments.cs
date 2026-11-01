@@ -92,7 +92,8 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand.
+    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand; an interpolation
+    // buffer's Region home (FunctionCodegen.Interpolation's Region) and a segment step's text slots (TextSlots).
     private void CopySlots(in MirTerminator call, int block)
     {
         if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)

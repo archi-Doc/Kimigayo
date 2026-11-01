@@ -104,22 +104,15 @@ internal sealed partial class FunctionCodegen
     // P1d's TextWriter routine, given its two Context words: the formatting runtime's writer kind of its destination W, the call's Type
     // argument (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve the runtime runs
     // itself (a body-less compiler function, so the call carries no target), else the function of W's reserve witness, the call's Body target,
-    // whose signature is the runtime's dispatch call (Dispatches). Any other pairing is a broken contract: Binding admits no virtual reserve
+    // whose signature is the runtime's dispatch call (Dispatch). Any other pairing is a broken contract: Binding admits no virtual reserve
     // witness (a virtual function's receiver is objref/Self or objuniq/Self, which Binding rejects or leaves Unsupported there). Null after a record.
     private FunctionAbi? Writer(IntrinsicRow row, BoundType? destination, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         var kind = destination is null ? -1 : LegacyRuntimeHelpers.WriterKind(destination);
-        Value? dispatch = target switch
+        if (this.Dispatch(kind, target) is not { } entry)
         {
-            < 0 when kind is 0 or 1 => new Value('n', 0),
-            >= 0 when kind == 2 && this.Dispatches(target) => new Value('e', target),
-            _ => null,
-        };
-        if (dispatch is not { } entry)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets a user Writer's reserve witness (K 4.5 row 6).
-            return null;
+            return null; // Recorded.
         }
 
         this.module.Request(LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Needs);
@@ -128,30 +121,32 @@ internal sealed partial class FunctionCodegen
         return row.Routine;
     }
 
-    // Whether a target is a body the runtime calls as a user Writer's reserve (__kimi_writer_reserve's `void (ptr ret, ptr destination, i64
-    // minimum)`) through the adapter's dispatch word: a function without a virtual slot under that signature.
-    private bool Dispatches(int target)
+    // Text.writer's dispatch word (Writer): null for a FixedBuffer's or a HeapBuffer's writer kind without a target; for a user Writer's,
+    // its Body target, a function without a virtual slot the runtime calls as its reserve (__kimi_writer_reserve's `void (ptr ret, ptr
+    // destination, i64 minimum)`). Null after one record of a broken contract: BodyRun's, else this one.
+    private Value? Dispatch(int kind, int target)
     {
-        if (this.collector.Set.Items[target].Key.Kind != MonoKind.Body || this.BodyRun(target) is not { Slot: null, Signature: var signature })
+        if (target < 0 && kind is 0 or 1)
         {
-            return false;
+            return new Value('n', 0);
         }
 
-        return signature is { Result: "void", NoReturn: false, ResultSlot: true, Parameters: [{ Kind: AbiParameterKind.ResultSlot }, var self, var amount] } &&
-            self.Type == "ptr" && amount.Type == "i64";
-    }
+        if (target >= 0 && kind == 2 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
+        {
+            if (this.BodyRun(target) is not { } run)
+            {
+                return null; // Recorded.
+            }
 
-    // `br i1 <condition>, label <then><id>, label <otherwise><id>`.
-    private void Branch(Value condition, string then, string otherwise, int id)
-    {
-        var output = this.output;
-        output.Write("  br i1 ");
-        this.WriteValue(condition);
-        output.Write(", label ");
-        Name(output, then, id);
-        output.Write(", label ");
-        Name(output, otherwise, id);
-        output.Write('\n');
+            if (run is { Slot: null, Signature: { Result: "void", NoReturn: false, ResultSlot: true } signature } &&
+                signature.Parameters is [{ Kind: AbiParameterKind.ResultSlot }, { Type: "ptr" }, { Type: "i64" }])
+            {
+                return new Value('e', target);
+            }
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets a user Writer's reserve witness (K 4.5 row 6).
+        return null;
     }
 
     // SPEC 22.9.2: a capacity Context's word, the length of the fixed array below the reference its parameter receives; null after one

@@ -26,7 +26,7 @@ public sealed class Kernel32ImportsTest
         var definition = File.ReadAllText(Path.Combine(repo, "src/backend/windows-x64/kernel32.def")).Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() + "\n";
         Assert.Equal(definition, Kernel32Imports.Definition);
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
-        Assert.True(exports.SetEquals(Kernel32Imports.Symbols));
+        Assert.True(exports.SetEquals(WindowsProfile.Kernel32Symbols));
         var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
         foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
         {
@@ -138,7 +138,7 @@ public sealed class Kernel32ImportsTest
     [Fact]
     public void InspectionRejectsWrongDllArchitectureMissingAndExtraImports()
     {
-        var inspection = "Format: COFF-import-file-x86-64\n" + string.Concat(Kernel32Imports.Symbols.Select(x => $"Symbol: {x}\nSymbol: __imp_{x}\n"));
+        var inspection = "Format: COFF-import-file-x86-64\n" + string.Concat(WindowsProfile.Kernel32Symbols.Select(x => $"Symbol: {x}\nSymbol: __imp_{x}\n"));
         Kernel32Imports.ValidateLibrary("KERNEL32.dll\n", inspection);
         Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateLibrary("OTHER.dll", inspection));
         Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateLibrary("KERNEL32.dll", inspection.Replace("x86-64", "i386", StringComparison.Ordinal)));
