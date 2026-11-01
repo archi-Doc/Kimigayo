@@ -976,6 +976,22 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(put.Instructions, static x => x.Shape == "store i32 %, ptr %, align 4" && x.Operands[^1].Shape == "alloca [8 x i8], align 8");
     }
 
+    // DECISIONS R5-M89, R5-M110, R5-M111: a creating adaptation passes its payload as a creation call does, a Copy of a value in memory
+    // through a copy slot of the entry block (Copies), so the factory receives the slot, never the copied parameter itself.
+    [Fact]
+    public void AnObjectCreationAdaptationCopiesAPayloadInMemory()
+    {
+        var source = Creations.Replace("x: i32", "x: (i32, i64)", StringComparison.Ordinal);
+        var c = Analyze(source.Replace("put(o@move, 1)", "put(o@move, (1, 2))", StringComparison.Ordinal), OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var put = Assert.Single(FunctionsOf(ir, c, "put"));
+        var create = Assert.Single(CallsOf(put), static x => x.Callee!.Signature == "internal void (ptr, ptr, i64, ptr, i64)");
+        var slot = create.Operands[1];
+        Assert.Equal("alloca { [0 x i64], [16 x i8] }, align 8", slot.Shape);
+        var memcpy = ir.Function("llvm.memcpy.p0.p0.i64");
+        Assert.Single(put.Instructions, x => x.Callee == memcpy && x.Operands[0] == slot && x.Operands[1] == put.Parameters[1]);
+    }
+
     // IMPL 21.3.1 (DECISIONS R5-M89): a call of a function's item passes each argument by its parameter's kind and puts its value into the
     // destination: a scalar in its computation representation (a bool narrowed, its result widened), a string borrow with its attributes
     // (the O2 parity list), nothing for a zero-sized parameter, the destination's address as a slot result, a moved value's Place itself
@@ -1054,8 +1070,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory passed by pointer is copied into a copy slot, an alloca of
-    // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3);
-    // a moved string's Place is passed itself, its record never loaded.
+    // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3),
+    // a creation's payload included (its factory's, DECISIONS R5-M110); a moved string's Place is passed itself, its record never loaded.
     [Fact]
     public void ACopyArgumentInMemoryHasACopySlot()
     {
@@ -1069,6 +1085,10 @@ public sealed partial class FunctionCodegenTest
         var constant = Parse("func take(s: string) => ()\nfunc give() => take(\"x\")").Text;
         Assert.Contains("  %s0 = alloca %kimi.string, align 8\n", constant, StringComparison.Ordinal);
         Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %s0, align 8\n  call void @__kimi_f\d+\(ptr %s0\)\n", constant);
+        var payload = Parse("func make() -> obj/string => Kimi.Intrinsics.makeObj(\"x\")").Text;
+        Assert.Contains("  %s0 = alloca %kimi.string, align 8\n", payload, StringComparison.Ordinal);
+        const string Record = @"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %s0, align 8\n";
+        Assert.Matches(Record + @"  call void @__kimi_make_object\d+\(ptr %ret, ptr %s0, i64 0, ", payload);
     }
 
     // I1 (DECISIONS R5-M92): a copy slot's name is never a block's, so a function with copy slots and checks whose success labels share
