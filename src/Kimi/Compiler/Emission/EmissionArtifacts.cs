@@ -30,74 +30,89 @@ public static class EmissionArtifacts
             return false;
         }
 
-        string? tempIr = null;
-        string? tempManifest = null;
-        var generating = false; // While code generation writes, only GenerateInto classifies a failure (DECISIONS R5-M169).
+        var settings = compilation.Project.ProjectFile;
+        string directory, destination, manifest, outputDirectory;
+        string? tempIr = null, tempManifest = null, llvm = null;
+        NativeLibraryInput? backend;
+        List<(string Name, string Kind, string Input, string? Sha256)>? foreign;
+        StreamWriter? writer = null;
         try
         {
-            var project = compilation.Project;
-            var settings = project.ProjectFile;
-            var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-            paths ??= ArtifactPaths.Create(project);
-            var destination = paths.Ir;
-            var manifest = paths.Manifest;
-            var outputDirectory = Path.GetDirectoryName(destination)!;
-            var backend = ResolveBackend(settings);
-            var foreign = ResolveForeignSupplies(compilation, settings);
-            if (backend is not null && HasDirectory(backend.Input))
+            // The publication's steps before and after code generation classify their failures; generation runs between them, outside
+            // either catch, so only GenerateInto classifies its failure (its output's) and any other leaves for the fault (R5-M169).
+            try
             {
-                var actual = Hash(Path.GetFullPath(backend.Input, directory));
-                if (!actual.Equals(ToolchainIdentity.BackendSha256, StringComparison.Ordinal))
+                var project = compilation.Project;
+                directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
+                paths ??= ArtifactPaths.Create(project);
+                destination = paths.Ir;
+                manifest = paths.Manifest;
+                outputDirectory = Path.GetDirectoryName(destination)!;
+                backend = ResolveBackend(settings);
+                foreign = ResolveForeignSupplies(compilation, settings);
+                if (backend is not null && HasDirectory(backend.Input) &&
+                    !Hash(Path.GetFullPath(backend.Input, directory)).Equals(ToolchainIdentity.BackendSha256, StringComparison.Ordinal))
                 {
                     throw new InvalidDataException("The selected backend archive does not match the adopted SHA-256.");
                 }
+
+                if (settings.LlvmBin is { } bin)
+                {
+                    CheckPath(bin);
+                    llvm = Path.GetRelativePath(outputDirectory, Path.GetFullPath(bin, directory));
+                }
+
+                Directory.CreateDirectory(outputDirectory);
+                var unique = Guid.NewGuid().ToString("N");
+                tempIr = destination + "." + unique + ".tmp";
+                tempManifest = manifest + "." + unique + ".tmp";
+                writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384);
+            }
+            catch (Exception ex) when (IsPublicationFailure(ex))
+            {
+                Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
+                return false;
             }
 
-            string? llvm = null;
-            if (settings.LlvmBin is { } bin)
+            var generated = GenerateInto(compilation, writer);
+            try
             {
-                CheckPath(bin);
-                llvm = Path.GetRelativePath(outputDirectory, Path.GetFullPath(bin, directory));
-            }
-
-            Directory.CreateDirectory(outputDirectory);
-            var unique = Guid.NewGuid().ToString("N");
-            tempIr = destination + "." + unique + ".tmp";
-            tempManifest = manifest + "." + unique + ".tmp";
-            using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
-            {
-                // Cleared before the writer's Dispose, as BuildTarget's completed, so a flush failure stays the output's; a flush failure
-                // while a generation exception unwinds replaces that exception and becomes the fault.
-                generating = true;
-                var generated = GenerateInto(compilation, writer);
-                generating = false;
+                writer.Dispose(); // A flush failure is the output's.
                 if (!generated)
                 {
                     return false;
                 }
-            }
 
-            var hash = Hash(tempIr);
-            using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                var hash = Hash(tempIr);
+                using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                {
+                    var kind = compilation.Binding.Startup.OutputKind;
+                    WriteManifest(json, settings, kind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                }
+
+                Replace(tempIr, destination);
+                Replace(tempManifest, manifest);
+                irPath = destination;
+                return true;
+            }
+            catch (Exception ex) when (IsPublicationFailure(ex))
             {
-                WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
+                return false;
             }
-
-            Replace(tempIr, destination);
-            Replace(tempManifest, manifest);
-            irPath = destination;
-            return true;
-        }
-        catch (Exception ex) when (!generating && ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-        {
-            Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
-            return false;
         }
         finally
         {
-            DeleteTemporary(tempIr);
-            DeleteTemporary(tempManifest);
+            try
+            {
+                writer?.Dispose(); // While a generation exception unwinds, a flush failure replaces it and becomes the fault.
+            }
+            finally
+            {
+                DeleteTemporary(tempIr);
+                DeleteTemporary(tempManifest);
+            }
         }
     }
 
@@ -122,6 +137,10 @@ public static class EmissionArtifacts
             return false;
         }
     }
+
+    // An output, configuration or supply failure a publication step throws (DECISIONS R5-M165); any other exception is a fault (R5-M169).
+    private static bool IsPublicationFailure(Exception ex)
+        => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
 
     // A publication failure, at the project, replaces the partition's records as a generation does.
     private static void Fail(Compilation compilation, DiagnosticCode code, string? cause)

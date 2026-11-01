@@ -301,7 +301,8 @@ public sealed class EmissionArtifactsTest : IDisposable
     // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
     // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
     // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
-    // (DECISIONS R5-M175: naming a source never throws); no other program is known to reach Publish's generating exclusion.
+    // (DECISIONS R5-M175: naming a source never throws); generation runs outside Publish's classifying catches (R5-M169's amendment),
+    // and no program makes it throw without a production seam.
     [Theory]
     [InlineData("front end")]
     [InlineData("publication")]

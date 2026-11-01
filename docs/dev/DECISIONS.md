@@ -14609,8 +14609,10 @@ structure is recorded here by the unit that first implements it.
     exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
     (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
     the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
-  - Amended by R5-M175 (U9a-1b): G346 is fixed (naming a source never throws), so G330b's code-generation row left with its trigger;
-    no other known program reaches the `generating` exclusion, which stays.
+  - Amended by R5-M175 (U9a-1b, U9b): G346 is fixed (naming a source never throws), so G330b's code-generation row left with its
+    trigger, and no other program reaches generation's exceptions without a production seam. U9b (the planning session's ruling (b))
+    deletes the `generating` exclusion and its state: `Publish` classifies its steps before and after code generation in two catches,
+    and generation runs between them, outside both, so the rule above holds by structure (no test observes it: no seam).
 - **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, R5; PLAN G332, design
   `draft/Sketches/R5/G332-design.md` revision 3, accepted at its third review; the owner approved the departure from K package 4.6/KD9
   together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known limit)
@@ -14841,7 +14843,7 @@ structure is recorded here by the unit that first implements it.
   - Tests whose trigger was a name's exception moved to another trigger, the contract unchanged: `HoverCollectionTest`'s optional
     collection failure (an invalid merge) and standalone documentation's failure (an invalid exclusion). G346's command half: a NUL
     program publishes (`EmissionArtifactsTest.ANulInsideTheProjectIsPublished`), so G330b's code-generation row lost its trigger, as
-    R5-M169 foresaw, and leaves; no other known program reaches `Publish`'s `generating` exclusion, which stays (U9b).
+    R5-M169 foresaw, and leaves; U9b moves generation outside `Publish`'s classifying catches and deletes the exclusion.
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need
