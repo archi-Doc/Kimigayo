@@ -256,6 +256,14 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G157 (17), (38), and parts of (25), (36), (37), (40), (44) (R5 units U1 and U3; batch 84; DECISIONS R5-M173, R5-M130's amendment):** one `ModuleCodegen.Requested` check for every item request (K11) with its untested no-glue-target arms tested; the unnamed-signature list a memo keyed by `Abi.Of`'s inputs; one `Dispatch` record, one wrapper row table, one conditional `Branch`, the overlapping Erasures theory and EmptyThenBounded audit gone; `Slot` one meaning per member; `CopySlots` names the Region home.
 <a id="wp"></a>
 - **WP (R5 unit U8; batch 84; DECISIONS R5-M174; design `draft/Sketches/R5/WP-design.md`):** the windows-x64 target profile is `Core/WindowsProfile.cs` (the kernel32 reserved supply included; BU reviewed its Binding qualifiers) and the native-toolchain identity `Emission/ToolchainIdentity.cs`, so `check` reads no toolchain fact; `RuntimeImports` deleted; the owner's 「(b) 分割を認める」 departs from R5-M167 row 15 and the reduction plan's R9 row for the target half. Follow-up: PLAN G363.
+<a id="g157-u2-u4"></a>
+- **G157, code generation parts of (26), (29), (43), (44), (46) (R5 units U2 and U4; batch 85):** a creating adaptation calls its factory through `Pass` and `WriteCall` and gets its in-memory Copy payload's copy slot by Create's rule (R5-M110 as worded); the reused module re-checks a primitive payload's shifted runtime identity; `Use` writes a string constant through `Evaluate` and `Put`; `Deref`, `TerminalAddress`, `ReferencedType`; `ElementOffset` the one owner of a fixed-array element offset; the place writer and `Component` return false (null) after every record, so no record is made twice.
+<a id="g157-u5-u6"></a>
+- **G289 (3), (4), (6) and G157 parts of (30), (36), (43), (44), (47) (R5 units U5, U6 and LN's U9a-1b; batch 86):** `Below` lives in `InstanceCollector.Callees.cs`; `Witnesses.Shim` records its broken contract; the pair-layer need boundary kept and pinned by three rows (a deletion found live by review); `LeavesStorage`; the K 4.8 list in `LayoutNeeds` only; `StoredValue`'s text flag gone; `ArrayHelperRow.Result` (R5-M16's and R5-M121's amendments); the formatting wrapper keyed by its routine; TestCatalog's long lines.
+<a id="g346"></a>
+- **G346 (R5's U9b with LN; batch 86; R5-M169's and R5-M175's text):** a NUL in a source path no longer faults a command: the logical name's prefix rule never throws, `Publish` runs generation between its two classifying catches (the `generating` exclusion deleted), and `Kimigayo.DisplayPath` uses the rule.
+<a id="g157-u7"></a>
+- **G157 (27), (41), (45) (R5 unit U7; batch 86):** `ConstantPositionsOnFixedArraysSelectTheirElements`; the six Library sources once, in `src/backend/windows-x64/tests/library-sources.json`, read by the harness and LibraryEmissionTest, `Main` emitted once; TestRuntime.ll no longer restates the phase value.
 
 ## Retired audit records
 

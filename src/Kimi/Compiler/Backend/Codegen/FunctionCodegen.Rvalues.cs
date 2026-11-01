@@ -11,24 +11,15 @@ namespace Kimi.Compiler.Backend;
 // no string, SPEC 4.7).
 internal sealed partial class FunctionCodegen
 {
-    // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
-    // constant, which has nothing to evaluate, written whole once its Place is located.
+    // A Use: its operand evaluated, then put into the located Place in its representation, as an aggregate's component is (Evaluate, Put: a
+    // string constant written whole, a value in memory copied); nothing for a zero-sized Place.
     private void Use(in MirStatement statement)
     {
         var operand = this.body.Operands[statement.Rvalue.Start];
-        if (this.TextOf(operand) is { } text)
+        if (this.Evaluate(operand, out var value) && this.Destination(statement, out var address) &&
+            this.LoweringOf(statement.Place) is { Layout.Size: > 0 } lowering)
         {
-            if (this.Destination(statement, out var address))
-            {
-                this.Text(address, text);
-            }
-
-            return;
-        }
-
-        if (this.Operand(operand, out var value))
-        {
-            this.Store(statement, value);
+            this.Put(address, this.InstanceType(statement.Place)!, lowering, operand, value);
         }
     }
 

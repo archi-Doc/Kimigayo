@@ -76,7 +76,7 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.8 (DECISIONS R5-M149): each listed need of an item's body, its Type (LayoutNeeds.TypeOf) a use at its location in the item's
-    // instance; a need past a PairLayer only where the item's view makes that layer a referent (MirCases.Layer), not the owner case's Place.
+    // instance; a need past a PairLayer only where the item's view makes that layer leave its root's storage (LeavesStorage).
     private void LayOutNeeds(int item, MirBody body)
     {
         for (var i = this.needStarts[body.Ordinal]; i < this.needStarts[body.Ordinal + 1]; i++)
@@ -84,7 +84,7 @@ internal sealed partial class InstanceCollector
             var (at, step, pair) = this.needs[i];
             var block = body.Blocks[at.Block];
             var subject = this.Subject(item, body, at.Index == block.Count ? block.Terminator.Source : body.Statements[block.Start + at.Index].Source);
-            if ((pair == 0 || this.Referent(item, body, step with { Projection = pair })) &&
+            if ((pair == 0 || this.LeavesStorage(item, body, step with { Projection = pair })) &&
                 this.In(item, subject, LayoutNeeds.TypeOf(body, step)) is { } type)
             {
                 _ = this.LaysOut(item, subject, type);
@@ -92,14 +92,14 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // Whether a PairLayer step of an item's body selects a referent under the item's view (SPEC 13.5.5), its case's; the owner case's is the
-    // Place itself.
-    private bool Referent(int item, MirBody body, MirPlace layer)
+    // Whether a PairLayer step of an item's body leaves its root's storage under the item's view (SPEC 13.5.5, MirCases.Layer): its case's
+    // reference or handle selects a referent; the owner case's step is the Place itself.
+    private bool LeavesStorage(int item, MirBody body, MirPlace layer)
     {
         _ = this.cases.Select(body, this.Set.Items[item].View);
-        var referent = this.cases.Layer(layer) is not null;
+        var leaves = this.cases.Layer(layer) is not null;
         this.cases.Deselect();
-        return referent;
+        return leaves;
     }
 
     // K 4.8 (DECISIONS R5-M149): a call's TypeArguments need, every Type its substitution binds (LayoutNeeds.TypeOf), each a use at the call.
@@ -123,8 +123,8 @@ internal sealed partial class InstanceCollector
     }
 
     // A Place's steps root first: one leaves its root's storage where its prefix is laid out without its component (Layout.Indirect) or is
-    // a pair layer, whose case decides it per item; the next step with a need (LayoutNeeds) is past that storage, a use, after which the
-    // Type it read is the storage again.
+    // a pair layer, whose case decides it per item (a pattern selects one, SPEC 14.8.1); the next step with a need (LayoutNeeds) is past
+    // that storage, a use, after which the Type it read is the storage again.
     private void ListNeeds(MirBody body, MirLocation at, MirPlace place)
     {
         var projections = body.Projections;

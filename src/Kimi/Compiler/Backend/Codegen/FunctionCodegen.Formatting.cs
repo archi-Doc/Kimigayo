@@ -150,11 +150,11 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 22.9.2: a capacity Context's word, the length of the fixed array below the reference its parameter receives; null after one
-    // InternalInvariant_Kd for another Type, a broken contract (Binding admits only uniq/[N of u8] there): Referent's for a Type without a
+    // InternalInvariant_Kd for another Type, a broken contract (Binding admits only uniq/[N of u8] there): ReferencedType's for a Type without a
     // reference layer, else this one.
     private Value? Measure(BoundType? reference)
     {
-        if (this.Referent(reference) is not { } referent)
+        if (this.ReferencedType(reference) is not { } referent)
         {
             return null; // Recorded.
         }

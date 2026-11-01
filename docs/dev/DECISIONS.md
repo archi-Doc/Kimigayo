@@ -9797,6 +9797,12 @@ structure is recorded here by the unit that first implements it.
   R5-M30, the inline storage kernel rows (P2a) by R5-M45 and the rows' Array runtime needs by R5-M46.
   - Amended by R5-M163 (G8): the module instance and its requests are deleted with `EmissionModule`, its one holder; the class is
     static, its rows and writers MIR code generation's.
+  - Amended by R5's census unit U6 (PLAN G289 (6), G157 (30); 2026-11-01): `StoredValue` loses its text flag (every writer passed false; a
+    string element dies by its glue item, whose string row calls `DropGlue.Release`). `ArrayHelperRow` gains `Result`
+    (`ArrayHelperResult`: None, OptionPayload, Remainder, OwnedRemainder, FixedRemainder; `[Transitional("R8")]`, removed with the rows),
+    which `ResultParts`, `PartOf` and `Row` read instead of `ArrayHelperKind` arms; a new helper kind sets it in its row. `FixedRemainder`
+    also makes the routine's given number the array's length. Rejected: four bool columns, a delegate column, and a `LegacyRow` Kind
+    column (the formatting wrapper keeps its row's routine as its key; no other reader needs a kind).
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -12614,6 +12620,8 @@ structure is recorded here by the unit that first implements it.
     statement of the legacy capacity word); `[]` as three stores; clear's glue from Binding's published row (Q3 (b)); the builder writing
     grow and place (held, R3 decision 5); new IntrinsicIds (PD21); a `DropGlueRow` per collection (no consumer before C8e); re-pointing the
     old lowering to the map (D5).
+  - Amended by R5's census unit U6 (PLAN G157 (30); 2026-11-01): the Helpers' result parts are chosen by `ArrayHelperRow.Result`, not by
+    kind arms (R5-M16's amendment).
 - **R5-M122 The owner confirms C8d's departure** (owner, 2026-10-25, on the R5 planning session's explanation after C8d's design; verbatim
   「C8d の逸脱（Array カーネルの corpus O2 A/B
   を C8d と C9c の遅い方へ移し、C8d は一時カーネルで参考測定すること）も承認します。」; the consequences are the planning session's) The

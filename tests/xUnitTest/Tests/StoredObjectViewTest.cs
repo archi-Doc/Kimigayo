@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Verification;
@@ -66,11 +67,20 @@ public class StoredObjectViewTest
     }
 
     // PD17 (DECISIONS R5-M110): runtime identity is the Origin-erased Type numbered in the module, and no package-qualified key text is
-    // written, so a changed package identity rebinds to the same module text.
+    // written, so a changed package identity rebinds to the same module text; an edit that takes Root off the chain numbered before the i64
+    // payload's shifts its number (Other 1, Root 2, i64 3, then i64 2) at the same descriptor item, whose layout row survives the rebind, so
+    // the reused module's descriptor row is rechecked against the current number (ModuleCodegen.Objects' Row) and writes a new compilation's
+    // metadata.
     [Fact]
     public void PhysicalReuseRechecksTheCurrentRuntimeIdentity()
     {
-        var c = MinimalEmissionTest.Analyze(Item + "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet stored = (owner@move, 1)\nrequire stored.0.id == 7 else => $abort(\"read\")");
+        const string Root = "open struct Root\n    public let code: i64 = 9\n    protected init() => ()\n" +
+            "struct Keep : Root\n    public init() : base() => ()\n";
+        const string Based = "struct Other : Root\n    public init() : base() => ()\n";
+        const string Unbased = "struct Other\n    public let code: i64 = 9\n    public init() => ()\n";
+        const string Program = "let k = Keep.init()\nlet first = Kimi.Intrinsics.makeObj(Other.init())\nlet five = Kimi.Intrinsics.makeObj<i64>(5)\n" +
+            "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet stored = (owner@move, 1)\nrequire stored.0.id == 7 else => $abort(\"read\")";
+        var c = MinimalEmissionTest.Analyze(Root + Based + Item + Program);
         var initial = CompilationTestHelper.WriteIr(c);
         c.Project.ProjectFile.PackageId = "changed.identity";
         Assert.True(c.Bind().IsComplete);
@@ -81,5 +91,21 @@ public class StoredObjectViewTest
         Assert.Equal(initial, changed);
         Assert.DoesNotContain("changed.identity", changed, StringComparison.Ordinal);
         Assert.Equal(changed, CompilationTestHelper.WriteIr(c));
+
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Root + Unbased + Item + Program);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified);
+        var shifted = CompilationTestHelper.WriteIr(c);
+        Assert.Equal(Metadata(CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Root + Unbased + Item + Program))), Metadata(shifted));
+        const string Payload = ", i64 8, i64 8, i64 1, "; // The i64 payload's metadata: 8 bytes, Copy.
+        var before = Assert.Single(Metadata(changed), static x => x.Contains(Payload, StringComparison.Ordinal));
+        Assert.Contains("} { i64 3" + Payload, before, StringComparison.Ordinal);
+        var after = Assert.Single(Metadata(shifted), static x => x.Contains(Payload, StringComparison.Ordinal));
+        Assert.Equal(before.Replace("} { i64 3,", "} { i64 2,", StringComparison.Ordinal), after);
     }
+
+    // A module's payload metadata, one line per descriptor (its runtime identity number, layout, Copy and destroy entry).
+    private static string[] Metadata(string ir) => [.. Regex.Matches(ir, @"(?m)^@__kimi_object_metadata\d+ = .*$").Select(static x => x.Value)];
 }

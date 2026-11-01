@@ -14,14 +14,15 @@ namespace Kimi.Compiler.Backend;
 // acquires nothing and never fails. A string Place is never an operand (MIR inspects strings through shared borrows), a string has no
 // other operator (SPEC 13.3.2), and no valid program reaches a pair layer in an operand (Binding rejects the built-in comparison through a
 // pair target, UnprovenConstraint_Kd; MIR is built per body, so an abstract target is a requirement call): each is a broken contract.
-// C8f's comparison shims read a string leaf's record through Record. Referent, the walk to an operand's terminal Place, serves every
+// C8f's comparison shims read a string leaf's record through Record. TerminalAddress, the walk to an operand's terminal Place, serves every
 // comparison operand (FunctionCodegen.Arithmetic's Compute; DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // SPEC 3.4.3, 13.4: where an operand of safe value-reference layers denotes its terminal Place, given the operand's value: the referent of
-    // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule), or the value itself without
-    // layers (References 0); its Terminal. Null after a record: a pair layer, which no valid program leaves on an operand (above).
-    private Value? Referent(in MirOperand operand, Value value, in SourceInfo source, out Terminal terminal)
+    // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule); its Terminal. Without layers
+    // (References 0) the operand's own value, which is no address for a scalar: Compute reads it as the value, Bytes refuses it. Null after
+    // a record: a pair layer, which no valid program leaves on an operand (above).
+    private Value? TerminalAddress(in MirOperand operand, Value value, in SourceInfo source, out Terminal terminal)
     {
         terminal = Terminal.Of(this.InstanceType(operand));
         if (terminal.Layers != terminal.References)
@@ -63,7 +64,7 @@ internal sealed partial class FunctionCodegen
         this.Store(statement, this.Widen(target, result));
     }
 
-    // A string operand's bytes: a constant's (TextBytes), or the record at its terminal Place (Referent, the one walk every comparison
+    // A string operand's bytes: a constant's (TextBytes), or the record at its terminal Place (TerminalAddress, the one walk every comparison
     // operand takes). False after a broken contract's record: the operand's (Operand), or a string Place or a pair layer, which no valid
     // program makes an operand.
     private bool Bytes(in MirOperand operand, in SourceInfo source, out StringBytes bytes)
@@ -80,7 +81,7 @@ internal sealed partial class FunctionCodegen
             return false; // Recorded.
         }
 
-        if (this.Referent(operand, value, source, out var terminal) is not { } address)
+        if (this.TerminalAddress(operand, value, source, out var terminal) is not { } address)
         {
             return false; // Recorded.
         }
