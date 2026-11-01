@@ -493,12 +493,15 @@ public sealed class MirAnalysisTest
     [Fact]
     public void RequireEndsScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var (sizes, work, compilations, programs) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirProgram[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+        {
+            var c = compilations[i] = MirBuildTest.Compile(RequireEnds(sizes[i]));
+            return () => programs[i] = c.BuildMir();
+        });
         for (var i = 0; i < sizes.Length; i++)
         {
-            var c = MirBuildTest.Compile(RequireEnds(sizes[i]));
-            MirProgram program = null!;
-            allocated[i] = AllocationMeasurement.MeasureOnce(() => program = c.BuildMir());
+            var (c, program) = (compilations[i], programs[i]);
             work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
             var problems = program.Problems.All.ToArray();
             Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, ulong.MaxValue), (x.Code, x.Views)));

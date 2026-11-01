@@ -77,6 +77,24 @@ public class AllocationMeasurementTest
     public void MeasureOnceDetectsAllocatingWork()
         => Assert.True(AllocationMeasurement.MeasureOnce(() => GC.KeepAlive(new byte[128])) >= 152);
 
+    // MeasureSeries makes a fresh state per index and one more of index 0, whose unmeasured run takes the process's one-time
+    // initialization: OneTime's 4 KB table falls in no measured run, so every index, the first included, reads only its
+    // run's byte[64 * size] (88 to 280 bytes). Without that run, index 0 would read the 4 KB.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void MeasureSeriesMeasuresNoOneTimeInitialization()
+    {
+        var made = new List<int>();
+        var allocated = AllocationMeasurement.MeasureSeries(3, i =>
+        {
+            made.Add(i);
+            var size = 1 << i;
+            return () => GC.KeepAlive(OneTime.Run(size));
+        });
+        Assert.All(allocated.Select(static (x, i) => (x, i)), static x => Assert.InRange(x.x, 64 << x.i, 1024));
+        Assert.Equal([0, 0, 1, 2], made);
+    }
+
     // Allocating in exactly the warm-up operations measures nothing, and allocating in the first measured operation
     // is measured: together they fix the split of the window.
     [Trait("Purpose", "Allocation")]
@@ -261,4 +279,14 @@ public class AllocationMeasurementTest
     private readonly struct LateMarker;
 
     private readonly struct EveryMarker;
+
+    // An operation with a one-time initialization: its first run in the process allocates a 4 KB table (only
+    // MeasureSeriesMeasuresNoOneTimeInitialization runs it), then each run allocates a byte[64 * size]. A static readonly array
+    // initializer would not do: the runtime may place it on its non-GC heap, which the thread's counter does not see.
+    private static class OneTime
+    {
+        private static byte[]? table;
+
+        internal static byte[] Run(int size) => new byte[(table ??= new byte[4096]).Length / 4096 * 64 * size];
+    }
 }
