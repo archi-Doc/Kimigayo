@@ -42,8 +42,8 @@ public class PositionModelTest
         "        a += 1\n    check(same(values[..], (true, 0, length)), 18)\n    length += 1\n" +
         "Console.writeLine(\"\\(checks) pairs\")";
 
-    // SPEC 4.8.6: constant positions and ranges on a fixed array, resolved at compile time.
-    private const string Folding =
+    // SPEC 4.8.6: constant positions and ranges on a fixed array.
+    private const string ConstantPositions =
         "let values: [4 of i32] = [1, 2, 3, 4]\nlet a = values[^1]\nlet s = values[1..^1]\nlet c = values[..=2]\nlet t = values[^2..]\nlet u = values[1@u8..3@i64]\n" +
         "require a == 4 and s.length == 2 and c.length == 3 and t.length == 2 and u.length == 2 else => $abort(\"fold\")\nConsole.writeLine(\"ok\")";
 
@@ -165,8 +165,8 @@ public class PositionModelTest
     // Constant positions and ranges that resolve against a fixed array's length select their elements (the fixture's native
     // output), while a failing constant keeps its check (see the Abort cases).
     [Fact]
-    public void ConstantPositionsOnFixedArraysFold()
-        => ScalarEmissionTest.EmitFixture("PositionModelFolding", Folding, "ok\n");
+    public void ConstantPositionsOnFixedArraysSelectTheirElements()
+        => ScalarEmissionTest.EmitFixture("PositionModelConstantPositions", ConstantPositions, "ok\n");
 
     // SPEC 8.13: the Kimi integer witness has explicit specializations for isize, i32 and usize; generic dispatch and
     // FromEnd<T> select them, so none of these Types reaches the generic body's u128 comparison.
