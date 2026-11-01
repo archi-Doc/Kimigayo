@@ -131,7 +131,8 @@ internal sealed class TestCatalog
         {
             inputs.Add(module.Name);
             Section("sources", module.SourceDocuments.Count);
-            foreach (var source in module.SourceDocuments.OrderBy(module.LogicalName, StringComparer.Ordinal))
+            // In logical declaration order (SPEC 6.2.1), whatever the read order.
+            foreach (var source in module.SourceDocuments)
             {
                 inputs.Add(module.LogicalName(source));
                 inputs.Add(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source.SourceText))));
