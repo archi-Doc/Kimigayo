@@ -200,6 +200,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G342 (R4; window r4w3, 2026-10-31; DECISIONS R4-M160; Full, the design-first candidate):** A5 keeps a store's value past storage the body does not own once, as Shared, and reads each Shared id once; the five scaling rows grow 3.5-3.9x per doubling (bound 5); the mir ledger is identical. Its next step is G264 U1's (PLAN G264).
 <a id="g347"></a>
 - **G347 (R5; batch 75):** every test allocation window goes through `AllocationMeasurement.Measure` or `MeasureOnce`; an `ArchitectureRulesTest` ratchet keeps `GetAllocatedBytesForCurrentThread` in `AllocationMeasurement.cs`. Its 64 B MirBorrows item went to R4 (PLAN G350).
+<a id="g157-census"></a>
+- **G157 items, G289 (2) (R5's census of 2026-11-01):** closed as stale: (22) and (34), the old generator deleted at G7; (49), Binding's side landed (bu60), the collector part being G149; (50), a condition (strings are released only through `__kimi_destroy_string`; reopen with a new release path); (7)'s `Emission.ReportFailure`, script and sel clauses (G4); (37)'s commit clause (R5-M131); (40)'s old-only Backend members (G4) and legacy-inlining clauses; (45)'s audit clause (G3); G289 (2), closed by G2. G205's and G150's R5 conditions lapsed.
 
 ## Retired audit records
 
