@@ -104,6 +104,48 @@ public sealed partial class Kotonoha
         }
     }
 
+    /// <summary>Gets where a fully qualified path's remainder under a base directory starts, or 0 when the base does not contain it:
+    /// without allocation, the host's separators compare equal, letters as the host's paths do, and the prefix ends at a separator
+    /// (<c>C:\p\App</c> holds no <c>C:\p\AppX</c>). No path makes it throw. The rule of <see cref="LogicalName"/> and of a
+    /// diagnostic's displayed path.</summary>
+    /// <param name="path">The path.</param>
+    /// <param name="directory">The base directory, normalized.</param>
+    /// <returns>The remainder's start, or 0.</returns>
+    internal static int Under(string path, string directory)
+    {
+        if (directory.Length == 0 || path.Length <= directory.Length || !Path.IsPathFullyQualified(path))
+        {
+            return 0;
+        }
+
+        for (var start = 0; ; start++)
+        {
+            var separator = directory.AsSpan(start).IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var end = separator < 0 ? directory.Length : start + separator;
+            if (!directory.AsSpan(start, end - start).Equals(path.AsSpan(start, end - start), Checking.SourceIdentity.PathComparison))
+            {
+                return 0;
+            }
+
+            if (end == directory.Length)
+            {
+                if (IsSeparator(directory[^1]))
+                {
+                    return end; // A root base, such as C:\, ends in its separator.
+                }
+
+                return IsSeparator(path[end]) ? end + 1 : 0;
+            }
+
+            if (!IsSeparator(path[end]))
+            {
+                return 0;
+            }
+
+            start = end;
+        }
+    }
+
     /// <summary>Gets the name hover shows for a source: its logical name, but none for a generated or built-in (<c>://</c>) document,
     /// a fully qualified path outside <see cref="Base"/> or a rooted relative path (U9a-2 names the last two). No path makes it throw.</summary>
     /// <param name="index">The document's index in <see cref="SourceDocuments"/>.</param>
@@ -337,43 +379,6 @@ public sealed partial class Kotonoha
     // API value: Project.TryCreate never produces one), and such a base matches only paths with its exact text.
     private static string Normalize(string directory)
         => Path.IsPathFullyQualified(directory) && !directory.Contains('\0') ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : directory;
-
-    // Where a fully qualified path's remainder under the base starts, or 0 when the base does not contain it: without allocation, the
-    // host's separators compare equal, letters as the host's paths do, and the prefix ends at a separator (C:\p\App holds no C:\p\AppX).
-    private static int Under(string path, string directory)
-    {
-        if (directory.Length == 0 || path.Length <= directory.Length || !Path.IsPathFullyQualified(path))
-        {
-            return 0;
-        }
-
-        for (var start = 0; ; start++)
-        {
-            var separator = directory.AsSpan(start).IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var end = separator < 0 ? directory.Length : start + separator;
-            if (!directory.AsSpan(start, end - start).Equals(path.AsSpan(start, end - start), Checking.SourceIdentity.PathComparison))
-            {
-                return 0;
-            }
-
-            if (end == directory.Length)
-            {
-                if (IsSeparator(directory[^1]))
-                {
-                    return end; // A root base, such as C:\, ends in its separator.
-                }
-
-                return IsSeparator(path[end]) ? end + 1 : 0;
-            }
-
-            if (!IsSeparator(path[end]))
-            {
-                return 0;
-            }
-
-            start = end;
-        }
-    }
 
     private static bool IsSeparator(char value)
         => value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;

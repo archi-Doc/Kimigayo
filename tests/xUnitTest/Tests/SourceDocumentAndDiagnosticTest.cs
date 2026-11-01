@@ -138,6 +138,29 @@ public partial class SourceDocumentAndDiagnosticTest
             console.Output);
     }
 
+    // PLAN G346 (DECISIONS R5-M175): a location's path under the base directory is shown by its remainder, any other as it is, by the
+    // logical name's prefix rule, which no path makes throw: a NUL inside the base stays a character of the relative path.
+    [Fact]
+    public void RendersAPathWithANulRelativeToTheBase()
+    {
+        var console = new TestConsoleService();
+        var kimigayo = new Kimigayo(console);
+        var directory = Path.GetFullPath("render-base");
+        var inside = new SourceDocument(Path.Combine(directory, "a\0b.kimi"), "var value = bad\n");
+        var outside = new SourceDocument(Path.GetFullPath("render-other.kimi"), "var value = bad\n");
+        var owner = new DiagnosticOwner();
+        foreach (var document in new[] { inside, outside })
+        {
+            var range = document.GetTextSpan(new SourceRange(new(0, 12), new(0, 15)));
+            owner.GetOrAddCollection(document.Path).For(document).Add(range, DiagnosticCode.IndentationLevelMismatch_Kd);
+        }
+
+        kimigayo.Render(owner.Finalize(), directory);
+
+        Assert.Contains(" --> a\0b.kimi:1:13\n", console.Output, StringComparison.Ordinal);
+        Assert.Contains($" --> {outside.Path}:1:13\n", console.Output, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ReportsCaretsAcrossMultipleLines()
     {
