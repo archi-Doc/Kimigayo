@@ -14717,3 +14717,28 @@ structure is recorded here by the unit that first implements it.
     they dilute the cost, relax the assertion in effect and keep the order dependence); leaving tests that fail alone (an order dependence
     hidden); a `Lazy<T>`, flag or mode for the texts; one holder per text.
   - Open: the expansion itself at code generation (8.18 MB in 12-45 ms once per process; PLAN G358).
+- **R5-M175 One owner of a source's logical name: `Kotonoha.Base` (PLAN LN, G289 (3), G346)** (2026-11-01, R5; design
+  `draft/Sketches/R5/LN-design.md` revision 2, accepted by design review 3; the owner's 「両レーンで GO！」) IMPL 20.1 names a source by its
+  project-relative path with `/` separators. Five copies disagreed on the base (the root's or the source's own project), the separators,
+  a project without a directory and a path outside the base; the cause one level higher: a name read ambient state (the process's
+  current directory) and had no change points.
+  - Rule 1 (U9a-1a): the base is a value Kotonoha owns and stores, `Kotonoha.Base` (replacing `SourceDirectory`, computed at each
+    read): its project's directory, normalized once per value (`GetFullPath`, no trailing separator but a root's); for a module without a
+    `Url` (the root) whose project has no directory, the current directory its compilation captured when created
+    (`Compilation.CurrentDirectory`, read once before the root module exists, so a deserialized root attached to a new compilation finds
+    that compilation's); empty for a module whose `Url` is not a full path (library, `$abort`, tests). A value that is not a fully
+    qualified, NUL-free path is used as given, so no `Path` call throws. Change points: creation, `OnDeserialized` (it reassigns the
+    compilation, so the project, and the deserialized `Url`), and a new `Project.Directory` value, which the `Base` getter itself
+    detects by an ordinal reference comparison with the value its base came from, so no reader sees a stale base. Readers: documentation's
+    parse-time name (both parse entries), `HoverSourceName` and hover placement's root (`HoverBuilder.Placement`).
+  - Behavior (U9a-1a): a root module without a directory names and links from the captured directory: documentation names `A.kimi`
+    (absolute before), hover names it (null before) and its relative links resolve (`HoverLinkTest`); a deserialized module takes its
+    new compilation's directory or its deserialized `Url`'s (`KotonohaSerializationTest`).
+  - Measured (U9a-1a): one directory string per compilation (216 B for a 95-character directory, retained with the compilation);
+    `GetFullPath` of a normalized path returns it (0 B); capture and normalization 0.84 µs per compilation, a module's normalization
+    0.38 µs (an empty `CreateForTest` is 6,344 B and 8.8 µs); warm reads allocate nothing (`NoInitTest`, `AbortEmissionTest`, the hover
+    lookup tests unchanged).
+  - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
+    from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
+    (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need
+    other paths).

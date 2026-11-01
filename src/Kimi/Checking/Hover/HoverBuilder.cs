@@ -506,7 +506,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 }
             }
 
-            var root = module.SourceDirectory;
+            var root = module.Base;
             placement = new(Path.IsPathFullyQualified(root) ? root : null, files.ToArray());
             this.placements.Add(module, placement);
         }

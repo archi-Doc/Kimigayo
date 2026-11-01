@@ -3,6 +3,7 @@
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -68,6 +69,24 @@ public sealed class HoverLinkTest
         var module = new Kotonoha(compilation, "Dependency", Path.Combine(this.root, "Dependency.kimiproj"));
         module.AddSource(new(Path.Combine(this.root, "src", "value.kimi"), "/// A dependency.\npublic struct Value\n"));
         Assert.Equal("src/value.kimi", Assert.Single(module.DocumentationSources).LogicalName);
+    }
+
+    [Fact]
+    public void ARootWithoutADirectoryNamesAndLinksFromTheCurrentDirectoryItsCompilationCaptured()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.CollectHover = true;
+        compilation.CollectDocumentation = true;
+        const string source = "/// See [peer](B.kimi).\nstruct Value\n";
+        var path = Path.GetFullPath("A.kimi");
+        compilation.Kotonoha.AddSource(new(path, source));
+        Assert.True(compilation.Bind().IsComplete);
+        Assert.Equal("A.kimi", Assert.Single(compilation.Kotonoha.DocumentationSources).LogicalName);
+        Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(0));
+        var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(path)];
+        var entry = document.Entries[document.Find(source.IndexOf("Value", StringComparison.Ordinal))];
+        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true).Body);
     }
 
     private string? Resolve(string destination)

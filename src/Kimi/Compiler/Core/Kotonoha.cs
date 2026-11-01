@@ -1,5 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns one source unit (a module): its documents, merged syntax tree and diagnostics, and the base of its sources' logical names
+// (IMPL 20.1). Input: source documents (disk, in-memory, deserialized, generated) and its compilation's project. Output: RootKoto,
+// Syntax, DiagnosticCollection and Base, the directory its logical names are relative to.
+// Invariants: Base is stored and recomputed only at a change point (creation, OnDeserialized, a new Project.Directory value, which
+// the getter detects by reference); a root module whose project has no directory takes the current directory its compilation
+// captured when created. Must not read the process's current directory itself, and no Path call it makes for a name throws.
+
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -75,11 +82,33 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     internal IReadOnlyList<DiagnosticKey>? OmittedDeclarations => this.omittedDeclarations;
 
+    /// <summary>Gets the base of this module's logical source names (IMPL 20.1): its project's directory, normalized; for a
+    /// module without a <see cref="Url"/> (the root) and a project without a directory, the current directory its compilation
+    /// captured when created; empty for a module whose <see cref="Url"/> is not a full path (library, <c>$abort</c>, tests).
+    /// It is stored and recomputed only at a change point: creation, <see cref="OnDeserialized"/>, and a new
+    /// <see cref="Project.Directory"/> value, which this getter itself detects by reference, so no reader sees a stale base.</summary>
     [IgnoreMember]
-    internal string SourceDirectory => this.Url.Length == 0 ? this.Compilation.Project.Directory : Path.IsPathFullyQualified(this.Url) ? Path.GetDirectoryName(this.Url) ?? string.Empty : string.Empty;
+    internal string Base
+    {
+        get
+        {
+            if (this.Url.Length == 0 && !ReferenceEquals(this.baseSource, this.Compilation.Project.Directory))
+            {
+                this.SetBase();
+            }
+
+            return this.baseDirectory;
+        }
+    }
 
     internal string? HoverSourceName(int index)
-        => this.generatedSourceLocations?.ContainsKey(index) == true ? null : Documentation.DocumentationSource.PhysicalLogicalName(this.sourceDocuments[index].Path, this.SourceDirectory);
+        => this.generatedSourceLocations?.ContainsKey(index) == true ? null : Documentation.DocumentationSource.PhysicalLogicalName(this.sourceDocuments[index].Path, this.Base);
+
+    [IgnoreMember]
+    private string baseDirectory = string.Empty;
+
+    [IgnoreMember]
+    private string? baseSource;
 
     private List<Documentation.DocumentationSource>? documentationSources;
 
@@ -141,6 +170,7 @@ public sealed partial class Kotonoha
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
+        this.SetBase();
 
         var codeContext = new CodeContext(this);
         this.RootKoto = new(codeContext, default, default);
@@ -168,6 +198,7 @@ public sealed partial class Kotonoha
         this.DiagnosticCollection = compilation.Diagnostics.GetOrAddCollection(this.Name, this);
         compilation.Diagnostics.InvalidateSyntax(this);
         this.Compilation = compilation;
+        this.SetBase(); // A change point: the compilation, so its project, and the deserialized Url are new.
         this.RootKoto = new(new CodeContext(this), default, default);
         this.Syntax = new();
         this.GeneratedFunction = null;
@@ -259,6 +290,11 @@ public sealed partial class Kotonoha
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
+    // A fully qualified, NUL-free directory is normalized once; any other value is used as given, so no Path call throws (an
+    // API value: Project.TryCreate never produces one), and such a base matches only paths with its exact text.
+    private static string Normalize(string directory)
+        => Path.IsPathFullyQualified(directory) && !directory.Contains('\0') ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : directory;
+
     [TinyhandOnDeserializing]
     private void ResetSourceCompatibility()
     {
@@ -290,7 +326,7 @@ public sealed partial class Kotonoha
             codeContext.Documentation = tokenizer.Documentation;
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
-            codeContext.Documentation?.SetLocation(this.SourceDirectory, modId, additionOrder);
+            codeContext.Documentation?.SetLocation(this.Base, modId, additionOrder);
             codeContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.RecordDocumentation(codeContext.Documentation);
         }
@@ -298,5 +334,13 @@ public sealed partial class Kotonoha
         {
             tokenizer.Dispose();
         }
+    }
+
+    private void SetBase()
+    {
+        var directory = this.Compilation.Project.Directory;
+        this.baseSource = directory;
+        this.baseDirectory = this.Url.Length == 0 ? Normalize(directory.Length > 0 ? directory : this.Compilation.CurrentDirectory) :
+            Path.IsPathFullyQualified(this.Url) ? Normalize(Path.GetDirectoryName(this.Url) ?? string.Empty) : string.Empty;
     }
 }
