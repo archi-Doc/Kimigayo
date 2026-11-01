@@ -156,7 +156,7 @@ invalid:
 }
 
 ; 32-byte little-endian header: total length, version, kind, IssueId, SiteId,
-; phase (body=1), total failures. Payload never exceeds 65504 bytes.
+; phase, total failures. Payload never exceeds 65504 bytes.
 define internal void @__kimi_test_frame(i16 %kind, i64 %issue, i32 %site, ptr %payload, i32 %size) #0 {
 entry:
   %header = alloca {i32, i16, i16, i64, i32, i32, i64}, align 8
