@@ -170,7 +170,7 @@ internal sealed partial class InstanceCollector
 
     // K 4.3: a shim's targets, at its default site: a comparison item's are its direct parts' (Parts); a formatting or arithmetic shim's
     // scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness drops the Field's
-    // old value (its glue), the Field Agrees found in the representative Self at admission.
+    // old value (its glue), the Field Agrees found in the representative Self at admission, so a Self without it is a broken contract.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
         if (key.Kind == MonoKind.PropertyWitness)
@@ -182,7 +182,8 @@ internal sealed partial class InstanceCollector
 
             if (!AdtDef.FindField(self, key.Symbol, out var field, out _))
             {
-                throw new InvalidOperationException($"The property witness of {key.Symbol} is not a Field of {TyCtxt.Name(self)}.");
+                this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+                return;
             }
 
             this.Target(item, this.Glue(item, site, field!));
