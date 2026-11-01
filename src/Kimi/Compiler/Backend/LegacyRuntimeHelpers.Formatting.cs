@@ -91,9 +91,6 @@ internal static partial class LegacyRuntimeHelpers
     // One row per formatting compiler function, indexed from TextFixed; a new kind adds a row.
     private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
 
-    // The runtime templates with each row's routine definition spliced in once; read after the rows.
-    private static readonly string FormattingRuntime = ReadFormattingRuntime();
-
     // The maximum encoded bytes of a value by its formatting kind (FormatKind's numbering), the runtime's own __kimi_format_bounds, which
     // __kimi_format_capacity reads (FunctionCodegenTest's FormatBoundsAreTheRuntimesTable ties them): kind 0 is no value, and a string or a
     // view (16, 17) is unbounded.
@@ -166,7 +163,7 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Writes the formatting runtime: the templates with each row's routine defined once.</summary>
     /// <param name="output">The module text.</param>
-    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(FormattingRuntime);
+    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(Texts.Formatting);
 
     /// <summary>Writes a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a user formatter's write wrapper (SPEC 22.9.2):
     /// toString formats through a heap buffer and Aborts on BufferFull at its call's location; tryFormat formats into the caller's array and
@@ -310,5 +307,11 @@ internal static partial class LegacyRuntimeHelpers
         }
 
         return ExpandRuntime(text!, CollectionsMarshal.AsSpan(definitions));
+    }
+
+    private static partial class Texts
+    {
+        // The runtime templates with each row's routine definition spliced in once.
+        internal static readonly string Formatting = ReadFormattingRuntime();
     }
 }

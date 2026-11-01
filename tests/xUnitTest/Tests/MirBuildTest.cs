@@ -228,6 +228,31 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Equal((bodies, version + rebuilds), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
+    // G350: the process's one-time initialization on the check path stays small. A fresh process's first cold build allocates at most
+    // 64 KB more than a second cold build of the same text on a fresh Compilation: the class constructors of the rows and ABIs it reads
+    // and the runtime's first instantiations, measured about 21.5 KB on .NET 10, three times that being the margin. Before G350 the
+    // collector's IntrinsicRows built code generation's runtime texts there, 8.2 MB more.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public Task AFreshProcessPaysLittleOnceForItsFirstBuild()
+        => FreshProcess.RunExplicit(typeof(MirBuildTest), nameof(MirBuildTest.TheFirstBuildOfAFreshProcess));
+
+    // AFreshProcessPaysLittleOnceForItsFirstBuild's child: the first and a second cold build, each of a fresh Compilation of one text.
+    [Trait("Purpose", "Allocation")]
+    [Fact(Explicit = true)]
+    public void TheFirstBuildOfAFreshProcess()
+    {
+        var allocated = new long[2];
+        for (var i = 0; i < allocated.Length; i++)
+        {
+            var c = Compile("func work() -> i32 => 1\n");
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => c.BuildMir());
+        }
+
+        output.WriteLine($"cold build allocation {allocated[0]}, then {allocated[1]}");
+        Assert.True(allocated[0] - allocated[1] <= 64 * 1024, $"cold build allocation {allocated[0]}, then {allocated[1]}");
+    }
+
     // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by
     // the returns, and the normal end), so the MIR and its cold build's allocation grow linearly with N, and a warm rebuild allocates nothing.
     [Trait("Purpose", "Allocation")]
