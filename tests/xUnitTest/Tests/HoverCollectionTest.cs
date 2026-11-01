@@ -94,7 +94,7 @@ public sealed class HoverCollectionTest : IDisposable
         }
         else
         {
-            documentation.SetLocation("\0"); // Physical placement cannot be computed from this invalid path.
+            documentation.Merge(null!); // An invalid optional merge must not escape either (naming a source cannot fail, R5-M175).
         }
 
         Assert.True(compilation.HasDocumentationFailure(failed));
@@ -122,7 +122,7 @@ public sealed class HoverCollectionTest : IDisposable
     {
         var source = new SourceDocument(Path.Combine(this.directory, "standalone.kimi"), "/// Comment");
         var documentation = new DocumentationSource(source);
-        Assert.Throws<ArgumentException>(() => documentation.SetLocation("\0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => documentation.Exclude(-1, 0, 0));
     }
 
     [Theory]
@@ -166,6 +166,17 @@ public sealed class HoverCollectionTest : IDisposable
                 Assert.Empty(compilations[i].Library.Kotonoha.DocumentationSources);
             }
         }
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a library documentation source is named by its source's logical name, its compiler:// path, so
+    // the library's fragments order by file and its relative links resolve from that file.
+    [Fact]
+    public void LibraryDocumentationIsNamedByItsSourcesPath()
+    {
+        var sources = Create(true).Library.Kotonoha.DocumentationSources.ToArray();
+        Assert.NotEmpty(sources);
+        Assert.All(sources, static source => Assert.StartsWith("compiler://Kimi/", source.LogicalName, StringComparison.Ordinal));
+        Assert.All(sources, static source => Assert.Equal(source.Source.Path, source.LogicalName));
     }
 
     private static CheckOutput Run(string path, bool collect)

@@ -114,6 +114,10 @@ public partial class Compilation
     /// <summary>Gets reusable ownership CFG analysis. Verification is separate from executable emission.</summary>
     public OwnershipAnalysis Ownership => this.ownership ??= new(this);
 
+    /// <summary>Gets the process's current directory, captured once before the root module is created: the base of a project
+    /// without a directory (<see cref="Kotonoha.Base"/>), so a later change of the process's directory renames nothing.</summary>
+    internal string CurrentDirectory { get; } = Directory.GetCurrentDirectory();
+
     internal Testing.TestCatalog Tests => field ??= new();
 
     private SourceLocationTable? locations;
@@ -323,6 +327,10 @@ public partial class Compilation
         this.InvalidateOwnership();
         this.locations?.Clear();
         this.layout?.Clear();
+        foreach (var module in this.SourceModules)
+        {
+            module.ForgetNames();
+        }
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and

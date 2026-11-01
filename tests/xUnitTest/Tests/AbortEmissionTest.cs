@@ -117,6 +117,32 @@ public class AbortEmissionTest
         Assert.Equal(location, c.Locations.Text(SourceRef.Of(Abort(c))));
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): a dependency's source is named relative to its own project, not to the root's.
+    [Fact]
+    public void ADependencysLocationNamesItsOwnProjectsSource()
+    {
+        var directory = Path.GetFullPath("location-dependency");
+        var c = ModuleBindingTest.Prepared(Path.Combine(directory, "App"), Path.Combine(directory, "Lib"));
+        c.SourceModules[0].AddSource(new SourceDocument(Path.Combine(directory, "App", "App.kimi"), "public func main() => ()\n"));
+        c.SourceModules[1].AddSource(new SourceDocument(Path.Combine(directory, "Lib", "Lib.kimi"), "public func fail() => $abort(\"x\")\n"));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var abort = KotoTree.Walk(c.SourceModules[1].RootKoto).OfType<MacroKoto>().Single();
+        Assert.Equal("Lib.kimi:1:23", c.Locations.Text(SourceRef.Of(abort)));
+    }
+
+    // IMPL 20.1, 21.4.2 (PLAN G346): a NUL inside the project is a name's character: the source checks, and its location is relative
+    // with the NUL escaped.
+    [Fact]
+    public void ANulInsideTheProjectIsEscapedInItsRelativeLocation()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.Directory = Path.GetFullPath("location-nul");
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "a\0b.kimi"), "$abort(\"x\")"));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal("a\\u{0}b.kimi:1:1", c.Locations.Text(SourceRef.Of(Abort(c))));
+    }
+
     // The location memo holds the current program only: an edit releases the texts of the documents it replaced.
     [Fact]
     public void AnEditReleasesTheReplacedLocationTexts()

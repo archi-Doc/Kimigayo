@@ -9917,6 +9917,9 @@ structure is recorded here by the unit that first implements it.
   (Project's rule for its TestSources), so a location never shows the checkout path (IMPL 20.1: project-relative). Rejected:
   clearing on the Binding pass version (`HirTables.Publish`), which every warm rebind advances, so a warm Bind and WriteIr
   would allocate the texts again (asserted 0 B, `NoInitTest`); a `SourceRef` memo key; one table per generator.
+  - Amended by R5-M175 (PLAN LN): the memo's directory key is the root module's `Kotonoha.Base`, compared by reference; the name
+    rule moved to `Kotonoha.LogicalName` (a dependency's source is named relative to its own project); a project without a directory
+    is the current directory its compilation captured when created, not the process's at the read.
 - **R5-M21 `TyCtxt.Instances` and `Instantiates`** (2026-10-18, planning session; plan F3, package F §4.11, K §4.1, X8, X26, F 8;
   under R5-M18) The partial `Binding/TyCtxt.Instances.cs` owns instance identity; K3 adds `Erase` there. `TyCtxt.Instantiates`,
   given a definition's `BindingSymbol`, is true when the definition or a declaration enclosing it on its scope chain has a Type,
@@ -14606,6 +14609,10 @@ structure is recorded here by the unit that first implements it.
     exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
     (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
     the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
+  - Amended by R5-M175 (U9a-1b, U9b): G346 is fixed (naming a source never throws), so G330b's code-generation row left with its
+    trigger, and no other program reaches generation's exceptions without a production seam. U9b (the planning session's ruling (b))
+    deletes the `generating` exclusion and its state: `Publish` classifies its steps before and after code generation in two catches,
+    and generation runs between them, outside both, so the rule above holds by structure (no test observes it: no seam).
 - **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, R5; PLAN G332, design
   `draft/Sketches/R5/G332-design.md` revision 3, accepted at its third review; the owner approved the departure from K package 4.6/KD9
   together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known limit)
@@ -14792,3 +14799,55 @@ structure is recorded here by the unit that first implements it.
     `C/Emission`); and the reduction plan's table (`WindowsProfile` to `src/Kimi/Build` at R9). For the target half only: their reason,
     nothing moves twice, holds for the toolchain identity, which R9 still moves with the toolchain, and not for the target profile, which
     P2-P12 read and R9's move cannot take.
+- **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, R5; design
+  `draft/Sketches/R5/LN-design.md` revision 2, accepted by design review 3; the owner's 「両レーンで GO！」) IMPL 20.1 names a source by its
+  project-relative path with `/` separators. Five copies disagreed on the base (the root's or the source's own project), the separators,
+  a project without a directory and a path outside the base; the cause one level higher: a name read ambient state (the process's
+  current directory) and had no change points.
+  - Rule 1 (U9a-1a): the base is a value Kotonoha owns and stores, `Kotonoha.Base` (replacing `SourceDirectory`, computed at each
+    read): its project's directory, normalized once per value (`GetFullPath`, no trailing separator but a root's); for a module without a
+    `Url` (the root) whose project has no directory, the current directory its compilation captured when created
+    (`Compilation.CurrentDirectory`, read once before the root module exists, so a deserialized root attached to a new compilation finds
+    that compilation's); empty for a module whose `Url` is not a full path (library, `$abort`, tests). A value that is not a fully
+    qualified, NUL-free path is used as given, so no `Path` call throws. Change points: creation, `OnDeserialized` (it reassigns the
+    compilation, so the project, and the deserialized `Url`), and a new `Project.Directory` value, which the `Base` getter itself
+    detects by an ordinal reference comparison with the value its base came from, so no reader sees a stale base. Readers: documentation's
+    parse-time name (both parse entries), `HoverSourceName` and hover placement's root (`HoverBuilder.Placement`).
+  - Behavior (U9a-1a): a root module without a directory names and links from the captured directory: documentation names `A.kimi`
+    (absolute before), hover names it (null before) and its relative links resolve (`HoverLinkTest`); a deserialized module takes its
+    new compilation's directory or its deserialized `Url`'s (`KotonohaSerializationTest`).
+  - Measured (U9a-1a): one directory string per compilation (216 B for a 95-character directory, retained with the compilation);
+    `GetFullPath` of a normalized path returns it (0 B); capture and normalization 0.84 µs per compilation, a module's normalization
+    0.38 µs (an empty `CreateForTest` is 6,344 B and 8.8 µs); warm reads allocate nothing (`NoInitTest`, `AbortEmissionTest`, the hover
+    lookup tests unchanged).
+  - Rule 2 (U9a-1b): the name is Kotonoha's query, `Kotonoha.LogicalName(SourceDocument)`, over the document's path and `Base`: a
+    fully qualified path under the base is its remainder, any other path (outside the base, another drive, relative, `compiler://`) its
+    own text, each with the host's separators as `/` (a non-Windows `\` stays a character). "Under" is a prefix test without allocation
+    against the normalized base: the host's separators compare equal, letters by `SourceIdentity.PathComparison` (the one platform rule
+    `PathComparer` now derives from), and the prefix ends at a separator (`C:\p\App` does not contain `C:\p\AppX\A.kimi`). No `Path` call can throw, so a NUL inside the project keeps its relative
+    name. The query is memoized per document by reference in its module; the memo is emptied when the base is recomputed and when the
+    source analysis is revoked (`Compilation.InvalidateSourceAnalysis`, beside the location table's), so it holds only current documents
+    and a warm read is a lookup. Readers: the location table (its path code gone; its memo keyed by the root module's `Base`, by
+    reference), `TestCatalog` (cases, sites and inputs; its copy gone, G289 (3)), `Kotonoha.ParseSource`'s collection name, and
+    documentation, which stores the name its parse gave (`SetLocation(name)`, the library's sources included: their `compiler://`
+    path): a later directory change does not rename a parsed documentation source, while hover's names are live: `HoverSourceName`
+    is the query except for a generated or `://` document, a fully qualified path outside the base and a rooted relative path, which
+    have none until U9a-2 (`PhysicalLogicalName` deleted; no hover name throws).
+  - Behavior (U9a-1b): a dependency's location and catalog input name its own project's source (`Lib.kimi`, not `../Lib/Lib.kimi`);
+    a relative in-memory path is named as given, not resolved against the process's directory (catalog, collection name); a NUL path
+    inside the project checks and its location is relative with `\u{0}` escaped (G346's check half); a path under `C:\p\AppX` is not
+    under the base `C:\p\App`, and `C:/p/App/Main.kimi` is.
+  - Measured (U9a-1b): a name costs 40 B (a file directly in the base) to 112 B (a subdirectory: a remainder and its `/` copy) and about
+    1 µs once per document; a module's memo is one dictionary; a warm read is a 47 ns lookup, 0 B. The copies it replaces allocated
+    per read (`GetFullPath` and `GetRelativePath` per location text and per catalog source and sort key).
+  - Tests whose trigger was a name's exception moved to another trigger, the contract unchanged: `HoverCollectionTest`'s optional
+    collection failure (an invalid merge) and standalone documentation's failure (an invalid exclusion). G346's command half: a NUL
+    program publishes (`EmissionArtifactsTest.ANulInsideTheProjectIsPublished`), so G330b's code-generation row lost its trigger, as
+    R5-M169 foresaw, and leaves; U9b moves generation outside `Publish`'s classifying catches and deletes the exclusion.
+  - U9b (the planning session's ruling (b)): a diagnostic's displayed path (`Kimigayo.DisplayPath`, SPEC 23.4) is its remainder
+    under the project directory by the same prefix rule (`Kotonoha.Under`), any other path as it is, so rendering a diagnostic at a
+    NUL path no longer throws out of a command (`SourceDocumentAndDiagnosticTest.RendersAPathWithANulRelativeToTheBase`, which threw).
+  - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
+    from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
+    (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need
+    other paths).

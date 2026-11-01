@@ -79,7 +79,7 @@ internal sealed class TestCatalog
         var project = compilation.Project;
         this.ProjectId = ProjectIdOf(project);
 
-        new Collector(this, project).Visit(compilation.Kotonoha.RootKoto);
+        new Collector(this).Visit(compilation.Kotonoha.RootKoto);
         this.Cases.Sort(static (a, b) => Compare(a.Name, a.File, a.CaseId, b.Name, b.File, b.CaseId));
         this.Sites.Sort(static (a, b) =>
         {
@@ -131,9 +131,9 @@ internal sealed class TestCatalog
         {
             inputs.Add(module.Name);
             Section("sources", module.SourceDocuments.Count);
-            foreach (var source in module.SourceDocuments.OrderBy(x => LogicalPath(project, x.Path), StringComparer.Ordinal))
+            foreach (var source in module.SourceDocuments.OrderBy(module.LogicalName, StringComparer.Ordinal))
             {
-                inputs.Add(LogicalPath(project, source.Path));
+                inputs.Add(module.LogicalName(source));
                 inputs.Add(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source.SourceText))));
                 inputs.Add(source.IsTestOnly.ToString());
             }
@@ -228,10 +228,7 @@ internal sealed class TestCatalog
         return order == 0 ? string.CompareOrdinal(c, z) : order;
     }
 
-    private static string LogicalPath(Project project, string source)
-        => Path.GetRelativePath(Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory), Path.GetFullPath(source)).Replace('\\', '/');
-
-    private sealed class Collector(TestCatalog catalog, Project project) : KotoVisitor
+    private sealed class Collector(TestCatalog catalog) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
@@ -261,8 +258,8 @@ internal sealed class TestCatalog
                 names.Reverse();
                 var containerName = string.Join('.', names);
                 var name = containerName.Length == 0 ? function.Name : containerName + "." + function.Name;
-                var file = LogicalPath(project, source!.Path);
-                var position = source.GetPosition(function.Span.Start);
+                var position = source!.GetPosition(function.Span.Start);
+                var file = node.Kotonoha.LogicalName(source);
                 var testId = Hash("t1-", "kimi-test-v1", catalog.ProjectId, containerName, function.Name + "()->()", file);
                 catalog.Cases.Add(new(testId, Hash("c1-", "kimi-case-v1", testId, "default"), name, file, position.Line + 1, position.Character + 1, symbol));
             }
@@ -270,7 +267,8 @@ internal sealed class TestCatalog
             if (node is TestVerificationKoto verification && source is not null)
             {
                 var position = source.GetPosition(verification.Span.Start);
-                catalog.Sites.Add(new(-1, LogicalPath(project, source.Path), position.Line + 1, position.Character + 1, source.SourceText.Substring(verification.Condition.Span.Start, verification.Condition.Span.Length), verification));
+                var expression = source.SourceText.Substring(verification.Condition.Span.Start, verification.Condition.Span.Length);
+                catalog.Sites.Add(new(-1, node.Kotonoha.LogicalName(source), position.Line + 1, position.Character + 1, expression, verification));
             }
 
             node.VisitChildren(this);

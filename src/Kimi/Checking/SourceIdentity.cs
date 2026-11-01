@@ -11,8 +11,11 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
 
     private const string FilePrefix = "file:";
 
+    /// <summary>Gets the path comparison of the current platform.</summary>
+    public static StringComparison PathComparison { get; } = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     /// <summary>Gets the path comparer of the current platform.</summary>
-    public static StringComparer PathComparer { get; } = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    public static StringComparer PathComparer { get; } = StringComparer.FromComparison(PathComparison);
 
     private SourceIdentity(string value)
     {

@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the runtime location text of a syntax site, the `path:line:column` an Abort reports (SPEC 22.5.1, IMPL 21.4.2).
-// Input: a SourceRef of this compilation. Output: the logical name of its source (IMPL 20.1), escaped, with its line and column.
-// Texts are memoized per (document, offset) of the current program: the memo is cleared when the source analysis is revoked
-// (an edit, a parse or a reload; Compilation.InvalidateSourceAnalysis) and when the project directory changes.
-// Must not key the memo by SourceRef (ids renumber on edit), decide which site an Abort reports (its generator's rule) or
-// render the test manifest's location (TestCatalog, SPEC 20.6).
+// Input: a SourceRef of this compilation. Output: its source's logical name (Kotonoha.LogicalName, IMPL 20.1), escaped, with its
+// line and column. Texts are memoized per (document, offset) of the current program: the memo is cleared when the source analysis
+// is revoked (an edit, a parse or a reload; Compilation.InvalidateSourceAnalysis) and when the root module's Base changes (by
+// reference). Must not name a source itself (Kotonoha owns the name), key the memo by SourceRef (ids renumber on edit), decide
+// which site an Abort reports (its generator's rule) or render the test manifest's location (TestCatalog, SPEC 20.6).
 
 using System.Globalization;
 using System.Text;
@@ -18,20 +18,20 @@ internal sealed class SourceLocationTable(Compilation compilation)
 {
     private readonly Dictionary<(SourceDocument Source, int Offset), string> texts = new();
     private readonly StringBuilder buffer = new();
-    private string? directory;
+    private string? root;
 
-    /// <summary>Gets <c>path:line:column</c>: the logical name of the site's source, its project-relative path with <c>/</c>
-    /// separators (IMPL 20.1; a project without a directory is the current directory's), with non-ASCII and control characters
-    /// escaped as <c>\u{HEX}</c> and backslash as <c>\\</c> (IMPL 21.4.2), then the site's line and column.</summary>
+    /// <summary>Gets <c>path:line:column</c>: the logical name of the site's source (<c>Kotonoha.LogicalName</c>, IMPL 20.1), with
+    /// non-ASCII and control characters escaped as <c>\u{HEX}</c> and backslash as <c>\\</c> (IMPL 21.4.2), then the site's line and
+    /// column.</summary>
     /// <param name="site">The site.</param>
     /// <returns>The text, or <see langword="null"/> when the site has no source document, a broken contract its reader reports.</returns>
     internal string? Text(SourceRef site)
     {
-        var directory = compilation.Project.Directory;
-        if (!string.Equals(this.directory, directory, StringComparison.Ordinal))
+        var root = compilation.Kotonoha.Base;
+        if (!ReferenceEquals(this.root, root))
         {
             this.texts.Clear();
-            this.directory = directory;
+            this.root = root;
         }
 
         var node = compilation.SyntaxOf(site);
@@ -46,17 +46,11 @@ internal sealed class SourceLocationTable(Compilation compilation)
             return text;
         }
 
-        var root = directory.Length > 0 ? directory : ".";
-        var path = Path.IsPathFullyQualified(source.Path) ? Path.GetRelativePath(Path.GetFullPath(root), source.Path) : source.Path;
         var builder = this.buffer.Clear();
         Span<char> hex = stackalloc char[8];
-        foreach (var rune in path.EnumerateRunes())
+        foreach (var rune in node.Kotonoha.LogicalName(source).EnumerateRunes())
         {
-            if (rune.Value == Path.DirectorySeparatorChar)
-            {
-                builder.Append('/');
-            }
-            else if (rune.Value == '\\')
+            if (rune.Value == '\\')
             {
                 builder.Append("\\\\");
             }

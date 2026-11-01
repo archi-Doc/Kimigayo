@@ -3,6 +3,7 @@
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -68,6 +69,48 @@ public sealed class HoverLinkTest
         var module = new Kotonoha(compilation, "Dependency", Path.Combine(this.root, "Dependency.kimiproj"));
         module.AddSource(new(Path.Combine(this.root, "src", "value.kimi"), "/// A dependency.\npublic struct Value\n"));
         Assert.Equal("src/value.kimi", Assert.Single(module.DocumentationSources).LogicalName);
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a fully qualified path under the base is its remainder, any other path its own text, each with the
+    // host's separators as '/'; "under" ends at a separator and compares letters as the host's paths do.
+    [Theory]
+    [InlineData(@"C:\p\App", @"C:\p\App\tests\T.kimi", "tests/T.kimi")]
+    [InlineData(@"C:\p\App", @"C:\p\AppX\A.kimi", "C:/p/AppX/A.kimi")]
+    [InlineData(@"C:\p\App", "C:/p/App/Main.kimi", "Main.kimi")]
+    [InlineData(@"C:\p\App", @"c:\P\APP\Main.kimi", "Main.kimi")]
+    [InlineData(@"C:\p\App\", @"C:\p\App\Main.kimi", "Main.kimi")]
+    [InlineData(@"C:\", @"C:\Main.kimi", "Main.kimi")]
+    [InlineData(@"C:\p\App", @"D:\x\Main.kimi", "D:/x/Main.kimi")]
+    [InlineData(@"C:\p\App", @"src\Main.kimi", "src/Main.kimi")]
+    [InlineData(@"C:\p\App", @"C:\p\App\..\Lib\L.kimi", "../Lib/L.kimi")]
+    [InlineData(@"C:\p\App", "C:\\p\\App\\a\0b.kimi", "a\0b.kimi")]
+    [InlineData(@"C:\p\App", "compiler://Kimi/0.1/Console.kimi", "compiler://Kimi/0.1/Console.kimi")]
+    public void DocumentationNamesASourceByTheLogicalNameRule(string directory, string path, string name)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows path rows.");
+        var compilation = Compilation.CreateForTest();
+        compilation.CollectDocumentation = true;
+        compilation.Project.Directory = directory;
+        compilation.Kotonoha.AddSource(new(path, "/// A value.\nstruct Value\n"));
+        Assert.Equal(name, Assert.Single(compilation.Kotonoha.DocumentationSources).LogicalName);
+    }
+
+    [Fact]
+    public void ARootWithoutADirectoryNamesAndLinksFromTheCurrentDirectoryItsCompilationCaptured()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.CollectHover = true;
+        compilation.CollectDocumentation = true;
+        const string source = "/// See [peer](B.kimi).\nstruct Value\n";
+        var path = Path.GetFullPath("A.kimi");
+        compilation.Kotonoha.AddSource(new(path, source));
+        Assert.True(compilation.Bind().IsComplete);
+        Assert.Equal("A.kimi", Assert.Single(compilation.Kotonoha.DocumentationSources).LogicalName);
+        Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(0));
+        var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(path)];
+        var entry = document.Entries[document.Find(source.IndexOf("Value", StringComparison.Ordinal))];
+        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true).Body);
     }
 
     private string? Resolve(string destination)

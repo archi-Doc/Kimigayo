@@ -61,15 +61,12 @@ public class Kimigayo
     internal static Kimigayo CreateSilent()
         => new(new EmptyConsoleService(), new(), false);
 
+    // A path under the base directory is shown by its remainder, any other as it is, by the logical name's prefix rule, which no path
+    // makes throw (PLAN G346).
     private static string DisplayPath(string path, string baseDirectory)
     {
-        if (baseDirectory.Length == 0 || !Path.IsPathFullyQualified(path))
-        {
-            return path;
-        }
-
-        var relative = Path.GetRelativePath(baseDirectory, path);
-        return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathFullyQualified(relative) ? path : relative;
+        var start = Compiler.Kotonoha.Under(path, baseDirectory);
+        return start == 0 ? path : path[start..];
     }
 
     // Line breaks and tabs in an edit's text are shown as escapes, so one edit stays on one line.

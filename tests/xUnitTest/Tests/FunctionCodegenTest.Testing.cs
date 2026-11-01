@@ -250,6 +250,42 @@ public sealed partial class FunctionCodegenTest
         Assert.All(GeneratedIr.Parse(text).Functions, static x => Assert.Empty(Windows(x)));
     }
 
+    // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): a case's and a site's file is its source's logical name: a relative in-memory path as given,
+    // never resolved against the process's directory.
+    [Fact]
+    public void ACatalogNamesARelativeSourceAsGiven()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.Directory = Path.GetFullPath("catalog-relative");
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("tests/Named.kimi", "#Test\nfunc tvNamed() => $expect(1 == 2)\n", isTestOnly: true));
+        Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
+        c.Tests.Discover(c);
+        Assert.Equal("tests/Named.kimi", Assert.Single(c.Tests.Cases).File);
+        Assert.Equal("tests/Named.kimi", Assert.Single(c.Tests.Sites).File);
+    }
+
+    // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): the catalog's inputs name a dependency's source relative to its own project, so the artifact
+    // identity does not depend on where the dependency lies relative to the root.
+    [Fact]
+    public void ACatalogNamesADependencysSourceByItsOwnProject()
+    {
+        static string Identity(string library)
+        {
+            var root = Path.GetFullPath("catalog-dependency/App");
+            var c = ModuleBindingTest.Prepared(root, Path.GetFullPath(library));
+            c.IsTestBuild = true;
+            c.SourceModules[0].AddSource(new SourceDocument(Path.Combine(root, "App.kimi"), "#Test\nfunc tvRoot() => $expect(1 == 2)\n", isTestOnly: true));
+            c.SourceModules[1].AddSource(new SourceDocument(Path.Combine(Path.GetFullPath(library), "Lib.kimi"), "public func value() => ()\n"));
+            Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
+            c.Tests.Discover(c);
+            return c.Tests.ArtifactId;
+        }
+
+        Assert.Equal(Identity("catalog-dependency/Lib"), Identity("catalog-elsewhere/deeper/Lib"));
+    }
+
     // The phase a function's instruction runs in (TestRuntime.WritePhase, RestorePhase): the phase set by the window around it, from its
     // save to its restore in text order, or to the end of its block when none restores it; else the phase its caller is in, Body here.
     private static int PhaseOf(IrFunction function, IrValue instruction)
