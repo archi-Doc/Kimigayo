@@ -193,6 +193,7 @@ public sealed partial class Binding
                 default:
                     if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
                     {
+                        this.PublishFailedFit(part, pattern); // No evidence; an unbound failed part's FailedFit (U1.6h).
                         return true;
                     }
 
@@ -264,10 +265,16 @@ public sealed partial class Binding
 
         // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one at
         // its parts' common Type, which the join's step 2 forms (value reads included), in the early pass; a Literal one by its first
-        // literal's default in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none.
+        // literal's default in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none. Each
+        // unbound failed part there is no evidence and gets its FailedFit (U1.6h).
         private bool InferParts(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;
+            for (var i = start; i < end; i++)
+            {
+                this.PublishFailedFit(binding.positionParts[i], pattern);
+            }
+
             switch (binding.PositionKind(start, end, out var type))
             {
                 case PartKind.Aggregate:

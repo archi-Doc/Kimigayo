@@ -171,6 +171,7 @@ public sealed partial class Binding
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
         BoundDefaultArgument[]? defaults = null;
+        var failedFits = this.failedFits.Count;
         try
         {
             if (generic is not null)
@@ -245,6 +246,7 @@ public sealed partial class Binding
                 MaxGenerics = maxGenerics,
                 OriginSlots = originSlots,
                 InputSlots = inputSlots,
+                FailedFits = failedFits,
                 Winner = -1,
                 PremisesOnly = true,
             };
@@ -394,7 +396,7 @@ public sealed partial class Binding
                 }
 
                 var state = this.TryCandidate(
-                    this.Solution(evaluation, selected, selectedType),
+                    this.Solution(evaluation, winnerIndex, selected, selectedType),
                     explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,
@@ -494,7 +496,7 @@ public sealed partial class Binding
             // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            var solution = this.Solution(evaluation, selected, selectedType);
+            var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
             var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
             this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType, defaults.AsSpan(0, formed ? defaultCount : 0));
             if (!formed)
@@ -568,6 +570,7 @@ public sealed partial class Binding
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
             this.typeScratch.Return(scratch, clearArray: true);
+            this.failedFits.RemoveRange(failedFits, this.failedFits.Count - failedFits);
         }
     }
 

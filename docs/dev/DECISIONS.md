@@ -9204,6 +9204,31 @@ resumed by R4-M86 (2026-10-20).
     Taken ending Awaits (above); a Taken mark at a Case construction (InferPayloads binds its payloads at their Types, so ConflictWaits
     is never reached there).
 
+- **BU-77 FailedFit: the evidence walk publishes, per candidate, each unbound failed part it meets and the candidate's pattern there**
+  (2026-11-01; PLAN G216 (a) Part 1 U1.6h-1; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g216a-p1\u16h-design.md` revisions 4
+  and 4a, R4's ACCEPT under C19-C23; the owner's 「推奨どおり」 and 「改訂 4でGO！」) A failed part fits every candidate (U1.6d), so a
+  slot or an ambiguity that only its Type could decide is dependent (SPEC 23.1.2). Deciding that needs the candidate's Type at the
+  failed part, which no component published.
+  - The fact: `FailedFit(Candidate, Part, Pattern)`. The evidence walk (SlotSolution: InferParts, and InferPosition's one-part default
+    row) publishes it where it meets an unbound failed part (PartFailed, no BoundType). Pattern is the candidate's pattern at that
+    position, open or closed. Both passes publish; a later pass replaces the entry of the same (candidate, part). The evidence results
+    are unchanged: an unbound failed part is never evidence. FitsPosition and FitArgument publish nothing.
+  - Storage: one Binding list in the call evaluation's scratch. The evaluation marks its first entry (`CallEvaluation.FailedFits`) and
+    releases its entries when it ends, as `obligations` are, so a nested evaluation keeps its own (R4's C22). A candidate's solution
+    carries its scope (`FailedFitScope`: the evaluation's first entry, the candidate's index); no other solution publishes.
+  - Readers: SolveSelected, where the selected candidate's unsolved slot would be the inference boundary. When every unsolved slot
+    occurs in one of the candidate's FailedFit patterns (C15), the call rests on that failed part (`RestingFailedPart`). The Ambiguous
+    outcome reads it from U1.6h-2. The reader sits in SolveSelected, FailUnboundSlots' one caller, because FailUnboundSlots is
+    already over the parameter limit.
+  - Scope (R4's C19, C23): only an unbound failed part is covered. A failed argument that kept its Type (r2-2) is r2-3's: its fit row
+    and its kept Type's structural operation. The merge into U2.1 decides one answer for such a part at a join position and as the
+    argument.
+  - Rejected:
+    - FitsPosition and FitArgument as producers. They are reached only at a closed Type, so they never meet a failed part at an
+      unsolved slot (g028, h7, h8; the implementer's unit-1 stop).
+    - A Binding-wide list keyed by function, the prototype. Its entries outlived their call, so another call's independent
+      UnboundTypeArgument_Kd was lost (R4's s1, s2, s4), and its linear search over the whole list was quadratic.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

@@ -103,7 +103,7 @@ public sealed partial class Binding
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
             state = this.TryCandidate(
-                this.Solution(evaluation, function, declaringType),
+                this.Solution(evaluation, index, function, declaringType),
                 evaluation.ExplicitLengths,
                 evaluation.Mapping,
                 argumentMap,
@@ -245,6 +245,7 @@ public sealed partial class Binding
         internal int MaxGenerics;
         internal int OriginSlots;
         internal int InputSlots;
+        internal int FailedFits; // Its first FailedFit entry (Binding.failedFits), released when the evaluation ends.
         internal int Count;
         internal int Applicable;
         internal int Winner;
