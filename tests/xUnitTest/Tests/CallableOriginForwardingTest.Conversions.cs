@@ -274,8 +274,10 @@ public partial class CallableOriginForwardingTest
     // G216 (a) U2.1 r2-3 (DECISIONS BU-43 amendment): SPEC 23.1.2, 10.5: a call's fit takes an argument that failed with its own record
     // as fitting every candidate the evidence walk keeps, so a later use of the call's result (a consultation re-selecting it) adds no
     // NoApplicableOverload_Kd beside the argument's one contract (na5a, na5, na5b, st1). A call no candidate admits by another argument
-    // keeps its own record (na5d; its Closure is never judged); na1, na5c and st1b (no later use) are unchanged.
+    // keeps its own record (na5d; its Closure is never judged); na1, na5c and st1b (no later use) are unchanged. An untyped failed part
+    // is not this row's (ar2: an operator's untyped Closure keeps the call's NoApplicableOverload_Kd, U1.6h's).
     [Theory]
+    [InlineData("ar2", "struct Value\n    Self is Addable<(i32) -> i32>\n    associate Output is i32\n    public func added(self: ref/Self, right: ref/((i32) -> i32)) -> i32 => 1\nfunc k() -> i32\n    return Value.init() + func [] (x) => x\n", "NoApplicableOverload_Kd Value.init() + func [] (x) => x")]
     [InlineData("na5a", UseStatic + "    let n = use(" + WeakClosure + ")\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
     [InlineData("na5", UseStatic + "    let n = use(" + WeakClosure + ")\n    let local = 1\n    let r = local@ref\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
     [InlineData("na5b", UseStatic + "    let n = use(" + WeakClosure + ")\n    let local = 1\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
