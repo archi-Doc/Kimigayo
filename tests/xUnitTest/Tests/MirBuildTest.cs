@@ -280,7 +280,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         for (var i = 0; i < sizes.Length; i++)
         {
             work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
-            Assert.Equal(sizes[i] * 2, bodies[i].Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
+            Assert.Equal(
+                sizes[i] * 2, bodies[i].Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");

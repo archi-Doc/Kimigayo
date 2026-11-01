@@ -132,8 +132,8 @@ internal static class AllocationMeasurement
     }
 
     // The allocations of a cold scaling series, sizes in ascending order: for each index, fresh(index) makes that size's fresh state
-    // outside any window and returns the run that MeasureOnce measures, the run alone: a build when the series measures the build, an
-    // analysis of a body already built in the state when it measures the analysis. Before the series, one unmeasured run of one more
+    // outside any window and returns the run that MeasureOnce measures, the operation the series measures and nothing else (what that
+    // operation reads, such as a built body, belongs to the state). Before the series, one unmeasured run of one more
     // fresh copy of the smallest size (fresh(0)), so that the process's one-time initialization of the operation (class constructors,
     // the runtime's first instantiations) falls in no measured run and every size is measured in the same process state, alone or after
     // other tests (R5-M172). That one-time cost stays measured and bounded on the check path by its owner,
