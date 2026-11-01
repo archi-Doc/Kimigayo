@@ -57,14 +57,14 @@ internal sealed partial class InstanceCollector
         (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
             (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).ReadsTypeArgument)));
 
-    // Whether a step of a body's Places may leave its root's storage: a Deref or an Index (of a sequence handle), the steps whose prefix may
-    // be laid out without its component (ListNeeds).
+    // Whether a step of a body's Places may leave its root's storage: a Deref, a PairLayer or an Index (of a sequence handle), the steps whose
+    // prefix may be laid out without its component.
     private static bool MayLeave(MirBody body)
     {
         var projections = body.Projections;
         for (var id = 1; id < projections.Length; id++)
         {
-            if (projections[id].Kind is MirProjectionKind.Deref or MirProjectionKind.Index)
+            if (projections[id].Kind is MirProjectionKind.Deref or MirProjectionKind.PairLayer or MirProjectionKind.Index)
             {
                 return true;
             }

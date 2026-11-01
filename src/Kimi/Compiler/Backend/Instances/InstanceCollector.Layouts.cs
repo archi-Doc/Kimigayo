@@ -11,8 +11,8 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class InstanceCollector
 {
     // K 4.8 (DECISIONS R5-M149): each body's projection steps whose layout need lies past its roots' storage, `needs` from
-    // `needStarts[body.Ordinal]`: the location and the step's Place.
-    private (MirLocation At, MirPlace Step)[] needs = [];
+    // `needStarts[body.Ordinal]`: the location, the step's Place and the PairLayer step whose case decides it (0: none).
+    private (MirLocation At, MirPlace Step, int Pair)[] needs = [];
     private int[] needStarts = [];
     private int[] chain = []; // A Place's steps, last first (ListNeeds' scratch).
     private int needCount;
@@ -76,19 +76,30 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.8 (DECISIONS R5-M149): each listed need of an item's body, its Type (LayoutNeeds.TypeOf) a use at its location in the item's
-    // instance.
+    // instance; a need past a PairLayer only where the item's view makes that layer leave its root's storage (LeavesStorage).
     private void LayOutNeeds(int item, MirBody body)
     {
         for (var i = this.needStarts[body.Ordinal]; i < this.needStarts[body.Ordinal + 1]; i++)
         {
-            var (at, step) = this.needs[i];
+            var (at, step, pair) = this.needs[i];
             var block = body.Blocks[at.Block];
             var subject = this.Subject(item, body, at.Index == block.Count ? block.Terminator.Source : body.Statements[block.Start + at.Index].Source);
-            if (this.In(item, subject, LayoutNeeds.TypeOf(body, step)) is { } type)
+            if ((pair == 0 || this.LeavesStorage(item, body, step with { Projection = pair })) &&
+                this.In(item, subject, LayoutNeeds.TypeOf(body, step)) is { } type)
             {
                 _ = this.LaysOut(item, subject, type);
             }
         }
+    }
+
+    // Whether a PairLayer step of an item's body leaves its root's storage under the item's view (SPEC 13.5.5, MirCases.Layer): its case's
+    // reference or handle selects a referent; the owner case's step is the Place itself.
+    private bool LeavesStorage(int item, MirBody body, MirPlace layer)
+    {
+        _ = this.cases.Select(body, this.Set.Items[item].View);
+        var leaves = this.cases.Layer(layer) is not null;
+        this.cases.Deselect();
+        return leaves;
     }
 
     // K 4.8 (DECISIONS R5-M149): a call's TypeArguments need, every Type its substitution binds (LayoutNeeds.TypeOf), each a use at the call.
@@ -111,10 +122,9 @@ internal sealed partial class InstanceCollector
         MirUses.ForEach(body, at, ref reader);
     }
 
-    // A Place's steps root first: one leaves its root's storage where its prefix is laid out without its component (Layout.Indirect); the
-    // next step with a need (LayoutNeeds) is past that storage, a use, after which the Type it read is the storage again. A pair layer's
-    // step is no boundary: Binding selects no Field, element or case through a pair layer (Unsupported_Kd or a Language error), so no
-    // step with a need follows one; the unit that admits such a selection adds its per-view use.
+    // A Place's steps root first: one leaves its root's storage where its prefix is laid out without its component (Layout.Indirect) or is
+    // a pair layer, whose case decides it per item (a pattern selects one, SPEC 14.8.1); the next step with a need (LayoutNeeds) is past
+    // that storage, a use, after which the Type it read is the storage again.
     private void ListNeeds(MirBody body, MirLocation at, MirPlace place)
     {
         var projections = body.Projections;
@@ -130,21 +140,26 @@ internal sealed partial class InstanceCollector
         }
 
         var past = false;
+        var pair = 0;
         for (var i = length - 1; i >= 0; i--)
         {
             var step = place with { Projection = this.chain[i] };
             var row = projections[step.Projection];
-            past |= Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!);
+            if (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!))
+            {
+                (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer ? step.Projection : 0);
+            }
+
             if (past && LayoutNeeds.Of(row.Kind) != LayoutNeed.None)
             {
-                this.AddNeed(body.Ordinal, at, step);
+                this.AddNeed(body.Ordinal, at, step, pair);
                 past = false;
             }
         }
     }
 
     // A need appended once per location and step of a body.
-    private void AddNeed(int body, MirLocation at, MirPlace step)
+    private void AddNeed(int body, MirLocation at, MirPlace step, int pair)
     {
         if (this.needCount > this.needStarts[body] && this.needs[this.needCount - 1] is var last && last.At == at && last.Step == step)
         {
@@ -156,7 +171,7 @@ internal sealed partial class InstanceCollector
             Array.Resize(ref this.needs, Math.Max(256, 2 * this.needCount));
         }
 
-        this.needs[this.needCount++] = (at, step);
+        this.needs[this.needCount++] = (at, step, pair);
     }
 
     // K 4.8 (DECISIONS R5-M108): a Function Type's inputs and result, each a by-value use at a site (an erasure's target: its adapter's entry

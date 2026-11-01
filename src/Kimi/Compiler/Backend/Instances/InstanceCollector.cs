@@ -5,9 +5,10 @@
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
-// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views); MirUses; MirTypes.MayNeedDrop;
-// DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy
-// rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
+// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, and an item's view for a PairLayer's
+// case); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns
+// of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the
+// collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156); for code generation (R5 C0b1) also an
@@ -38,11 +39,11 @@
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
 // construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
 // each type-driven item's Type and a DropGlue's collection element Types (X34), and each layout need a form's generated code has past its
-// root's storage, at the form (LayoutNeeds' rows and the Need columns, the Type its TypeOf names, past Layout.Indirect's boundary;
-// DECISIONS R5-M149, R5-M166), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
-// 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type and declaration, at
-// the least of that declaration's failing uses, made at the run's end (DECISIONS R5-M171), a C-layout instance whose C layout is
-// unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
+// root's storage, at the form (LayoutNeeds' rows and the Need columns, the Type its TypeOf names, past Layout.Indirect's boundary or a
+// pair layer the item's case makes a referent; DECISIONS R5-M149, R5-M166), and the parameters and result of each import a root module
+// declares, at their written Types (no item; SPEC 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd
+// once per erased Type and declaration, at the least of that declaration's failing uses, made at the run's end (DECISIONS R5-M171), a
+// C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
 // complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
