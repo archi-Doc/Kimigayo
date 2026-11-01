@@ -1054,8 +1054,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory passed by pointer is copied into a copy slot, an alloca of
-    // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3);
-    // a moved string's Place is passed itself, its record never loaded.
+    // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3),
+    // a creation's payload included (its factory's, DECISIONS R5-M110); a moved string's Place is passed itself, its record never loaded.
     [Fact]
     public void ACopyArgumentInMemoryHasACopySlot()
     {
@@ -1069,6 +1069,10 @@ public sealed partial class FunctionCodegenTest
         var constant = Parse("func take(s: string) => ()\nfunc give() => take(\"x\")").Text;
         Assert.Contains("  %s0 = alloca %kimi.string, align 8\n", constant, StringComparison.Ordinal);
         Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %s0, align 8\n  call void @__kimi_f\d+\(ptr %s0\)\n", constant);
+        var payload = Parse("func make() -> obj/string => Kimi.Intrinsics.makeObj(\"x\")").Text;
+        Assert.Contains("  %s0 = alloca %kimi.string, align 8\n", payload, StringComparison.Ordinal);
+        const string Record = @"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %s0, align 8\n";
+        Assert.Matches(Record + @"  call void @__kimi_make_object\d+\(ptr %ret, ptr %s0, i64 0, ", payload);
     }
 
     // I1 (DECISIONS R5-M92): a copy slot's name is never a block's, so a function with copy slots and checks whose success labels share

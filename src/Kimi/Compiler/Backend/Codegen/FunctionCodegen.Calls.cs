@@ -171,7 +171,8 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument),
+    // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6), a Call terminator's or a creating
+    // adaptation's in that form (FunctionCodegen.Objects' Creation): each parameter's argument (Argument),
     // the destination's address as the result slot, the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS
     // R5-M92, R5-M93), a capacity Context the length of the fixed array its operand refers to (Measure; DECISIONS R5-M128), a parameter
     // without an operand (Given: a runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the
