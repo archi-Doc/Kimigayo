@@ -196,27 +196,6 @@ public sealed partial class DocumentationSource
         this.LogicalName = modId is null ? logicalName : null;
     }
 
-    internal static string? PhysicalLogicalName(string path, string projectDirectory)
-    {
-        if (path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) || path.Contains("://", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        if (Path.IsPathFullyQualified(path))
-        {
-            if (!Path.IsPathFullyQualified(projectDirectory))
-            {
-                return null;
-            }
-
-            var relative = Path.GetRelativePath(projectDirectory, path);
-            return Path.IsPathRooted(relative) ? null : relative.Replace('\\', '/');
-        }
-
-        return Path.IsPathRooted(path) ? null : path.Replace('\\', '/');
-    }
-
     private void MergeCore(DocumentationSource nested)
     {
         // Interpolation expressions are lexed by the parser. Insert their

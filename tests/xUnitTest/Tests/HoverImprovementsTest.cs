@@ -261,6 +261,18 @@ public sealed class HoverImprovementsTest
         }
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): hover names a source by its logical name, which no path makes throw: a NUL inside the base of a
+    // project without a directory (the captured current directory) keeps its relative name; a path outside the base has none.
+    [Fact]
+    public void HoverNamesASourceByItsLogicalNameWithoutThrowing()
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct A\n"));
+        compilation.Kotonoha.AddSource(new(Path.Combine(Path.GetDirectoryName(Directory.GetCurrentDirectory())!, "Outside.kimi"), "struct B\n"));
+        Assert.Equal("a\0b.kimi", compilation.Kotonoha.HoverSourceName(0));
+        Assert.Null(compilation.Kotonoha.HoverSourceName(1));
+    }
+
     [Fact]
     public void DifferentVariableSemanticsAndBindingsCannotAgreeByRenderedNameAlone()
     {

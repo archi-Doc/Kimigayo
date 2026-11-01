@@ -3,7 +3,7 @@
 // Owns one source unit (a module): its documents, merged syntax tree and diagnostics, and its sources' logical names (IMPL 20.1).
 // Input: source documents (disk, in-memory, deserialized, generated) and its compilation's project. Output: RootKoto, Syntax,
 // DiagnosticCollection, Base (the directory its logical names are relative to) and LogicalName(document), which every reader of a
-// source's name asks (the location table, the test catalog, documentation, the collection name).
+// source's name asks (the location table, the test catalog, documentation, hover, the collection name).
 // Invariants: a name is a pure function of the document's path and Base; Base is stored and recomputed only at a change point
 // (creation, OnDeserialized, a new Project.Directory value, which the getter detects by reference); a root module whose project has
 // no directory takes the current directory its compilation captured when created; names are memoized until Base is recomputed or
@@ -104,8 +104,22 @@ public sealed partial class Kotonoha
         }
     }
 
+    /// <summary>Gets the name hover shows for a source: its logical name, but none for a generated or built-in (<c>://</c>) document,
+    /// a fully qualified path outside <see cref="Base"/> or a rooted relative path (U9a-2 names the last two). No path makes it throw.</summary>
+    /// <param name="index">The document's index in <see cref="SourceDocuments"/>.</param>
+    /// <returns>The name, or <see langword="null"/>.</returns>
     internal string? HoverSourceName(int index)
-        => this.generatedSourceLocations?.ContainsKey(index) == true ? null : Documentation.DocumentationSource.PhysicalLogicalName(this.sourceDocuments[index].Path, this.Base);
+    {
+        var document = this.sourceDocuments[index];
+        var path = document.Path;
+        if (this.generatedSourceLocations?.ContainsKey(index) == true || path.Contains("://", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var named = Path.IsPathFullyQualified(path) ? Under(path, this.Base) > 0 : !Path.IsPathRooted(path);
+        return named ? this.LogicalName(document) : null;
+    }
 
     /// <summary>Gets a document's logical name (IMPL 20.1): a fully qualified path under <see cref="Base"/> is its remainder, any other
     /// path (outside it, another drive, relative, <c>compiler://</c>) its own text, each with the host's separators as <c>/</c>.
@@ -344,7 +358,12 @@ public sealed partial class Kotonoha
 
             if (end == directory.Length)
             {
-                return IsSeparator(directory[^1]) ? end : IsSeparator(path[end]) ? end + 1 : 0;
+                if (IsSeparator(directory[^1]))
+                {
+                    return end; // A root base, such as C:\, ends in its separator.
+                }
+
+                return IsSeparator(path[end]) ? end + 1 : 0;
             }
 
             if (!IsSeparator(path[end]))
@@ -396,10 +415,25 @@ public sealed partial class Kotonoha
 
     private void SetBase()
     {
-        var directory = this.Compilation.Project.Directory;
-        this.baseSource = directory;
-        this.baseDirectory = this.Url.Length == 0 ? Normalize(directory.Length > 0 ? directory : this.Compilation.CurrentDirectory) :
-            Path.IsPathFullyQualified(this.Url) ? Normalize(Path.GetDirectoryName(this.Url) ?? string.Empty) : string.Empty;
+        this.baseSource = this.Compilation.Project.Directory;
+        this.baseDirectory = Normalize(this.BaseOrigin());
         this.names?.Clear();
+    }
+
+    // The directory the base comes from: for the root (no Url), its project's directory, else the current directory its compilation
+    // captured; for another module, its own project's (its Url's); none for a Url that is not a full path.
+    private string BaseOrigin()
+    {
+        if (this.Url.Length == 0)
+        {
+            return this.baseSource!.Length > 0 ? this.baseSource : this.Compilation.CurrentDirectory;
+        }
+
+        if (!Path.IsPathFullyQualified(this.Url))
+        {
+            return string.Empty;
+        }
+
+        return Path.GetDirectoryName(this.Url) ?? string.Empty;
     }
 }

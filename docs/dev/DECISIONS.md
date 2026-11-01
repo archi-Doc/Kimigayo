@@ -14827,8 +14827,10 @@ structure is recorded here by the unit that first implements it.
     source analysis is revoked (`Compilation.InvalidateSourceAnalysis`, beside the location table's), so it holds only current documents
     and a warm read is a lookup. Readers: the location table (its path code gone; its memo keyed by the root module's `Base`, by
     reference), `TestCatalog` (cases, sites and inputs; its copy gone, G289 (3)), `Kotonoha.ParseSource`'s collection name, and
-    documentation, which stores the name its parse gave (`SetLocation(name)`): a later directory change does not rename a parsed
-    documentation source, while hover's names are live (`HoverSourceName`).
+    documentation, which stores the name its parse gave (`SetLocation(name)`, the library's sources included: their `compiler://`
+    path): a later directory change does not rename a parsed documentation source, while hover's names are live: `HoverSourceName`
+    is the query except for a generated or `://` document, a fully qualified path outside the base and a rooted relative path, which
+    have none until U9a-2 (`PhysicalLogicalName` deleted; no hover name throws).
   - Behavior (U9a-1b): a dependency's location and catalog input name its own project's source (`Lib.kimi`, not `../Lib/Lib.kimi`);
     a relative in-memory path is named as given, not resolved against the process's directory (catalog, collection name); a NUL path
     inside the project checks and its location is relative with `\u{0}` escaped (G346's check half); a path under `C:\p\AppX` is not

@@ -168,6 +168,17 @@ public sealed class HoverCollectionTest : IDisposable
         }
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): a library documentation source is named by its source's logical name, its compiler:// path, so
+    // the library's fragments order by file and its relative links resolve from that file.
+    [Fact]
+    public void LibraryDocumentationIsNamedByItsSourcesPath()
+    {
+        var sources = Create(true).Library.Kotonoha.DocumentationSources.ToArray();
+        Assert.NotEmpty(sources);
+        Assert.All(sources, static source => Assert.StartsWith("compiler://Kimi/", source.LogicalName, StringComparison.Ordinal));
+        Assert.All(sources, static source => Assert.Equal(source.Source.Path, source.LogicalName));
+    }
+
     private static CheckOutput Run(string path, bool collect)
     {
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, path, out var project));
