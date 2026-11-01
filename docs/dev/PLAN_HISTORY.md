@@ -264,6 +264,10 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G346 (R5's U9b with LN; batch 86; R5-M169's and R5-M175's text):** a NUL in a source path no longer faults a command: the logical name's prefix rule never throws, `Publish` runs generation between its two classifying catches (the `generating` exclusion deleted), and `Kimigayo.DisplayPath` uses the rule.
 <a id="g157-u7"></a>
 - **G157 (27), (41), (45) (R5 unit U7; batch 86):** `ConstantPositionsOnFixedArraysSelectTheirElements`; the six Library sources once, in `src/backend/windows-x64/tests/library-sources.json`, read by the harness and LibraryEmissionTest, `Main` emitted once; TestRuntime.ll no longer restates the phase value.
+<a id="g358"></a>
+- **G358 (R5; batch 87; R5-M172's amendment):** code generation's runtime texts are expanded in one ordered scan into one builder (`LlvmModuleText.ExpandRuntime`, abort reasons appended by `AbortReasons.Expand`); the first code generation's text initialization 8.8 MB -> 1.7 MB and 4.4 -> 2.9 ms, the texts byte-identical; guarded by `Kernel32ImportsTest.AFreshProcessBuildsTheRuntimeTextsOnce`. Follow-up: PLAN G366.
+<a id="ln"></a>
+- **LN (R5; batches 86 and 87; DECISIONS R5-M175; design `draft/Sketches/R5/LN-design.md`):** one owner of a source's logical name: Kotonoha stores each module's base with explicit change points and answers `LogicalName`; `CodeContext.SourceName` is every reader's one path (through `SourceModule`); hover names live; `Kotonoha.CheckNames` reports each non-NFC name and each simple-case-fold group (Unicode 15.0.0 data, `GenerateNameUnicode.ps1`); with G289 (3) and G346. Follow-ups: G364, G367.
 
 ## Retired audit records
 
