@@ -50,7 +50,9 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     private Edge[] contained = []; // Per class: its containment edges, from the class's start.
     private Class[] classes = [];
     private int refCount;
-    private int anchorCount; // The table's size when the Refs were collected; a later index (a layer's or meet operand's Origin) has none.
+    // One past the largest of the Refs' own table indices, the same in every pass (the table grows as A5 reads atoms, so its size is not);
+    // a larger index (a layer's or meet operand's Origin) has none.
+    private int anchorCount;
     private int classCount;
     private int containedCount;
     private int rowWords;
@@ -161,7 +163,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     // Type's outer Origin classed at its statement; and per table index the first of them in body order whose Origin it is (the Anchor).
     private void CollectRefs()
     {
-        this.refCount = 0;
+        (this.refCount, this.anchorCount) = (0, 0);
         var statements = this.body.Statements;
         for (var s = 0; s < statements.Length; s++)
         {
@@ -174,10 +176,11 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
 
             var site = this.body.Subject(statement.Source);
             MirDataflow.Grow(ref this.refs, this.refCount + 1);
-            this.refs[this.refCount++] = new(s, types.OriginAtom(this.key, origin, site), site);
+            this.refs[this.refCount] = new(s, types.OriginAtom(this.key, origin, site), site);
+            this.anchorCount = Math.Max(this.anchorCount, this.refs[this.refCount++].Own + 1);
         }
 
-        var count = this.anchorCount = this.slice.Atoms.Count;
+        var count = this.anchorCount;
         MirDataflow.Grow(ref this.anchors, count);
         Array.Fill(this.anchors, -1, 0, count);
         for (var r = this.refCount - 1; r >= 0; r--)
