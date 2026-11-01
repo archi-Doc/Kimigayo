@@ -11975,6 +11975,7 @@ structure is recorded here by the unit that first implements it.
     beside `Parts`; a MIR environment role or operand (held MIR; the body kind publishes it); a MIR Drop of the moved receiver (the template
     cannot know the instance's receiver); a `ConsumingCall` shim item (a `MonoKind`, one more function per Type and call); deferring SPEC
     8.10 as a located `Unsupported_Kd`.
+  - Amended by R5-M173 (PLAN G157 (25)): `Erased`'s signature is kept by its inputs, not found by an `Abi.Matches` search.
 - **R5-M103 The owner confirms C5a's departures** (owner, 2026-10-22, on the R5 planning session's explanation before C5a landed;
   verbatim 「departures list の新しい2件（2つ目の破棄先、PD19 の移動）を承認します」; the consequences are the planning session's) The two
   departures R5-M102 records are confirmed: at an `owner`-receiver Value call whose callee borrows its environment, the instance
@@ -12389,6 +12390,7 @@ structure is recorded here by the unit that first implements it.
     SlotOf. O2 (information, a `[4 of objref/Shape]` variant of `VirtualDispatch`, its checksum required against the kernel's legacy value):
     old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 0.985, 0.82-1.11 at the 16 ms tick), within A's
     consecutive spread 0.82-1.44; 393 against 392 instructions, the same calls (three indirect slot calls).
+  - Amended by R5-M173 (PLAN G157 (25)): `Unnamed` keeps a slot's signature by its inputs; the search is gone.
 - **R5-M115 The owner confirms C6c's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C6c's design and
   its reviews, before its merge; verbatim 「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two
   and C8b's two (R5-M117); the consequences are the planning session's) The two departures R5-M114 records are confirmed: the
@@ -14691,3 +14693,32 @@ structure is recorded here by the unit that first implements it.
     a comparison presets to a template node) through `Limit`, read again at each request, with no `refused` entry (R5-M170 amended).
     Rows (`AHeightCapIsATypeLimitAndASharedItemKeepsItsFirstRecord`): two functions, two records (one before); two locals of one
     function, one; the Known limit's `Option<S>` pair pinned (one record at `d`; at `e` alone once `d` is gone).
+- **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, R5; PLAN
+  G157 (17), (25)'s cache clause, (44)'s test; R5's U1, its review; amends R5-M102 and R5-M114) A call through a pointer (a common
+  Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;
+  it was one list searched by `Abi.Matches` on every call and never pruned.
+  - Memo (`ModuleCodegen.Unnamed`): a Dictionary keyed by `Abi.Of`'s inputs (`UnnamedKey`: flags, the closed result Type, the closed
+    parameter Types in slot order; a BoundType is interned, so identity is equality), one ref lookup per call. The key is finer than the
+    ABI shape `Matches` compares (two Types of one shape keep two equal signatures); that is sound because nothing reads an unnamed
+    `FunctionAbi`'s identity (a call writes its content only). A new key owns a copy of its inputs: `Slot`'s are the signature scratch;
+    `Erased`'s interned Components array would serve, and one rule copies both.
+  - Per-Write stamp: an entry the current Write used is returned as it is; one from an earlier Write is checked again by `Abi.Matches`
+    (a Type's layout may change between Writes) and replaced by `Abi.Of` when it no longer holds. As a Write starts, `Prune` drops the
+    entries the previous Write did not use, so the memo retains at most two Writes' keys and the BoundTypes and arrays they hold. A warm
+    Write allocates nothing.
+  - Why a Type-keyed memo here although R5-M58's memo gave way to R5-M65's per-item reuse: that reuse indexes by item, and an unnamed
+    signature has none.
+  - K11's check (`ModuleCodegen.Requested`): every request naming an item (`Signature`, `Glue`, `Ensure`, `Shim`, `Adapter`, `Factory`,
+    `Row`, `Wrapper`) records `InternalInvariant_Kd` at the item's site when the item is not Generated; `IsGenerated` is read only there,
+    in the Write's loop and in `Number`'s loop over descriptor items (an iteration, not a request). `Release`, `ArrayDrop` and
+    `DictionaryDrop` name the item being written, so they cannot reach the broken contract.
+  - Rejected: `Adapter`'s cache (keyed by adapter item and named; an erased call's Callable signature needs no adapter item in the module);
+    an ABI-shape key (each lookup would compute the physical parameters, `Matches`' cost); a Function Type key for `Slot` (it would build a
+    Type per call). `Adapter(item)` and `Erased(F)` still compute the same erased Abi independently: G157 (25)'s "second cache" clause is
+    answered by that rejection, not removed.
+  - Tests: `FunctionCodegenTest.ADestructionWithoutItsGlueTargetIsABrokenContract` (a Keep Drop, `Replace` and `DestroyOld` without
+    their glue target) and `ARequestNamingAnItemOutsideGeneratedIsABrokenContract` (`Ensure` and `Row` failing before; `Wrapper`'s target
+    is also recorded by its definition's `Signature`).
+  - Measured (A/B interleaved in one folder): 216 Callable signatures x 4 erased calls, cold 3,003,888 -> 3,057,296 B, retained
+    2,560,840 -> 2,595,096 B, warm min 4.6-5.7 -> 2.1-2.3 ms; the O2 corpus' ErasedCalls, cold 114,024 -> 114,280 B, retained 93,224 ->
+    93,480 B, warm 0.18-0.36 ms in both (bimodal per process). Every fixture's `.ll` is unchanged.

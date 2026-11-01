@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
@@ -34,7 +36,7 @@ internal sealed partial class ModuleCodegen
     /// <summary>The name of a PropertyWitness item's function before its index (<see cref="Shim"/>).</summary>
     internal const string WitnessPrefix = "__kimi_witness";
 
-    private readonly Dictionary<UnnamedKey, (FunctionAbi? Abi, int Write)> unnamed = new(); // By inputs, a signature and its latest Write.
+    private readonly Dictionary<UnnamedKey, (FunctionAbi Abi, int Write)> unnamed = new(); // By inputs, a signature and its latest Write.
     private FunctionAbi?[] helpers = []; // By adapter or StaticInit item, its helper function (Release, Ensure), kept across Writes.
     private FunctionAbi?[] signatures = []; // By item.
     private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
@@ -114,8 +116,11 @@ internal sealed partial class ModuleCodegen
     /// <param name="item">The StaticInit item.</param>
     /// <returns>The signature.</returns>
     internal FunctionAbi Ensure(int item)
-        => this.Helper(item) ??=
+    {
+        this.Requested(item);
+        return this.Helper(item) ??=
             new(StaticPrefix + item.ToString(CultureInfo.InvariantCulture) + "_ensure", "void", [RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+    }
 
     /// <summary>Gets the signature of a shim item (PD3), by its kind's row: a Builtin item's, its function's requirement's in the item's
     /// instance, the substitution of the call that admitted it (InstanceCollector.TypeOf; DECISIONS R5-M126), named
@@ -215,8 +220,9 @@ internal sealed partial class ModuleCodegen
         return result;
     }
 
-    // K11: a request naming an item (Signature, Glue, Shim, Adapter, Factory) is for a Generated item, the only items the module defines;
-    // another is a broken contract, recorded at the item's site.
+    // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Factory, Row, Wrapper) is for a Generated item, the only
+    // items the module defines; another is a broken contract, recorded at the item's site. Release, ArrayDrop and DictionaryDrop name the
+    // item being written, which the Write's loop chose by its mark.
     private void Requested(int item)
     {
         if (!this.set.IsGenerated(item))
@@ -272,22 +278,25 @@ internal sealed partial class ModuleCodegen
     }
 
     // An unnamed signature under the internal convention, which its calls reach through a pointer (a common Function value's entry,
-    // ModuleCodegen.Erasures.cs; a virtual slot's, Slot), by its inputs (UnnamedKey): the one this Write used; else the kept one while
-    // Abi.Matches holds (a Type's layout may change between Writes), else a new one, a new key owning a copy of the inputs.
+    // ModuleCodegen.Erasures.cs; a virtual slot's, Slot), by its inputs (UnnamedKey; DECISIONS R5-M173): the one this Write used; else the
+    // kept one while Abi.Matches holds (a Type's layout may change between Writes), else a new one; a new key owns a copy of the inputs.
     private FunctionAbi Unnamed(Abi.Flags flags, BoundType result, ReadOnlyMemory<BoundType> inputs)
     {
         UnnamedKey key = new(flags, result, inputs);
-        if (this.unnamed.TryGetValue(key, out var kept) && kept.Write == this.writes)
+        ref var kept = ref CollectionsMarshal.GetValueRefOrNullRef(this.unnamed, key);
+        if (Unsafe.IsNullRef(ref kept))
         {
-            return kept.Abi!;
+            var abi = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, inputs.Span);
+            this.unnamed.Add(key with { Inputs = inputs.ToArray() }, (abi, this.writes));
+            return abi;
         }
 
-        if (kept.Abi is null || !Abi.Matches(kept.Abi, this.Layout, Abi.Convention.Internal, flags, result, inputs.Span))
+        if (kept.Write != this.writes && !Abi.Matches(kept.Abi, this.Layout, Abi.Convention.Internal, flags, result, inputs.Span))
         {
             kept.Abi = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, inputs.Span);
         }
 
-        this.unnamed[kept.Write == 0 ? key with { Inputs = inputs.ToArray() } : key] = (kept.Abi, this.writes); // A kept key stays.
+        kept.Write = this.writes;
         return kept.Abi;
     }
 
