@@ -16,6 +16,12 @@ public partial class OriginRelationDiagnosticTest
 
     private const string GOptionPairs = "func g(x: i64, y: Option<i64>) -> i32 => 0\nfunc g(x: i64, y: Option<bool>) -> i32 => 1\n";
 
+    private const string GBool1 = "func f(x: bool) -> i32 => 1\n";
+
+    private const string ApI64 = "func ap(f: (i64) -> i64) -> i32 => 0\n";
+
+    private const string DeferredRecords = "NoApplicableOverload_Kd identity(4); TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName";
+
     private const string GSlotPairs = "func g<T>(x: T, y: Option<i64>) -> i32 => 0\nfunc g<U>(x: U, y: Option<bool>) -> i32 => 1\n";
 
     // U1.6h-1 (SPEC 23.1.2, 10.8; R4's C15, C22): the selected candidate's unsolved slots rest on a failed part only when every one occurs
@@ -60,6 +66,42 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6h-2", "h3b", "func g(x: (i64, Option<i64>)) -> i32 => 0\nfunc g(x: (i64, Option<bool>)) -> i32 => 1\n" + KHead + "    return g((if c => undefinedName else => 3, .None))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-2", "h3c", "func g(x: i64, y: Option<i64>) -> i32 => 0\nfunc g(x: bool, y: Option<bool>) -> i32 => 1\n" + KHead + "    return g(if c => undefinedName else => 3, .None)\n", "UnresolvedBinding_Kd undefinedName")]
     public void AnAmbiguityRestsOnlyWhereTheKeptCandidatesDifferAtAFailedPart(string unit, string form, string body, string records)
+        => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // U1.6h-3 (SPEC 23.1.2, 14.9.2, 10.5.1): a failed source takes no part in its join's kind; the join records it as its cause and
+    // rests on it at its verdict (DecideRest), so its siblings keep their kinds and meet the selected candidate's Type: identity(4) and
+    // 8 at bool give their own records beside the name's (fp2_root_deferred, fp2_tupleElem_deferred, fp_seed_g026m), a Tuple join fits
+    // no candidate whatever the name is (n1_typ), and a slot no failed part sits at is recorded (h5, as h4b). The join no longer binds
+    // its literal at its default without a Type, so a default that cannot hold it writes nothing (lit_big; its twin lit_big_t is
+    // valid), and a waited Closure's body is bound, so its own error is reported (clo_body, clo_body_typed; clo_body_t keeps its
+    // TypeMismatch). An unselected call publishes only what its waiting join judged (B4): the literal-only and Tuple joins b3a-b3e keep
+    // their call's record alone.
+    [Theory]
+    [InlineData("U1.6h-3", "fp2_root_deferred", IdentityT + GBool1 + "func k(c: bool, d: bool, x: i64) -> i32\n    return f(if c => (if d => undefinedName else => identity(4)) else => 8)\n", DeferredRecords)]
+    [InlineData("U1.6h-3", "fp2_tupleElem_deferred", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\nfunc k(c: bool, d: bool, x: i64) -> i32\n    return f((if c => (if d => undefinedName else => identity(4)) else => 8, 3))\n", DeferredRecords)]
+    [InlineData("U1.6h-3", "fp_seed_g026m", IdentityT + GBool1 + KD + "    return f(if c => (if d => undefinedName else => identity(4)) else => 8)\n", DeferredRecords)]
+    [InlineData("U1.6h-3", "n1_typ", IdentityT + FScalars + KX + "    return f(if c => (undefinedName, 1) else => (x, 2)).0\n", "NoApplicableOverload_Kd f(if c => (undefinedName, 1) else => (x, 2)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3", "h5", "func h<T>(x: (i64, Option<T>)) -> i32 => 0\n" + KHead + "    return h(if c => (undefinedName, .None) else => (3, .None))\n", "UnboundTypeArgument_Kd h(if c => (undefinedName, .None) else => (3, .None)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3", "lit_big", "func f(x: u128) -> i32 => 0\n" + KHead + "    return f(if c => undefinedName else => 100000000000000000000)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3", "lit_big_t", "func f(x: u128) -> i32 => 0\nfunc k(c: bool, y: u128) -> i32\n    return f(if c => y else => 100000000000000000000)\n", "")]
+    [InlineData("U1.6h-3", "clo_body", ApI64 + KHead + "    return ap(if c => undefinedName else => func [] (v) => undefinedBody)\n", "UnresolvedBinding_Kd undefinedBody; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3", "clo_body_typed", ApI64 + KHead + "    return ap(if c => undefinedName else => func [] (v: i64) -> i64 => undefinedBody)\n", "UnresolvedBinding_Kd undefinedBody; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3", "clo_body_t", ApI64 + "func twice(v: i64) -> i64 => v\n" + KHead + "    return ap(if c => twice else => func [] (v) => undefinedBody)\n", "TypeMismatch_Kd func [] (v) => undefinedBody")]
+    [InlineData("U1.6h-3", "b3a", GBool1 + KHead + "    return f(if c => 5 else => 2.5)\n", "NoApplicableOverload_Kd f(if c => 5 else => 2.5)")]
+    [InlineData("U1.6h-3", "b3b", "func f(x: (bool, i64)) -> i32 => 1\n" + KX + "    return f(if c => (5, x) else => (2.5, x))\n", "NoApplicableOverload_Kd f(if c => (5, x) else => (2.5, x))")]
+    [InlineData("U1.6h-3", "b3c", "func g(x: (f64, Option<i64>)) -> i32 => 0\nfunc g(x: (f64, Option<bool>)) -> i32 => 1\n" + KHead + "    return g(if c => (5, .None) else => (2.5, .None))\n", "NoApplicableOverload_Kd g(if c => (5, .None) else => (2.5, .None))")]
+    [InlineData("U1.6h-3", "b3d", "func h<T>(x: (i64, Option<T>)) -> i32 => 0\n" + KHead + "    return h(if c => (3, .None) else => (4, .None))\n", "UnboundTypeArgument_Kd h(if c => (3, .None) else => (4, .None))")]
+    [InlineData("U1.6h-3", "b3e", "func f(x: (bool, i64)) -> i32 => 1\nfunc k(c: bool, d: bool, x: i64) -> i32\n    return f(if c => (if d => (5, x) else => (2.5, x)) else => (7, x))\n", "NoApplicableOverload_Kd f(if c => (if d => (5, x) else => (2.5, x)) else => (7, x))")]
+    [InlineData("U1.6h-3'", "h2_one", "func f(x: i64) -> i64 => x\n" + KHead + "    let r = f(if c => undefinedName else => 8)\n    let s: bool = r\n    return 0\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "h2_ovl_lit", "func f(x: i64) -> i64 => x\nfunc f(x: bool) -> bool => x\n" + KHead + "    let r = f(if c => undefinedName else => 8)\n    let s: bool = r\n    return 0\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "n5", "func f(x: i64) -> i64 => x\nfunc f(x: bool) -> bool => x\n" + KHead + "    let r = f(if c => undefinedName else => 8)\n    return 0\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "n4c", "func f(x: i64) -> i64 => x\nfunc f(x: bool) -> bool => x\n" + KD + "    let r = f(if c => (if d => undefinedName else => 8) else => 9)\n    return 0\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "n4", "func f(x: i64) -> i64 => x\nfunc f(x: bool) -> bool => x\nfunc k(c: bool, d: bool, e: bool) -> i32\n    let r = f(if c => (if d => (if e => undefinedName else => 7) else => 8) else => 9)\n    return 0\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "h2_ok", "func f(x: i64) -> i64 => x\nfunc f(x: bool) -> bool => x\n" + KHead + "    let r = f(if c => 7 else => 8)\n    let s: i64 = r\n    return 0\n", "")]
+    [InlineData("U1.6h-3'", "fp1_joinChildTuple_literal", "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f(if c => (undefinedName, 3) else => (8, 4))\n", "TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "fp1_joinChildTuple_typed", "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f(if c => (undefinedName, 3) else => (x, 4))\n", "TypeMismatch_Kd if c => (undefinedName, 3) else => (x, 4); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-3'", "g259", "func f(x: (bool, i32)) -> i32 => 1\nfunc k(c1: bool, c2: bool) -> i32\n    return f(if c2 => (4, 4) else => ((if c1 => undefinedName else => 3), 3))\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 4; UnresolvedBinding_Kd undefinedName")]
+    public void AFailedSourceRestsItsJoinOnlyAtItsVerdict(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // U1.6h-1 and U1.6h-2: a warm rebind publishes and releases FailedFit and compares the kept candidates' patterns in reused storage

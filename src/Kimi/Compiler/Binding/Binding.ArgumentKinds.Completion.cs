@@ -192,6 +192,11 @@ public sealed partial class Binding
                 this.CompleteJoinCases(flow, scope);
             }
 
+            if (this.resultContexts.ContainsKey(flow))
+            {
+                this.PublishJudged(flow, null); // U1.6h B4: only the verdicts its tree has already judged, and the parts' links to them.
+            }
+
             return;
         }
 

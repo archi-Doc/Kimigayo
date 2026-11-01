@@ -19,8 +19,9 @@ namespace Kimi.Compiler;
 //   awaiting their call beside them taking it (step 3); a position whose typed parts have no common Type waits (Call; U1.6g (a)), and
 //   one with no typed part, and so no candidate, waits (Call) when a part awaits its call; then Aggregate when its parts are
 //   aggregates, Literal when only literals remain; with no part (Never in every source, or only failed parts) it is Typed with no
-//   Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2 U3's D6). A failed part takes no part in the kind and fits every
-//   candidate (SPEC 23.1.2), as in the join's own formation. Every
+//   Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2 U3's D6). A failed part (PartFailed) makes its
+//   position Call, Waiting under 10.5.1 (U1.6h site 3; DECISIONS BU-78): it is no evidence and fits every candidate (SPEC 23.1.2), and
+//   its siblings are checked at the selected candidate's Type. Every
 //   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
 //   positions and the parameter Type at each; PositionKind.
@@ -146,13 +147,13 @@ public sealed partial class Binding
     // whatever else it holds, or with no Type when it has no part; Call when its typed parts have no common Type (U1.6g (a)) or, with
     // no typed part, when a part awaits its call
     // (AwaitsCall), then Aggregate when its parts are aggregates, then Literal when only literals remain. A failed part (PartFailed)
-    // takes no part in the kind, as in the join's own formation (CommonTypeByParts; SPEC 23.1.2): it supplies no Type, and it is no
-    // literal, aggregate or waiting part.
+    // makes the position Call (U1.6h site 3; SPEC 10.5.1, 23.1.2): it fixes no complete Type, so the position waits for its call.
     private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;
         var literal = false;
         var waits = false;
+        var failed = false;
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
@@ -164,6 +165,15 @@ public sealed partial class Binding
             {
                 waits = true;
             }
+            else if (this.PartFailed(part))
+            {
+                failed = true;
+            }
+        }
+
+        if (failed)
+        {
+            return PartKind.Call; // U1.6h site 3: Waiting under 10.5.1.
         }
 
         if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), out var typed)) is not null)

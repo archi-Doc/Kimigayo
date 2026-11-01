@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 // FailedFit (DECISIONS BU-77; SPEC 23.1.2, 10.8): per candidate of a call evaluation, each unbound failed part (PartFailed, no
 // BoundType) its evidence walk meets and the candidate's pattern at that part's position, open or closed.
 // - Producer: the evidence walk alone (SlotSolution's InferParts and InferPosition's one-part default row, PublishFailedFit), in both
-//   passes; it reads PartFailed and appends, so the evidence results are unchanged: a failed part is never evidence. FitsPosition and
-//   FitArgument publish nothing.
+//   passes; it reads PartFailed and appends, so the evidence results are unchanged: a failed part is never evidence. An unbound Tuple,
+//   array or Dictionary literal it meets whole publishes the failed parts it holds at that pattern. FitsPosition and FitArgument
+//   publish nothing.
 // - Storage: one Binding list in the evaluation's scratch. An evaluation marks its first entry (CallEvaluation.FailedFits) and releases
 //   its entries when it ends, so a nested evaluation keeps its own; an entry is keyed by (candidate, part), and a later pass replaces it.
 // - Readers: the selected candidate's unsolved slots (RestingFailedPart; SolveSelected) and the kept candidates of an ambiguity
@@ -287,15 +288,22 @@ public sealed partial class Binding
         }
 
         // U1.6h: where the evidence walk meets an unbound failed part, the candidate's pattern at that position, replacing the entry an
-        // earlier pass wrote for the same part. A solution that is no call candidate's publishes nothing.
+        // earlier pass wrote for the same part. An unbound Tuple, array or Dictionary literal it meets whole publishes the failed parts it
+        // holds at that pattern (U1.6h-3', fix (b)). A solution that is no call candidate's publishes nothing.
         private readonly void PublishFailedFit(Koto part, BoundType pattern)
         {
-            var fits = this.Binding.failedFits;
-            if (this.FailedFits is not { } scope || PartCore(part).BoundType is not null || !this.Binding.PartFailed(part))
+            if (this.FailedFits is not { } scope || PartCore(part).BoundType is not null)
             {
                 return;
             }
 
+            if (!this.Binding.PartFailed(part))
+            {
+                this.PublishHeldFailures(PartCore(part), pattern);
+                return;
+            }
+
+            var fits = this.Binding.failedFits;
             for (var i = scope.Start; i < fits.Count; i++)
             {
                 if (fits[i].Candidate == scope.Candidate && ReferenceEquals(fits[i].Part, part))
@@ -306,6 +314,36 @@ public sealed partial class Binding
             }
 
             fits.Add(new(scope.Candidate, part, pattern));
+        }
+
+        // The parts of an unbound aggregate the walk meets whole, each published at the aggregate's pattern.
+        private readonly void PublishHeldFailures(Koto aggregate, BoundType pattern)
+        {
+            switch (aggregate)
+            {
+                case TupleLiteralKoto tuple:
+                    foreach (var element in tuple.Elements)
+                    {
+                        this.PublishFailedFit(element, pattern);
+                    }
+
+                    break;
+                case ArrayLiteralKoto array:
+                    foreach (var element in array.Elements)
+                    {
+                        this.PublishFailedFit(element, pattern);
+                    }
+
+                    break;
+                case DictionaryLiteralKoto dictionary:
+                    foreach (var entry in dictionary.Entries)
+                    {
+                        this.PublishFailedFit(entry.Key, pattern);
+                        this.PublishFailedFit(entry.Value, pattern);
+                    }
+
+                    break;
+            }
         }
 
         // The first failed part of the candidate whose pattern mentions the slot.

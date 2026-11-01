@@ -260,14 +260,26 @@ public class ApplicabilityChainRegressionTest
     [InlineData("first(if c => (if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("first(if c => ((if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w), x) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w")]
     [InlineData("takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
-    [InlineData("take(if c => ((if c => missing else => x), stop()) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
     [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
     [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
+    [InlineData("applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 23.1.2, 10.4 (U1.6h-3'): a join of Tuple results fits `take(i64)` whatever its failed part is, so the call's
+    // NoApplicableOverload_Kd is independent and stands beside `missing`'s record (formerly `missing`'s alone, a dependent suppression);
+    // its twin with `x` for `missing` gives the call's record alone.
+    [Theory]
+    [InlineData("take(if c => ((if c => missing else => x), stop()) else => (stop(), x))", new[] { nameof(DiagnosticCode.NoApplicableOverload_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd) })]
+    [InlineData("take(if c => ((if c => x else => x), stop()) else => (stop(), x))", new[] { nameof(DiagnosticCode.NoApplicableOverload_Kd) })]
+    public void ATupleJoinFitsNoScalarParameterWhateverItsFailedPartIs(string use, string[] codes)
+    {
+        var source = ControlFlowDeclarations + use + "\n";
+        Assert.Equal(codes, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order());
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal in a call's join is bound as `char`, so the call keeps its own record

@@ -9212,7 +9212,9 @@ resumed by R4-M86 (2026-10-20).
   - The fact: `FailedFit(Candidate, Part, Pattern)`. The evidence walk (SlotSolution: InferParts, and InferPosition's one-part default
     row) publishes it where it meets an unbound failed part (PartFailed, no BoundType). Pattern is the candidate's pattern at that
     position, open or closed. Both passes publish; a later pass replaces the entry of the same (candidate, part). The evidence results
-    are unchanged: an unbound failed part is never evidence. FitsPosition and FitArgument publish nothing.
+    are unchanged: an unbound failed part is never evidence. FitsPosition and FitArgument publish nothing. An unbound Tuple, array or
+    Dictionary literal the walk meets whole publishes the failed parts it holds at that pattern (U1.6h-3', fix (b): ACRT's
+    `applyArg(... ["k": func [] (v) => v] ...)`, whose F otherwise had no fact and gave a dependent UnboundTypeArgument_Kd).
   - Storage: one Binding list in the call evaluation's scratch. The evaluation marks its first entry (`CallEvaluation.FailedFits`) and
     releases its entries when it ends, as `obligations` are, so a nested evaluation keeps its own (R4's C22). A candidate's solution
     carries its scope (`FailedFitScope`: the evaluation's first entry, the candidate's index); no other solution publishes.
@@ -9235,6 +9237,27 @@ resumed by R4-M86 (2026-10-20).
       unsolved slot (g028, h7, h8; the implementer's unit-1 stop).
     - A Binding-wide list keyed by function, the prototype. Its entries outlived their call, so another call's independent
       UnboundTypeArgument_Kd was lost (R4's s1, s2, s4), and its linear search over the whole list was quadratic.
+
+- **BU-78 A failed source takes no part in its join: its join rests on it at its verdict, and a failed part makes its position wait**
+  (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design `u16h-design.md` revision 4, triage `u16h-3t.md`; R4's ACCEPT; the
+  owner's 「改訂 4でGO！」 and 「(1) 3′ で進める」) Amends U1.6d: a failed source of a join that waits for its position fits every
+  candidate as a source, not as its whole join (SPEC 23.1.2, 10.4, 10.5.1, 14.9.2). It covers joins their call classifies; a typed
+  join that decides by itself is not covered (PLAN).
+  - Site 1, the verdict: RestOn records the cause during classification and decides nothing. `DecideRest`, the one writer of
+    Dependent, writes the verdict when the join decides (DecideResult; DecideWaiting under a failed position). Conflict prevails.
+  - Site 3: a failed part makes its position Call, Waiting under 10.5.1 (PositionKind). Supersedes BU-43 R6's "`PositionKind`'s row is
+    deleted (a classified join holds no failed part)" and "a nested join with a failed part decides at once". The reason they rested
+    on no longer holds: a join with a failed part was Dependent at once, one failed part, so no classified join held one. Now
+    Dependent is written only at the verdict, so a classified, waiting join holds failed parts, and PositionKind regains a row with
+    a new meaning: Waiting, not "takes no part".
+  - B4 and fix (a), the unselected call's completion (CompleteUnselectedPart's one row, PublishJudged): a held join judged Conflict
+    writes its own record once (`FailJudged`, the record's one form, shared with DecideWaiting: R4's N9). A held waiting join rests
+    through its verdict (`DecideRest`: R4's C25) on its recorded Cause, or else on the verdict it lies under. Every other unbound part
+    of the tree with no cause of its own (PartFailed, HasFailureCauses) rests on the nearest judged verdict, by the join tree JudgeHeld
+    walks, from the outermost form that delivers each waited source (`ResultSourceForm`, the result-source walk's delivery chain that
+    ResultTarget reads: R4's C24, the unused local's derived PrerequisiteUnavailable_Kd). Nothing is bound and no default is taken (review 2's B4).
+  - Rejected: a call resting on its taken argument's cause at Calls.cs:391 (h2 never reaches selection); a shared join-rests
+    completion for DecideResult (it changed no probe).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

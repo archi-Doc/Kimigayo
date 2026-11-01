@@ -99,7 +99,7 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2, 23.1.2 (DECISIONS BU-43): a join's own judgement, by one formation over its own results (CommonTypeByParts),
     // nested joins flattened where they are clean and one failed part each where they are not. A conflict among its typed parts or
     // shapes is its own, found at any position (Conflict), unless under a call's argument probe it waits for its call (ConflictWaits,
-    // U1.6g); else a failed part leaves it Dependent on the first (RestOn). A conflict among
+    // U1.6g); else its first failed part is its cause (RestOn), on which it rests at its verdict (DecideRest). A conflict among
     // literal defaults is reported (`defaults`), not judged: a literal result is not fixed before outer constraints (step 3), so it is
     // the root's (AwaitsWithoutCandidate). Idempotent: called at the join's own decision and again by its root (JudgeNested). Returns
     // the Type formed over the parts that are no conflict and no failure, null when none; `shape` is the first aggregate part.
@@ -139,6 +139,120 @@ public sealed partial class Binding
             }
         }
     }
+
+    // U1.6h B4 (SPEC 23.1.2): an unselected call's waiting join publishes only the verdicts its tree has already judged, and links every
+    // other part of the tree to the nearest of them (U1.6h-3', fix (a)). A held join whose formation judged it Conflict (JudgeOwn) writes
+    // its own record, once, and is the verdict of the parts it holds; a held join still Waiting rests through its verdict (DecideRest) on
+    // the cause its formation recorded (RestOn), or on the verdict it lies under, which is then the verdict of its parts. Every other
+    // unbound part with no cause of its own rests on its verdict (RestOnVerdict). The walk is JudgeHeld's: the forms that deliver a
+    // source (from the outermost, ResultSourceForm), Tuple, array and Dictionary literals, and a held join's waited sources. Nothing is
+    // bound: a literal source takes no default, and no misfit that only the missing expected Type causes is written (the owner's
+    // contract, CompleteUnselectedPart).
+    private void PublishJudged(Koto part, Koto? verdict)
+    {
+        if (DeliveredOperand(part) is { } operand)
+        {
+            this.RestOnVerdict(part, verdict); // First: whether it failed reads its operand (PartFailed).
+            this.PublishJudged(operand, verdict);
+            return;
+        }
+
+        switch (part)
+        {
+            case TupleLiteralKoto tuple:
+                foreach (var element in tuple.Elements)
+                {
+                    this.PublishJudged(element, verdict);
+                }
+
+                this.RestOnVerdict(part, verdict);
+                return;
+            case ArrayLiteralKoto array:
+                foreach (var element in array.Elements)
+                {
+                    this.PublishJudged(element, verdict);
+                }
+
+                this.RestOnVerdict(part, verdict);
+                return;
+            case DictionaryLiteralKoto dictionary:
+                foreach (var entry in dictionary.Entries)
+                {
+                    this.PublishJudged(entry.Key, verdict);
+                    this.PublishJudged(entry.Value, verdict);
+                }
+
+                this.RestOnVerdict(part, verdict);
+                return;
+        }
+
+        if (!DeliversResult(part) || part.BoundType is not null || !this.resultContexts.TryGetValue(part, out var context))
+        {
+            this.RestOnVerdict(part, verdict);
+            return;
+        }
+
+        if (context.Outcome == JoinOutcome.Conflict)
+        {
+            if (part.BindingFailure == BindingFailure.None)
+            {
+                this.FailJudged(part);
+            }
+
+            verdict = part;
+        }
+        else if (context.Outcome == JoinOutcome.Waiting)
+        {
+            verdict = this.RestJudged(part, context, verdict);
+        }
+        else
+        {
+            return;
+        }
+
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
+            {
+                this.PublishJudged(ResultSourceForm(source), verdict);
+            }
+        }
+    }
+
+    // A held join still Waiting rests through its verdict (DecideRest, the one writer of Dependent; R4's C25): on the cause its formation
+    // recorded, or else on the verdict it lies under. Returns the verdict its parts rest on.
+    private Koto? RestJudged(Koto join, ResultContext context, Koto? verdict)
+    {
+        if (verdict is not null)
+        {
+            context.RestOn(verdict); // RestOn keeps the first cause: the join's own, when its formation recorded one.
+        }
+
+        context.DecideRest();
+        if (context.Outcome == JoinOutcome.Dependent && !this.HasFailureCauses(join))
+        {
+            this.CompleteDependent(join, context.Cause!);
+        }
+
+        return context.Cause;
+    }
+
+    // An unbound part with no cause of its own rests on the verdict it lies under (PublishJudged), once: no record, no default.
+    private void RestOnVerdict(Koto part, Koto? verdict)
+    {
+        if (verdict is not null && !ReferenceEquals(part, verdict) && part.BoundType is null && !this.HasOwnCause(part))
+        {
+            this.CompleteDependent(part, verdict);
+        }
+    }
+
+    // Whether a part already failed or rests, from its owners' predicates: a failed join's published outcome or a part's own failure
+    // (PartFailed), or a recorded cause (HasFailureCauses).
+    private bool HasOwnCause(Koto part) => this.PartFailed(part) || this.HasFailureCauses(part);
+
+    // SPEC 14.9.2, 23.1.2 (R4's N9): the record of a held join its formation judged Conflict (JudgeOwn), at itself, its one form: when
+    // its position binds it (DecideWaiting) or its call selects none (PublishJudged).
+    private BoundType? FailJudged(Koto join) => this.Fail(join, BindingFailure.TypeMismatch);
 
     private void JudgeHeld(Koto part)
     {
