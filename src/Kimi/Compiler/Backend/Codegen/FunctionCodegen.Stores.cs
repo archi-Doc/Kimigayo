@@ -132,7 +132,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Place's value in its representation (I4): loaded in its storage representation, or its address when the value is in memory; none
-    // for a zero-sized one; false after a broken contract's record (Address).
+    // for a zero-sized one; false after a broken contract's record (Address's, LoweringOf's).
     private bool Read(MirPlace place, out Value value)
     {
         value = default;
@@ -141,16 +141,12 @@ internal sealed partial class FunctionCodegen
             return true;
         }
 
-        if (!this.Address(place, out var address))
+        if (!this.Address(place, out var address) || this.LoweringOf(place) is not { } lowering)
         {
             return false;
         }
 
-        if (this.LoweringOf(place) is { Layout.Size: > 0 } lowering)
-        {
-            value = this.ValueAt(address, this.InstanceType(place)!, lowering);
-        }
-
+        value = lowering.Layout.Size == 0 ? default : this.ValueAt(address, this.InstanceType(place)!, lowering);
         return true;
     }
 

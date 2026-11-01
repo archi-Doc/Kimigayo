@@ -20,7 +20,7 @@ internal sealed partial class FunctionCodegen
     private void FixedStorage(in MirTerminator call)
     {
         var source = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
-        if (this.Referent(this.InstanceType(source)) is not { } array || this.LoweringOf(call.Place) is not { } remainder ||
+        if (this.ReferencedType(this.InstanceType(source)) is not { } array || this.LoweringOf(call.Place) is not { } remainder ||
             !this.Operand(source, out var storage) || !this.Address(call.Place, out var record))
         {
             return; // A broken contract, recorded.

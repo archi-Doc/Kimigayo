@@ -82,13 +82,15 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < operands.Length; i++)
         {
-            var (offset, component) = this.Component(kind, type, record, rvalue.Arg, i);
-            if (this.Laid(component) is not { Layout.Size: > 0 } lowering)
+            if (this.Component(kind, type, record, rvalue.Arg, i) is not { } part || this.Laid(part.Type) is not { } lowering)
             {
-                continue;
+                return; // A broken contract, recorded.
             }
 
-            this.Put(this.Offset(address, offset), component, lowering, operands[i], this.arguments[i]);
+            if (lowering.Layout.Size > 0)
+            {
+                this.Put(this.Offset(address, part.Offset), part.Type, lowering, operands[i], this.arguments[i]);
+            }
         }
     }
 
@@ -96,19 +98,20 @@ internal sealed partial class FunctionCodegen
     // its offset and its Type in the item's instance. A Tuple's element, a Closure's capture and a struct's own Field are at the record's
     // Field offsets, a struct's base first and at 0 (its complete base is a prefix, X1); an enum Case's payload element is at the payload's
     // offset, the record's Field 1, plus its offset in the Case's payload Tuple; a fixed array's element, and an Array's in its buffer, is at
-    // its position times the element's stride.
-    private (long Offset, BoundType Type) Component(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
+    // its element offset (FunctionCodegen.Places' ElementOffset). Null after a broken contract's record (an element's or a Case payload's
+    // layout, Laid).
+    private (long Offset, BoundType Type)? Component(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
     {
         var offsets = record.Layout.FieldOffsets.Span;
         switch (kind)
         {
             case MirAggregateKind.FixedArray or MirAggregateKind.Array:
-                return (index * (long)(this.Laid(type.Components[0])?.Layout.Stride ?? 0), type.Components[0]);
+                return this.Laid(type.Components[0]) is { } element ? (ElementOffset(element, index), type.Components[0]) : null;
             case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
             case MirAggregateKind.Adt when AdtDef.IsEnum(type):
                 var payload = AdtDef.CaseTypes(type)![ordinal]!;
-                return (offsets[1] + (this.Laid(payload)?.Layout.FieldOffsets.Span[index] ?? 0), payload.Components[index]);
+                return this.Laid(payload) is { } tuple ? (offsets[1] + tuple.Layout.FieldOffsets.Span[index], payload.Components[index]) : null;
             case MirAggregateKind.Adt when AdtDef.Base(type) is { } parent:
                 return index == 0 ? (0, parent) : (offsets[index - 1], AdtDef.FieldType(type, index - 1)!);
             case MirAggregateKind.Adt:

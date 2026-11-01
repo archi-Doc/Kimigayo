@@ -49,7 +49,7 @@ internal sealed partial class FunctionCodegen
             if (this.module.Tests.SiteOf(constant.Site) is not (>= 0 and var site))
             {
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default);
-                return true;
+                return false;
             }
 
             value = new('\0', site);
@@ -65,7 +65,7 @@ internal sealed partial class FunctionCodegen
 
         if (this.Representation(constant.Type) is not { } lowering)
         {
-            return true; // A broken contract, recorded.
+            return false; // A broken contract, recorded.
         }
 
         if (constant.Kind == MirConstKind.Float)
