@@ -801,9 +801,9 @@ internal sealed class WorkspaceCheck
         LoadedProject item;
         try
         {
-            item = Project.TryCreate(this.start.Kimigayo, null, path.Value, source, out var project, out var failure)
+            item = Project.TryCreate(this.start.Kimigayo, null, path.Value, source, out var project, out var failures)
                 ? CreateLoaded(path, project, source)
-                : new LoadedProject { Path = path, Failure = failure ?? "The project could not be loaded.", Inputs = source.GetRecorded() };
+                : new LoadedProject { Path = path, Failures = failures, Inputs = source.GetRecorded() };
         }
         catch (PendingInputException)
         {
@@ -921,7 +921,7 @@ internal sealed class WorkspaceCheck
     {
         if (plan.Key.Kind == UnitKind.FailedRoot || plan.Project is { Project: null })
         {
-            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, plan.Project?.Failure ?? "The project could not be loaded.");
+            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, plan.Project is { Failures.Count: > 0 } failed ? failed.Failures : ["The project could not be loaded."]);
         }
 
         if (plan.Key.Target.Length == 0)

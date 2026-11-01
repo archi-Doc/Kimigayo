@@ -30,7 +30,6 @@ public class DependencyConfigurationTest
     [InlineData("TestDependencies={Math={PackageId=\"a\" PackageVersion=\"1\"} Math={PackageId=\"a\" PackageVersion=\"2\"}}")]
     [InlineData("PackageSources={{Store=\"packages\" PackageId=\"a\"}}")]
     [InlineData("PackageSources={{PackageId=\"a\" PackageVersion=\"1\"}}")]
-    [InlineData("TestSources={\"test.kimi\" \"test.kimi\"}")]
     [InlineData("TestSources={\"tests/*.kimi\"}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={ContractId=\"c\"}}}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"dynamic\"}}}")]
@@ -68,14 +67,14 @@ public class DependencyConfigurationTest
     [InlineData("TestDependencies={Math={PackageId=\"a\" PackageVersion=\"1\"}} TestDependencies={Geometry={PackageId=\"b\" PackageVersion=\"1\"}}")]
     [InlineData("CompileTimeSettings={A={Bool=true}} CompileTimeSettings={B={Bool=true}}")]
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
-        => Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source)));
+        => Assert.True(Record.Exception(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))) is TinyhandException or ProjectConfigurationException);
 
     // The project's kernel32 entry names its migration (NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
     [Fact]
     public void LoadingAnExplicitKernel32EntryNamesItsMigration()
     {
         var source = Encoding.UTF8.GetBytes("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}");
-        Assert.Contains("Remove the kernel32 entry", Assert.Throws<TinyhandException>(() => ProjectFile.Load(source)).Message);
+        Assert.Contains("Remove the kernel32 entry", Assert.Single(Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(source)).Failures));
     }
 
     [Theory]
@@ -190,6 +189,32 @@ public class DependencyConfigurationTest
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
+    // SPEC 23.1.2: each independent configuration failure is its own record: the identity, each native entry and the alias.
+    [Fact]
+    public void EachIndependentConfigurationFailureIsReported()
+    {
+        var c = Compilation.CreateForTest();
+        var file = c.Project.ProjectFile;
+        file.PackageId = "Bad";
+        file.PackageVersion = "1";
+        file.Alias = [" "];
+        file.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["a"] = new(), ["b"] = new() };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        var notes = ConfigurationNotes(c);
+        Assert.Equal(4, notes.Length);
+        Assert.All(new[] { "PackageId", "entry 'a'", "entry 'b'", "Alias" }, x => Assert.Single(notes, n => n.Contains(x, StringComparison.Ordinal)));
+    }
+
+    // SPEC 23.1.2: a check that reads a null map depends on that failure and is left out; the null map is one record.
+    [Fact]
+    public void ANullMapLeavesOutTheChecksThatReadIt()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.Dependencies = null!;
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.Equal("Dependency maps and source lists must not be null.", Assert.Single(ConfigurationNotes(c)));
+    }
+
     [Fact]
     public void LegacyProgrammaticReferencesCannotBeSilentlyIgnored()
     {
@@ -286,13 +311,16 @@ public class DependencyConfigurationTest
     public void WarmConfigurationValidationAllocatesNothing()
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes("PackageId=\"a\" PackageVersion=\"V1+build\" Dependencies={Math={PackageId=\"b\" PackageVersion=\"2\" Project=\"Math.kimiproj\"}} TestSources={\"tests/test.kimi\"}"))!;
-        Assert.Null(DependencyConfiguration.Validate(file));
+        Assert.Empty(DependencyConfiguration.Validate(file));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (DependencyConfiguration.Validate(file) is not null)
+            if (DependencyConfiguration.Validate(file).Count != 0)
             {
                 throw new InvalidOperationException("Dependency configuration validation failed.");
             }
         }));
     }
+
+    private static string[] ConfigurationNotes(Compilation c)
+        => TestDiagnostics.Of(c).Where(static x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)).Select(static x => x.Note!).ToArray();
 }

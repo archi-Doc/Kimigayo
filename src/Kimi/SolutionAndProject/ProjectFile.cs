@@ -79,9 +79,9 @@ public partial record class ProjectFile
             var reader = new TinyhandReader(writer);
             ValidateMapNames(reader);
             var file = TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
-            if (file is not null && DependencyConfiguration.Validate(file) is { } failure)
+            if (file is not null && DependencyConfiguration.Validate(file) is { Count: > 0 } failures)
             {
-                throw new TinyhandException(failure);
+                throw new ProjectConfigurationException(failures);
             }
 
             return file;

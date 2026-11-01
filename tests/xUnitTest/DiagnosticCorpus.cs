@@ -210,7 +210,7 @@ internal static class DiagnosticCorpus
             var project = Path.Combine(folder, "Program.kimiproj");
             File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
-            Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+            Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
             return CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         }
         finally

@@ -245,7 +245,9 @@ internal sealed class DependencyResolver
                 AddReferences(references);
                 if (includeTests && index == 0)
                 {
-                    if (DependencyConfiguration.ValidateReferences(file.TestDependencies) is { } failure)
+                    List<string>? failures = null;
+                    DependencyConfiguration.ValidateReferences(file.TestDependencies, ref failures);
+                    if (failures is [var failure, ..])
                     {
                         throw new ResolutionFailure("InvalidTestDependencies", failure);
                     }
@@ -316,7 +318,7 @@ internal sealed class DependencyResolver
         {
             return new([], ex.Code, ex.Message);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or TinyhandException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or TinyhandException or ProjectConfigurationException)
         {
             return new([], "InvalidProjectInput", ex.Message);
         }
@@ -334,13 +336,9 @@ internal sealed class DependencyResolver
         var bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath) ? this.rootConfiguration : this.source.ReadAllBytes(path);
         var file = ProjectFile.Load(bytes) ?? throw new ResolutionFailure("InvalidConfiguration", $"Empty Project configuration: '{path}'.");
         var directory = Path.GetDirectoryName(path)!;
-        var tests = new HashSet<string>(this.inputs.Comparer);
-        foreach (var source in file.TestSources)
+        if (DependencyConfiguration.Validate(file, directory, out var tests) is [var failure, ..])
         {
-            if (!tests.Add(Path.GetFullPath(source, directory)))
-            {
-                throw new ResolutionFailure("DuplicateTestSource", $"Duplicate resolved TestSources path in '{path}': {source}.");
-            }
+            throw new ResolutionFailure("InvalidConfiguration", $"Invalid project configuration '{path}': {failure}");
         }
 
         var paths = this.source.GetFiles(directory, "*.kimi");
@@ -348,7 +346,7 @@ internal sealed class DependencyResolver
         foreach (var source in paths)
         {
             this.cancellationToken.ThrowIfCancellationRequested();
-            if (!tests.Contains(source))
+            if (tests?.Contains(source) != true)
             {
                 sources.Add(new(Path.GetFileName(source), this.source.ReadSource(source)));
             }

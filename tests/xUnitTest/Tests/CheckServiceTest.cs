@@ -131,6 +131,38 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Single(notes, static x => x.Contains("'B.kimi', 'b.kimi'", StringComparison.Ordinal));
     }
 
+    // SPEC 23.1.2, IMPL 20.1: TestSources entries are compared as resolved paths, and each duplicate is its own record, in a product and
+    // a test check alike.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void EachDuplicateTestSourceIsReported(CheckMode mode)
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "TestSources={\"tests/../a.kimi\" \"a.kimi\" \"b.kimi\" \"b.kimi\"}");
+        var output = this.Run(project, mode);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        Assert.Equal(["Duplicate resolved TestSources path: a.kimi", "Duplicate resolved TestSources path: b.kimi"], output.Diagnostics.Select(static x => x.Note));
+    }
+
+    // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
+    // the path syntax depends on that failure and is left out.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void PreparationReportsEachConfigurationFailure(CheckMode mode)
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid));
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
+        loaded.ProjectFile.Alias = [" "];
+        loaded.ProjectFile.TestSources = ["*.kimi", "*.kimi"];
+        var output = CheckService.Run(loaded, WindowsProfile.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(
+            ["Alias requires nonempty Container paths.", "TestSources requires explicit project-relative paths without globs."],
+            output.Diagnostics.Select(static x => x.Note!).Order(StringComparer.Ordinal));
+    }
+
     // SPEC 23.1.2, IMPL 20.1 (DECISIONS R5-M175): every module's names are checked, the root's and each dependency's, each failure naming
     // its module; names are compared only within one module, so a root Main.kimi beside a dependency's main.kimi is accepted.
     [Theory]
@@ -200,7 +232,7 @@ public sealed partial class CheckServiceTest : IDisposable
         File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
         File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
         File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "public func wide() -> i32 => 5\n");
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
         loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
         var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
         Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "\uFF21.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
@@ -211,7 +243,7 @@ public sealed partial class CheckServiceTest : IDisposable
     public void ATwinSourceNameIsAPreparationFailure()
     {
         var project = this.WriteProject("App", ("main.kimi", Valid));
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
         loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "public func twin() -> i32 => 2\n");
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
@@ -466,7 +498,7 @@ public sealed partial class CheckServiceTest : IDisposable
     private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null)
     {
         inputs ??= CheckInputSource.Disk;
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failure), failure);
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures), string.Join(", ", failures));
         return CheckService.Run(project, target.Length == 0 ? WindowsProfile.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
     }
 

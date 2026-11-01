@@ -11,25 +11,29 @@ internal static class NativeConfiguration
 
     private static readonly System.Buffers.SearchValues<char> HexDigits = System.Buffers.SearchValues.Create("0123456789ABCDEFabcdef");
 
-    internal static string? Validate(ProjectFile file)
+    // SPEC 23.1.2: each target and entry is checked independently; an entry's first failure is its record, and a null
+    // map's entries, which cannot be read, are left out.
+    internal static void Validate(ProjectFile file, ref List<string>? failures)
     {
         if (file.NativeRequirements is null || file.NativeLibraries is null)
         {
-            return "NativeRequirements and NativeLibraries must be target maps.";
+            DependencyConfiguration.Add(ref failures, "NativeRequirements and NativeLibraries must be target maps.");
+            return;
         }
 
         foreach (var (target, requirements) in file.NativeRequirements)
         {
             if (!ValidName(target) || requirements is null)
             {
-                return "NativeRequirements target entries must be mappings.";
+                DependencyConfiguration.Add(ref failures, "NativeRequirements target entries must be mappings.");
+                continue;
             }
 
             foreach (var (name, requirement) in requirements)
             {
                 if (!ValidName(name) || requirement is null || requirement.Kind is not ("import" or "static") || !ValidAssertions(requirement.ContractId, requirement.Sha256))
                 {
-                    return $"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
+                    DependencyConfiguration.Add(ref failures, $"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
                 }
             }
         }
@@ -38,81 +42,45 @@ internal static class NativeConfiguration
         {
             if (!ValidName(target) || libraries is null)
             {
-                return "NativeLibraries target entries must be mappings.";
+                DependencyConfiguration.Add(ref failures, "NativeLibraries target entries must be mappings.");
+                continue;
             }
 
             file.NativeRequirements.TryGetValue(target, out var requirements);
             foreach (var (name, library) in libraries)
             {
-                if (!ValidName(name) || library is null || library.Package is not null || (library.Name is not null && library.Name != name) || !ValidAssertions(library.ContractId, library.Sha256))
+                if (ValidateSupply(name, library, requirements?.GetValueOrDefault(name)) is { } failure)
                 {
-                    return "NativeLibraries requires nonempty logical names; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
-                }
-
-                if (name == WindowsProfile.Kernel32Library)
-                {
-                    return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
-                }
-
-                // A self-targeted record expands into a requirement and a supply; overlapping explicit fields must agree.
-                var requirement = requirements?.GetValueOrDefault(name);
-                if (requirement is not null &&
-                    (!Agree(library.Kind, requirement.Kind, StringComparison.Ordinal) ||
-                    !Agree(library.ContractId, requirement.ContractId, StringComparison.Ordinal) ||
-                    !Agree(library.Sha256, requirement.Sha256, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return $"NativeLibraries entry '{name}' disagrees with its NativeRequirements Kind, ContractId or Sha256.";
-                }
-
-                if ((library.Kind ?? requirement?.Kind) is not ("import" or "static"))
-                {
-                    return $"NativeLibraries entry '{name}' requires Kind \"static\" or \"import\" after requirement expansion.";
+                    DependencyConfiguration.Add(ref failures, failure);
                 }
             }
 
             // A supply for another module cannot create or change that module's requirement, so it carries no Kind.
+            var packagedValid = true;
             foreach (var library in libraries.Packaged)
             {
-                if (library is null || !ValidName(library.Name) || library.Package is not { } package ||
-                    !DependencyConfiguration.ValidPackageId(package.PackageId) || !DependencyConfiguration.ValidPackageVersion(package.PackageVersion) ||
-                    !ValidAssertions(library.ContractId, library.Sha256))
+                if (ValidatePackaged(library) is { } failure)
                 {
-                    return "NativeLibraries records targeting a Package require a nonempty Name and a valid PackageId and PackageVersion; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
-                }
-
-                if (library.Name == WindowsProfile.Kernel32Library)
-                {
-                    return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
-                }
-
-                // The reserved backend is one compiler-managed supply; only a project's own legacy override may name it.
-                if (library.Name == WindowsProfile.BackendLibrary)
-                {
-                    return "kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.";
-                }
-
-                if (library.Kind is not null)
-                {
-                    return $"NativeLibraries record '{library.Name}' for package '{package.PackageId}' cannot declare Kind; Kind is allowed only in self-targeted records.";
+                    DependencyConfiguration.Add(ref failures, failure);
+                    packagedValid = false;
                 }
             }
 
-            // Records of one project merge under the same rule as supplies across the graph.
+            // Records of one project merge under the same rule as supplies across the graph; invalid records cannot merge (dependent).
             var packaged = libraries.Packaged;
-            for (var i = 1; i < packaged.Length; i++)
+            for (var i = 1; packagedValid && i < packaged.Length; i++)
             {
                 for (var j = 0; j < i; j++)
                 {
                     if (packaged[i].Name == packaged[j].Name && packaged[i].Package == packaged[j].Package &&
                         (!Agree(packaged[i].ContractId, packaged[j].ContractId, StringComparison.Ordinal) || !Agree(packaged[i].Sha256, packaged[j].Sha256, StringComparison.OrdinalIgnoreCase)))
                     {
-                        return $"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' assert different ContractId or Sha256 values and cannot merge.";
+                        DependencyConfiguration.Add(ref failures, $"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' assert different ContractId or Sha256 values and cannot merge.");
+                        break;
                     }
                 }
             }
         }
-
-        return null;
     }
 
     // Checks supplies that target resolved dependency modules against those modules' own requirements (SPEC 20.4).
@@ -205,6 +173,55 @@ internal static class NativeConfiguration
     {
         var requirement = file.NativeRequirements.TryGetValue(target, out var requirements) ? requirements.GetValueOrDefault(name) : null;
         return ((library.Kind ?? requirement?.Kind)!, library.Sha256 ?? requirement?.Sha256);
+    }
+
+    // A self-targeted supply's first failure, or null.
+    private static string? ValidateSupply(string name, NativeLibraryInput? library, NativeRequirement? requirement)
+    {
+        if (!ValidName(name) || library is null || library.Package is not null || (library.Name is not null && library.Name != name) || !ValidAssertions(library.ContractId, library.Sha256))
+        {
+            return "NativeLibraries requires nonempty logical names; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
+        }
+
+        if (name == WindowsProfile.Kernel32Library)
+        {
+            return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
+        }
+
+        // A self-targeted record expands into a requirement and a supply; overlapping explicit fields must agree.
+        if (requirement is not null &&
+            (!Agree(library.Kind, requirement.Kind, StringComparison.Ordinal) ||
+            !Agree(library.ContractId, requirement.ContractId, StringComparison.Ordinal) ||
+            !Agree(library.Sha256, requirement.Sha256, StringComparison.OrdinalIgnoreCase)))
+        {
+            return $"NativeLibraries entry '{name}' disagrees with its NativeRequirements Kind, ContractId or Sha256.";
+        }
+
+        return (library.Kind ?? requirement?.Kind) is not ("import" or "static") ? $"NativeLibraries entry '{name}' requires Kind \"static\" or \"import\" after requirement expansion." : null;
+    }
+
+    // A supply record for another package's first failure, or null.
+    private static string? ValidatePackaged(NativeLibraryInput? library)
+    {
+        if (library is null || !ValidName(library.Name) || library.Package is not { } package ||
+            !DependencyConfiguration.ValidPackageId(package.PackageId) || !DependencyConfiguration.ValidPackageVersion(package.PackageVersion) ||
+            !ValidAssertions(library.ContractId, library.Sha256))
+        {
+            return "NativeLibraries records targeting a Package require a nonempty Name and a valid PackageId and PackageVersion; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
+        }
+
+        if (library.Name == WindowsProfile.Kernel32Library)
+        {
+            return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
+        }
+
+        // The reserved backend is one compiler-managed supply; only a project's own legacy override may name it.
+        if (library.Name == WindowsProfile.BackendLibrary)
+        {
+            return "kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.";
+        }
+
+        return library.Kind is not null ? $"NativeLibraries record '{library.Name}' for package '{package.PackageId}' cannot declare Kind; Kind is allowed only in self-targeted records." : null;
     }
 
     // Gets a module's own requirement, declared directly or by a self-targeted combined supply.

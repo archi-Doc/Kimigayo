@@ -14947,3 +14947,35 @@ structure is recorded here by the unit that first implements it.
     U+1F600 pair (documentation); `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two
     documents given in reverse) and `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory
     source between product sources, a U+FF21 name before a U+1F600 one) fail under `AddSources` without its sort (the parse order).
+- **R5-M177 One owner of the configuration rules, the TestSources rule included; each failure its own record (PLAN G367a)**
+  (2026-11-02, R5; the owner's list 「現状出来る作業（G367、G359、G357、G363、G366、U11など）を、順に行ってください。」) SPEC 23.1.2
+  reports each independent failed requirement. `DependencyConfiguration.Validate` and `NativeConfiguration.Validate` returned the
+  first failure, so a load, a preparation and `Compilation.Prepare` each reported one; the duplicate-TestSources rule (IMPL 20.1:
+  entries compared as resolved paths) had three copies stopping at the first duplicate (`Project.BuildTargets`, `PrepareTests`,
+  `DependencyResolver.Load`) and a fourth, ordinal one in `Validate`.
+  - Rule: `DependencyConfiguration` owns every configuration rule. `Validate(ProjectFile)` (directory-free: the load and
+    `Compilation.Prepare`) and `Validate(ProjectFile, directory, out testSources)` (the same plus the TestSources compared as resolved
+    paths, and the resolved set: product and test preparation, the resolver) return one note per independent failure, empty and
+    allocation-free when valid. Independent: KotonohaArray, the identity, each reference's name, identity and source, each native
+    target and entry, each Alias and PackageSources entry, each TestSources entry's syntax and each duplicate. Left out as dependent:
+    the checks that read a null map, a null native target's entries, a null reference's source, merging invalid packaged records,
+    and comparing an entry that breaks the path syntax (one predicate, `ValidTestSource`).
+  - Shape: a list of notes, as `Kotonoha.CheckNames` (R5-M175), each its own record of the existing code: `ProjectPreparationFailed_Kd`
+    through `Project.Fail` (test preparation now reports its configuration failures through its owner and publishes them for the
+    command, as the product does, instead of throwing one `InvalidDataException`), `InvalidDependencyConfiguration_Kd`
+    (`Compilation.Prepare`), `ProjectLoadFailed_Kd` (`ProjectFile.Load` throws `ProjectConfigurationException` carrying the notes;
+    `Project.TryCreate`'s `failures`, `LoadedProject.Failures`, `CheckOutput.Blocked(notes)`, one solution-load line each). Equal notes
+    merge in `DiagnosticOwner`, a grouping SPEC 23.1.2 leaves to the implementation. No code is added and no note text changes.
+  - Deleted: the three resolved copies and the ordinal one (a TestSources entry spelled twice now loads and is reported at preparation
+    with every other duplicate); `PrepareTests`' own base directory (`Path.GetFullPath(Directory)`, which threw for a project without
+    one; the product form, the current directory, now serves both).
+  - Interim (G367b removes it): `DependencyResolver` keeps one failure per partition: the first note of a dependency's configuration
+    (reason `InvalidConfiguration`, which replaces `DuplicateTestSource`) and of the root's TestDependencies.
+  - Rejected: validating the configuration only at preparation (the language server's project item reads the maps after the load); a
+    mode flag or an optional directory steering one `Validate`; joining the notes into one record's text.
+  - Same cause, not in this unit: `NativeConfiguration.ValidatePackageSupplies` and `ValidateSupplyAgreement` (the graph's supplies),
+    `TestSettings.Validate` and `ProjectFile.ValidateMapNames` (a repeated setting) still stop at their first failure.
+  - Tests: `DependencyConfigurationTest.EachIndependentConfigurationFailureIsReported` (four records; one before),
+    `CheckServiceTest.EachDuplicateTestSourceIsReported` and `PreparationReportsEachConfigurationFailure` (product and test; one
+    record, or a load failure, before), `CheckJsonOutputTest.EachConfigurationFailureOfAnUnloadedProjectIsReported` (two
+    `ProjectLoadFailed_Kd`; one before); `ANullMapLeavesOutTheChecksThatReadIt` is the dependent counterpart.

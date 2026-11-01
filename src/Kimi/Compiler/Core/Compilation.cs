@@ -210,9 +210,15 @@ public partial class Compilation
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
-        if (DependencyConfiguration.Validate(this.Project.ProjectFile) is { } dependencyFailure)
+        // SPEC 23.1.2: each configuration failure is its own record.
+        var configurationFailures = DependencyConfiguration.Validate(this.Project.ProjectFile);
+        for (var i = 0; i < configurationFailures.Count; i++)
         {
-            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: dependencyFailure);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: configurationFailures[i]);
+        }
+
+        if (configurationFailures.Count != 0)
+        {
             return false;
         }
 
