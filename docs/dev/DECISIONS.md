@@ -9753,6 +9753,8 @@ structure is recorded here by the unit that first implements it.
   Rejected: copying the frame into code generation (a second copy of each rule); the namespace `Kimi.Compiler` (no `using`
   in the old consumers, which R6-gen deletes, but no phase namespace as Mir has); forwarding members in the old writer
   (wrappers without semantics; its partials import `LlvmModuleText` statically).
+  - Amended by R5-M174 (PLAN WP; the owner's 「(b) 分割を認める」): the owner is set. `WindowsProfile` is Core's target profile
+    (`Core/WindowsProfile.cs`), which the Backend reads; the toolchain identity is the native build's `ToolchainIdentity`.
 - **R5-M15 `RuntimeAbi`, `AbortReasons` and the ABI records** (2026-10-18, planning session; plan P0b, package §3.1 and §3.4,
   promoted under R5-M14) Three permanent Backend components, separate from `LlvmModuleText` because each owns a different
   decision: `AbiRecords.cs`, the physical representation records `TypeLayout`, `ValueLowering`, `AbiParameter` with its kind,
@@ -14377,6 +14379,8 @@ structure is recorded here by the unit that first implements it.
     unit mapping.
   - Amended by R5-M167 (the owner's row 15): G11c moved the five `.ll.in` templates to `Backend/`; `C/Emission` keeps the toolchain,
     publication and profile files until R9 moves the toolchain out of the compiler.
+  - Amended by R5-M174 (the owner's 「(b) 分割を認める」): the profile file's target half left `C/Emission` for `Core/WindowsProfile.cs`;
+    `C/Emission` keeps the toolchain identity (`ToolchainIdentity.cs`) with the toolchain and publication files until R9.
 - **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, R6-gen; plan §4.9 row G9, R5-M18's G9a/G9b split;
   design `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q1-Q10; under R5-M162; Major, G:R6-gen-del; BU
   reviews the Binding commit)
@@ -14524,6 +14528,9 @@ structure is recorded here by the unit that first implements it.
     `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G336).
   - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
     R5-M163 (the folder).
+  - Amended by R5-M174 (row 15; the owner's 「(b) 分割を認める」, 2026-11-01): the profile file's target half moved to Core
+    (`Core/WindowsProfile.cs`), since P2-P12 read it and R9's move cannot take it; the toolchain identity (`Emission/ToolchainIdentity.cs`)
+    stays with the toolchain and publication files until R9.
 - **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, R5; PLAN G337, design
   `draft/Sketches/R5/G337-design.md` §7 (`bde706c59`); R4, which owns `Mir/Analysis`, agreed to O1 under its hold, accepted §7 with five
   conditions and reviews the A3/A5 side; the owner's G337 acceptance 「(a) 受け入れる」; under R4-M1, R4-M2a and R5-M156)
@@ -14751,3 +14758,35 @@ structure is recorded here by the unit that first implements it.
   - Measured (A/B interleaved in one folder): 216 Callable signatures x 4 erased calls, cold 3,003,888 -> 3,057,296 B, retained
     2,560,840 -> 2,595,096 B, warm min 4.6-5.7 -> 2.1-2.3 ms; the O2 corpus' ErasedCalls, cold 114,024 -> 114,280 B, retained 93,224 ->
     93,480 B, warm 0.18-0.36 ms in both (bimodal per process). Every fixture's `.ll` is unchanged.
+- **R5-M174 `WindowsProfile`, the target profile (Core), and `ToolchainIdentity`, the native build's (PLAN WP)** (2026-11-01, R5;
+  design `draft/Sketches/R5/WP-design.md` revision 1; the owner's 「(b) 分割を認める」, 2026-11-01) Major, behavior-preserving.
+  - Cause: the old Emission's `WindowsProfile` held two kinds of facts behind one type initializer: the windows-x64 target profile
+    (IMPL 21.4) that check, code generation and target selection read, and the native-toolchain identity from the compiler's embedded
+    backend record (R5-M165), which only the native build reads. Binding read `C/Emission`, and its first read of `ProvidedSymbols` or
+    `RuntimeDeclarations` parsed the record; R5-M14 left the owner open.
+  - Rule: `Core/WindowsProfile.cs` (name and namespace kept) is the target profile: the triple, profile name, data layout, CPU, features,
+    relocation and code models, unwind tables, entry symbol, subsystem, `_fltused`, the backend supply's name and helper catalog and the
+    runtime's kernel32 declarations and the kernel32 supply's name and symbol set; constants and arrays only, no file, resource or
+    toolchain read. `Emission/ToolchainIdentity.cs` is
+    the toolchain identity: the pinned LLVM version, the backend package id, ABI version, version, SHA-256 and file name, the kernel32
+    definition and dlltool hashes, and the record reader, which checks the record against the profile. For these facts Binding, project
+    configuration, LSP and the Backend read only the profile; only the native build and publication read the toolchain identity. The
+    rule covers these facts only: other C/Emission types keep their readers (`DependencyLock` reads `ArtifactFiles`).
+  - `RuntimeImports` is deleted: it repeated `RuntimeDeclarations`' symbol column, which the native build's allowed-undefined set and
+    the kernel32 symbol set now read.
+  - Known duplicate: `IrTarget` (Core's checked triple, any triple a check selects; `Misc/Target`) computes the same data layout for
+    `x86_64-pc-windows-msvc`. The profile pins its LLVM release's layout and `IrTarget` follows LLVM's rule for every triple; the only
+    reader of `IrTarget.DataLayout`'s content is `Compilation`'s emptiness check, and what the phases share is `PointerWidth`.
+    `CoreModelTest.TheProfileLayoutIsItsTriplesLayout` ties the two; the unread layout is a PLAN open issue.
+  - The kernel32 reserved supply (commit 2; BU reviewed Binding's hunk): its name and symbol set (IMPL 20.4), read at native
+    resolution, are the profile's `Kernel32Library` and `Kernel32Symbols` (the runtime declarations' symbols, then the VirtualAlloc
+    family and the counter APIs: the old name, set and order); `Kernel32Imports` keeps the import library's generation identity and
+    validation and no list. `Binding/` then reads no C/Emission type, so check reads neither the toolchain identity nor `Kernel32Imports`.
+  - Rejected: moving the file to Core unchanged (Core would own P13's record, R9 would move it again, and a 210-character line); the
+    toolchain half as a `NativeToolchain` partial (four readers; its static constructor would make `NativeToolchain` precise-init, so
+    its exception filters would run the record parse); one `partial class WindowsProfile` across Core and Emission (one type initializer,
+    a type straddling P13); recording the owner without code (Binding and the Backend would still read P13's folder).
+  - Amends, each with its amendment line: R5-M14 (the owner it left open), R5-M163 and R5-M167 row 15 (the profile file in
+    `C/Emission`); and the reduction plan's table (`WindowsProfile` to `src/Kimi/Build` at R9). For the target half only: their reason,
+    nothing moves twice, holds for the toolchain identity, which R9 still moves with the toolchain, and not for the target profile, which
+    P2-P12 read and R9's move cannot take.

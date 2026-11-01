@@ -32,7 +32,7 @@ internal static partial class NativeToolchain
         var record = new JsonObject
         {
             ["status"] = "incomplete", ["toolchainVerification"] = "failed", ["compilerVersion"] = CompilerRelease.Version,
-            ["llvmVersion"] = WindowsProfile.LlvmVersion, ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
+            ["llvmVersion"] = ToolchainIdentity.LlvmVersion, ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
             ["root"] = Redact(root, Directory.GetCurrentDirectory()), ["llvmBin"] = Redact(bin, Directory.GetCurrentDirectory()), ["tools"] = identities,
         };
         if (reportPath is not null)
@@ -63,12 +63,12 @@ internal static partial class NativeToolchain
                     var banner = await ExecuteTool(path, ["--version"], root, report, cancellationToken, showErrors: false);
                     var actual = ParseVersion(banner);
                     identity["actualVersion"] = actual;
-                    identity["expectedVersion"] = WindowsProfile.LlvmVersion;
-                    identity["versionMatched"] = actual == WindowsProfile.LlvmVersion;
-                    if (actual != WindowsProfile.LlvmVersion)
+                    identity["expectedVersion"] = ToolchainIdentity.LlvmVersion;
+                    identity["versionMatched"] = actual == ToolchainIdentity.LlvmVersion;
+                    if (actual != ToolchainIdentity.LlvmVersion)
                     {
                         record["reportedVersionsMatched"] = false;
-                        throw new InvalidDataException($"LLVM version mismatch: tool={path}; expected={WindowsProfile.LlvmVersion}; actual={actual}.");
+                        throw new InvalidDataException($"LLVM version mismatch: tool={path}; expected={ToolchainIdentity.LlvmVersion}; actual={actual}.");
                     }
                 }
 
@@ -91,10 +91,10 @@ internal static partial class NativeToolchain
                 }
             }
 
-            var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", WindowsProfile.BackendFile));
+            var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile));
             var backendHash = Hash(backend);
             record["backendSha256"] = backendHash;
-            if (backendHash != WindowsProfile.BackendSha256)
+            if (backendHash != ToolchainIdentity.BackendSha256)
             {
                 throw new InvalidDataException("Adopted backend SHA-256 mismatch: " + backend);
             }
