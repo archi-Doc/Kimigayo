@@ -14691,3 +14691,29 @@ structure is recorded here by the unit that first implements it.
     a comparison presets to a template node) through `Limit`, read again at each request, with no `refused` entry (R5-M170 amended).
     Rows (`AHeightCapIsATypeLimitAndASharedItemKeepsItsFirstRecord`): two functions, two records (one before); two locals of one
     function, one; the Known limit's `Option<S>` pair pinned (one record at `d`; at `e` alone once `d` is gone).
+- **R5-M172 The check path builds no code generation text; a cold scaling series is measured in one process state (G350)** (2026-11-01, R5;
+  PLAN G350, design `draft/Sketches/R5/G350-design.md` revision 2; the owner's 「G350 の本実装 お願いします」 and 「(A) 共通の計測ヘルパー」, with R4's two
+  conditions) AGENTS asks for equivalent workloads under fixed conditions and forbids a warm-up added to pass; code generation writes the
+  runtime frame (`ModuleCodegen.Frame`).
+  - Cause: the process's first `BuildMir` allocated about 8.2 MB more than any later one. The instance collector's `IntrinsicRows.Of`
+    touched `LegacyRuntimeHelpers`, whose class constructor built code generation's LLVM runtime texts (`StringComparisons`,
+    `FormattingRuntime`, `ArrayRuntime`; about 30 whole-text copies), so `kimi check` and the LSP paid it, and a cold scaling test whose
+    smallest size was the process's first build failed when run alone.
+  - Rule 1 (G350a; `LegacyRuntimeHelpers.cs`'s contract): the expanded runtime texts live in the private holder
+    `LegacyRuntimeHelpers.Texts`, which the CLR's class initialization builds only when a code generation writer first reads it; the rows
+    and ABIs the collector reads stay in the class. The first `BuildMir` of a process: 11,278,440 -> 3,094,688 B (a second build 3,073,232);
+    the 132 compared fixtures' `.ll` identical. `MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild` owns the one-time cost: in a
+    fresh process the first build allocates at most 64 KB more than a second (21,456 B measured; 8,205,208 before).
+  - Rule 2 (G350b; `AllocationMeasurement.MeasureSeries`): a cold scaling series runs one unmeasured fresh copy of its smallest size, then
+    measures each size's fresh state in one `MeasureOnce` window, so a process's one-time initialization falls in no measured run and every
+    size is measured in the same process state; no retry, excuse or bound. Every cold scaling series goes through it (R5's `DefaultCopies`,
+    `DropTrees`, `Bodies`; R4's `RequireEnds`, `Unions`, `DropFlags`, `Initialization`, `Summaries`), each window's scope unchanged.
+  - The reading adopted with the owner's (A): this unmeasured run is not the forbidden warm-up, because the one-time cost it excludes is
+    measured by its own test with a stated bound (R4's conditions: one contract naming the run, its reason and the owning test, no per-test
+    warm-up loop; the owning test fails when the first build's extra allocation grows past its stated 64 KB bound). Any other added warm-up
+    stays forbidden.
+  - Rejected: a warm-up inside each test (a second copy of one condition); the cause fix alone, the first ruling (21.5 KB of legitimate
+    one-time statics stayed in `RequireEnds`' smallest size against its ~17 KB tolerance); larger sizes (option (B) put to the owner; R4:
+    they dilute the cost, relax the assertion in effect and keep the order dependence); leaving tests that fail alone (an order dependence
+    hidden); a `Lazy<T>`, flag or mode for the texts; one holder per text.
+  - Open: the expansion itself at code generation (8.18 MB in 12-45 ms once per process; PLAN G358).
