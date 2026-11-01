@@ -56,6 +56,47 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): two source names equal under simple case folding are a project preparation failure, Blocked before
+    // the front end: ASCII case, and U+1E9E/U+00DF and U+017F/s, which OrdinalIgnoreCase misses; ß and ss differ (simple, not full,
+    // folding).
+    [Theory]
+    [InlineData("A.kimi", "a.kimi", true)]
+    [InlineData("ẞ.kimi", "ß.kimi", true)]
+    [InlineData("ſ.kimi", "s.kimi", true)]
+    [InlineData("ß.kimi", "ss.kimi", false)]
+    public void SourceNamesAreUniqueUnderSimpleCaseFolding(string first, string second, bool equal)
+    {
+        var project = this.WriteProject("App");
+        var folder = Path.GetDirectoryName(project)!;
+        var inputs = new OverlayInputSource(new() { [Path.Combine(folder, first)] = Valid, [Path.Combine(folder, second)] = "public func two() -> i32 => 2\n" });
+        var output = this.Run(project, inputs: inputs);
+        if (!equal)
+        {
+            Assert.Equal(CheckOutcome.Completed, output.Outcome);
+            Assert.Empty(output.Diagnostics);
+            return;
+        }
+
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
+        Assert.Contains("simple case folding", failure.Note, StringComparison.Ordinal);
+        Assert.Contains(first, failure.Note, StringComparison.Ordinal);
+        Assert.Contains(second, failure.Note, StringComparison.Ordinal);
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a name used twice in one module (an in-memory source beside the listed one) is the same failure.
+    [Fact]
+    public void ATwinSourceNameIsAPreparationFailure()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid));
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+        loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "public func twin() -> i32 => 2\n");
+        var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), Assert.Single(output.Diagnostics).Code);
+    }
+
     // SPEC 23.2.2: an invalid test configuration is not established, so test preparation is Blocked before the front end.
     [Fact]
     public void AnInvalidTestProjectIdBlocksTestPreparation()

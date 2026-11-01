@@ -140,7 +140,37 @@ public sealed partial class Kotonoha
     }
 
     /// <summary>Forgets the memoized names when the source analysis is revoked, so the memo holds only current documents.</summary>
-    internal void ForgetNames() => this.names?.Clear();
+    internal void ForgetNames()
+    {
+        this.names?.Clear();
+        this.nameCheck = default;
+    }
+
+    /// <summary>Checks this module's source names (IMPL 20.1): two names equal under simple case folding, twins included, are an error.
+    /// Memoized with the names and emptied when a document is recorded, so a repeated check allocates nothing.</summary>
+    /// <returns>The first failure, as a project preparation note, or <see langword="null"/>.</returns>
+    internal string? CheckNames()
+    {
+        _ = this.Base; // First: a new base empties the memo.
+        if (!this.nameCheck.Done)
+        {
+            string? failure = null;
+            var seen = new Dictionary<string, string>(this.sourceDocuments.Count, Helper.UnicodeNameHelper.SimpleCaseFolding);
+            foreach (var document in this.sourceDocuments)
+            {
+                var name = this.LogicalName(document);
+                if (!seen.TryAdd(name, name))
+                {
+                    failure = $"Source names '{seen[name]}' and '{name}' are equal under simple case folding (IMPL 20.1).";
+                    break;
+                }
+            }
+
+            this.nameCheck = (true, failure);
+        }
+
+        return this.nameCheck.Failure;
+    }
 
     [IgnoreMember]
     private string baseDirectory = string.Empty;
@@ -150,6 +180,9 @@ public sealed partial class Kotonoha
 
     [IgnoreMember]
     private Dictionary<SourceDocument, string>? names;
+
+    [IgnoreMember]
+    private (bool Done, string? Failure) nameCheck;
 
     private List<Documentation.DocumentationSource>? documentationSources;
 
@@ -305,6 +338,7 @@ public sealed partial class Kotonoha
         }
 
         this.sourceDocuments.Add(sourceDocument);
+        this.nameCheck = default;
     }
 
     /// <summary>Records that the parser skipped a declaration at a syntax Error, so the member set of this source unit is incomplete.</summary>
@@ -376,6 +410,7 @@ public sealed partial class Kotonoha
         this.baseSource = this.Compilation.Project.Directory;
         this.baseDirectory = Normalize(this.BaseOrigin());
         this.names?.Clear();
+        this.nameCheck = default;
     }
 
     // The directory the base comes from: for the root (no Url), its project's directory, else the current directory its compilation

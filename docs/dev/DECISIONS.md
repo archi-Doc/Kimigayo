@@ -14866,6 +14866,17 @@ structure is recorded here by the unit that first implements it.
     A document whose path has no identity (NUL: no client can name it) has no hover, so a hover build over it no longer throws:
     `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri`, the LSP's project setting and its TestSources
     members also read (their copies gone); `FromPath` still rejects such a path (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
+  - U9a-3a: the check of a module's names, `Kotonoha.CheckNames` (memoized with the names, emptied when a document is recorded), at
+    one site, `Project.CheckFrontEnd` once every source is established, for every source module (the root's and each dependency's):
+    two names equal under simple case folding (CaseFolding.txt's C and S, never full folding: ß and ss differ), twins included, are
+    `ProjectPreparationFailed_Kd` with both names as the note, Blocked before the front end (`CheckServiceTest`, accepted before).
+    `OrdinalIgnoreCase` is not the rule: it misses U+1E9E/U+00DF and U+017F/s. The data are pinned like `MarkdownUnicodeData`:
+    Unicode 15.0.0 CaseFolding.txt (SHA-256 cdd49e55…a56f7, checked by `GenerateNameUnicode.ps1`, which writes
+    `UnicodeNameData.cs`), 1,454 pairs (11,632 B of data, a 25,135 B source file); `UnicodeNameHelper.SimpleCaseFolding` compares
+    without allocation, a lone surrogate being its own code unit. Folding compares names as given: two names equal after folding
+    only through different normalization (a precomposed and a decomposed letter) are distinct here, and U9a-3b's NFC check, which
+    `CheckNames` runs first, rejects the non-NFC one. Measured: 100 names, the first check 3,128 B and about 0.1 ms over their names;
+    a repeated check 0 B.
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need

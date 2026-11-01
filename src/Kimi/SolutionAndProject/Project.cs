@@ -524,6 +524,16 @@ public partial class Project
             projectKotonoha.AddSource(y);
         }
 
+        // IMPL 20.1: every module's source names, the root's and each dependency's, are checked once its sources are established.
+        foreach (var module in compilation.SourceModules)
+        {
+            if (module.CheckNames() is { } failure)
+            {
+                this.Fail(compilation.Diagnostics, failure);
+                return this.PreparationFailed(compilation.Diagnostics);
+            }
+        }
+
         if (context is not null)
         {
             context.Compilation = compilation; // SPEC 23.2.2, step 3: every input is established; the front end runs from here on.
