@@ -14877,6 +14877,15 @@ structure is recorded here by the unit that first implements it.
     only through different normalization (a precomposed and a decomposed letter) are distinct here, and U9a-3b's NFC check, which
     `CheckNames` runs first, rejects the non-NFC one. Measured: 100 names, the first check 3,128 B and about 0.1 ms over their names;
     a repeated check 0 B.
+  - U9a-3b: `CheckNames` first rejects a name not in NFC (or ill-formed UTF-16), then folds. NFC has one check,
+    `UnicodeIdentifierHelper.IsNormalized` (identifiers' too), whose canonical combining classes now come from the complete table
+    `UnicodeNameData.CombiningClasses` (UnicodeData.txt, SHA-256 806e9aed…f76a73; 388 ranges, 4,656 B) instead of the identifier
+    properties, which held them for identifier scalars only; identifiers' results are unchanged (their classes are equal). A probe
+    against the pinned UnicodeData.txt and DerivedNormalizationProps.txt (SHA-256 d5687a48…e12a29) confirmed the existing tables are
+    complete: 2,061 canonical decompositions, and 941 compositions, exactly the two-scalar decompositions outside
+    Full_Composition_Exclusion, none missing or extra; so no other data was added. Tests: a decomposed letter, U+037E (a non-identifier
+    singleton) and marks out of canonical order are rejected (`CheckServiceTest.SourceNamesAreInNfc`, accepted before). Measured:
+    100 non-ASCII names, the first check 3,128 B (NFC allocates nothing) and about 0.2 ms over their names; a repeated check 0 B.
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need

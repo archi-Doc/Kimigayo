@@ -61,9 +61,9 @@ public sealed partial class CheckServiceTest : IDisposable
     // folding).
     [Theory]
     [InlineData("A.kimi", "a.kimi", true)]
-    [InlineData("ẞ.kimi", "ß.kimi", true)]
-    [InlineData("ſ.kimi", "s.kimi", true)]
-    [InlineData("ß.kimi", "ss.kimi", false)]
+    [InlineData("\u1E9E.kimi", "\u00DF.kimi", true)]
+    [InlineData("\u017F.kimi", "s.kimi", true)]
+    [InlineData("\u00DF.kimi", "ss.kimi", false)]
     public void SourceNamesAreUniqueUnderSimpleCaseFolding(string first, string second, bool equal)
     {
         var project = this.WriteProject("App");
@@ -83,6 +83,32 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Contains("simple case folding", failure.Note, StringComparison.Ordinal);
         Assert.Contains(first, failure.Note, StringComparison.Ordinal);
         Assert.Contains(second, failure.Note, StringComparison.Ordinal);
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a source name not in NFC is a project preparation failure, checked before folding: a decomposed
+    // letter, and U+037E (a non-identifier scalar whose canonical decomposition is ';'); a precomposed name and one whose marks are in
+    // canonical order are accepted.
+    [Theory]
+    [InlineData("e\u0301.kimi", false)]
+    [InlineData("\u037E.kimi", false)]
+    [InlineData("q\u0307\u0323.kimi", false)]
+    [InlineData("\u00E9.kimi", true)]
+    [InlineData("q\u0323\u0307.kimi", true)]
+    public void SourceNamesAreInNfc(string file, bool normalized)
+    {
+        var project = this.WriteProject("App");
+        var output = this.Run(project, inputs: new OverlayInputSource(new() { [Path.Combine(Path.GetDirectoryName(project)!, file)] = Valid }));
+        if (normalized)
+        {
+            Assert.Equal(CheckOutcome.Completed, output.Outcome);
+            Assert.Empty(output.Diagnostics);
+            return;
+        }
+
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
+        Assert.Contains("Normalization Form C", failure.Note, StringComparison.Ordinal);
     }
 
     // IMPL 20.1 (DECISIONS R5-M175): a name used twice in one module (an in-memory source beside the listed one) is the same failure.

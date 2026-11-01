@@ -146,7 +146,8 @@ public sealed partial class Kotonoha
         this.nameCheck = default;
     }
 
-    /// <summary>Checks this module's source names (IMPL 20.1): two names equal under simple case folding, twins included, are an error.
+    /// <summary>Checks this module's source names (IMPL 20.1): a name not in NFC, then two names equal under simple case folding, twins
+    /// included, are an error.
     /// Memoized with the names and emptied when a document is recorded, so a repeated check allocates nothing.</summary>
     /// <returns>The first failure, as a project preparation note, or <see langword="null"/>.</returns>
     internal string? CheckNames()
@@ -159,6 +160,12 @@ public sealed partial class Kotonoha
             foreach (var document in this.sourceDocuments)
             {
                 var name = this.LogicalName(document);
+                if (!Helper.UnicodeNameHelper.IsNfc(name))
+                {
+                    failure = $"Source name '{name}' is not in Unicode Normalization Form C (IMPL 20.1).";
+                    break;
+                }
+
                 if (!seen.TryAdd(name, name))
                 {
                     failure = $"Source names '{seen[name]}' and '{name}' are equal under simple case folding (IMPL 20.1).";
