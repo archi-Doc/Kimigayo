@@ -5,6 +5,7 @@ using Arc.Unit;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Helper;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -161,6 +162,48 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Equal(2, notes.Length);
         Assert.Single(notes, static x => x.Contains("o\u0308.kimi", StringComparison.Ordinal) && x.Contains("'App'", StringComparison.Ordinal));
         Assert.Single(notes, static x => x.Contains("e\u0301.kimi", StringComparison.Ordinal) && !x.Contains("'App'", StringComparison.Ordinal));
+    }
+
+    // SPEC 6.2.1, IMPL 20.1 (DECISIONS R5-M176): source names order as UTF-8 byte sequences over the whole name, `/` an ordinary byte
+    // and a proper prefix first; UTF-16 order differs where a supplementary scalar meets U+E000–U+FFFF.
+    [Theory]
+    [InlineData("a.kimi", "b.kimi", -1)]
+    [InlineData("a/b.kimi", "a-b.kimi", 1)]
+    [InlineData("a.kimi", "a0.kimi", -1)]
+    [InlineData("a", "a.kimi", -1)]
+    [InlineData("\U0001F600.kimi", "Ａ.kimi", 1)]
+    [InlineData("\U0001F600.kimi", "\U0001F601.kimi", -1)]
+    [InlineData("\U0001F600.kimi", "\U00020000.kimi", -1)]
+    public void SourceNamesOrderAsUtf8Bytes(string first, string second, int order)
+    {
+        Assert.Equal(order, Math.Sign(UnicodeNameHelper.ScalarOrder.Compare(first, second)));
+        Assert.Equal(-order, Math.Sign(UnicodeNameHelper.ScalarOrder.Compare(second, first)));
+        Assert.Equal(order, Math.Sign(Encoding.UTF8.GetBytes(first).AsSpan().SequenceCompareTo(Encoding.UTF8.GetBytes(second))));
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M176): a lone surrogate (a name not in NFC) orders by its code unit, so the order stays total and
+    // deterministic: above U+E000, a high one before its own pair (a proper prefix), a low one after.
+    [Fact]
+    public void LoneSurrogatesOrderByTheirCodeUnits()
+    {
+        string[] names = ["\uDC00", "\U00010000", "", "\uD800"];
+        Assert.Equal(["", "\uD800", "\U00010000", "\uDC00"], names.Order(UnicodeNameHelper.ScalarOrder));
+    }
+
+    // SPEC 6.2.1 (DECISIONS R5-M176): a module's sources are parsed in logical declaration order, whatever the read order: a TestSources
+    // entry and an in-memory source between product sources, and a supplementary scalar after U+FF21, which UTF-16 orders first.
+    [Fact]
+    public void SourcesAreParsedInLogicalDeclarationOrder()
+    {
+        var project = this.WriteProject("App", ("c.kimi", "public func c() -> i32 => 3\n"), settings: "TestSources={\"b.kimi\"}");
+        File.WriteAllText(this.PathOf("App", "a.kimi"), "public func a() -> i32 => 1\n");
+        File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
+        File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
+        File.WriteAllText(this.PathOf("App", "Ａ.kimi"), "public func wide() -> i32 => 5\n");
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+        loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
+        var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
+        Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "Ａ.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
     }
 
     // IMPL 20.1 (DECISIONS R5-M175): a name used twice in one module (an in-memory source beside the listed one) is the same failure.

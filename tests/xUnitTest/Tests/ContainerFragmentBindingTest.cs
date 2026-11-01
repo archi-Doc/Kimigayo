@@ -86,6 +86,20 @@ public class ContainerFragmentBindingTest
         Assert.True(restored.Bind().IsComplete);
     }
 
+    // SPEC 6.2.1 (DECISIONS R5-M176): a struct's Fields in two documents follow the documents' logical names, whatever order one
+    // AddSources call gives them in (the SPEC example: a.kimi's Field first).
+    [Fact]
+    public void FieldsFollowTheLogicalDeclarationOrder()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var second = new SourceDocument("b.kimi", "struct Config\n    var second: i32 = 2");
+        c.Kotonoha.AddSources([second, new SourceDocument("a.kimi", "struct Config\n    var first: i32 = 1")]);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var config = c.Kotonoha.RootKoto.NestedContainers.Single(static x => x.Name == "Config");
+        Assert.Equal(["first", "second"], config.SymbolOf()!.Adt!.Fields.Select(static x => x.NameKoto.IdentifierName));
+    }
+
     [Theory]
     [InlineData("public group G", "group G")]
     [InlineData("contract C", "contract C")]

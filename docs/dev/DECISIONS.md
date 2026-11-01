@@ -14904,3 +14904,38 @@ structure is recorded here by the unit that first implements it.
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need
     other paths).
+  - Amended by R5-M176 (PLAN G364): `Kotonoha`, the owner of the names, also owns the logical declaration order (SPEC 6.2.1) they
+    define, through `Kotonoha.AddSources`; `TestCatalog` no longer sorts a module's documents itself.
+- **R5-M176 One owner of the logical declaration order: `Kotonoha.AddSources` (PLAN G364)** (2026-11-02, R5; the owner's
+  「G364から始めて」; amends R5-M175) SPEC 6.2.1 orders declarations from different SourceDocuments by the documents' logical names as
+  UTF-8 byte sequences, then by position; Field initializers run in that order and Fields are destroyed in reverse (SPEC 6.2, 16.3.2),
+  so the order is observable. The compiler's order was its parse order: `Project` parsed product sources as `GetFiles` listed them
+  (UTF-16 ordinal full paths), TestSources after them and `Project.AddSource`'s in-memory documents last, and `TestCatalog` re-sorted a
+  module's documents under UTF-16 ordinal for the artifact identity, a second copy of an order.
+  - Rule: `Kotonoha`, which owns the logical names (R5-M175), owns their order. `Kotonoha.AddSources(IReadOnlyList<SourceDocument>)`
+    records and parses one call's documents in a stable sort by `LogicalName` under `UnicodeNameHelper.ScalarOrder` (equal names, which
+    `CheckNames` reports, keep their given order), after every earlier call's documents; `AddSource(document)` is its one-document form.
+    `SourceDocuments` is in this order. A producer adds a module's ordinary sources in one call, so generated fragments
+    (`CodeContext.Parse`, recorded later) follow them all.
+  - Comparer: `UnicodeNameHelper.ScalarOrder`, UTF-8 byte order (Unicode scalar order) computed on UTF-16 without encoding: at the first
+    differing code unit surrogates rank above U+E000–U+FFFF, and a proper prefix comes first; a lone surrogate (a name `CheckNames`
+    rejects) orders by its code unit, so the order stays total. No allocation.
+  - Producer: `Project.CheckFrontEnd` collects each module's ordinary documents (product, TestSources and in-memory ones) and gives each
+    module one `AddSources` call, in `SourceModules` order. Reads, read failures and `Diagnostics.AddInput` stay at read time in command
+    order (SPEC 23.2.2), so the diagnostic source table keeps consumption order; parsing still precedes the established check, so a read
+    failure still reports the other documents' syntax errors (SPEC 23.1.2). In-memory documents now join the root's call before that
+    check, so a failed read also reports their own syntax errors.
+  - Consumer: `TestCatalog` reads `SourceDocuments` in its order (its sort is removed); the artifact identity changes only for a module
+    whose names UTF-16 and UTF-8 order differently.
+  - Out of scope, unchanged: the Kimi library's hand order (`KimiLibrarySources`; no library struct's Fields span documents: no
+    container is declared in two library documents, and signature documents add only functions); Mod-generated fragments and
+    `CodeContext.Parse` (an API, call order); SPEC 23.2.3's unit order (not implemented: JSON `kimi check` takes one input, and
+    `TestCommand` orders projects under UTF-16 ordinal, a candidate for `ScalarOrder`); `DependencyResolver`'s, `CheckInputSource`'s
+    and `DiskReader`'s listing orders, which now decide read order only.
+  - Rejected: a sort in `Project` (the order would have a second owner beside the names' owner, and `TestCatalog` kept its own copy);
+    sorting the reads (reads and their failures are consumed in command order, SPEC 23.2.2); `StringComparer.Ordinal` (UTF-16 order,
+    wrong where a supplementary scalar meets U+E000–U+FFFF).
+  - Tests: `CheckServiceTest.SourceNamesOrderAsUtf8Bytes` and `LoneSurrogatesOrderByTheirCodeUnits` (the comparer),
+    `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two documents given in reverse) and
+    `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory source between product sources,
+    `Ａ.kimi` before `😀.kimi`); each fails under the parse order (AddSources without its sort).

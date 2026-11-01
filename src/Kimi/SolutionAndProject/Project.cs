@@ -175,7 +175,7 @@ public partial class Project
     public void AddSource(string url, string text)
         => this.AddSource(new SourceDocument(url, text));
 
-    /// <summary>Adds a generated or in-memory source document.</summary>
+    /// <summary>Adds a generated or in-memory source document, parsed with the project's sources in logical declaration order (SPEC 6.2.1).</summary>
     /// <param name="sourceDocument">The source document.</param>
     public void AddSource(SourceDocument sourceDocument)
     {
@@ -475,7 +475,6 @@ public partial class Project
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
-        var projectKotonoha = compilation.Kotonoha;
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
 
         // SPEC 23.2.2: every file input is read before parsing, and the reads are consumed in
@@ -483,6 +482,7 @@ public partial class Project
         var reads = graph is null ? this.ReadSources(inputs, testSources) : null;
         var testReads = compilation.IsTestBuild && testSources is not null ? ReadTestSources(inputs, testSources) : null;
         var established = true;
+        var documents = Array.ConvertAll(compilation.SourceModules, static _ => new List<SourceDocument>());
 
         if (graph is not null)
         {
@@ -492,7 +492,7 @@ public partial class Project
                 foreach (var source in input.Sources)
                 {
                     var path = Path.Combine(Path.GetDirectoryName(input.Path)!, source.LogicalPath);
-                    AddSource(path, source.Content, null, compilation.SourceModules[i]);
+                    AddInput(path, source.Content, null, i);
                 }
             }
         }
@@ -500,7 +500,7 @@ public partial class Project
         {
             foreach (var (path, content, exception) in reads!)
             {
-                AddSource(path, content, exception, projectKotonoha);
+                AddInput(path, content, exception, 0);
             }
         }
 
@@ -508,8 +508,17 @@ public partial class Project
         {
             foreach (var (path, content, exception) in testReads)
             {
-                AddSource(path, content, exception, projectKotonoha, isTestOnly: true);
+                AddInput(path, content, exception, 0, isTestOnly: true);
             }
+        }
+
+        // SPEC 6.2.1: declarations follow their documents' logical names, not the read order, so each module's ordinary documents
+        // (product, TestSources and in-memory ones) are parsed in one call. Parsing precedes the established check, so a read failure
+        // still reports the other documents' syntax errors (SPEC 23.1.2).
+        documents[0].AddRange(this.additionalSource);
+        for (var i = 0; i < documents.Length; i++)
+        {
+            compilation.SourceModules[i].AddSources(documents[i]);
         }
 
         // Every already-consumed input failure must have its own explanation before the blocked check returns.
@@ -517,11 +526,6 @@ public partial class Project
         if (!established)
         {
             return this.PreparationFailed(compilation.Diagnostics);
-        }
-
-        foreach (var y in this.additionalSource)
-        {
-            projectKotonoha.AddSource(y);
         }
 
         // IMPL 20.1: every module's source names, the root's and each dependency's, are checked once its sources are established,
@@ -571,7 +575,8 @@ public partial class Project
 
         return accepted;
 
-        void AddSource(string path, SourceContent? content, Exception? failure, Kotonoha module, bool isTestOnly = false)
+        // Establishes one read input of a module: its document, registered at read time, or its failure.
+        void AddInput(string path, SourceContent? content, Exception? failure, int module, bool isTestOnly = false)
         {
             if (failure is not null)
             {
@@ -584,8 +589,8 @@ public partial class Project
             try
             {
                 var document = content!.CreateDocument(path, isTestOnly);
-                compilation.Diagnostics.AddInput(document, module);
-                module.AddSource(document);
+                compilation.Diagnostics.AddInput(document, compilation.SourceModules[module]);
+                documents[module].Add(document);
             }
             catch (DecoderFallbackException)
             {
