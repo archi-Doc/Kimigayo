@@ -120,6 +120,16 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         NativeAllocationAudit.WriteFixture("ObjectCreationGeneric" + mode, source, 2, 2, 37);
     }
 
+    // DECISIONS R5-M89, R5-M110, R5-M111: a creating adaptation under a Semantics parameter passes a Copy in memory through a copy slot, as
+    // a creation call does, so the object holds the value the creation copied, whatever its local holds after it.
+    [Fact]
+    public void AGenericCreationCopiesAPayloadInMemory()
+    {
+        const string Source = "func make<s/T>(value: s/T) -> s/(i32, i64)\n    s is obj\n    var x: (i32, i64) = (1, 2)\n    let made = x@s\n" +
+            "    x = (3, 4)\n    return made@move\nlet h = make(5@obj)\nrequire h@follow.0 == 1 and h@follow.1 == 2 else => $abort(\"payload\")";
+        NativeAllocationAudit.WriteFixture("ObjectCreationCopiedPayload", Source, 2, 2, 52);
+    }
+
     [Theory]
     [InlineData("let h = 1@obj/i64", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("let h: obj/i64 = 1@obj", DiagnosticCode.TypeMismatch_Kd)]
