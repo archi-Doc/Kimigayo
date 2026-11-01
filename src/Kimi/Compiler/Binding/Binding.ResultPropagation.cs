@@ -553,7 +553,10 @@ public sealed partial class Binding
                 {
                     if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
                     {
-                        this.ErasePart(source, context.Sources[i]!, type);
+                        if (this.ErasePart(source, context.Sources[i]!, type))
+                        {
+                            this.Fail(source, BindingFailure.Internal); // TryPropagate failed this erasure: one holding here leaves the join on no record.
+                        }
                     }
                     else
                     {

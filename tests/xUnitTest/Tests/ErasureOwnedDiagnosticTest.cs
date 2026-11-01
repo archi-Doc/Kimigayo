@@ -78,6 +78,31 @@ public class ErasureOwnedDiagnosticTest
         Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "This closure requires an Exclusive call; a common Function value permits Shared calls only"), (error.Code, error.Note));
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-75): an Owned proof that could not judge its subject, because a part names a failed declaration, fails the
+    // conversion as derived from that declaration, with no record of its own: a let, an Item's own record beside it, a call argument, an
+    // assignment, a return, an annotation naming the failed Type, two captures and a later use give only the declaration's records. These
+    // were InternalInvariant_Kd (BU's n7).
+    [Theory]
+    [InlineData("func use(s: S) -> ()\n    let g: () -> () = func [s@move] () => ()\n    return\n", null)]
+    [InlineData("func identity<T>(value: T) -> T => value@move\n\nfunc use(s: S) -> ()\n    let f: (S) -> S = identity\n    let g: () -> () = func [s@move] () => ()\n    return\n", "InvalidConstraint_Kd identity")]
+    [InlineData("func take(g: () -> ()) -> ()\n    return\n\nfunc use(s: S) -> ()\n    take(func [s@move] () => ())\n    return\n", null)]
+    [InlineData("func use(s: S) -> ()\n    var g: () -> () = func () => ()\n    g = func [s@move] () => ()\n    return\n", null)]
+    [InlineData("func use(s: S) -> () -> ()\n    return func [s@move] () => ()\n", null)]
+    [InlineData("func use(s: S) -> ()\n    let g: (S) -> () = func [s@move] (x: S) => ()\n    return\n", null)]
+    [InlineData("func use(s: S, t: S) -> ()\n    let g: () -> () = func [s@move, t@move] () => ()\n    return\n", null)]
+    [InlineData("func use(s: S) -> ()\n    let g: () -> () = func [s@move] () => ()\n    let h: () -> () = g@move\n    return\n", null)]
+    public void AnOwnedFailureOnAFailedDeclarationIsDerived(string uses, string? own)
+        => Assert.Equal(
+            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "InvalidTypeFormation_Kd C", .. own is null ? Array.Empty<string>() : [own]],
+            Records("contract C: Missing\n    func m(self) -> i32\n\nstruct S: C\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
+
+    // The valid twins: the same captures of a declaration that formed convert with no record.
+    [Theory]
+    [InlineData("func use(s: S) -> ()\n    let g: () -> () = func [s@move] () => ()\n    return\n")]
+    [InlineData("func use(s: S) -> () -> ()\n    return func [s@move] () => ()\n")]
+    public void AnOwnedCaptureOfAFormedDeclarationConverts(string uses)
+        => Assert.Empty(Records("struct S\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
+
     // SPEC 15.2.3, 5.7: a raw layer's Origin other than `self` is in OwnedOrigins, so a pointer stating a body or input Origin is not
     // Owned; `static` and a `during self` struct over an Owned T are.
     [Theory]
@@ -86,6 +111,8 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("struct B<T>\n    let data: raw/T during self\n    public init() => self.data = null\nfunc f() => keep(B<i32>.init())", null)]
     public void ARawOriginIsAnOwnedOrigin(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records("func keep<T>(value: T)\n    T is Owned\n    _ = value@move\n" + declarations));
+
+    private static string[] Records(string source) => [.. DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")];
 
     private static string Text(string source, SourceSpan? span) => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
 }

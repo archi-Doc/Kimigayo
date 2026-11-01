@@ -5956,8 +5956,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     answer that is not Proven, so premises that prove a part leave none; `StaticOrigin` writes it, a child's work joins it at its read.
     Both are cleared by `Reset`, outside the fixpoint's equality, and read by no decision. The erasure reads them once
     (`ProveOwned(…, out OwnedRest)`) and names the member (`OwnedMember`, BU's n6): each member in order with its first part's Origin,
-    the first Refuted in the forming body, else the first; no work is `InternalInvariant_Kd` at the record (BU's n7). The member loop
-    and `FirstUnownedOrigin` are deleted.
+    the first Refuted in the forming body, else the first. An Owned failure that no work judged (RequestCapability returned on a failed
+    operand context) is a derived failure on that context, and an Error's held cause likewise (BU-75; BU's n7). The member loop and
+    `FirstUnownedOrigin` are deleted.
   - Rejected: the reader's cache read in its own scope (a join's scope can differ from its arm's); node keys; R/U in the engine.
   - Removes: `erasureSignatures`, two receiver re-tests, the second Owned proof of the erasure and the gate's Owned proof.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
@@ -6786,7 +6787,7 @@ resumed by R4-M86 (2026-10-20).
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
   binds as a transfer (PLAN G100; classification superseded by G224 Static Field classification, acquisition legality remains).
 - **BU-22** (amended by R4-M161 (r2-1b): an Owned verdict also carries the Origin it rests on and its parts that are not Proven, a
-  proof-scope read like the U fact; amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2
+  proof-scope read like the U fact, and an Owned failure no work judged is a derived failure on its failed operand context (BU-75); amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2
   Amendments 4-5) (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
   `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
   component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
@@ -9450,6 +9451,25 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a side table read by one consumer (R4's U1.6g3 stop review, Q2); Taken per part (HoldsCompletedPart's walk again);
     Taken ending Awaits (above); a Taken mark at a Case construction (InferPayloads binds its payloads at their Types, so ConflictWaits
     is never reached there).
+
+- **BU-75 A site whose own check fails because a part it judged failed is a derived failure** (2026-11-01; PLAN G216 (a) U2.1, r2-1b's
+  fix; BU's bu95 design Revision 1 (R1-3 to R1-5) and R4's review 2 ACCEPT; the owner's option (B), 「推奨どおり」, 2026-11-01)
+  SPEC 23.1.2.
+  - The rule: a site whose own check fails (it computed a failing verdict: a fit, a proof, a conversion) because a part it judged
+    failed, wherever that part is, is a derived failure: `Fail` plus a part prerequisite, classified by IsDerived, with no record.
+    Fail's Invalid survives the site's completion, and the publisher's Rejected folds the site as an Error node (R4-M109 unchanged, not
+    extended). A node that only read a part that did not resolve rests by consultation (`CompleteDependent` or a consultation frame),
+    and the publisher keeps its Op (R4-M88). The site decides locally: its own verdict failed on a failed part, or it only consulted one.
+  - Precondition (R1-5): the part the site rests on is Invalid, so IsDerived's existing row (InvalidConstraint whose part is Invalid)
+    classifies it; any other case is a broken contract, `InternalInvariant_Kd`. IsDerived is not widened.
+  - First site: `FailOwnedConversion` (`FailDerived`). An Owned failure that no work judged rests on the subject's failed operand
+    context (`InvalidOperandContext`: its cause when Invalid, else the failed declaration, Invalid by construction); an Error's held
+    cause likewise (R1-3, reached by no program). They were `InternalInvariant_Kd` (BU's n7) and a `CompleteDependent` rest, which
+    `BindVariableCore`'s and the `return`'s completions overwrite, so MIR built a Resolved node over an invalid Type.
+  - Open: an Owned proof that reads a field or payload Type left unresolved inside a Resolved declaration (PLAN G354 (3)).
+  - Rejected: folding every final-pass dependent node as Error (it loses independent A1/A5 records, against R4-M88, R5-M63 and G121);
+    UnprovenConstraint (an IsDerived case for one site); widening IsDerived and the context walk to Unresolved parts (prototype C moved
+    nothing).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
