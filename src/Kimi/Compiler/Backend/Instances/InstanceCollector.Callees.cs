@@ -3,9 +3,9 @@
 // Owns the body a callee runs in an item's instance (R5 package K 4.5; SPEC 8.13.3; DECISIONS R5-M30, R5-M36, R5-M70, R5-M74, R5-M116): a
 // Closure's body under its context, a function item's function or a requirement Item's witness, the implementation a function's
 // substitution selects, and for a function without a MIR body the requirement its published row runs, the glue of what it destroys in
-// place, its LegacyRow item when its legacy row writes its call in its instance (DECISIONS R5-M121), or what its intrinsic's row names (and,
-// where the row says so, its Type argument's layout verdict, K 4.8); and the body of a DictionaryStorage function a legacy row or the
-// Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
+// place (each on the Type below a parameter, Below), its LegacyRow item when its legacy row writes its call in its instance (DECISIONS
+// R5-M121), or what its intrinsic's row names (and, where the row says so, its Type argument's layout verdict, K 4.8); and the body of a
+// DictionaryStorage function a legacy row or the Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
 // Input: a closed Closure or function item Type, or a function with its composed substitution; the program's bodies; TyCtxt
 // (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature, DictionaryStorage); the intrinsic
 // dispositions and rows; the legacy rows' declared callees.
@@ -13,8 +13,8 @@
 // intrinsic's row), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a callee without a
 // body or row (a foreign function) or a refused edge.
 // Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it.
-// Must not: read a site or a template, or record anything itself (Admit, Below, the layout verdict, the witness and glue rows do) but a
-// declared callee without a body, a broken contract.
+// Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do) but Below's
+// verdict and a declared callee without a body, a broken contract.
 
 using Kimi.Compiler.Mir;
 
@@ -105,6 +105,22 @@ internal sealed partial class InstanceCollector
         }
 
         return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
+    }
+
+    // K 4.5 rows 2 and 7 (DECISIONS BU-38): the Type below a bodyless callee's parameter at a slot in its call's instance (TyCtxt.Instance of
+    // the declared Type; the declared Type without a substitution), its verdict read at the site (Made); null unless Prepared. A Prepared
+    // slot without a Type below is a broken contract (a published row past the parameters).
+    private BoundType? Below(SourceRef subject, BindingSymbol function, Subst? subst, int slot)
+    {
+        var declared = TyCtxt.Signature(function, null, slot, out _);
+        var (type, storage) = declared is null || subst is null ? (declared, Binding.StorageOutcome.Prepared) : this.types.Instance(declared, subst);
+        _ = TyCtxt.Layer(type, out var below, out _);
+        if (storage == Binding.StorageOutcome.Prepared && below is null)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+        }
+
+        return this.Made(storage, subject) ? below : null;
     }
 
     // X4, F2c (DECISIONS R5-M28, R5-M124): the body of the DictionaryStorage function a legacy row or the Dictionary runtime declares as its

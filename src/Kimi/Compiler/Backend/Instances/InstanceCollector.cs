@@ -5,10 +5,9 @@
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
-// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, and an item's view for a PairLayer's
-// case); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns
-// of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the
-// collector alone maps (R5-M37).
+// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views); MirUses; MirTypes.MayNeedDrop;
+// DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy
+// rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156); for code generation (R5 C0b1) also an
@@ -39,9 +38,8 @@
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
 // construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
 // each type-driven item's Type and a DropGlue's collection element Types (X34), and each layout need a form's generated code has past its
-// root's storage (LayoutNeeds, DECISIONS R5-M149: a projection step past a Deref, PairLayer or sequence handle, a raw pointer's
-// displacement, a call's Type arguments where its intrinsic or legacy row's need says so, a compared Tuple past a reference layer of a
-// comparison call's node, at the call, R5-M166), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
+// root's storage, at the form (LayoutNeeds' rows and the Need columns, the Type its TypeOf names, past Layout.Indirect's boundary;
+// DECISIONS R5-M149, R5-M166), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
 // 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type and declaration, at
 // the least of that declaration's failing uses, made at the run's end (DECISIONS R5-M171), a C-layout instance whose C layout is
 // unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
@@ -204,22 +202,6 @@ internal sealed partial class InstanceCollector
     // A Type of an item's body in the item's instance (Instance), its verdict read at the site (Made); null unless Prepared.
     private BoundType? In(int item, SourceRef subject, BoundType type)
         => this.Instance(item, type) is var (closed, storage) && this.Made(storage, subject) ? closed : null;
-
-    // K 4.5 rows 2 and 7 (DECISIONS BU-38): the Type below a bodyless callee's parameter at a slot in its call's instance (TyCtxt.Instance of
-    // the declared Type; the declared Type without a substitution), its verdict read at the site (Made); null unless Prepared. A Prepared
-    // slot without a Type below is a broken contract (a published row past the parameters).
-    private BoundType? Below(SourceRef subject, BindingSymbol function, Subst? subst, int slot)
-    {
-        var declared = TyCtxt.Signature(function, null, slot, out _);
-        var (type, storage) = declared is null || subst is null ? (declared, Binding.StorageOutcome.Prepared) : this.types.Instance(declared, subst);
-        _ = TyCtxt.Layer(type, out var below, out _);
-        if (storage == Binding.StorageOutcome.Prepared && below is null)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
-        }
-
-        return this.Made(storage, subject) ? below : null;
-    }
 
     // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path. A broken contract,
     // InternalInvariant_Kd, presupposes a complete Binding; in an incomplete compilation it may rest on a part Binding rejected, which the

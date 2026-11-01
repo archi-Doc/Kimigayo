@@ -7,8 +7,9 @@ namespace XunitTest;
 // SPEC 8.15.3 with DECISIONS R5-M144 and R5-M149 (the owner's LayoutNeed): a form whose generated code reads a layout past its root's
 // storage is a use of the Type it reads, InvalidCLayout_Kd at the form for an unavailable C layout on every pipeline. A Field, Case payload
 // or element projected through a borrow, raw pointer, object handle or a sequence's storage needs its container's offsets or its stride; a
-// raw pointer's displacement, a whole-value update through references and a Dictionary operation need their Types' sizes; a comparison of a
-// Tuple's parts through a reference needs its offsets (SPEC 13.4). The twins, the same forms without the unavailable layout, are accepted.
+// raw pointer's displacement, a whole-value update through references (swap, replace, exchange; a value given or taken is a by-value use too)
+// and a Dictionary operation need their Types' sizes; a comparison of a Tuple's parts through a reference needs its offsets (SPEC 13.4). The
+// twins, the same forms without the unavailable layout, are accepted.
 public partial class LayoutAttributeBindingTest
 {
     private const string EquatableP = "#Layout(\"C\")\nstruct P<T>\n    Self is Equatable\n    public var n: i32\n    public var value: T\n" +
@@ -57,6 +58,14 @@ public partial class LayoutAttributeBindingTest
         ("array", "func f(a: ref/Array<X>) -> i32 => a[0].n\n", "InvalidCLayout_Kd a[0].n"),
         ("displace", "func f(p: raw/X) -> raw/X\n    var q = p\n    unsafe\n        q = p + 1\n    return q\n", "InvalidCLayout_Kd p + 1"),
         ("swap", "func f(a: uniq/X, b: uniq/X)\n    Kimi.Intrinsics.swap(a, b)\n", "InvalidCLayout_Kd Kimi.Intrinsics.swap(a, b)"),
+        (
+            "replace",
+            "func f(a: uniq/Option<X>)\n    Kimi.Intrinsics.replace(a, with: .None)\n",
+            "InvalidCLayout_Kd .None|InvalidCLayout_Kd Kimi.Intrinsics.replace(a, with: .None)"),
+        (
+            "exchange",
+            "func f(a: uniq/Option<X>)\n    let old = Kimi.Intrinsics.exchange(a, with: .None)\n",
+            "InvalidCLayout_Kd let old|InvalidCLayout_Kd .None|InvalidCLayout_Kd Kimi.Intrinsics.exchange(a, with: .None)"),
         ("dictionary", "func f(d: ref/Dictionary<i32, X>) -> i32\n    let r = d[1]@ref\n    return 0\n", "InvalidCLayout_Kd d[1]@ref"),
     ];
 

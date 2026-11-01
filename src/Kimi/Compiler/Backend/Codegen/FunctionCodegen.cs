@@ -41,9 +41,10 @@
 // (.Phases.cs; DECISIONS R5-M137).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
-// out-string failures or catch-alls, or lay out a Type outside the item's by-value set (its locals, constants and aggregates) and its
-// type-driven Type but through Needed, the Type a form's LayoutNeeds row names (DECISIONS R5-M149), so the collector's K 4.8 uses cover
-// every Type code generation lays out. An Opaque value (the gate admits none), a Type TypeOf cannot make, a Layout outcome other than Ok
+// out-string failures or catch-alls, or lay out a Type outside the item's by-value set (its locals, constants and aggregates), its
+// type-driven Type and its operator rows' Types (a scalar or string read through reference layers, Compute) but through Needed, the Type a
+// form's LayoutNeeds row names (DECISIONS R5-M149), so every Type code generation lays out is a use the collector checked (K 4.8) or a
+// row Type, which always lays out. An Opaque value (the gate admits none), a Type TypeOf cannot make, a Layout outcome other than Ok
 // and any other input validated MIR never has are broken contracts: InternalInvariant_Kd, recorded once by the owner that detects it, at
 // the site it has, else the body's subject (DECISIONS R5-M146).
 
