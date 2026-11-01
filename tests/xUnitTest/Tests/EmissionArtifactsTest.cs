@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -299,15 +300,11 @@ public sealed class EmissionArtifactsTest : IDisposable
     // DECISIONS R5-M169: a command ends a result that an exception ends as Faulted (Project.Faults): one CheckFaulted_Kd (Exception) at
     // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
     // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
-    // (ArtifactFiles.CheckPath, PublishArtifacts' fault); code generation writes the location of a source whose path has an embedded NUL,
-    // which throws ArgumentException (Publish's generating exclusion leaves it to the fault) only because of a defect, PLAN G346:
-    // SourceLocationTable.Text's GetRelativePath rejects the path before its escaping (IMPL 21.4.2) runs. The source is checked without a
-    // project directory, since the whole command's parse rejects the path the same way (a front-end fault). Removal condition: when G346
-    // is fixed, this row needs another trigger for the generating exclusion.
+    // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
+    // (DECISIONS R5-M175: naming a source never throws); no other program is known to reach Publish's generating exclusion.
     [Theory]
     [InlineData("front end")]
     [InlineData("publication")]
-    [InlineData("code generation")]
     public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
@@ -321,12 +318,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         }
         else
         {
-            var c = phase == "publication" ? this.Create() :
-                this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
-            if (phase == "publication")
-            {
-                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
-            }
+            var c = this.Create();
+            c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
 
             Assert.False(project.PublishArtifacts(c, null, null, out var path));
             Assert.Null(path);
@@ -337,6 +330,22 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.DoesNotContain(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*.l*", SearchOption.AllDirectories));
+    }
+
+    // PLAN G346 (DECISIONS R5-M175): a source path with an embedded NUL inside the project is published, its location escaped (IMPL
+    // 21.4.2), where its location text faulted the command before.
+    [Fact]
+    public void ANulInsideTheProjectIsPublished()
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        var c = this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
+        Assert.True(project.PublishArtifacts(c, null, null, out var path), console.Text);
+        Assert.Equal("He\\u{0}llo.kimi:3:24", c.Locations.Text(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single())));
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
+        Assert.True(File.Exists(path));
     }
 
     [Fact]

@@ -94,7 +94,7 @@ public sealed class HoverCollectionTest : IDisposable
         }
         else
         {
-            documentation.SetLocation("\0"); // Physical placement cannot be computed from this invalid path.
+            documentation.Merge(null!); // An invalid optional merge must not escape either (naming a source cannot fail, R5-M175).
         }
 
         Assert.True(compilation.HasDocumentationFailure(failed));
@@ -122,7 +122,7 @@ public sealed class HoverCollectionTest : IDisposable
     {
         var source = new SourceDocument(Path.Combine(this.directory, "standalone.kimi"), "/// Comment");
         var documentation = new DocumentationSource(source);
-        Assert.Throws<ArgumentException>(() => documentation.SetLocation("\0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => documentation.Exclude(-1, 0, 0));
     }
 
     [Theory]

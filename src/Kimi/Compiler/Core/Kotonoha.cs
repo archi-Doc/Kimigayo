@@ -1,11 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns one source unit (a module): its documents, merged syntax tree and diagnostics, and the base of its sources' logical names
-// (IMPL 20.1). Input: source documents (disk, in-memory, deserialized, generated) and its compilation's project. Output: RootKoto,
-// Syntax, DiagnosticCollection and Base, the directory its logical names are relative to.
-// Invariants: Base is stored and recomputed only at a change point (creation, OnDeserialized, a new Project.Directory value, which
-// the getter detects by reference); a root module whose project has no directory takes the current directory its compilation
-// captured when created. Must not read the process's current directory itself, and no Path call it makes for a name throws.
+// Owns one source unit (a module): its documents, merged syntax tree and diagnostics, and its sources' logical names (IMPL 20.1).
+// Input: source documents (disk, in-memory, deserialized, generated) and its compilation's project. Output: RootKoto, Syntax,
+// DiagnosticCollection, Base (the directory its logical names are relative to) and LogicalName(document), which every reader of a
+// source's name asks (the location table, the test catalog, documentation, the collection name).
+// Invariants: a name is a pure function of the document's path and Base; Base is stored and recomputed only at a change point
+// (creation, OnDeserialized, a new Project.Directory value, which the getter detects by reference); a root module whose project has
+// no directory takes the current directory its compilation captured when created; names are memoized until Base is recomputed or
+// the source analysis is revoked, so a warm read allocates nothing. Must not read the process's current directory itself, and no
+// Path call it makes for a name throws.
 
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
@@ -104,11 +107,37 @@ public sealed partial class Kotonoha
     internal string? HoverSourceName(int index)
         => this.generatedSourceLocations?.ContainsKey(index) == true ? null : Documentation.DocumentationSource.PhysicalLogicalName(this.sourceDocuments[index].Path, this.Base);
 
+    /// <summary>Gets a document's logical name (IMPL 20.1): a fully qualified path under <see cref="Base"/> is its remainder, any other
+    /// path (outside it, another drive, relative, <c>compiler://</c>) its own text, each with the host's separators as <c>/</c>.
+    /// Memoized per document until the base is recomputed or the source analysis is revoked; no path makes it throw.</summary>
+    /// <param name="document">A document of this module.</param>
+    /// <returns>The logical name.</returns>
+    internal string LogicalName(SourceDocument document)
+    {
+        var directory = this.Base; // First: a new base empties the memo.
+        var names = this.names ??= new(ReferenceEqualityComparer.Instance);
+        if (!names.TryGetValue(document, out var name))
+        {
+            var start = Under(document.Path, directory);
+            name = start == 0 ? document.Path : document.Path[start..];
+            name = Path.DirectorySeparatorChar == '/' ? name : name.Replace(Path.DirectorySeparatorChar, '/');
+            names.Add(document, name);
+        }
+
+        return name;
+    }
+
+    /// <summary>Forgets the memoized names when the source analysis is revoked, so the memo holds only current documents.</summary>
+    internal void ForgetNames() => this.names?.Clear();
+
     [IgnoreMember]
     private string baseDirectory = string.Empty;
 
     [IgnoreMember]
     private string? baseSource;
+
+    [IgnoreMember]
+    private Dictionary<SourceDocument, string>? names;
 
     private List<Documentation.DocumentationSource>? documentationSources;
 
@@ -295,6 +324,41 @@ public sealed partial class Kotonoha
     private static string Normalize(string directory)
         => Path.IsPathFullyQualified(directory) && !directory.Contains('\0') ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : directory;
 
+    // Where a fully qualified path's remainder under the base starts, or 0 when the base does not contain it: without allocation, the
+    // host's separators compare equal, letters as the host's paths do, and the prefix ends at a separator (C:\p\App holds no C:\p\AppX).
+    private static int Under(string path, string directory)
+    {
+        if (directory.Length == 0 || path.Length <= directory.Length || !Path.IsPathFullyQualified(path))
+        {
+            return 0;
+        }
+
+        for (var start = 0; ; start++)
+        {
+            var separator = directory.AsSpan(start).IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var end = separator < 0 ? directory.Length : start + separator;
+            if (!directory.AsSpan(start, end - start).Equals(path.AsSpan(start, end - start), Checking.SourceIdentity.PathComparison))
+            {
+                return 0;
+            }
+
+            if (end == directory.Length)
+            {
+                return IsSeparator(directory[^1]) ? end : IsSeparator(path[end]) ? end + 1 : 0;
+            }
+
+            if (!IsSeparator(path[end]))
+            {
+                return 0;
+            }
+
+            start = end;
+        }
+    }
+
+    private static bool IsSeparator(char value)
+        => value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;
+
     [TinyhandOnDeserializing]
     private void ResetSourceCompatibility()
     {
@@ -307,15 +371,9 @@ public sealed partial class Kotonoha
     private void ParseSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
     {
         this.Compilation.BeginSourceParsing(this);
-        var path = sourceDocument.Path;
-        var directory = this.Compilation.Project.Directory;
-        if (path.Length > 0 && directory.Length > 0)
-        {// Path.GetRelativePath rejects an empty path.
-            path = Path.GetRelativePath(directory, path);
-        }
 
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
-        var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(path, this).For(sourceDocument);
+        var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(this.LogicalName(sourceDocument), this).For(sourceDocument);
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation, OptionalHoverOwner = this.Compilation.CollectHover ? this.Compilation : null };
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
@@ -326,7 +384,7 @@ public sealed partial class Kotonoha
             codeContext.Documentation = tokenizer.Documentation;
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
-            codeContext.Documentation?.SetLocation(this.Base, modId, additionOrder);
+            codeContext.Documentation?.SetLocation(this.LogicalName(sourceDocument), modId, additionOrder);
             codeContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.RecordDocumentation(codeContext.Documentation);
         }
@@ -342,5 +400,6 @@ public sealed partial class Kotonoha
         this.baseSource = directory;
         this.baseDirectory = this.Url.Length == 0 ? Normalize(directory.Length > 0 ? directory : this.Compilation.CurrentDirectory) :
             Path.IsPathFullyQualified(this.Url) ? Normalize(Path.GetDirectoryName(this.Url) ?? string.Empty) : string.Empty;
+        this.names?.Clear();
     }
 }

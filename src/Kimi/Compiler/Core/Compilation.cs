@@ -327,6 +327,10 @@ public partial class Compilation
         this.InvalidateOwnership();
         this.locations?.Clear();
         this.layout?.Clear();
+        foreach (var module in this.SourceModules)
+        {
+            module.ForgetNames();
+        }
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and

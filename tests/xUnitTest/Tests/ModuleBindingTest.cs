@@ -609,6 +609,22 @@ public partial class ModuleBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    // A prepared compilation of a root project in the directory `root` with one dependency, Lib, in `library` (full paths); the caller
+    // adds each module's sources.
+    internal static Compilation Prepared(string root, string library)
+    {
+        var compilation = Compilation.CreateForTest();
+        var project = compilation.Project;
+        project.Directory = root;
+        var file = Path.Combine(library, "Lib.kimiproj");
+        project.ProjectFile.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = Path.GetRelativePath(root, file) });
+        var node = new DependencyNode("root", new(Path.Combine(root, "App.kimiproj"), project.ProjectFile, [], []), -1, string.Empty);
+        var dependency = new DependencyNode("library@1", new(file, new() { OutputKind = OutputKind.Library }, [], []), 0, "Lib");
+        node.Edges.Add("Lib", dependency.Key);
+        Assert.True(compilation.Prepare(WindowsProfile.Target, new([node, dependency])));
+        return compilation;
+    }
+
     internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)
     {
         var compilation = Compilation.CreateForTest();
