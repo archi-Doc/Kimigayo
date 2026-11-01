@@ -31,6 +31,7 @@ internal sealed partial class ModuleCodegen
     internal FunctionAbi? Row(int item, out long given)
     {
         given = 0;
+        this.Requested(item);
         var entry = this.set.Items[item];
         var collection = entry.RepresentativeType!;
         if (LegacyRuntimeHelpers.Row(entry.Key.Body.Def.Decl!.CompilerFunction) is not { InInstance: true } row)

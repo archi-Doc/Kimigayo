@@ -10,12 +10,8 @@ namespace Kimi.Compiler;
 /// <summary>The project-owned kernel32 import definition and its generated-library identity (SPEC 20.4).</summary>
 internal static partial class Kernel32Imports
 {
-    internal const string LibraryName = "kernel32";
     internal const string Dll = "KERNEL32.dll";
     internal const string Generator = "llvm-dlltool";
-
-    /// <summary>Gets the runtime APIs, the VirtualAlloc test family and the Windows counter APIs.</summary>
-    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency"];
 
     internal static readonly string Definition;
     internal static readonly string DefinitionSha256;
@@ -27,8 +23,8 @@ internal static partial class Kernel32Imports
         using var reader = new StreamReader(stream);
         Definition = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() + "\n";
         DefinitionSha256 = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Definition)));
-        DlltoolSha256 = WindowsProfile.DlltoolSha256;
-        if (WindowsProfile.Kernel32DefinitionSha256 != DefinitionSha256 || DlltoolSha256.Length != 64)
+        DlltoolSha256 = ToolchainIdentity.DlltoolSha256;
+        if (ToolchainIdentity.Kernel32DefinitionSha256 != DefinitionSha256 || DlltoolSha256.Length != 64)
         {
             throw new InvalidDataException("Kernel32 definition or tool identity does not match the profile.");
         }
@@ -58,8 +54,8 @@ internal static partial class Kernel32Imports
 
     internal static void ValidateLibrary(string dll, string inspection)
     {
-        var expected = new HashSet<string>(Symbols.Length * 2, StringComparer.Ordinal);
-        foreach (var symbol in Symbols)
+        var expected = new HashSet<string>(WindowsProfile.Kernel32Symbols.Length * 2, StringComparer.Ordinal);
+        foreach (var symbol in WindowsProfile.Kernel32Symbols)
         {
             expected.Add(symbol);
             expected.Add("__imp_" + symbol);

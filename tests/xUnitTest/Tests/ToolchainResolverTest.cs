@@ -54,7 +54,7 @@ public sealed class ToolchainResolverTest : IDisposable
         using var explicitInput = JsonDocument.Parse("""{"input":"custom.lib"}""");
         var root = Path.Combine(this.directory, "tools with spaces");
         var manifest = Path.Combine(this.directory, "project", "out");
-        Assert.Equal(Path.Combine(root, "windows_x64", WindowsProfile.BackendFile), ToolchainResolver.ResolveBackend(automatic.RootElement, root, manifest));
+        Assert.Equal(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile), ToolchainResolver.ResolveBackend(automatic.RootElement, root, manifest));
         Assert.Equal(Path.Combine(manifest, "custom.lib"), ToolchainResolver.ResolveBackend(explicitInput.RootElement, root, manifest));
     }
 

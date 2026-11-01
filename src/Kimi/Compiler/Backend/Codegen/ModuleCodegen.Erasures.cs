@@ -35,11 +35,7 @@ internal sealed partial class ModuleCodegen
     /// <returns>The signature.</returns>
     internal FunctionAbi Adapter(int item)
     {
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
-        }
-
+        this.Requested(item);
         if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
         {
             return current;

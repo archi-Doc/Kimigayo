@@ -17,7 +17,7 @@ internal sealed partial class FunctionCodegen
         None, // Zero-sized: no storage.
         Slot, // Its alloca, %l<local>.
         Parameter, // The pointer its caller passed, a pointer-passed argument or the result slot: its parameter of the signature.
-        Region, // Its alloca, as Slot's, holding a buffer whose bytes are the frame's region %r<local> of Index bytes (FunctionCodegen.Interpolation).
+        Region, // Its alloca, as Slot's, holding a buffer whose bytes are the frame's region %r<local> of Bytes bytes (FunctionCodegen.Interpolation).
     }
 
     // Lays out every local in the item's instance (I7), then gets the item's signature, which ModuleCodegen gives from the item's own body
@@ -48,7 +48,7 @@ internal sealed partial class FunctionCodegen
                 return null;
             }
 
-            (this.types[i], this.slots[i]) = (type, new(value.Layout.Size == 0 ? Home.None : Home.Slot, i, value));
+            (this.types[i], this.slots[i]) = (type, new(value.Layout.Size == 0 ? Home.None : Home.Slot, -1, 0, value));
         }
 
         return this.module.Signature(this.item);
@@ -68,7 +68,7 @@ internal sealed partial class FunctionCodegen
             if (this.Passing(parameters[i]) is AbiParameterKind.OwnedSlot or AbiParameterKind.ResultSlot)
             {
                 ref var slot = ref this.slots[parameters[i].Kind == AbiParameterKind.ResultSlot ? 0 : this.LocalOf(parameters[i])];
-                slot = slot with { Home = Home.Parameter, Index = i };
+                slot = slot with { Home = Home.Parameter, Parameter = i };
             }
         }
 
@@ -79,7 +79,7 @@ internal sealed partial class FunctionCodegen
                 this.WriteSlot("  %l", i, layout);
             }
 
-            if (this.slots[i] is { Home: Home.Region, Index: var size })
+            if (this.slots[i] is { Home: Home.Region, Bytes: var size })
             {
                 output.Write("  %r");
                 WriteNumber(output, i);
@@ -158,6 +158,6 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
-    // A local's home and representation: Index is a Parameter home's parameter, a Region home's size in bytes.
-    private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
+    // A local's home and representation: a Parameter home's parameter (-1 for another home) and a Region home's size in bytes (0 for another).
+    private readonly record struct Slot(Home Home, int Parameter, int Bytes, ValueLowering Value);
 }
