@@ -301,7 +301,7 @@ internal static partial class NativeToolchain
 
             string path;
             string? stagedHash = null;
-            if (name == Kernel32Imports.LibraryName)
+            if (name == WindowsProfile.Kernel32Library)
             {
                 Kernel32Imports.ValidateManifest(item);
                 path = RequireInstalledFile(Path.Combine(toolchainRoot, "windows_x64", "kernel32.lib"));
@@ -330,14 +330,14 @@ internal static partial class NativeToolchain
             }
 
             var hash = stagedHash;
-            if ((name == Kernel32Imports.LibraryName && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
+            if ((name == WindowsProfile.Kernel32Library && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
             {
                 throw new InvalidDataException("Native library kind mismatch.");
             }
 
             // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
             // requirement/supply hash assertions checked against the actual bytes that are linked.
-            if (project is not null && name is not (Kernel32Imports.LibraryName or WindowsProfile.BackendLibrary))
+            if (project is not null && name is not (WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary))
             {
                 var supply = project.ProjectFile.NativeLibraries.TryGetValue(WindowsProfile.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(project.ProjectFile, WindowsProfile.Target, name, supply);
@@ -357,7 +357,7 @@ internal static partial class NativeToolchain
             libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, directory), ["sha256"] = hash });
         }
 
-        if (!seen.Contains(Kernel32Imports.LibraryName) || !seen.Contains(WindowsProfile.BackendLibrary))
+        if (!seen.Contains(WindowsProfile.Kernel32Library) || !seen.Contains(WindowsProfile.BackendLibrary))
         {
             throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
         }

@@ -14732,7 +14732,8 @@ structure is recorded here by the unit that first implements it.
     `RuntimeDeclarations` parsed the record; R5-M14 left the owner open.
   - Rule: `Core/WindowsProfile.cs` (name and namespace kept) is the target profile: the triple, profile name, data layout, CPU, features,
     relocation and code models, unwind tables, entry symbol, subsystem, `_fltused`, the backend supply's name and helper catalog and the
-    runtime's kernel32 declarations; constants and arrays only, no file, resource or toolchain read. `Emission/ToolchainIdentity.cs` is
+    runtime's kernel32 declarations and the kernel32 supply's name and symbol set; constants and arrays only, no file, resource or
+    toolchain read. `Emission/ToolchainIdentity.cs` is
     the toolchain identity: the pinned LLVM version, the backend package id, ABI version, version, SHA-256 and file name, the kernel32
     definition and dlltool hashes, and the record reader, which checks the record against the profile. For these facts Binding, project
     configuration, LSP and the Backend read only the profile; only the native build and publication read the toolchain identity. The
@@ -14743,6 +14744,10 @@ structure is recorded here by the unit that first implements it.
     `x86_64-pc-windows-msvc`. The profile pins its LLVM release's layout and `IrTarget` follows LLVM's rule for every triple; the only
     reader of `IrTarget.DataLayout`'s content is `Compilation`'s emptiness check, and what the phases share is `PointerWidth`.
     `CoreModelTest.TheProfileLayoutIsItsTriplesLayout` ties the two; the unread layout is a PLAN open issue.
+  - The kernel32 reserved supply (commit 2; BU reviewed Binding's hunk): its name and symbol set (IMPL 20.4), read at native
+    resolution, are the profile's `Kernel32Library` and `Kernel32Symbols` (the runtime declarations' symbols, then the VirtualAlloc
+    family and the counter APIs: the old name, set and order); `Kernel32Imports` keeps the import library's generation identity and
+    validation and no list. `Binding/` then reads no C/Emission type, so check reads neither the toolchain identity nor `Kernel32Imports`.
   - Rejected: moving the file to Core unchanged (Core would own P13's record, R9 would move it again, and a 210-character line); the
     toolchain half as a `NativeToolchain` partial (four readers; its static constructor would make `NativeToolchain` precise-init, so
     its exception filters would run the record parse); one `partial class WindowsProfile` across Core and Emission (one type initializer,

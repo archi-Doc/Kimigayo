@@ -176,7 +176,7 @@ public static class EmissionArtifacts
         for (var i = 0; i < imports.Count; i++)
         {
             var import = imports[i];
-            if (import.Library == Kernel32Imports.LibraryName)
+            if (import.Library == WindowsProfile.Kernel32Library)
             {
                 continue;
             }
@@ -250,9 +250,9 @@ public static class EmissionArtifacts
         json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
         json.WriteStartArray("libraries");
         var next = 0;
-        WriteForeign(Kernel32Imports.LibraryName);
+        WriteForeign(WindowsProfile.Kernel32Library);
         json.WriteStartObject();
-        json.WriteString("name", Kernel32Imports.LibraryName);
+        json.WriteString("name", WindowsProfile.Kernel32Library);
         json.WriteString("kind", "import");
         json.WriteString("generator", Kernel32Imports.Generator);
         json.WriteString("dll", Kernel32Imports.Dll);
