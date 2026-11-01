@@ -15,9 +15,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The uses FailDerived failed in this pass, each with its held cause's candidates at failure, its first and the rest (none for an
-    // operand context, recorded at once), settled in Binding.Check's Final prologue (DECISIONS BU-76; removed once the erasure's Owned
-    // failure is decided after the prologue).
-    private List<(Koto Use, Koto? First, ICheckCause? Next)>? derivedUses;
+    // operand context, recorded at once), and a re-entry's site, settled in Binding.Check's Final prologue (DECISIONS BU-76; removed
+    // once the erasure's Owned failure is decided after the prologue).
+    private List<(Koto Use, Koto? First, ICheckCause? Next, ICheckCause? ReentrySite)>? derivedUses;
 
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction); a recorded mismatch of a
     // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract. An Owned failure that
@@ -78,7 +78,7 @@ public sealed partial class Binding
     // epoch may hold another cause by then.
     private void FailDerived(Koto use, ICheckCause held)
     {
-        (this.derivedUses ??= []).Add((use, held.Use, held.Next));
+        (this.derivedUses ??= []).Add((use, held.Use, held.Next, held.ReentrySite));
         this.Fail(use, BindingFailure.InvalidConstraint);
     }
 
@@ -89,7 +89,7 @@ public sealed partial class Binding
         if (part is not null)
         {
             this.AddPendingPrerequisite(use, part);
-            (this.derivedUses ??= []).Add((use, null, null));
+            (this.derivedUses ??= []).Add((use, null, null, null));
         }
 
         this.Fail(use, part is not null ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
@@ -98,13 +98,15 @@ public sealed partial class Binding
     // DECISIONS BU-76: after every producer's node has failed (Binding.Check's Final prologue, after FailNeededSites), a listed use with no
     // recorded part rests on its held cause's first candidate that failed (a part another site recorded first is kept, BU-61); a use
     // whose part is not Invalid is a broken contract (BU-75), whose InternalInvariant_Kd replaces the use's own InvalidConstraint, which
-    // Fail keeps as a node's first failure. A resolution's candidates are the hops ContractTypes published, outermost first; a
-    // specification with no conformance path adds no hop and forwards its subject's.
+    // Fail keeps as a node's first failure, except a re-entry none of whose clauses failed: the depth test is no proof of growth, so the
+    // use rests on its site, failed here as FailNeededSites fails one (BU-22; removal condition: PLAN G369, an exact re-entry test). A
+    // site is a stored Type, which no other use's candidates name unless already Invalid. A resolution's candidates are the hops
+    // ContractTypes published, outermost first; a specification with no conformance path adds no hop and forwards its subject's.
     private void SettleDerivedUses()
     {
         for (var i = 0; this.derivedUses is { } uses && i < uses.Count; i++)
         {
-            var (use, candidate, next) = uses[i];
+            var (use, candidate, next, site) = uses[i];
             while (candidate is not null && !this.partPrerequisites.ContainsKey(use))
             {
                 if (candidate.BindingState == BindingState.Invalid)
@@ -114,6 +116,12 @@ public sealed partial class Binding
 
                 candidate = next?.Use;
                 next = next?.Next;
+            }
+
+            if (site is not null && !this.partPrerequisites.ContainsKey(use))
+            {
+                this.Fail(site.Use, BindingFailure.Unsupported);
+                this.partPrerequisites.Add(use, site.Use);
             }
 
             if (!(this.partPrerequisites.TryGetValue(use, out var part) && part.BindingState == BindingState.Invalid))

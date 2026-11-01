@@ -196,6 +196,8 @@ public sealed class BoundConformancePath : ICheckCause
 
     ICheckCause? ICheckCause.Next => null;
 
+    ICheckCause? ICheckCause.ReentrySite => null;
+
     internal BoundConformance Identity { get; set; } = null!;
 
     internal BindingScope Scope { get; }

@@ -197,6 +197,8 @@ public sealed partial class Binding
 
         public ICheckCause? Next => this.Inner;
 
+        public ICheckCause? ReentrySite => null;
+
         internal BoundConformancePath Path { get; } = path;
 
         // The associated projection this hop resolved, its components normalized (the component summaries' re-entry test).

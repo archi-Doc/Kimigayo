@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 // a proof carries until its answer is settled (EndProof), and the cause a summary's Error rests on (ICheckCause): the stored Type it
 // reads that failed, that Type's failed operand context, or the hops of a conformance resolution that re-entered itself (SPEC 8.3.3;
 // the steps tested are those the hops resolved, so a step resolved through an identity premise is walked, never a re-entry; DECISIONS
-// BU-22, BU-76).
+// BU-22, BU-76), with the site of the stored Type read there, whose Unsupported_Kd a use takes when no hop clause failed (ReentrySite).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
 // declarations its storage names; ContractType's answer and hops, each with the step it resolved, for a mapped projection whose base is
 // not abstract.
@@ -469,12 +469,13 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.ReenteringHop(hops) is not null)
+        if (this.Reenters(hops))
         {
             // SPEC 8.3.3: a step a hop resolved re-enters a conformance binding the walk is resolving through, at a deeper instance: a
             // conformance of the resolution revisits itself and fails with its own record. Error, never a cap, resting on the hops
             // ContractType resolved through (DECISIONS BU-76); only a hop's step is tested, so an identity step of the chain never is.
-            summary.Fail(hops);
+            // The depth test is no proof of growth: when no hop clause fails, the use rests on the stored Type's site (DECISIONS BU-22).
+            summary.Fail(hops.Use, hops.Next, this.OwnSite(summary, stored));
             return;
         }
 
@@ -488,10 +489,10 @@ public sealed partial class Binding
         this.resolvingSteps.RemoveRange(depth, this.resolvingSteps.Count - depth);
     }
 
-    // The hop whose step re-enters a step the walk is resolving through: the same associated Type on the same root declaration at a
+    // Whether a hop's step re-enters a step the walk is resolving through: the same associated Type on the same root declaration at a
     // deeper instance (SPEC 8.3.3). The hops of one answer are not compared with each other: one answer's nesting is the projection's
     // finite syntax.
-    private ResolutionHops? ReenteringHop(ResolutionHops hops)
+    private bool Reenters(ResolutionHops hops)
     {
         for (var hop = hops; hop is not null; hop = hop.Inner)
         {
@@ -501,15 +502,18 @@ public sealed partial class Binding
                 if (ReferenceEquals(outer.Symbol, hop.Step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
                     this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
                 {
-                    return hop;
+                    return true;
                 }
             }
         }
 
-        return null;
+        return false;
     }
 
-    private void AddSite(ComponentSummary summary, int stored)
+    private void AddSite(ComponentSummary summary, int stored) => summary.AddSite(this.OwnSite(summary, stored));
+
+    // The site of a stored Type of the declaration, reused across passes.
+    private ComponentSite OwnSite(ComponentSummary summary, int stored)
     {
         var types = summary.Declaration.Adt!.Types;
         if (summary.OwnSites.Length != types.Count)
@@ -519,19 +523,21 @@ public sealed partial class Binding
 
         var site = summary.OwnSites[stored] ??= new(this.neededSites);
         site.Use = types[stored];
-        summary.AddSite(site);
+        return site;
     }
 
     // A link of the projection-link graph: D's formal From reaches argument Index of To, through projection steps when Projection.
     private readonly record struct ComponentLink(int From, ComponentSummary To, int Index, bool Projection, int Stored);
 
     // A summary is the cause its Error rests on: the node the walk read that decided it (a stored Type or its operand context), or the
-    // hops of a resolution that re-entered itself, whose candidates the summary carries (DECISIONS BU-76).
+    // hops of a resolution that re-entered itself, whose candidates the summary carries with the re-entry's site (DECISIONS BU-76).
     private sealed class ComponentSummary(BindingSymbol declaration) : ICheckCause
     {
         public Koto Use { get; private set; } = null!;
 
         public ICheckCause? Next { get; private set; }
+
+        public ICheckCause? ReentrySite { get; private set; }
 
         internal BindingSymbol Declaration { get; } = declaration;
 
@@ -560,23 +566,18 @@ public sealed partial class Binding
         {
         }
 
-        internal void Fail(Koto use)
+        internal void Fail(Koto use) => this.Fail(use, null, null);
+
+        internal void Fail(ICheckCause held) => this.Fail(held.Use, held.Next, held.ReentrySite);
+
+        internal void Fail(Koto use, ICheckCause? next, ICheckCause? reentrySite)
         {
             if (!this.Error)
             {
                 this.Error = true;
                 this.Use = use;
-                this.Next = null;
-            }
-        }
-
-        internal void Fail(ICheckCause held)
-        {
-            if (!this.Error)
-            {
-                this.Error = true;
-                this.Use = held.Use;
-                this.Next = held.Next;
+                this.Next = next;
+                this.ReentrySite = reentrySite;
             }
         }
 
@@ -607,6 +608,8 @@ public sealed partial class Binding
         public Koto Use { get; set; } = null!;
 
         public ICheckCause? Next => null;
+
+        public ICheckCause? ReentrySite => null;
 
         internal bool Needed { get; set; }
 

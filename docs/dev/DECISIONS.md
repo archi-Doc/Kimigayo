@@ -6835,6 +6835,10 @@ resumed by R4-M86 (2026-10-20).
   (bu97 unit c′). When an outer step is resolved by an identity premise, or stays unresolved, its answer has no hops, and growth
   through an inner conformance is walked untested. That growth is bounded as identity growth is: a scope has finitely many premise
   identities, and a Contract's own identities are bounded by SPEC 8.3.3; an unresolved outer step instead ends the walk as Unknown.
+  The depth test stops the walk but does not prove growth (bu97 unit c″): a hop's step can be deeper only through an identity premise
+  (mx2), and then no hop clause fails and SPEC 8.3.3 gives no record. Such a use rests on the re-entry's site, F-a's located
+  `Unsupported_Kd` at the stored Type the walk read when it re-entered, never `InternalInvariant_Kd` (removal condition: PLAN G369,
+  an exact re-entry test with its termination argument).
   Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive
   Type is exact (Unknown → Proven for `Chain<i32>`, `Nest`, `Nest15`, `Ping`/`Pong`, `Grow`, `Fold`); a requirement resting on a
   projection family gets one located `Unsupported_Kd` at the family's stored Type, its use derived, in place of
@@ -9507,17 +9511,19 @@ resumed by R4-M86 (2026-10-20).
     names.
     - By SPEC 8.3.3 some hop revisits itself and fails with its own record.
     - By SPEC 23.1.2 any failed hop gives the same records (bu97: first and last give identical output on a two-hop failure, ch2).
-    - If none failed, the use is `InternalInvariant_Kd`. Every re-entry has hops: an identity step is no re-entry (BU-22).
+    - If none failed, the use rests on the re-entry's site, which the settle fails as FailNeededSites fails a site (BU-22, bu97 unit
+      c″); a summary carries the site (`ReentrySite`) as it carries its candidates. Every re-entry has hops: an identity step is no
+      re-entry (BU-22).
     - Each hop carries the projection step it resolved, and that step is the one WalkProjection tests (bu97 unit c′).
   - A limit holds its Use. The prologue fails it (PublishNeededLimits, then FailNeededSites) and Check's loop publishes and counts it
     once; a site only the loop's checks need is recorded after the loop (PublishSites). The erasure that holds a limit runs in body
     binding, earlier (FailOwnedConversion's only caller is RecordMismatch).
   - FailDerived lists the use, and the prologue settles it (`SettleDerivedUses`, after FailNeededSites): a part that is not Invalid is
-    `InternalInvariant_Kd`. The list is a temporary structure, separate from `specificationLinks` (that one chooses the node a
+    `InternalInvariant_Kd`, except a re-entry's site (above). The list is a temporary structure, separate from `specificationLinks` (that one chooses the node a
     conformance use rests on; this one checks a precondition). Removal condition: the erasure's Owned failure is decided after the
     prologue. An entry carries its held cause (none for an operand context, recorded at once); the settle reads only its candidates
     and never replaces a part another site recorded first (BU-61); the contract and removal condition are unchanged. FailDerived
-    snapshots the held cause's candidates at failure (its Use and Next).
+    snapshots the held cause's candidates at failure (its Use and Next) and its ReentrySite.
   - Rejected:
     - naming the outer stored Type (r-opt);
     - naming the binding's Type node (not kept per path);

@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // component summary's Error rests on (a stored Type that failed, its failed operand context, or the hops of a conformance resolution that
 // re-entered itself; an identity step is never a re-entry, DECISIONS BU-22).
 // Output: the Use a failing check's record rests on, the first of the cause's candidates (Next: a resolution's inner hops, none for a
-// single node); Rest, which records that a failing check needed it.
+// single node); a re-entry's site, which a use takes when none of the candidates failed (ReentrySite); Rest, which records that a
+// failing check needed it.
 // Invariants: a check clears Binding's one channel before its proof and takes the cause after it (Binding.TakeFailedCause); only that
 // keeps a cause a reader did not fail on from being taken by a later check; each pass starts with the channel clear; a limit is
 // published once per pass, only when a failing check rested on it; a Use is failed by its owner by the end of Binding.Check's Final
@@ -26,6 +27,10 @@ internal interface ICheckCause
 
     /// <summary>Gets the next candidate (DECISIONS BU-76): a resolution's inner hop; null for a cause of one node.</summary>
     ICheckCause? Next { get; }
+
+    /// <summary>Gets the site of the stored Type a re-entry was read at (DECISIONS BU-22): the located Unsupported_Kd a use resting on
+    /// the re-entry takes when none of its candidates failed; null for any other cause.</summary>
+    ICheckCause? ReentrySite { get; }
 
     /// <summary>Records that a failing check rested on this cause.</summary>
     void Rest();
