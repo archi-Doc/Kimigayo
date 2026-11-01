@@ -15,11 +15,13 @@ namespace Kimi.Compiler.Backend;
 // conversion's request also requests.
 internal sealed partial class ModuleCodegen
 {
-    // The kind-bearing formatting rows in wrapper order, the write first (a conversion calls it), and their wrappers' name prefixes.
-    private static readonly CompilerFunctionKind[] Wrapped =
-        [CompilerFunctionKind.WriterWrite, CompilerFunctionKind.TextToString, CompilerFunctionKind.TextTryFormat];
-
-    private static readonly string[] WrapperPrefixes = ["__kimi_write", "__kimi_tostring", "__kimi_tryformat"];
+    // The kind-bearing formatting rows in wrapper order, the write first (a conversion calls it), each with its wrappers' name prefix.
+    private static readonly (FormattingHelperRow Row, string Prefix)[] Wrapped =
+    [
+        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.WriterWrite)!, "__kimi_write"),
+        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextToString)!, "__kimi_tostring"),
+        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextTryFormat)!, "__kimi_tryformat"),
+    ];
 
     // The write wrapper's parameters: the result slot, the adapter and the value at their logical inputs.
     private static readonly AbiParameter[] WriteParameters =
@@ -38,7 +40,7 @@ internal sealed partial class ModuleCodegen
     {
         this.Requested(target);
         var row = 0;
-        while (row < Wrapped.Length && !ReferenceEquals(LegacyRuntimeHelpers.FormattingRow(Wrapped[row])!.Abi, routine))
+        while (row < Wrapped.Length && !ReferenceEquals(Wrapped[row].Row.Abi, routine))
         {
             row++;
         }
@@ -55,11 +57,11 @@ internal sealed partial class ModuleCodegen
         {
             this.wrappedIn[index] = this.writes;
             this.wrappers[index] ??= WrapperSignature(target, row, routine);
-            this.Request(LegacyRuntimeHelpers.FormattingRow(Wrapped[row])!.Needs);
+            this.Request(Wrapped[row].Row.Needs);
             this.wrapped.Add(index);
             if (row > 0)
             {
-                _ = this.Wrapper(target, LegacyRuntimeHelpers.FormattingRow(Wrapped[0])!.Abi);
+                _ = this.Wrapper(target, Wrapped[0].Row.Abi);
             }
         }
 
@@ -70,7 +72,7 @@ internal sealed partial class ModuleCodegen
     // Context (the parameter without an operand, which names none).
     private static FunctionAbi WrapperSignature(int target, int row, FunctionAbi routine)
     {
-        var name = WrapperPrefixes[row] + target.ToString(CultureInfo.InvariantCulture);
+        var name = Wrapped[row].Prefix + target.ToString(CultureInfo.InvariantCulture);
         if (row == 0)
         {
             return new(name, "void", WriteParameters) { ResultSlot = true };
@@ -103,7 +105,7 @@ internal sealed partial class ModuleCodegen
             else
             {
                 var write = this.wrappers[Wrapped.Length * target]!;
-                LegacyRuntimeHelpers.WriteFormattingConversion(this.functions, wrapper, write, Wrapped[row] == CompilerFunctionKind.TextTryFormat);
+                LegacyRuntimeHelpers.WriteFormattingConversion(this.functions, wrapper, write, Wrapped[row].Row.Kind == CompilerFunctionKind.TextTryFormat);
             }
         }
     }

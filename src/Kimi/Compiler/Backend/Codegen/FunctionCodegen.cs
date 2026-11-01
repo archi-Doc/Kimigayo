@@ -243,6 +243,20 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
+    // A conditional branch between two of the function's own numbered labels (a drop guard, a comparison part, a write wrapper's frame):
+    // `br i1 <condition>, label <then><id>, label <otherwise><id>`.
+    private void Branch(Value condition, string then, string otherwise, int id)
+    {
+        var output = this.output;
+        output.Write("  br i1 ");
+        this.WriteValue(condition);
+        output.Write(", label ");
+        Name(output, then, id);
+        output.Write(", label ");
+        Name(output, otherwise, id);
+        output.Write('\n');
+    }
+
     // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location
     // completed before it (its flag points hold on every successor).
     private void Switch(in MirTerminator terminator)

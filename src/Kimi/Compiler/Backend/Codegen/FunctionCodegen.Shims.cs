@@ -155,11 +155,7 @@ internal sealed partial class FunctionCodegen
         var equal = contract == KimiDeclarationId.Equatable ? value : this.Compared("eq", "i32", value, "0");
         var id = this.next++;
         var output = this.output;
-        output.Write("  br i1 ");
-        this.WriteValue(equal);
-        Name(output, ", label %same", id);
-        Name(output, ", label %decided", id);
-        output.Write('\n');
+        this.Branch(equal, "%same", "%decided", id);
         Name(output, "decided", id);
         output.Write(":\n");
         this.ReturnValue(value);
