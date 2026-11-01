@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
 using Xunit;
@@ -332,6 +334,35 @@ public sealed partial class FunctionCodegenTest
         program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
+    }
+
+    // Package C 3.2 I8 (PLAN G157 (17), (44)): the collector targets a destroyed value's glue exactly when its instance Type may need a drop
+    // (MirTypes.MayNeedDrop), so a destruction without that target is a broken contract, InternalInvariant_Kd at its site: a Keep Drop of a
+    // string temporary, a replace's old string and a property witness's Set of a Resource Field. The subject item (named by its definition
+    // or Field) loses its DropGlue targets in the checked set to make it so.
+    [Theory]
+    [InlineData("Console.writeLine(\"a\")\n", OutputKind.Application, null, "\"a\"")]
+    [InlineData(Updates, OutputKind.Library, "replaceText", "Kimi.Intrinsics.replace(t, with: \"new\")")]
+    [InlineData(Witnesses, OutputKind.Library, "item", "x.item = value@move")]
+    public void ADestructionWithoutItsGlueTargetIsABrokenContract(string source, OutputKind output, string? subject, string site)
+    {
+        var c = Analyze(source, output);
+        var set = c.Instances!;
+        var item = Assert.Single(Enumerable.Range(0, set.Items.Length), x => (set.Items[x].Key.Symbol ?? set.Items[x].Key.Body.Def.Decl)?.Name == subject &&
+            set.Targets(x).ToArray().Any(y => set.Items[y.Item].Key.Kind == MonoKind.DropGlue));
+        var targets = set.Targets(item);
+        var kept = 0;
+        foreach (var target in targets)
+        {
+            if (set.Items[target.Item].Key.Kind != MonoKind.DropGlue)
+            {
+                Unsafe.AsRef(in targets[kept++]) = target;
+            }
+        }
+
+        Unsafe.AsRef(in set.Items[item]).TargetCount = kept;
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal([("InternalInvariant_Kd", (string?)site)], Records(c));
     }
 
     // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96, R4-M102): a body A1 or A2 left inexact is not written; its refusal is the problem's

@@ -36,6 +36,7 @@ internal sealed partial class ModuleCodegen
     /// <returns>The wrapper's signature.</returns>
     internal FunctionAbi Wrapper(int target, FunctionAbi routine)
     {
+        this.Requested(target);
         var row = 0;
         while (row < Wrapped.Length && !ReferenceEquals(LegacyRuntimeHelpers.FormattingRow(Wrapped[row])!.Abi, routine))
         {
