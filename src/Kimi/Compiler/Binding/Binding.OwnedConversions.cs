@@ -10,10 +10,14 @@ namespace Kimi.Compiler;
 // OwnedConversionFact), chosen where the erasure decides (OwnedMember).
 // Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
 // the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
-// Output: the explaining member; the use failed, or false when the erasure failed another part. Must not prove Owned again or select a
-// conversion.
+// Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
+// Final prologue (SettleDerivedUses). Must not prove Owned again or select a conversion.
 public sealed partial class Binding
 {
+    // The uses FailDerived failed in this pass, settled in Binding.Check's Final prologue (DECISIONS BU-76; removed once the erasure's
+    // Owned failure is decided after the prologue).
+    private List<Koto>? derivedUses;
+
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction); a recorded mismatch of a
     // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract. An Owned failure that
     // no work judged returned on its subject's failed operand context (RequestCapability). The member is a capture of a closure or a bound
@@ -68,20 +72,35 @@ public sealed partial class Binding
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-75): a conversion whose own check failed because a part it judged failed is a derived failure, with no
-    // record: the part is its prerequisite, and IsDerived's row (InvalidConstraint whose part is Invalid) classifies it. Invariant: the
-    // part the use rests on is Invalid: a held cause's use failed, an operand context is Invalid by construction (InvalidOperandContext:
-    // InvalidDeclarationContextCause returns only under an Invalid declaration), and no site rests the use on another part first. Any
-    // other case, including a subject no work judged without a failed context, is a broken contract (InternalInvariant_Kd).
+    // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with
+    // no record: the part is its pending prerequisite, and IsDerived's row (InvalidConstraint whose part is Invalid) classifies it. The
+    // use is listed and settled in Binding.Check's Final prologue (SettleDerivedUses), since a held cause's node fails only there (a Type
+    // node at the Definition deadline, a limit's Use when it is published), after the erasure ran in body binding. Invariant: the part is
+    // Invalid by then: a held cause names a node its owner fails (ICheckCause), and an operand context is Invalid by construction
+    // (InvalidOperandContext). Any other case, including a subject no work judged without a failed context, is a broken contract
+    // (InternalInvariant_Kd): the settle replaces the use's own InvalidConstraint, which Fail keeps as a node's first failure.
     private void FailDerived(Koto use, Koto? part)
     {
         if (part is not null)
         {
-            this.AddPrerequisite(use, part);
+            this.AddPendingPrerequisite(use, part);
+            (this.derivedUses ??= []).Add(use);
         }
 
-        var derived = part is not null && this.partPrerequisites.TryGetValue(use, out var rest) && rest.BindingState == BindingState.Invalid;
-        this.Fail(use, derived ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
+        this.Fail(use, part is not null ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
+    }
+
+    // DECISIONS BU-76: after every producer's node has failed (Binding.Check's Final prologue, after PublishSites), a listed use whose part
+    // is not Invalid is a broken contract.
+    private void SettleDerivedUses()
+    {
+        for (var i = 0; this.derivedUses is { } uses && i < uses.Count; i++)
+        {
+            if (!(this.partPrerequisites.TryGetValue(uses[i], out var part) && part.BindingState == BindingState.Invalid))
+            {
+                uses[i].BindingFailure = BindingFailure.Internal;
+            }
+        }
     }
 
     // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), the channel cleared before it; an Error's cause is held for

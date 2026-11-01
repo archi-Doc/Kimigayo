@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments (unit 2b-4 adds Transferable's half), as the
 // least fixed point over the declarations one solve reaches; Owned's judgment of a nominal instance through it; the sites of the located
 // Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
-// a proof carries until its answer is settled (EndProof), and the stored Type a summary's Error rests on (ICheckCause).
+// a proof carries until its answer is settled (EndProof), and the node a summary's Error rests on (ICheckCause): the stored Type it
+// reads that failed, or that Type's failed operand context (DECISIONS BU-76).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
 // declarations its storage names; conformance bindings (ContractType) for a mapped projection whose base is not abstract.
 // Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (PublishSites).
@@ -81,8 +82,9 @@ public sealed partial class Binding
             ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0], null) : result;
     }
 
-    // SPEC 23.1.1: each site a settled proof needed, recorded once at its stored Type after Binding.Check's loop, whose checks can still
-    // need one; a stored Type that failed by itself has its own record. Returns the number of records.
+    // SPEC 23.1.1: each site a settled proof needed, recorded once at its stored Type: in Binding.Check's Final prologue, where a derived
+    // use held on it is settled (DECISIONS BU-76), and again after its loop, whose checks can still need one; a stored Type that failed by
+    // itself has its own record. Returns the number of records.
     private int PublishSites()
     {
         var count = 0;
@@ -301,7 +303,7 @@ public sealed partial class Binding
                 summary.Unresolved |= !invalid;
                 if (invalid)
                 {
-                    summary.Fail(types[t]);
+                    summary.Fail(this.InvalidOperandContext(stored)!); // OperandContexts' walk and predicate: an Invalid node.
                 }
             }
             else
@@ -324,12 +326,7 @@ public sealed partial class Binding
         this.summaryParts.Set(type, query, true);
         if (TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
         {
-            summary.ExcludesOwned |= leaf == ConstraintProof.Refuted;
-            if (leaf == ConstraintProof.Error)
-            {
-                summary.Fail(summary.Declaration.Adt!.Types[stored]);
-            }
-
+            summary.ExcludesOwned |= leaf == ConstraintProof.Refuted; // An Owned leaf is never Error.
             return;
         }
 

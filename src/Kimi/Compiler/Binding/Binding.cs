@@ -959,6 +959,7 @@ public sealed partial class Binding
 
     private BindingResult Check(BindingMode mode)
     {
+        var sites = 0;
         if (mode == BindingMode.Final)
         {
             this.formationCauses?.Clear();
@@ -972,6 +973,8 @@ public sealed partial class Binding
 
             this.SettleSpecificationLinks();
             this.PublishNeededLimits();
+            sites = this.PublishSites();
+            this.SettleDerivedUses();
         }
 
         var resolved = 0;
@@ -1134,7 +1137,7 @@ public sealed partial class Binding
             }
         }
 
-        return new(mode, resolved, unresolved, invalid + this.PublishSites());
+        return new(mode, resolved, unresolved, invalid + sites + this.PublishSites());
     }
 
     private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)

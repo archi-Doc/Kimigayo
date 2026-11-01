@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -102,6 +104,48 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("func use(s: S) -> () -> ()\n    return func [s@move] () => ()\n")]
     public void AnOwnedCaptureOfAFormedDeclarationConverts(string uses)
         => Assert.Empty(Records("struct S\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
+
+    // SPEC 23.1.2 (DECISIONS BU-76): the Owned walk holds the stored Type it reads, which its declaration fails, so a capture whose field,
+    // Option field, enum payload or returned closure stores a failed declaration gives only the declarations' records; the valid twin
+    // converts. These were InternalInvariant_Kd (r2-1b's B1).
+    [Theory]
+    [InlineData("struct W\n    let s: S\n\nfunc use(w: W) -> ()\n    let g: () -> () = func [w@move] () => ()\n    return\n", "InvalidConstraint_Kd let s: S")]
+    [InlineData("struct W\n    let s: Option<S>\n\nfunc use(w: W) -> ()\n    let g: () -> () = func [w@move] () => ()\n    return\n", "InvalidConstraint_Kd let s: Option<S>")]
+    [InlineData("enum V\n    A(S)\n    B\n\nfunc use(v: V) -> ()\n    let g: () -> () = func [v@move] () => ()\n    return\n", null)]
+    [InlineData("struct W\n    let s: S\n\nfunc use(w: W) -> () -> ()\n    return func [w@move] () => ()\n", "InvalidConstraint_Kd let s: S")]
+    public void AnOwnedFailureOnAFailedStoredTypeIsDerived(string uses, string? own)
+    {
+        Assert.Equal(
+            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "InvalidTypeFormation_Kd C", .. own is null ? Array.Empty<string>() : [own]],
+            Records("contract C: Missing\n    func m(self) -> i32\n\nstruct S: C\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
+        Assert.Empty(Records("struct S\n    let x: i32\n\n" + uses + "\n" + Main + "    return\n"));
+    }
+
+    // SPEC 8.3.3, 23.1.2 (DECISIONS BU-76): a stored Type whose conformance binding uses itself at a deeper instance fails with the
+    // conformance's records, and a capture of its holder rests on it with no record; a terminating binding converts.
+    [Theory]
+    [InlineData("PH<W<(X, X)>>", "UnprovenConstraint_Kd Self is Has2 | InvalidConstraint_Kd PH<W<(X, X)>> | UnprovenConstraint_Kd let p: PH<W<i32>> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
+    [InlineData("PH<V<Option<X>>>", "")]
+    public void AnOwnedFailureOnAConformanceUsingItselfIsDerived(string binding, string records)
+        => Assert.Equal(
+            records,
+            string.Join(" | ", Records("contract Has2\n    associate Out\nstruct V<Y>\n    Self is Has2\n    associate Has2.Out is i32\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is " + binding +
+                "\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S\n    let p: PH<W<i32>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n" + Main + "    return\n")));
+
+    // DECISIONS BU-75, BU-76: Binding.Check's Final prologue settles each use FailDerived listed; a part that is not Invalid there is a
+    // broken contract, InternalInvariant_Kd, never a Language record.
+    [Fact]
+    public void ADerivedUseOnAPartNotInvalidIsABrokenContract()
+    {
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    let x: i32\n\nfunc use(s: S) -> ()\n    let g: () -> () = func [s@move] () => ()\n    return\n\n" + Main + "    return\n");
+        Assert.True(c.Bind().IsComplete);
+        var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "g");
+        var part = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single();
+        typeof(Binding).GetMethod("FailDerived", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [use, part]);
+        Assert.Equal(BindingFailure.InvalidConstraint, c.Semantics.FailureOf(use));
+        typeof(Binding).GetMethod("SettleDerivedUses", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, []);
+        Assert.Equal(BindingFailure.Internal, c.Semantics.FailureOf(use));
+    }
 
     // SPEC 15.2.3, 5.7: a raw layer's Origin other than `self` is in OwnedOrigins, so a pointer stating a body or input Origin is not
     // Owned; `static` and a `during self` struct over an Owned T are.

@@ -647,6 +647,7 @@ public sealed partial class Binding
         this.prerequisites.Clear();
         this.partPrerequisites.Clear();
         this.specificationLinks?.Clear();
+        this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();
         this.derivedIssues.Clear();
         this.consulted.Clear();

@@ -9471,15 +9471,38 @@ resumed by R4-M86 (2026-10-20).
     extended). A node that only read a part that did not resolve rests by consultation (`CompleteDependent` or a consultation frame),
     and the publisher keeps its Op (R4-M88). The site decides locally: its own verdict failed on a failed part, or it only consulted one.
   - Precondition (R1-5): the part the site rests on is Invalid, so IsDerived's existing row (InvalidConstraint whose part is Invalid)
-    classifies it; any other case is a broken contract, `InternalInvariant_Kd`. IsDerived is not widened.
+    classifies it; any other case is a broken contract, `InternalInvariant_Kd`. IsDerived is not widened. It is checked where every
+    producer's node has failed: in Binding.Check's Final prologue (BU-76).
   - First site: `FailOwnedConversion` (`FailDerived`). An Owned failure that no work judged rests on the subject's failed operand
     context (`InvalidOperandContext`: its cause when Invalid, else the failed declaration, Invalid by construction); an Error's held
-    cause likewise (R1-3, reached by no program). They were `InternalInvariant_Kd` (BU's n7) and a `CompleteDependent` rest, which
+    cause rests on the node its producer holds (BU-76). They were `InternalInvariant_Kd` (BU's n7) and a `CompleteDependent` rest, which
     `BindVariableCore`'s and the `return`'s completions overwrite, so MIR built a Resolved node over an invalid Type.
   - Open: an Owned proof that reads a field or payload Type left unresolved inside a Resolved declaration (PLAN G354 (3)).
   - Rejected: folding every final-pass dependent node as Error (it loses independent A1/A5 records, against R4-M88, R5-M63 and G121);
     UnprovenConstraint (an IsDerived case for one site); widening IsDerived and the context walk to Unresolved parts (prototype C moved
     nothing).
+
+- **BU-76 A held cause names a node its owner fails by the end of Binding.Check's Final prologue** (2026-11-01; PLAN G216 (a) U2.1,
+  r2-1b B1, bu97 U1; BU's bu97 design revision 2 and R4's review 2 ACCEPT; the owner's option (1), 「推奨どおり (1)」, 「(1) で進める」)
+  SPEC 8.3.3, 23.1.2.
+  - The Owned walk holds the node it reads: a stored Type that failed, or its failed operand context (`InvalidOperandContext`, the
+    walk and predicate of `OperandContexts`). An Owned leaf is never Error, so the leaf's Error branch is deleted.
+  - At a re-entry it holds the re-entered conformance (the path `ContractType` resolved through, which ContractType publishes), whose
+    clause fails with its own record (SPEC 8.3.3). Pending U2: until then the walk holds the stored Type, which a nested stored Type
+    (r-opt, r-tup, r-arr) leaves not Invalid, so the settle reports those uses as `InternalInvariant_Kd`.
+  - A limit holds its Use. The prologue publishes it (PublishNeededLimits, then PublishSites; sites the loop needs still follow it).
+    The erasure that holds it runs in body binding, earlier (FailOwnedConversion's only caller is RecordMismatch).
+  - FailDerived lists the use, and the prologue settles it (`SettleDerivedUses`, after PublishSites): a part that is not Invalid is
+    `InternalInvariant_Kd`. The list is a temporary structure, separate from `specificationLinks` (that one chooses the node a
+    conformance use rests on; this one checks a precondition). Removal condition: the erasure's Owned failure is decided after the
+    prologue.
+  - Rejected:
+    - naming the outer stored Type (r-opt);
+    - naming the binding's Type node (not kept per path);
+    - re-resolving the projection to find the path (it re-runs resolution);
+    - a Language record for a broken contract (R4 B2);
+    - IsDerived reading PartFailed (G354 (3) stays open);
+    - one list with `specificationLinks` (another contract; R4's review 2 (ii)).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
