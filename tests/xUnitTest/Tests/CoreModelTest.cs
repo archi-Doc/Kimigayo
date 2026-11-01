@@ -64,4 +64,10 @@ public class CoreModelTest
         Assert.Same(IrTarget.Invalid, compilation.IrTarget);
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
+
+    // DECISIONS R5-M174: the checked triple's layout (IrTarget, any triple) and the one executable profile's pinned layout are two
+    // copies that neither reads; for windows-x64 they agree.
+    [Fact]
+    public void TheProfileLayoutIsItsTriplesLayout()
+        => Assert.Equal(WindowsProfile.DataLayout, IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).DataLayout);
 }

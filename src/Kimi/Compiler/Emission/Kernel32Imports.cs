@@ -15,7 +15,8 @@ internal static partial class Kernel32Imports
     internal const string Generator = "llvm-dlltool";
 
     /// <summary>Gets the runtime APIs, the VirtualAlloc test family and the Windows counter APIs.</summary>
-    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency"];
+    internal static readonly string[] Symbols =
+        [.. WindowsProfile.RuntimeDeclarations.Select(static x => x.Symbol), "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency"];
 
     internal static readonly string Definition;
     internal static readonly string DefinitionSha256;
@@ -27,8 +28,8 @@ internal static partial class Kernel32Imports
         using var reader = new StreamReader(stream);
         Definition = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() + "\n";
         DefinitionSha256 = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Definition)));
-        DlltoolSha256 = WindowsProfile.DlltoolSha256;
-        if (WindowsProfile.Kernel32DefinitionSha256 != DefinitionSha256 || DlltoolSha256.Length != 64)
+        DlltoolSha256 = ToolchainIdentity.DlltoolSha256;
+        if (ToolchainIdentity.Kernel32DefinitionSha256 != DefinitionSha256 || DlltoolSha256.Length != 64)
         {
             throw new InvalidDataException("Kernel32 definition or tool identity does not match the profile.");
         }

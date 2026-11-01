@@ -35,9 +35,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path!))), root.GetProperty("irSha256").GetString());
         Assert.Equal("Hello.ll", root.GetProperty("irFile").GetString());
         using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64/profile.json"))));
-        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), WindowsProfile.LlvmVersion);
-        Assert.Equal(WindowsProfile.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
-        Assert.Equal(WindowsProfile.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
+        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), ToolchainIdentity.LlvmVersion);
+        Assert.Equal(ToolchainIdentity.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
+        Assert.Equal(ToolchainIdentity.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());

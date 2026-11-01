@@ -24,7 +24,7 @@ public static class EmissionArtifacts
     internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath)
     {
         irPath = null;
-        if (WindowsProfile.BackendVersion.Length == 0 || WindowsProfile.BackendSha256.Length != 64)
+        if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
         {
             Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
             return false;
@@ -47,7 +47,7 @@ public static class EmissionArtifacts
             if (backend is not null && HasDirectory(backend.Input))
             {
                 var actual = Hash(Path.GetFullPath(backend.Input, directory));
-                if (!actual.Equals(WindowsProfile.BackendSha256, StringComparison.Ordinal))
+                if (!actual.Equals(ToolchainIdentity.BackendSha256, StringComparison.Ordinal))
                 {
                     throw new InvalidDataException("The selected backend archive does not match the adopted SHA-256.");
                 }
@@ -148,7 +148,7 @@ public static class EmissionArtifacts
                         throw new InvalidDataException("kimi_backend must be static.");
                     }
 
-                    if (sha256 is not null && !sha256.Equals(WindowsProfile.BackendSha256, StringComparison.OrdinalIgnoreCase))
+                    if (sha256 is not null && !sha256.Equals(ToolchainIdentity.BackendSha256, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidDataException("The kimi_backend Sha256 assertion does not match the adopted SHA-256.");
                     }
@@ -227,7 +227,7 @@ public static class EmissionArtifacts
         json.WriteString("target", WindowsProfile.Target);
         json.WriteStartObject("codegen");
         json.WriteString("profile", WindowsProfile.Name);
-        json.WriteString("llvmVersion", WindowsProfile.LlvmVersion);
+        json.WriteString("llvmVersion", ToolchainIdentity.LlvmVersion);
         json.WriteString("cpu", WindowsProfile.Cpu);
         WriteStrings(json, "features", [WindowsProfile.Features]);
         json.WriteString("relocationModel", WindowsProfile.RelocationModel);
@@ -236,11 +236,11 @@ public static class EmissionArtifacts
         json.WriteString("optimization", settings.Optimization);
         json.WriteEndObject();
         json.WriteStartObject("backendSupport");
-        json.WriteString("packageId", WindowsProfile.BackendPackageId);
-        json.WriteNumber("abiVersion", WindowsProfile.BackendAbiVersion);
-        json.WriteString("packageVersion", WindowsProfile.BackendVersion);
+        json.WriteString("packageId", ToolchainIdentity.BackendPackageId);
+        json.WriteNumber("abiVersion", ToolchainIdentity.BackendAbiVersion);
+        json.WriteString("packageVersion", ToolchainIdentity.BackendVersion);
         json.WriteString("library", WindowsProfile.BackendLibrary);
-        json.WriteString("artifactSha256", WindowsProfile.BackendSha256);
+        json.WriteString("artifactSha256", ToolchainIdentity.BackendSha256);
         WriteStrings(json, "providedSymbols", WindowsProfile.ProvidedSymbols);
         json.WriteEndObject();
         json.WriteString("irFile", irFile);

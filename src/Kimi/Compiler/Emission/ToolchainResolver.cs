@@ -47,7 +47,7 @@ internal static class ToolchainResolver
                 throw new InvalidDataException("Invalid backend toolchain resolution: an input path is not permitted.");
             }
 
-            return Path.Combine(root, "windows_x64", WindowsProfile.BackendFile);
+            return Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile);
         }
 
         return ArtifactFiles.ResolvePath(entry.GetProperty("input").GetString()!, manifestDirectory);

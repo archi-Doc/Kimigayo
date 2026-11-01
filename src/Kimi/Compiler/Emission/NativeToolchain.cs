@@ -83,18 +83,18 @@ internal static partial class NativeToolchain
         var support = root.GetProperty("backendSupport");
         if (root.GetProperty("target").GetString() != WindowsProfile.Target ||
             root.GetProperty("outputKind").GetString() != "Application" || root.GetProperty("entry").GetString() != WindowsProfile.EntrySymbol || root.GetProperty("subsystem").GetString() != WindowsProfile.Subsystem ||
-            code.GetProperty("profile").GetString() != WindowsProfile.Name || code.GetProperty("llvmVersion").GetString() != WindowsProfile.LlvmVersion ||
-            code.GetProperty("cpu").GetString() != WindowsProfile.Cpu || !WindowsProfile.SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) ||
+            code.GetProperty("profile").GetString() != WindowsProfile.Name || code.GetProperty("llvmVersion").GetString() != ToolchainIdentity.LlvmVersion ||
+            code.GetProperty("cpu").GetString() != WindowsProfile.Cpu || !ToolchainIdentity.SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) ||
             code.GetProperty("relocationModel").GetString() != WindowsProfile.RelocationModel || code.GetProperty("codeModel").GetString() != WindowsProfile.CodeModel || code.GetProperty("unwindTables").GetString() != WindowsProfile.UnwindTables ||
             code.GetProperty("optimization").GetString() is not ("O0" or "O2"))
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
 
-        var valid = support.GetProperty("packageId").GetString() == WindowsProfile.BackendPackageId && support.GetProperty("abiVersion").GetInt32() == WindowsProfile.BackendAbiVersion &&
-            support.GetProperty("packageVersion").GetString() == WindowsProfile.BackendVersion && support.GetProperty("artifactSha256").GetString() == WindowsProfile.BackendSha256 &&
-            support.GetProperty("library").GetString() == WindowsProfile.BackendLibrary && WindowsProfile.SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols) &&
-            WindowsProfile.SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
+        var valid = support.GetProperty("packageId").GetString() == ToolchainIdentity.BackendPackageId && support.GetProperty("abiVersion").GetInt32() == ToolchainIdentity.BackendAbiVersion &&
+            support.GetProperty("packageVersion").GetString() == ToolchainIdentity.BackendVersion && support.GetProperty("artifactSha256").GetString() == ToolchainIdentity.BackendSha256 &&
+            support.GetProperty("library").GetString() == WindowsProfile.BackendLibrary && ToolchainIdentity.SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols) &&
+            ToolchainIdentity.SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
         foreach (var dependency in root.GetProperty("expectedUndefinedSymbols").EnumerateArray())
         {
             valid &= dependency.GetProperty("provider").GetString() == WindowsProfile.BackendLibrary &&
@@ -248,7 +248,7 @@ internal static partial class NativeToolchain
 
     private static JsonObject CreateBuildRecord() => new()
     {
-        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = WindowsProfile.LlvmVersion,
+        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
 
@@ -318,7 +318,7 @@ internal static partial class NativeToolchain
                 if (item.TryGetProperty("input", out _))
                 {
                     path = StageInput(path, paths.Stem, out stagedHash);
-                    if (stagedHash != WindowsProfile.BackendSha256)
+                    if (stagedHash != ToolchainIdentity.BackendSha256)
                     {
                         throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
                     }
@@ -456,9 +456,9 @@ internal static partial class NativeToolchain
     private static HashSet<string> CreateAllowedUndefined()
     {
         var allowed = new HashSet<string>(WindowsProfile.ProvidedSymbols, StringComparer.Ordinal);
-        foreach (var import in WindowsProfile.RuntimeImports)
+        foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
         {
-            allowed.Add("__imp_" + import);
+            allowed.Add("__imp_" + symbol);
         }
 
         return allowed;

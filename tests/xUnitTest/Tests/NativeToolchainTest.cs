@@ -73,7 +73,7 @@ public sealed class NativeToolchainTest : IDisposable
         var props = XDocument.Load(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../Directory.Build.props")));
         var expected = props.Descendants().Single(x => x.Name.LocalName == "Version").Value;
         Assert.Equal(expected, CompilerRelease.Version);
-        Assert.Equal(expected, WindowsProfile.BackendVersion);
+        Assert.Equal(expected, ToolchainIdentity.BackendVersion);
         Assert.StartsWith(expected + " (", Compilation.CompilerVersion, StringComparison.Ordinal);
     }
 
