@@ -31,9 +31,9 @@
 // without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
 // keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's one call writer (DECISIONS R5-M89).
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
-// record was made; deterministic (admission order, item-indexed names); each item's signature is reused while Abi.Matches holds and every
-// buffer is kept, so a warm module allocates nothing; a request for an item outside Generated (its Signature or Glue, the requests naming an
-// item) is a broken contract, InternalInvariant_Kd at the item's site.
+// record was made; deterministic (admission order, item-indexed names); each item's and unnamed signature is reused while Abi.Matches holds
+// and every buffer is kept, so a warm module allocates nothing; a request naming an item outside Generated (Requested: its Signature, Glue,
+// Shim, Adapter or Factory) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax or HIR, write a
 // partial module, use LINQ, Supports* or catch-alls, or do file I/O but through the caller's writer (it reads embedded templates), whose
 // I/O exceptions are therefore the output's (DECISIONS R5-M169); a broken contract it throws is the command's fault.
@@ -113,6 +113,7 @@ internal sealed partial class ModuleCodegen
         this.externals.Clear();
         this.wrapped.Clear();
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
+        this.Prune();
         this.IsTestBuild = startup.Kind == StartupKind.Test;
         this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
