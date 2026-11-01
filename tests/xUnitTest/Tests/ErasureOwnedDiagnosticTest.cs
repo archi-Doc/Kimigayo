@@ -227,6 +227,20 @@ public class ErasureOwnedDiagnosticTest
         Assert.Equal(records, string.Join(" | ", Records(source)));
     }
 
+    // SPEC 8.2.3, 8.3.3 (DECISIONS BU-22, BU-76): in a chain mixing identity and conformance steps, the steps tested for re-entry are
+    // those its hops resolved. mx1 resolves W<Y>.(Has2).Out by identity and tests Q<PH<W<(Y, Y)>>>.(K).B, then Q<i32>.(K).B, which is
+    // not deeper: valid, as its twin (it was InternalInvariant_Kd at the closure). n4: an outer identity over an inner conformance has
+    // no hops and its finite chain is walked untested. tg2 pins a dependent UnprovenConstraint_Kd at the closure (S fails by the
+    // prologue): an interim the owner approved under PLAN G354 (3) (2026-11-02, PLAN dev 8894bcfa5), removed with G354 (3)'s settle for
+    // Unknown Owned verdicts on a context that fails by the prologue.
+    [Theory]
+    [InlineData("mx1", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct W<X>\n    let x: X\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Y>\n    Y is Owned\n    W<Y> is Has2\n    W<(Y, Y)> is Has2\n    W<Y>.(Has2).Out is Q<PH<W<(Y, Y)>>>\n    W<(Y, Y)>.(Has2).Out is Q<i32>\n    let p: PH<W<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("mx1-twin", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct W<X>\n    let x: X\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Y>\n    Y is Owned\n    W<Y> is Has2\n    W<Y>.(Has2).Out is Q<i32>\n    let p: PH<W<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("n4", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is H<X>\nstruct H<X>\n    let x: X\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Y>\n    Y is Owned\n    H<Y> is K\n    H<Y>.(K).B is i32\n    let p: PH<W<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("tg2", "contract K\n    associate B\ncontract Has2\n    associate Out\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is PH<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Y>\n    Y is Owned\n    PH<W<(Y, Y)>> is K\n    PH<W<(Y, Y)>>.(K).B is PH<W<(Y, Y)>>\n    let p: PH<W<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "UnprovenConstraint_Kd Self is Has2 | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd struct | InvalidConstraint_Kd PH<W<(Y, Y)>> | InvalidConstraint_Kd PH<W<(Y, Y)>> | InvalidConstraint_Kd PH<W<(Y, Y)>> | InvalidConstraint_Kd PH<W<(Y, Y)>>.(K) | InvalidConstraint_Kd PH<W<(Y, Y)>>.(K).B | InvalidConstraint_Kd PH<W<(Y, Y)>> | UnprovenConstraint_Kd let p: PH<W<Y>> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<Y>> | InvalidConstraint_Kd PH<W<Y>> | InvalidConstraint_Kd S<Y> | InvalidConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
+    public void AMixedChainTestsTheStepsItsHopsResolved(string id, string declarations, string records)
+        => Assert.Equal((id, records), (id, string.Join(" | ", Records(declarations + "\n" + Main + "    return\n"))));
+
     // SPEC 15.2.3, 5.7: a raw layer's Origin other than `self` is in OwnedOrigins, so a pointer stating a body or input Origin is not
     // Owned; `static` and a `during self` struct over an Owned T are.
     [Theory]

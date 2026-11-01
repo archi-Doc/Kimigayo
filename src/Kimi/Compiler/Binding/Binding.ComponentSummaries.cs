@@ -10,9 +10,11 @@ namespace Kimi.Compiler;
 // Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
 // a proof carries until its answer is settled (EndProof), and the cause a summary's Error rests on (ICheckCause): the stored Type it
 // reads that failed, that Type's failed operand context, or the hops of a conformance resolution that re-entered itself (SPEC 8.3.3;
-// a step resolved through an identity premise is walked, never a re-entry; DECISIONS BU-22, BU-76).
+// the steps tested are those the hops resolved, so a step resolved through an identity premise is walked, never a re-entry; DECISIONS
+// BU-22, BU-76).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
-// declarations its storage names; ContractType's answer and hops for a mapped projection whose base is not abstract.
+// declarations its storage names; ContractType's answer and hops, each with the step it resolved, for a mapped projection whose base is
+// not abstract.
 // Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
 // PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
@@ -33,7 +35,7 @@ public sealed partial class Binding
     private readonly HashSet<(ComponentSummary Summary, int Slot)> linkSeen = [];
     private readonly TypeMemo<bool> summaryParts = new(); // The parts one summary walk met.
     private readonly TypeMemo<bool> scannedParts = new(); // The parts one storage scan met.
-    private readonly List<BoundType> resolvingSteps = []; // The concrete projection steps the walk in progress resolves through.
+    private readonly List<BoundType> resolvingSteps = []; // The steps the walk in progress resolved through conformance hops.
     private int summaryEpoch;
     private bool solvingSummaries;
 
@@ -423,19 +425,18 @@ public sealed partial class Binding
     }
 
     // A projection based at D's formal or pair target is an obligation of D; one with a base that is not abstract is resolved under D's
-    // premises, by a conformance binding or an identity premise, and walked; only a step resolved through a conformance is tested for
-    // re-entry.
+    // premises, by a conformance binding or an identity premise, and walked; the steps its hops resolved through a conformance are
+    // tested for re-entry, and a step resolved through an identity premise is walked untested.
     private void WalkProjection(ComponentSummary summary, BoundType projection, int stored, uint query)
     {
-        var step = projection;
+        var root = projection.Components[0];
         var length = 1;
-        while (step.Components[0].Kind == BoundTypeKind.AssociatedProjection)
+        while (root.Kind == BoundTypeKind.AssociatedProjection)
         {
-            step = step.Components[0];
+            root = root.Components[0];
             length++;
         }
 
-        var root = step.Components[0];
         if (root.IsAbstract)
         {
             if (length > ProjectionBound)
@@ -460,29 +461,52 @@ public sealed partial class Binding
 
         if (hops is null)
         {
-            // SPEC 8.2.3 (DECISIONS BU-22): a step resolved through an identity premise, with no conformance hop, is no re-entry: it is
-            // walked, never pushed or tested. A scope's premise identities are finitely many, and a Contract's own are bounded by SPEC
-            // 8.3.3 (unbounded growth through them fails the Contract, and the walk then reads a failed operand context).
+            // SPEC 8.2.3 (DECISIONS BU-22): an answer whose outer step is resolved through an identity premise has no hops; it is walked
+            // untested, with any growth through an inner conformance. A scope's premise identities are finitely many, and a Contract's
+            // own are bounded by SPEC 8.3.3 (unbounded growth through them fails the Contract, and the walk then reads a failed operand
+            // context); an outer step left unresolved ends the walk as Unknown.
             this.Walk(summary, resolved, stored, query);
             return;
         }
 
-        foreach (var outer in this.resolvingSteps)
+        if (this.ReenteringHop(hops) is not null)
         {
-            if (ReferenceEquals(outer.Symbol, step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
-                this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
+            // SPEC 8.3.3: a step a hop resolved re-enters a conformance binding the walk is resolving through, at a deeper instance: a
+            // conformance of the resolution revisits itself and fails with its own record. Error, never a cap, resting on the hops
+            // ContractType resolved through (DECISIONS BU-76); only a hop's step is tested, so an identity step of the chain never is.
+            summary.Fail(hops);
+            return;
+        }
+
+        var depth = this.resolvingSteps.Count;
+        for (var hop = hops; hop is not null; hop = hop.Inner)
+        {
+            this.resolvingSteps.Add(hop.Step);
+        }
+
+        this.Walk(summary, resolved, stored, query);
+        this.resolvingSteps.RemoveRange(depth, this.resolvingSteps.Count - depth);
+    }
+
+    // The hop whose step re-enters a step the walk is resolving through: the same associated Type on the same root declaration at a
+    // deeper instance (SPEC 8.3.3). The hops of one answer are not compared with each other: one answer's nesting is the projection's
+    // finite syntax.
+    private ResolutionHops? ReenteringHop(ResolutionHops hops)
+    {
+        for (var hop = hops; hop is not null; hop = hop.Inner)
+        {
+            var root = hop.Step.Components[0];
+            foreach (var outer in this.resolvingSteps)
             {
-                // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: a conformance of
-                // the resolution revisits itself and fails with its own record. Error, never a cap, resting on the hops ContractType
-                // resolved through (DECISIONS BU-76); every re-entry has hops, since an identity step is never tested.
-                summary.Fail(hops);
-                return;
+                if (ReferenceEquals(outer.Symbol, hop.Step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
+                    this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
+                {
+                    return hop;
+                }
             }
         }
 
-        this.resolvingSteps.Add(step);
-        this.Walk(summary, resolved, stored, query);
-        this.resolvingSteps.RemoveAt(this.resolvingSteps.Count - 1);
+        return null;
     }
 
     private void AddSite(ComponentSummary summary, int stored)

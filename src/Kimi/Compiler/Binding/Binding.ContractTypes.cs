@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 // Owns a Type's Contract environment rewrite (ContractType): a Contract's Self replaced by the conforming Type, a bound Contract
 // reference's arguments substituted, and completed associated identities normalized in a scope, without member selection, each distinct
 // part once per call (contractParts). Reads the conformance tables and the scope's facts; publishes each answer's hops (ResolutionHops):
-// the conformance paths a projection's specification resolved it through, outermost first, written by the run that made the image and
-// carried by the memo and the associated collection's batch, so a hit never resolves again (DECISIONS BU-76).
+// the conformance paths a projection's specification resolved it through, outermost first, each with the step it resolved, written by
+// the run that made the image and carried by the memo and the associated collection's batch, so a hit never resolves again (DECISIONS
+// BU-76).
 public sealed partial class Binding
 {
     // The images of ContractType's queries (DECISIONS BU-64): one outermost call is a query, its scope, Self, normalize flag,
@@ -17,9 +18,9 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<(BoundType Image, ResolutionHops? Hops)> contractParts = new();
 
-    // The hop chains, one per path and inner chain: kept for the Binding's lifetime, as the paths they name (conformancePaths), so a
-    // warm pass allocates none.
-    private readonly Dictionary<(BoundConformancePath Path, ResolutionHops? Inner), ResolutionHops> hopChains = new();
+    // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (conformancePaths), so
+    // a warm pass allocates none.
+    private readonly Dictionary<(BoundConformancePath Path, BoundType Step, ResolutionHops? Inner), ResolutionHops> hopChains = new();
 
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
@@ -85,7 +86,8 @@ public sealed partial class Binding
         return result;
     }
 
-    // The image and its hops: a projection resolved by a specification adds its path to its subject's (component 0's) hops.
+    // The image and its hops: a projection resolved by a specification adds its path and itself, its components normalized, to its
+    // subject's (component 0's) hops.
     private (BoundType Image, ResolutionHops? Hops) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         type = this.ApplyContractEnvironment(type, scope);
@@ -132,7 +134,7 @@ public sealed partial class Binding
             {
                 if (result.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(result, scope) is { Type: { } specified } outcome)
                 {
-                    var hops = outcome.Path is { } path ? this.Hop(path, inner) : inner;
+                    var hops = outcome.Path is { } path ? this.Hop(path, result, inner) : inner;
 
                     // A container substitution can expose another associated projection (Wrapper<S>.Element -> S.Element). Normalize
                     // that identity too; the active query above still guards recursive specifications.
@@ -176,26 +178,29 @@ public sealed partial class Binding
         }
     }
 
-    // The interned chain of a hop through path before inner.
-    private ResolutionHops Hop(BoundConformancePath path, ResolutionHops? inner)
+    // The interned chain of a hop resolving step through path before inner.
+    private ResolutionHops Hop(BoundConformancePath path, BoundType step, ResolutionHops? inner)
     {
-        if (!this.hopChains.TryGetValue((path, inner), out var hop))
+        if (!this.hopChains.TryGetValue((path, step, inner), out var hop))
         {
-            this.hopChains.Add((path, inner), hop = new(path, inner));
+            this.hopChains.Add((path, step, inner), hop = new(path, step, inner));
         }
 
         return hop;
     }
 
-    // The conformance paths one ContractType answer resolved through, outermost hop first; interned (Hop), so one chain is one object. As
-    // a cause its candidates are the hops' clauses (DECISIONS BU-76).
-    internal sealed class ResolutionHops(BoundConformancePath path, ResolutionHops? inner) : ICheckCause
+    // The conformance paths one ContractType answer resolved through, outermost hop first, each with the projection step it resolved;
+    // interned (Hop), so one chain is one object. As a cause its candidates are the hops' clauses (DECISIONS BU-76).
+    internal sealed class ResolutionHops(BoundConformancePath path, BoundType step, ResolutionHops? inner) : ICheckCause
     {
         public Koto Use => this.Path.Use;
 
         public ICheckCause? Next => this.Inner;
 
         internal BoundConformancePath Path { get; } = path;
+
+        // The associated projection this hop resolved, its components normalized (the component summaries' re-entry test).
+        internal BoundType Step { get; } = step;
 
         internal ResolutionHops? Inner { get; } = inner;
 
