@@ -172,6 +172,10 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 
 <a id="g86"></a>
 - **G86 (BU; bu48 and its fix rounds 1 and 2, DECISIONS BU-44):** SPEC 15.3.5 and 8.1.2 judge a conditional slot's Loan requirement and Phantom status per admitted Semantics case (`SlotRequirement`, `Binding.RequirementAt`; the records name their cases); the old analysis reads it through `RequirementAt` too, by the owner's D5 exception (「(a) 場合ごとの読みを許可 (推奨)」), until R6-check. The nested slot's family argument stays open in PLAN.
+<a id="g122"></a>
+- **G122 (R4; 2x-E3; DECISIONS R4-M61's amendment):** a literal the lexer could not read is published Error by `Binding.Rejected`, its one owner, so `MirBuilder.Rejected` reads only an Error or a missing Meaning, and a published Literal without its constant is the builder's located `InternalInvariant_Kd`.
+<a id="g157-census"></a>
+- **G157 items, G289 (2) (R5's census of 2026-11-01):** closed as stale: (22) and (34), the old generator deleted at G7; (49), Binding's side landed (bu60), the collector part being G149; (50), a condition (strings are released only through `__kimi_destroy_string`; reopen with a new release path); (7)'s `Emission.ReportFailure`, script and sel clauses (G4); (37)'s commit clause (R5-M131); (40)'s old-only Backend members (G4) and legacy-inlining clauses; (45)'s audit clause (G3); G289 (2), closed by G2. G205's and G150's R5 conditions lapsed.
 <a id="g161"></a>
 - **G161 (R4; window of 2026-10-30; DECISIONS R4-M156):** a raw Place borrow's Loan is its fresh anchor's (SPEC 5.2.2, 15.6.2), so eight valid raw forms lose a MIR-only false error; a constructor's result is live after its Return, so the Loans and own-step pointers the delivered receiver carries are checked there (refuted at the Return, valid in a `drop`). The default pipeline's remaining acceptances are G166's (with its B3), resolved by R6-check. G211 stays open in PLAN.
 <a id="g168"></a>
@@ -180,6 +184,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G175 (R5; batch 79):** `DiagnosticOwner.FindDocument` throws when two snapshots of a path are registered; `TestDiagnostics.Text` is the one by-path readout; four tests name their snapshot. No production member.
 <a id="g182"></a>
 - **G182 (R5; batches 80 and 81; design `draft/Sketches/R5/G182-design.md`):** O2 growth under MIR code generation, correct code: (1) the u64/usize join kept (R5-M84); (3a) the erased drop entry gets the address of a copy of the environment word (R5-M104's amendment, option A); (3b) closed; (3c) kept; (2)+(3d) `compare-fixtures.ps1 -O2Metrics` ranks and totals by whole-module instructions.
+<a id="g191"></a>
+- **G191 (R4; DECISIONS R4-M121):** `MirValidator` checks the builder's static contracts (every staticEnsure has its static's StaticInit body; every static a body's Place roots in is ensured by that body, an Opaque site's roots left out), and the four consumer guards are deleted. The review's N1–N3 stay open in PLAN.
 <a id="g240"></a>
 - **G240 (BU; bu35, DECISIONS BU-36):** storage preparation publishes `StorageOutcome { Prepared, Rejected, Limit }` (a limit wins), so a call over storage Binding rejected keeps its other rows, a failed part holding nothing (SPEC 23.1.2), and `CallRetention.Limit` is a genuine limit only (R4-M51); bu38 fixed `d-local-other`. R4's readers of an instance read `TyCtxt.ReadableInstance`, and the builder over Rejected storage landed, with G245 U2 (R4-M139).
 <a id="g243"></a>
@@ -242,8 +248,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G342 (R4; window r4w3, 2026-10-31; DECISIONS R4-M160; Full, the design-first candidate):** A5 keeps a store's value past storage the body does not own once, as Shared, and reads each Shared id once; the five scaling rows grow 3.5-3.9x per doubling (bound 5); the mir ledger is identical. Its next step is G264 U1's (PLAN G264).
 <a id="g347"></a>
 - **G347 (R5; batch 75):** every test allocation window goes through `AllocationMeasurement.Measure` or `MeasureOnce`; an `ArchitectureRulesTest` ratchet keeps `GetAllocatedBytesForCurrentThread` in `AllocationMeasurement.cs`. Its 64 B MirBorrows item went to R4 (PLAN G350).
-<a id="g157-census"></a>
-- **G157 items, G289 (2) (R5's census of 2026-11-01):** closed as stale: (22) and (34), the old generator deleted at G7; (49), Binding's side landed (bu60), the collector part being G149; (50), a condition (strings are released only through `__kimi_destroy_string`; reopen with a new release path); (7)'s `Emission.ReportFailure`, script and sel clauses (G4); (37)'s commit clause (R5-M131); (40)'s old-only Backend members (G4) and legacy-inlining clauses; (45)'s audit clause (G3); G289 (2), closed by G2. G205's and G150's R5 conditions lapsed.
+<a id="g350-64b"></a>
+- **G350's R4 item (R4; window r4w4, 2026-11-01; no DECISIONS entry):** `MirOrigins.CollectRefs` sized its Anchor table by the body's atom table, which pass 1's `Relate` grows (meet operands interned through `OriginAtomIn`), so A5's second pass regrew `anchors` (64 B on Milestone7; 15 milestones, 896 B); the table is now sized by the Refs' own atoms, and `MirBorrowsTest.A5sSecondPassAllocatesNothing` measures the whole second pass. G350's own row (R5) stays open.
 
 ## Retired audit records
 
