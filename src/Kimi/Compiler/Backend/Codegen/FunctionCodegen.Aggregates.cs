@@ -96,14 +96,14 @@ internal sealed partial class FunctionCodegen
     // its offset and its Type in the item's instance. A Tuple's element, a Closure's capture and a struct's own Field are at the record's
     // Field offsets, a struct's base first and at 0 (its complete base is a prefix, X1); an enum Case's payload element is at the payload's
     // offset, the record's Field 1, plus its offset in the Case's payload Tuple; a fixed array's element, and an Array's in its buffer, is at
-    // its position times the element's stride.
+    // its element offset (FunctionCodegen.Places' ElementOffset).
     private (long Offset, BoundType Type) Component(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
     {
         var offsets = record.Layout.FieldOffsets.Span;
         switch (kind)
         {
             case MirAggregateKind.FixedArray or MirAggregateKind.Array:
-                return (index * (long)(this.Laid(type.Components[0])?.Layout.Stride ?? 0), type.Components[0]);
+                return (this.Laid(type.Components[0]) is { } element ? ElementOffset(element, index) : 0, type.Components[0]);
             case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
             case MirAggregateKind.Adt when AdtDef.IsEnum(type):

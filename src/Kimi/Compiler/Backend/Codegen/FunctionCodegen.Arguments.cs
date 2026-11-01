@@ -205,7 +205,7 @@ internal sealed partial class FunctionCodegen
         }
 
         var first = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
-        if (row.Writer == LegacyWriter.Swap && this.Referent(this.InstanceType(this.body.Operands[first])) is { } type &&
+        if (row.Writer == LegacyWriter.Swap && this.ReferencedType(this.InstanceType(this.body.Operands[first])) is { } type &&
             this.module.Layout.Of(type).Value is { Layout.Size: > 0 } lowering && InMemory(type, lowering))
         {
             this.AddSlot(first, lowering.Layout);

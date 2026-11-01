@@ -131,13 +131,12 @@ internal sealed partial class FunctionCodegen
     private void ScalarCast(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
-        if (!this.Compute(this.body.Operands[rvalue.Start], out var input) || input.Lowering is not { } source ||
-            this.LoweringOf(statement.Place) is not { } target)
+        if (!this.Compute(this.body.Operands[rvalue.Start], out var input) || this.LoweringOf(statement.Place) is not { } target)
         {
             return; // A broken contract, recorded.
         }
 
-        var from = ClassOf(input.Type);
+        var (from, source) = (ClassOf(input.Type), input.Lowering);
         var to = ClassOf(this.InstanceType(statement.Place)!);
         if (ConversionOf((MirCastKind)rvalue.Op, from, to, target.Layout.Size.CompareTo(source.Layout.Size)) is not { } row)
         {

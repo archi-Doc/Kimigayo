@@ -215,7 +215,8 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 16.3.2: a fixed array's elements by decreasing index under a row: an element with a row (its ConstIndex child) by it
     // (DestroyByRow), each run of elements without one under the row's own bit in the one counted loop (Loop), whose k-th pass destroys the
-    // run's element at its last element's offset less the pass's; under no row, one run of every element. Nothing for no element.
+    // run's element at its last element's offset (ElementOffset) less the pass's; under no row, one run of every element. Nothing for no
+    // element.
     private void Elements(BoundType type, int target, int row, Value address, Site site)
     {
         if (type.Length == 0 || this.Laid(type.Components[0]) is not { } element)
@@ -223,7 +224,6 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var stride = element.Layout.Stride;
         for (long last = type.Length - 1, end; last >= 0; last = end - 1)
         {
             var child = this.Highest(row, last);
@@ -231,13 +231,13 @@ internal sealed partial class FunctionCodegen
             if (end < last)
             {
                 var guard = this.Test(this.Own(row));
-                this.Loop(last - end, element, new Destroyed(target, address, last * stride, site));
+                this.Loop(last - end, element, new Destroyed(target, address, ElementOffset(element, last), site));
                 this.Join(guard);
             }
 
             if (child >= 0)
             {
-                this.DestroyByRow(row, child, target, address, end * stride, site);
+                this.DestroyByRow(row, child, target, address, ElementOffset(element, end), site);
             }
         }
     }
