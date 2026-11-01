@@ -352,6 +352,13 @@ public sealed partial class Binding
                     return Complete(call, null);
                 }
 
+                if (this.AmbiguityRestingPart(evaluation) is { } failed)
+                {
+                    // SPEC 23.1.2 (U1.6h B1): the kept candidates differ at a failed part, whose Type could have separated them.
+                    this.MarkWaitingHeaders(call);
+                    return this.CompleteDependent(call, failed);
+                }
+
                 var remaining = new RejectedCandidate[applicable];
                 var next = 0;
                 var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);

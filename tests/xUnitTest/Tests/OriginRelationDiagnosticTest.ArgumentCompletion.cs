@@ -321,8 +321,8 @@ public partial class OriginRelationDiagnosticTest
     // 23.1.2), so a name that fails at a waiting position adds no record at the call: at the join's own position (n1), as an element
     // (f2), at a child position (e3) and in a labeled `do` (dl1). A failed join that waited binds its other sources at the Type its
     // position decided, so their own records stand beside the name's (g026, g196), as in their twins without it (g026_fix, g196_fix).
-    // Open, the G340 remainder: an ambiguity that only the failed part could decide is dependent too, but these still give
-    // AmbiguousBinding_Kd with two candidates (n1_ov, f2_ov, e3_ov, g238). The slot's half, g028, is U1.6h-1's (FailedFits rows).
+    // The G340 remainder, a slot or an ambiguity that only the failed part could decide (g028; n1_ov, f2_ov, e3_ov, g238), is U1.6h's
+    // (OriginRelationDiagnosticTest.FailedFits).
     [Theory]
     [InlineData("U1.6", "n1", IdentityT + "func f(x: i64) -> i32 => 0\n" + KHead + "    return f(if c => undefinedName else => identity(1))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "f2", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
@@ -332,10 +332,6 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6", "g026_fix", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => true else => identity(4)))\n", "NoApplicableOverload_Kd identity(4); NoApplicableOverload_Kd identity(7)")]
     [InlineData("U1.6", "g196", IdentityT + GOptions + KD + "    return g([if c => (if d => undefinedName else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "g196_fix", IdentityT + GOptions + KD + "    return g([if c => (if d => .None else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8")]
-    [InlineData("open", "n1_ov", IdentityT + FScalars + KHead + "    return f(if c => undefinedName else => identity(1))\n", "AmbiguousBinding_Kd f(if c => undefinedName else => identity(1)); UnresolvedBinding_Kd undefinedName")]
-    [InlineData("open", "f2_ov", IdentityT + FTuples + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "AmbiguousBinding_Kd f((if c => identity(1) else => undefinedName, 3)); UnresolvedBinding_Kd undefinedName")]
-    [InlineData("open", "e3_ov", IdentityT + FTuples + KHead + "    return f(if c => (identity(1), 2) else => (undefinedName, 3))\n", "AmbiguousBinding_Kd f(if c => (identity(1), 2) else => (undefinedName, 3)); UnresolvedBinding_Kd undefinedName")]
-    [InlineData("open", "g238", IdentityT + "func f(x: (Option<i64>, i32)) -> i32 => 0\nfunc f(x: (Option<bool>, i32)) -> i32 => 1\n" + KD + "    return f((if c => (if d => .None else => identity(.Some(4))) else => undefinedName, 3))\n", "AmbiguousBinding_Kd f((if c => (if d => .None else => identity(.Some(4))) else => undefinedName, 3)); UnresolvedBinding_Kd undefinedName")]
     public void AFailedPartTakesNoPartInItsPosition(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 

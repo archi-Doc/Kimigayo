@@ -9216,10 +9216,17 @@ resumed by R4-M86 (2026-10-20).
   - Storage: one Binding list in the call evaluation's scratch. The evaluation marks its first entry (`CallEvaluation.FailedFits`) and
     releases its entries when it ends, as `obligations` are, so a nested evaluation keeps its own (R4's C22). A candidate's solution
     carries its scope (`FailedFitScope`: the evaluation's first entry, the candidate's index); no other solution publishes.
-  - Readers: SolveSelected, where the selected candidate's unsolved slot would be the inference boundary. When every unsolved slot
-    occurs in one of the candidate's FailedFit patterns (C15), the call rests on that failed part (`RestingFailedPart`). The Ambiguous
-    outcome reads it from U1.6h-2. The reader sits in SolveSelected, FailUnboundSlots' one caller, because FailUnboundSlots is
-    already over the parameter limit.
+  - Readers (U1.6h-1): SolveSelected, where the selected candidate's unsolved slot would be the inference boundary. When every
+    unsolved slot occurs in one of the candidate's FailedFit patterns (C15), the call rests on that failed part
+    (`RestingFailedPart`). SolveSelected owns the decision of what an unsolved slot leads to: a waiting nested call, a Literal
+    default's misfit (`CompleteDependent(call, misfit)`), a failed part, or else the inference boundary. FailUnboundSlots only forms
+    the boundary's record.
+  - Readers (U1.6h-2): BindCallCore's Ambiguous outcome. The call rests on a failed part, its waiting parts resting on the call as
+    FailWaitingSelection rests them, when two kept candidates' patterns differ there (C16, `AmbiguityRestingPart`).
+    - "Differ" is structural. Each candidate's own Type and length slots are paired one-to-one in order of first occurrence, across all
+      the failed parts the pair met. Origin bindings are not read (10.4 step 2).
+    - The paired slots' Constraints must be equal: each candidate's clauses that name a paired slot, in order, agree pairwise.
+    - With no difference, the ambiguity is independent and recorded: h3e (i64 against i64), h8 (T against U).
   - Scope (R4's C19, C23): only an unbound failed part is covered. A failed argument that kept its Type (r2-2) is r2-3's: its fit row
     and its kept Type's structural operation. The merge into U2.1 decides one answer for such a part at a join position and as the
     argument.
