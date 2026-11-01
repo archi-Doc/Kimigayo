@@ -67,8 +67,10 @@ public class StoredObjectViewTest
     }
 
     // PD17 (DECISIONS R5-M110): runtime identity is the Origin-erased Type numbered in the module, and no package-qualified key text is
-    // written, so a changed package identity rebinds to the same module text; an edit that takes Root off the chain numbered before Item's
-    // shifts Item's number (Other 1, Root 2, Item 3, then Item 2) at the same descriptor item, and the reused module writes the current one.
+    // written, so a changed package identity rebinds to the same module text; an edit that takes Root off the chain numbered before the i64
+    // payload's shifts its number (Other 1, Root 2, i64 3, then i64 2) at the same descriptor item, whose layout row survives the rebind, so
+    // the reused module's descriptor row is rechecked against the current number (ModuleCodegen.Objects' Row) and writes a new compilation's
+    // metadata.
     [Fact]
     public void PhysicalReuseRechecksTheCurrentRuntimeIdentity()
     {
@@ -76,8 +78,8 @@ public class StoredObjectViewTest
             "struct Keep : Root\n    public init() : base() => ()\n";
         const string Based = "struct Other : Root\n    public init() : base() => ()\n";
         const string Unbased = "struct Other\n    public let code: i64 = 9\n    public init() => ()\n";
-        const string Program = "let k = Keep.init()\nlet first = Kimi.Intrinsics.makeObj(Other.init())\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\n" +
-            "let stored = (owner@move, 1)\nrequire stored.0.id == 7 else => $abort(\"read\")";
+        const string Program = "let k = Keep.init()\nlet first = Kimi.Intrinsics.makeObj(Other.init())\nlet five = Kimi.Intrinsics.makeObj<i64>(5)\n" +
+            "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet stored = (owner@move, 1)\nrequire stored.0.id == 7 else => $abort(\"read\")";
         var c = MinimalEmissionTest.Analyze(Root + Based + Item + Program);
         var initial = CompilationTestHelper.WriteIr(c);
         c.Project.ProjectFile.PackageId = "changed.identity";
@@ -95,16 +97,15 @@ public class StoredObjectViewTest
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
-        var (descriptor, number) = Identity(changed);
-        Assert.Equal("3", number);
-        Assert.Equal((descriptor, "2"), Identity(CompilationTestHelper.WriteIr(c)));
+        var shifted = CompilationTestHelper.WriteIr(c);
+        Assert.Equal(Metadata(CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Root + Unbased + Item + Program))), Metadata(shifted));
+        const string Payload = ", i64 8, i64 8, i64 1, "; // The i64 payload's metadata: 8 bytes, Copy.
+        var before = Assert.Single(Metadata(changed), static x => x.Contains(Payload, StringComparison.Ordinal));
+        Assert.Contains("} { i64 3" + Payload, before, StringComparison.Ordinal);
+        var after = Assert.Single(Metadata(shifted), static x => x.Contains(Payload, StringComparison.Ordinal));
+        Assert.Equal(before.Replace("} { i64 3,", "} { i64 2,", StringComparison.Ordinal), after);
     }
 
-    // Item's descriptor and runtime identity number in a module's text: its payload metadata's (an i32 layout, not Copy, a destroy entry).
-    private static (string Descriptor, string Number) Identity(string ir)
-    {
-        var metadata = Regex.Match(ir, @"(?m)^@__kimi_object_metadata(\d+) = private constant \{[^}]*\} \{ i64 (\d+), i64 4, i64 4, i64 0, ptr @");
-        Assert.True(metadata.Success);
-        return (metadata.Groups[1].Value, metadata.Groups[2].Value);
-    }
+    // A module's payload metadata, one line per descriptor (its runtime identity number, layout, Copy and destroy entry).
+    private static string[] Metadata(string ir) => [.. Regex.Matches(ir, @"(?m)^@__kimi_object_metadata\d+ = .*$").Select(static x => x.Value)];
 }

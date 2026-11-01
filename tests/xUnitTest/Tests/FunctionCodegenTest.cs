@@ -976,6 +976,22 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(put.Instructions, static x => x.Shape == "store i32 %, ptr %, align 4" && x.Operands[^1].Shape == "alloca [8 x i8], align 8");
     }
 
+    // DECISIONS R5-M89, R5-M110, R5-M111: a creating adaptation passes its payload as a creation call does, a Copy of a value in memory
+    // through a copy slot of the entry block (Copies), so the factory receives the slot, never the copied parameter itself.
+    [Fact]
+    public void AnObjectCreationAdaptationCopiesAPayloadInMemory()
+    {
+        var source = Creations.Replace("x: i32", "x: (i32, i64)", StringComparison.Ordinal);
+        var c = Analyze(source.Replace("put(o@move, 1)", "put(o@move, (1, 2))", StringComparison.Ordinal), OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var put = Assert.Single(FunctionsOf(ir, c, "put"));
+        var create = Assert.Single(CallsOf(put), static x => x.Callee!.Signature == "internal void (ptr, ptr, i64, ptr, i64)");
+        var slot = create.Operands[1];
+        Assert.Equal("alloca { [0 x i64], [16 x i8] }, align 8", slot.Shape);
+        var memcpy = ir.Function("llvm.memcpy.p0.p0.i64");
+        Assert.Single(put.Instructions, x => x.Callee == memcpy && x.Operands[0] == slot && x.Operands[1] == put.Parameters[1]);
+    }
+
     // IMPL 21.3.1 (DECISIONS R5-M89): a call of a function's item passes each argument by its parameter's kind and puts its value into the
     // destination: a scalar in its computation representation (a bool narrowed, its result widened), a string borrow with its attributes
     // (the O2 parity list), nothing for a zero-sized parameter, the destination's address as a slot result, a moved value's Place itself

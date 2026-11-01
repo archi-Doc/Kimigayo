@@ -39,7 +39,8 @@ internal sealed partial class FunctionCodegen
     // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): a case adaptation that creates an object (MirCases.Adapt's ObjectCreation, its rvalue the Use
     // of its operand) calls the factory of the statement's target descriptor as a creation call does, through the one call path (Pass): the
     // statement in MIR's Call form, its one operand, its Place the destination and its location, given the control value of the Place's
-    // handle. Copies numbers the copy slots of Call terminators only, so the operand has none; no successor ends the call (Finish).
+    // handle; an in-memory Copy payload's copy slot is a creation call's (FunctionCodegen.Arguments' CreationSlot); no successor ends the
+    // call (Finish).
     private void Creation(in MirStatement statement, in MirRvalue use)
     {
         var factory = this.Create(this.InstanceType(statement.Place), this.Target(new(this.at, this.position)), out var given);

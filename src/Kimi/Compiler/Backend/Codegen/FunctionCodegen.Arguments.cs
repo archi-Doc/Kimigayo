@@ -67,8 +67,9 @@ internal sealed partial class FunctionCodegen
     // allocates them; the call writer finds an operand's by its index. The pass covers the operands a reached Call passes to an OwnedSlot
     // parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in memory by pointer, so every in-memory
     // operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine (Raw.release, $abort) or a creation's
-    // factory (its payload, DECISIONS R5-M110), so a Fail's code or Raw.initialize's value gets none; a compiler function of the Body
-    // disposition, called directly or as an Item's Value call, by its legacy row (RowSlots; DECISIONS R5-M116). A Value call's callee
+    // factory (its payload, DECISIONS R5-M110; a creating adaptation's too, CreationSlot), so a Fail's code or Raw.initialize's value gets
+    // none; a compiler function of the Body disposition, called directly or as an Item's Value call, by its legacy row (RowSlots; DECISIONS
+    // R5-M116). A Value call's callee
     // operand passed by value is its environment, which a Consuming body owns (SPEC 7.7.3: a Consuming call Copies a Copy Closure; DECISIONS
     // R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy), since a block's terminator is its one call. The same
     // pass gives an interpolation buffer its Region home when its estimate places it on the frame (FunctionCodegen.Interpolation's Region)
@@ -85,10 +86,32 @@ internal sealed partial class FunctionCodegen
         this.copyCount = 0;
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
-            if (this.reach[block] && this.body.Blocks[block].Terminator is { Kind: MirTerminatorKind.Call } call)
+            if (!this.reach[block])
+            {
+                continue;
+            }
+
+            var (start, length, terminator) = this.body.Blocks[block];
+            foreach (var statement in this.body.Statements.Slice(start, length))
+            {
+                this.CreationSlot(statement);
+            }
+
+            if (terminator is { Kind: MirTerminatorKind.Call } call)
             {
                 this.CopySlots(call, block);
             }
+        }
+    }
+
+    // A creating adaptation's payload slot (DECISIONS R5-M111): its factory's call passes the operand as a creation call's (Create below,
+    // FunctionCodegen.Objects' Creation), so the operand MirCases.Adapt's ObjectCreation uses has its copy slot.
+    private void CreationSlot(in MirStatement statement)
+    {
+        if (statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Adapt } &&
+            this.cases.Adapt(statement.Rvalue, out var operation) is { Start: var payload } && operation == ConversionBinding.ObjectCreation)
+        {
+            this.CopySlot(this.body.Operands[payload], payload);
         }
     }
 
