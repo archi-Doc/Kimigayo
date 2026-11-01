@@ -171,7 +171,7 @@ public sealed partial class CheckServiceTest : IDisposable
     [InlineData("a/b.kimi", "a-b.kimi", 1)]
     [InlineData("a.kimi", "a0.kimi", -1)]
     [InlineData("a", "a.kimi", -1)]
-    [InlineData("\U0001F600.kimi", "Ａ.kimi", 1)]
+    [InlineData("\U0001F600.kimi", "\uFF21.kimi", 1)]
     [InlineData("\U0001F600.kimi", "\U0001F601.kimi", -1)]
     [InlineData("\U0001F600.kimi", "\U00020000.kimi", -1)]
     public void SourceNamesOrderAsUtf8Bytes(string first, string second, int order)
@@ -186,8 +186,8 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public void LoneSurrogatesOrderByTheirCodeUnits()
     {
-        string[] names = ["\uDC00", "\U00010000", "", "\uD800"];
-        Assert.Equal(["", "\uD800", "\U00010000", "\uDC00"], names.Order(UnicodeNameHelper.ScalarOrder));
+        string[] names = ["\uDC00", "\U00010000", "\uE000", "\uD800"];
+        Assert.Equal(["\uE000", "\uD800", "\U00010000", "\uDC00"], names.Order(UnicodeNameHelper.ScalarOrder));
     }
 
     // SPEC 6.2.1 (DECISIONS R5-M176): a module's sources are parsed in logical declaration order, whatever the read order: a TestSources
@@ -199,11 +199,11 @@ public sealed partial class CheckServiceTest : IDisposable
         File.WriteAllText(this.PathOf("App", "a.kimi"), "public func a() -> i32 => 1\n");
         File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
         File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
-        File.WriteAllText(this.PathOf("App", "Ａ.kimi"), "public func wide() -> i32 => 5\n");
+        File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "public func wide() -> i32 => 5\n");
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
         loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
         var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
-        Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "Ａ.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
+        Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "\uFF21.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
     }
 
     // IMPL 20.1 (DECISIONS R5-M175): a name used twice in one module (an in-memory source beside the listed one) is the same failure.

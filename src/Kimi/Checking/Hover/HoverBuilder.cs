@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -453,7 +454,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
                 if (result == 0)
                 {
-                    result = string.CompareOrdinal(a.ModId ?? a.LogicalName, b.ModId ?? b.LogicalName);
+                    result = UnicodeNameHelper.ScalarOrder.Compare(a.ModId ?? a.LogicalName, b.ModId ?? b.LogicalName);
                 }
 
                 if (result == 0)

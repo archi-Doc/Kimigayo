@@ -70,7 +70,7 @@ public sealed partial class Binding
             var order = (a.Source.ModId is not null).CompareTo(b.Source.ModId is not null);
             if (order == 0)
             {
-                order = string.CompareOrdinal(a.Source.ModId ?? a.Source.LogicalName, b.Source.ModId ?? b.Source.LogicalName);
+                order = Helper.UnicodeNameHelper.ScalarOrder.Compare(a.Source.ModId ?? a.Source.LogicalName, b.Source.ModId ?? b.Source.LogicalName);
             }
 
             if (order == 0)

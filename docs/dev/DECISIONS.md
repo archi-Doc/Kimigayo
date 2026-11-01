@@ -14925,17 +14925,25 @@ structure is recorded here by the unit that first implements it.
     order (SPEC 23.2.2), so the diagnostic source table keeps consumption order; parsing still precedes the established check, so a read
     failure still reports the other documents' syntax errors (SPEC 23.1.2). In-memory documents now join the root's call before that
     check, so a failed read also reports their own syntax errors.
-  - Consumer: `TestCatalog` reads `SourceDocuments` in its order (its sort is removed); the artifact identity changes only for a module
-    whose names UTF-16 and UTF-8 order differently.
+  - Consumers: `TestCatalog` reads `SourceDocuments` in its order (its sort is removed); the artifact identity changes only for a module
+    whose names UTF-16 and UTF-8 order differently. Documentation orders a declaration's fragments in SPEC 6.2.1's shape (ordinary
+    before generated, then `ModId ?? LogicalName`, the addition order, the position), in `Binding.GetDocumentation` and hover's
+    documentation (`HoverBuilder`, after its project key, which stays ordinal); its name key now compares with `ScalarOrder` instead
+    of `string.CompareOrdinal`.
+  - Kept: the multi-key record orders of IMPL 20.6.4 (the test listing and results by name, logical source path and project identity:
+    `TestCatalog.Compare`, `TestCommand`'s outcome sort, and the sites' order that numbers SiteIds) keep `string.CompareOrdinal`. They
+    order test records under the test protocol's contract, not declarations under SPEC 6.2.1; a similar shape under another contract
+    stays separate (AGENTS, Share by meaning).
   - Out of scope, unchanged: the Kimi library's hand order (`KimiLibrarySources`; no library struct's Fields span documents: no
     container is declared in two library documents, and signature documents add only functions); Mod-generated fragments and
-    `CodeContext.Parse` (an API, call order); SPEC 23.2.3's unit order (not implemented: JSON `kimi check` takes one input, and
-    `TestCommand` orders projects under UTF-16 ordinal, a candidate for `ScalarOrder`); `DependencyResolver`'s, `CheckInputSource`'s
-    and `DiskReader`'s listing orders, which now decide read order only.
+    `CodeContext.Parse` (an API, call order); `DependencyResolver`'s, `CheckInputSource`'s and `DiskReader`'s listing orders, which
+    now decide read order only. SPEC 23.2.3's unit order (Unicode scalar order of the selected paths) is not implemented: JSON
+    `kimi check` takes one input (STATUS's conformance note: single-unit `kimi.check/2`); when it is built, it uses `ScalarOrder`.
   - Rejected: a sort in `Project` (the order would have a second owner beside the names' owner, and `TestCatalog` kept its own copy);
     sorting the reads (reads and their failures are consumed in command order, SPEC 23.2.2); `StringComparer.Ordinal` (UTF-16 order,
     wrong where a supplementary scalar meets U+E000–U+FFFF).
-  - Tests: `CheckServiceTest.SourceNamesOrderAsUtf8Bytes` and `LoneSurrogatesOrderByTheirCodeUnits` (the comparer),
-    `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two documents given in reverse) and
-    `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory source between product sources,
-    `Ａ.kimi` before `😀.kimi`); each fails under the parse order (AddSources without its sort).
+  - Tests: `CheckServiceTest.SourceNamesOrderAsUtf8Bytes` and `LoneSurrogatesOrderByTheirCodeUnits` (the comparer) fail under an
+    ordinal comparer, and so does `DocumentationIntegrationTest.OrdersFragmentsAndKeepsGeneratedSourcesWithoutLinkBases`'s U+FF21 and
+    U+1F600 pair (documentation); `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two
+    documents given in reverse) and `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory
+    source between product sources, a U+FF21 name before a U+1F600 one) fail under `AddSources` without its sort (the parse order).

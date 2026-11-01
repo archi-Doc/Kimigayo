@@ -155,7 +155,7 @@ internal static class UnicodeNameHelper
         {
             if (x is null || y is null)
             {
-                return x is null ? (y is null ? 0 : -1) : 1;
+                return string.CompareOrdinal(x, y);
             }
 
             var index = x.AsSpan().CommonPrefixLength(y);
@@ -163,7 +163,11 @@ internal static class UnicodeNameHelper
         }
 
         // A code unit's rank in UTF-8 byte order: U+E000–U+FFFF below the surrogates, which encode U+10000 and above.
-        private static int Rank(char unit)
-            => unit < 0xD800 ? unit : unit < 0xE000 ? unit + 0x2000 : unit - 0x800;
+        private static int Rank(char unit) => unit switch
+        {
+            < (char)0xD800 => unit,
+            < (char)0xE000 => unit + 0x2000,
+            _ => unit - 0x800,
+        };
     }
 }
