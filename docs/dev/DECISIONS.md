@@ -13075,6 +13075,9 @@ structure is recorded here by the unit that first implements it.
       no ledger row needs it, and an item for a fixed symbol defines nothing, R5-M128's rejection); the collector skipping K row 2's Builtin
       item (it names the Self); new IntrinsicIds, MonoKinds or collector items for the wrappers (R5-M30: the collector never sees a wrapper);
       re-pointing the old planner to the new wrappers (D5).
+  - Amendment (2026-11-01, PLAN G157 (40)): the two runtime ABIs stated twice are each stated once: `StatusFormatting` went with C9c's
+    bp1 (R5-M131) and the old planner's wrapper ABI with the old generator at G7 (R5-M162), so `LegacyRuntimeHelpers.FormatHealthy` and
+    `ModuleCodegen.WriteParameters` are the only copies, read by the write wrapper; SPEC 22.10.1's user-formatter frame is that wrapper alone.
 - **R5-M131 The owning interpolation's buffer, hints and end in MIR code generation (C9c)** (2026-10-27, C lane; plan C9c, package C 3.2,
   PD2, PD3, PD21; SPEC 22.7, 22.10.1, 22.10.3, 22.10.4, 22.10.5; the planning session's rulings Q1-Q9 on C9c's design, `c9c-design.md` and
   `c9c-go.md`, and its ruling on FormatFinish; under R3-10, R5-M18 form 2 (G:format), R5-M30, R5-M128, R5-M130 and R5-M132; PLAN G157 (35))
