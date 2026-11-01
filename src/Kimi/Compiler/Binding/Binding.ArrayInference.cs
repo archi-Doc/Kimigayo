@@ -106,10 +106,11 @@ public sealed partial class Binding
             }
             else if (!ReferenceEquals(actual, BoundType.Never))
             {
-                var common = element is null ? actual : this.CommonOriginType(element, actual, out _);
+                var failure = default(ComparisonFailure);
+                var common = element is null ? actual : this.CommonOriginType(element, actual, out failure);
                 if (common is null)
                 {
-                    this.Fail(literal.Elements[i], BindingFailure.TypeMismatch);
+                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
                     complete = false;
                 }
                 else

@@ -14,6 +14,18 @@ public partial class CallableOriginForwardingTest
 
     private const string StrongerHead = WeakerHead + "    origin q outlives r\n";
 
+    private const string StaticArmType = "() -> Option<ref/i32 during static>";
+
+    private const string JoinHead = "func k(x: ref/i32, c: bool) -> i32\n    let g: " + StaticArmType + " = ";
+
+    private const string LeakArm = "func [] () -> Option<ref/i32 during x> => .None";
+
+    private const string StaticArm = "func [] () -> Option<ref/i32 during static> => .None";
+
+    private const string PairHead = "func k(s: ref/i32, c: bool) -> i32\n    let g: (ref/i32) -> (Option<ref/(ref/i32) during s>, ref/i32 during static) = ";
+
+    private const string PairArm = "func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)";
+
     private const string WeakerTarget = "() -> Option<ref/(ref/i32 during q) during q>";
 
     private const string UseWeaker = "func use1(q: ref/i32, g: " + WeakerTarget + ") -> i32\n    let o = g()\n    return 0\n";
@@ -234,6 +246,33 @@ public partial class CallableOriginForwardingTest
     [InlineData("U2.1", "ann2_n", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n" + LocalNone, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
     public void AValueCallOfANestedSignatureProvesItsResult(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
+
+    // G216 (a) U2.1 r2-2 (DECISIONS BU-43 amendment): SPEC 14.9.2, 23.1.2: a join's source that failed with its own record and kept its
+    // Type (a Closure or a Function value whose conversion's condition failed) is no candidate of the join, which rests on it: the one
+    // record is the source's contract at the converted value (j9, j9b, j11, j6 at each Closure, j12 at `f@move`), with no TypeMismatch_Kd
+    // or contract copy at the `if`, and j4's independent capture records stay. Remaining sources that misfit keep the join's own record
+    // (j9m, Conflict prevails); a `match` of two Closures (j10) and a lone Closure (j6s) are unchanged.
+    [Theory]
+    [InlineData("j9", JoinHead + "if c => " + LeakArm + " else => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
+    [InlineData("j9b", JoinHead + "if c => " + StaticArm + " else => " + LeakArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
+    [InlineData("j11", "func k(x: ref/i32, c: bool) -> Option<ref/i32 during static>\n    let g: " + StaticArmType + " = if c => " + LeakArm + " else => " + StaticArm + "\n    return g()\n", "UnprovenOriginContract_Kd " + LeakArm)]
+    [InlineData("j6", PairHead + "if c => " + PairArm + " else => " + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginContract_Kd " + PairArm)]
+    [InlineData("j12", "func k(x: ref/i32, c: bool, f: () -> Option<ref/i32 during x>, g: " + StaticArmType + ") -> i32\n    let h: " + StaticArmType + " = if c => f@move else => g@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData("j4", "func k(x: ref/i32, y: ref/i32, c: bool) -> i32\n    let g: (ref/i32) -> ref/i32 during y = if c => func [] (p: ref/i32) -> ref/i32 during x => x else => func [] (p: ref/i32) -> ref/i32 during y => y\n    return 0\n", "InvalidCaptureBinding_Kd x; InvalidCaptureBinding_Kd y; UnprovenOriginContract_Kd func [] (p: ref/i32) -> ref/i32 during x => x")]
+    [InlineData("j9m", "func k(x: ref/i32, n: i32) -> i32\n    let g: " + StaticArmType + " = match n\n        0 => " + LeakArm + "\n        1 => " + StaticArm + "\n        _ => 1\n    return 0\n", "TypeMismatch_Kd 1; UnprovenOriginContract_Kd " + LeakArm)]
+    [InlineData("j10", JoinHead + "match c\n        true => " + LeakArm + "\n        false => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
+    [InlineData("j6s", PairHead + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm)]
+    public void AJoinRestsOnASourceWhoseConversionFailed(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // G216 (a) U2.1 r2-2 (R3): an element of an array literal with an expected array Type that misfits the element Type the earlier
+    // elements established is the element's record with the comparison's fact, as every other element misfit (FailMismatch); it was a
+    // record without its Types.
+    [Theory]
+    [InlineData("a13", "func k(x: i32, s: string) -> i32\n    let a: Array<i32> = [x, s]\n    return 0\n", "TypeMismatch_Kd s", "expected i32, found string")]
+    [InlineData("a15", "func k(x: i64, y: i32) -> i32\n    let a: [2 of i64] = [x, y]\n    return 0\n", "TypeMismatch_Kd y", "expected i64, found i32")]
+    public void AnArrayElementMisfitStatesItsTypes(string form, string body, string records, string label)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 
     // Not fixed yet (the owner's pending question about conversion records): a Loan conflict or TransferRequired_Kd independent of a
     // failed conversion stays beside the conversion's record (SPEC 23.1.2: records kept). Each twin's conversion holds and keeps the

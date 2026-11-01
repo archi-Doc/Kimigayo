@@ -8483,6 +8483,10 @@ resumed by R4-M86 (2026-10-20).
     `TypeMismatch_Kd` from the join to the call), and the call rejects (i64, ref/i64) at (i64, i64), as dev does for the literal twin
     `takeT(if c => (y, x@ref) else => (5, x))`; `firstArr`'s candidate is (i64, Array<i64>) (4.3.1). Whether a Never part should
     remove such a source from the candidates is PLAN G159's SPEC question. Not temporary.
+  - Amendment (U2.1 r2-2, 2026-11-01; R4's r2-23 design §2, BU's review 3 ACCEPT): a part bound with a Type whose own binding failed
+    (Invalid: its own BindingFailure, recorded or derived, such as a conversion's condition at a Closure, an Item or a Function value)
+    is failed for its consumers, as an unbound part with a failure cause is. A join rests on it and does not fit it against its Target
+    Result Type (ResultCandidates). PartFailed stays the one owner; no consumer tests BindingFailure itself.
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; R4's design 2 for PLAN G264, chosen by the planning session, design review 1 REVISE (B1, N1–N4), revision 1, design
   review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side, to

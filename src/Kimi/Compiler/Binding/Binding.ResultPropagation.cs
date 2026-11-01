@@ -306,7 +306,8 @@ public sealed partial class Binding
     // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form's operand; a
     // result target by its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary
     // literal by its own failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its
-    // call (IsWaitingPart), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite).
+    // call (IsWaitingPart), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part
+    // bound with a Type that failed with its own BindingFailure, recorded or derived (Invalid), is failed.
     private bool PartFailed(Koto part)
     {
         if (DeliveredOperand(part) is { } operand)
@@ -324,7 +325,7 @@ public sealed partial class Binding
             return part.BindingFailure != BindingFailure.None || IsRecovery(part, out _);
         }
 
-        return part.BoundType is null && !this.IsWaitingPart(part) && this.HasFailureCauses(part);
+        return part.BoundType is null ? !this.IsWaitingPart(part) && this.HasFailureCauses(part) : part.BindingState == BindingState.Invalid;
     }
 
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
@@ -473,8 +474,8 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
     // by its late Type (BindWaitedSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
-    // a failed source leaves the join Dependent on it (SPEC 23.1.2), and any other unbound source makes the join pending. Returns
-    // whether a source awaits.
+    // a failed source (PartFailed), unbound or typed, leaves the join Dependent on it and is no candidate (SPEC 23.1.2), and any other
+    // unbound source makes the join pending. Returns whether a source awaits.
     private bool ResultCandidates(ResultContext context, List<BoundType> types)
     {
         var awaiting = false;
@@ -494,7 +495,11 @@ public sealed partial class Binding
             {
                 var awaits = context.SourceNodes[i] is { } node && this.AwaitsPosition(node);
                 awaiting |= awaits;
-                if (!awaits)
+                if (!awaits && context.SourceNodes[i] is { } typed && this.PartFailed(typed))
+                {
+                    context.RestOn(typed);
+                }
+                else if (!awaits)
                 {
                     types.Add(source);
                 }
