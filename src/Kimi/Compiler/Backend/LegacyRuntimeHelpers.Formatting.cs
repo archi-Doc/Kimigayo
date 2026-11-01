@@ -287,10 +287,11 @@ internal static partial class LegacyRuntimeHelpers
     // checked one-scan expansion: each routine's definition at its marker, from the first row of its symbol.
     private static string ReadFormattingRuntime()
     {
-        var parts = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" };
-        for (var i = 0; i < parts.Length; i++)
+        var names = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" };
+        var parts = new string[names.Length];
+        for (var i = 0; i < names.Length; i++)
         {
-            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + parts[i] + ".ll.in")!;
+            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + names[i] + ".ll.in")!;
             using var reader = new StreamReader(resource);
             parts[i] = reader.ReadToEnd();
         }

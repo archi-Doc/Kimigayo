@@ -14744,6 +14744,13 @@ structure is recorded here by the unit that first implements it.
     they dilute the cost, relax the assertion in effect and keep the order dependence); leaving tests that fail alone (an order dependence
     hidden); a `Lazy<T>`, flag or mode for the texts; one holder per text.
   - Open: the expansion itself at code generation (8.18 MB in 12-45 ms once per process; PLAN G358).
+  - Amended by G358 (2026-11-01; closes Open): `LlvmModuleText.ExpandRuntime` expands a template in one ordered scan into one builder,
+    `AbortReasons.Expand` appending its markers' text, and the formatting runtime's parts are joined once. A fresh process, A/B over 20
+    interleaved runs: `LegacyRuntimeHelpers.Texts`' initialization 8,182,528 -> 1,463,488 B, 3.25 -> 1.24 ms (median);
+    `LlvmModuleText`'s 615,832 -> 222,024 B, 1.13 -> 1.72 ms (the new methods' JIT); the texts byte-identical.
+    `Kernel32ImportsTest.AFreshProcessBuildsTheRuntimeTextsOnce` bounds the texts' initializations at 11 B per text char (about 10
+    measured; the per-marker copies cost 51). Remaining: `Texts.ArrayRuntime`'s own `REASON_*` and `ZERO_SIZED_BUFFER` Replaces, a
+    second marker form (the planning session's new PLAN item).
 - **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, R5; PLAN
   G157 (17), (25)'s cache clause, (44)'s test; R5's U1, its review; amends R5-M102 and R5-M114) A call through a pointer (a common
   Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;

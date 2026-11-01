@@ -14,8 +14,8 @@
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
 // runtime template; a floating constant's hexadecimal spelling bits.
 // Invariants: warm writes allocate nothing; a template is expanded in one ordered scan into one builder; each runtime ABI
-// definition marker of a template is spliced exactly once and none is left unexpanded, or the template fails; the text holds no
-// checkout path.
+// definition marker of a template is spliced exactly once, every `{{` opens a marker and none is left unexpanded, or the template
+// fails; the text holds no checkout path.
 // Must not take syntax, HIR, Binding internals or MIR types in its signatures, or use LINQ.
 // Files: the module frame and the runtime templates (this file); the spellings of symbols, numbers, names and floating constants
 // (LlvmModuleText.Spelling.cs).
@@ -184,7 +184,7 @@ internal static partial class LlvmModuleText
     // template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at its `{{name}}` marker line and every other
     // marker takes its abort reason text (AbortReasons.Expand). Compiler-facing runtime signatures come from the same FunctionAbi
     // records as calls and each is defined once, so a missing or repeated definition marker, or a marker neither expands, is a broken
-    // template.
+    // template. Every `{{` opens a marker, so a `{` right before one (`{{{name}}`) fails too.
     internal static string ExpandRuntime(string template, ReadOnlySpan<FunctionAbi> definitions)
     {
         var length = template.Length;
@@ -247,7 +247,12 @@ internal static partial class LlvmModuleText
         var end = rest.IndexOf("}}", StringComparison.Ordinal);
         ReadOnlySpan<char> name = end < 0 ? [] : rest[2..end];
         var after = rest[(end + 2)..];
-        var line = after.StartsWith("\n", StringComparison.Ordinal) ? 1 : after.StartsWith("\r\n", StringComparison.Ordinal) ? 2 : 0;
+        var line = after.StartsWith("\n", StringComparison.Ordinal) ? 1 : 0;
+        if (after.StartsWith("\r\n", StringComparison.Ordinal))
+        {
+            line = 2;
+        }
+
         for (var i = 0; i < definitions.Length; i++)
         {
             if (line != 0 && !spliced[i] && name.SequenceEqual(definitions[i].Name))
