@@ -207,9 +207,13 @@ internal sealed partial class FunctionCodegen
                 BoundTypeKind.Closure => MirAggregateKind.Closure,
                 _ => MirAggregateKind.Adt,
             };
-            var (offset, _) = this.Component(kind, type, record, part.Ordinal, part.Index);
+            if (this.Component(kind, type, record, part.Ordinal, part.Index) is not { } component)
+            {
+                return; // A broken contract, recorded.
+            }
+
             var (parent, child) = this.Governing(type, part, row);
-            this.DestroyByRow(parent, child, target, address, offset, site);
+            this.DestroyByRow(parent, child, target, address, component.Offset, site);
         }
     }
 

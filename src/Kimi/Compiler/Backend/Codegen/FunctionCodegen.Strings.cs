@@ -19,8 +19,9 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class FunctionCodegen
 {
     // SPEC 3.4.3, 13.4: where an operand of safe value-reference layers denotes its terminal Place, given the operand's value: the referent of
-    // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule), or the value itself without
-    // layers (References 0); its Terminal. Null after a record: a pair layer, which no valid program leaves on an operand (above).
+    // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule); its Terminal. Without layers
+    // (References 0) the operand's own value, which is no address for a scalar: Compute reads it as the value, Bytes refuses it. Null after
+    // a record: a pair layer, which no valid program leaves on an operand (above).
     private Value? TerminalAddress(in MirOperand operand, Value value, in SourceInfo source, out Terminal terminal)
     {
         terminal = Terminal.Of(this.InstanceType(operand));
