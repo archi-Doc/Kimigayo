@@ -8487,6 +8487,10 @@ resumed by R4-M86 (2026-10-20).
     (Invalid: its own BindingFailure, recorded or derived, such as a conversion's condition at a Closure, an Item or a Function value)
     is failed for its consumers, as an unbound part with a failure cause is. A join rests on it and does not fit it against its Target
     Result Type (ResultCandidates). PartFailed stays the one owner; no consumer tests BindingFailure itself.
+  - Amendment (U2.1 r2-3, 2026-11-01; R4's r2-23 design §3, BU's review 3 ACCEPT): a call's fit takes a failed argument (PartFailed)
+    as fitting every candidate the evidence walk keeps, with the operation its kept Type takes at that parameter by structure; the
+    candidate is judged by its other arguments, and the record stays the argument's. An independent NoApplicableOverload_Kd (every
+    candidate rejected by arity or by another argument) stays.
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; R4's design 2 for PLAN G264, chosen by the planning session, design review 1 REVISE (B1, N1–N4), revision 1, design
   review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side, to

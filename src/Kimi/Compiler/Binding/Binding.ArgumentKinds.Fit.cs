@@ -19,6 +19,13 @@ public sealed partial class Binding
         var kind = this.KindOf(node);
         switch (kind)
         {
+            case var _ when this.PartFailed(node):
+                // SPEC 23.1.2 (DECISIONS BU-43, U2.1 r2-3): a failed argument fits every candidate the evidence walk keeps, with the
+                // operation its kept Type takes at the parameter by structure; its record stays its own, and the call rests on it. One
+                // rule with FitsPosition's failed-part row, at the argument's top.
+                var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
+                operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
+                return CandidateApplicability.Applicable;
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {

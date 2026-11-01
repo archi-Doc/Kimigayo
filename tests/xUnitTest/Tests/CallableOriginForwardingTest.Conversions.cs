@@ -26,6 +26,12 @@ public partial class CallableOriginForwardingTest
 
     private const string PairArm = "func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)";
 
+    private const string UseStatic = "func use(f: (ref/i32) -> ref/i32 during static) -> i32 => 0\nfunc k() -> i32\n";
+
+    private const string HoldStatic = "struct S\n    public let f: (ref/i32) -> ref/i32 during static\n    public init(f: (ref/i32) -> ref/i32 during static) => self.f = f@move\n";
+
+    private const string WeakClosure = "func [] (q: ref/i32) -> ref/i32 => q";
+
     private const string WeakerTarget = "() -> Option<ref/(ref/i32 during q) during q>";
 
     private const string UseWeaker = "func use1(q: ref/i32, g: " + WeakerTarget + ") -> i32\n    let o = g()\n    return 0\n";
@@ -263,6 +269,22 @@ public partial class CallableOriginForwardingTest
     [InlineData("j10", JoinHead + "match c\n        true => " + LeakArm + "\n        false => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j6s", PairHead + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm)]
     public void AJoinRestsOnASourceWhoseConversionFailed(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // G216 (a) U2.1 r2-3 (DECISIONS BU-43 amendment): SPEC 23.1.2, 10.5: a call's fit takes an argument that failed with its own record
+    // as fitting every candidate the evidence walk keeps, so a later use of the call's result (a consultation re-selecting it) adds no
+    // NoApplicableOverload_Kd beside the argument's one contract (na5a, na5, na5b, st1). A call no candidate admits by another argument
+    // keeps its own record (na5d; its Closure is never judged); na1, na5c and st1b (no later use) are unchanged.
+    [Theory]
+    [InlineData("na5a", UseStatic + "    let n = use(" + WeakClosure + ")\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    [InlineData("na5", UseStatic + "    let n = use(" + WeakClosure + ")\n    let local = 1\n    let r = local@ref\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    [InlineData("na5b", UseStatic + "    let n = use(" + WeakClosure + ")\n    let local = 1\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    [InlineData("st1", HoldStatic + "func k() -> ref/i32 during static\n    let s = S.init(" + WeakClosure + ")\n    let local = 1\n    return s.f(local@ref)\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    [InlineData("na5d", "func use(f: (ref/i32) -> ref/i32 during static, n: i32) -> i32 => 0\nfunc k() -> i32\n    let n = use(" + WeakClosure + ", true)\n    return n\n", "NoApplicableOverload_Kd use(" + WeakClosure + ", true)")]
+    [InlineData("na1", UseStatic + "    return use(" + WeakClosure + ")\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    [InlineData("na5c", UseStatic + "    let n = use(" + WeakClosure + ")\n    return 0\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    [InlineData("st1b", HoldStatic + "func k() -> i32\n    let s = S.init(" + WeakClosure + ")\n    return 0\n", "UnprovenOriginContract_Kd " + WeakClosure)]
+    public void ACallFitsAnArgumentWhoseConversionFailed(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // G216 (a) U2.1 r2-2 (R3): an element of an array literal with an expected array Type that misfits the element Type the earlier
