@@ -283,17 +283,16 @@ internal static partial class LegacyRuntimeHelpers
         void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextFixed] = new(kind, abi, needs);
     }
 
-    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, expanded by LlvmModuleText's checked splice:
-    // each routine's definition at its marker, from the first row of its symbol.
+    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, joined once and expanded by LlvmModuleText's
+    // checked one-scan expansion: each routine's definition at its marker, from the first row of its symbol.
     private static string ReadFormattingRuntime()
     {
-        string? text = null;
-        foreach (var name in new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" })
+        var parts = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" };
+        for (var i = 0; i < parts.Length; i++)
         {
-            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + name + ".ll.in")!;
+            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + parts[i] + ".ll.in")!;
             using var reader = new StreamReader(resource);
-            var part = reader.ReadToEnd();
-            text = text is null ? part : text + "\n" + part;
+            parts[i] = reader.ReadToEnd();
         }
 
         var symbols = new HashSet<string>(StringComparer.Ordinal);
@@ -306,7 +305,7 @@ internal static partial class LegacyRuntimeHelpers
             }
         }
 
-        return ExpandRuntime(text!, CollectionsMarshal.AsSpan(definitions));
+        return ExpandRuntime(string.Join('\n', parts), CollectionsMarshal.AsSpan(definitions));
     }
 
     private static partial class Texts

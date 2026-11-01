@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -47,6 +48,8 @@ public sealed class Kernel32ImportsTest
     [InlineData("{{__kimi_exit}}\n{{__kimi_exit}}\n")]
     [InlineData("{{__kimi_exit}}\n{{__kimi_unknown}}\n")]
     [InlineData("{{__kimi_exit}}\n  call void @__kimi_abort(i32 {{reason_unknown}})\n")]
+    [InlineData("{{__kimi_exit}}\n  call void @__kimi_abort(i32 {{reason_size)\n")]
+    [InlineData("{{__kimi_exit}}")]
     public void BrokenRuntimeTemplateFails(string template)
         => Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
@@ -55,6 +58,31 @@ public sealed class Kernel32ImportsTest
         => Assert.Equal(
             RuntimeAbi.Exit.GetDefinition(exported: false) + "  unreachable\n}\n",
             LlvmModuleText.ExpandRuntime("{{__kimi_exit}}\r\n  unreachable\n}\n", [RuntimeAbi.Exit]));
+
+    // PLAN G358: the one ordered scan writes what replacing each marker of the real Windows runtime template (the definitions, the
+    // reason indices, the reason table and its count) by its text throughout the whole text wrote.
+    [Fact]
+    public void RuntimeTemplateExpandsAsEachMarkersReplacement()
+    {
+        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
+        var template = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
+        var expected = template;
+        foreach (Match marker in Regex.Matches(template, @"\{\{(\w+)\}\}"))
+        {
+            var name = marker.Groups[1].Value;
+            if (Array.Find(RuntimeAbi.RuntimeDefinitions, x => x.Name == name) is { } abi)
+            {
+                expected = expected.Replace(marker.Value + "\n", abi.GetDefinition(exported: false), StringComparison.Ordinal);
+                continue;
+            }
+
+            var text = new StringBuilder();
+            Assert.True(AbortReasons.Expand(name, text));
+            expected = expected.Replace(marker.Value, text.ToString(), StringComparison.Ordinal);
+        }
+
+        Assert.Equal(expected, LlvmModuleText.ExpandRuntime(template, RuntimeAbi.RuntimeDefinitions));
+    }
 
     [Fact]
     public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()
