@@ -9253,6 +9253,15 @@ resumed by R4-M86 (2026-10-20).
     on no longer holds: a join with a failed part was Dependent at once, one failed part, so no classified join held one. Now
     Dependent is written only at the verdict, so a classified, waiting join holds failed parts, and PositionKind regains a row with
     a new meaning: Waiting, not "takes no part".
+  - Site 4 (U1.6h-5): a join its survey left unclassified (no Literal record: a failed or unknown source beside its literals) is a
+    Join (ClassifiedByCall), so its call classifies and selects (A's five rows reach dev's records; h3, h3b and h4 regain dev's
+    independent AmbiguousBinding_Kd and UnboundTypeArgument_Kd, which the literal join resting at classification had hidden).
+  - U1.6d as amended (Part 1): a failed source of a join its call classifies fits every candidate as a source, not as its whole join.
+    Its argument and its position are Waiting (10.5.1); its join records it as its cause and rests on it at its verdict (DecideRest).
+    The evidence walk publishes the candidate's pattern at each unbound failed part (FailedFit, BU-77, with fix (b)); an ambiguity
+    rests on it only where kept candidates' Types differ there, and an unsolved slot only when every one occurs at one; an unselected
+    call publishes only the verdicts its waiting join judged and links every other part to them (fix (a)). Only unbound failed parts
+    are covered (R4's C19); a typed one is decided at the merge into U2.1.
   - B4 and fix (a), the unselected call's completion (CompleteUnselectedPart's one row, PublishJudged): a held join judged Conflict
     writes its own record once (`FailJudged`, the record's one form, shared with DecideWaiting: R4's N9). A held waiting join rests
     through its verdict (`DecideRest`: R4's C25) on its recorded Cause, or else on the verdict it lies under. Every other unbound part
