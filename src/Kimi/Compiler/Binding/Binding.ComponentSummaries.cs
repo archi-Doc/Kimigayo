@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 // reads that failed, or that Type's failed operand context (DECISIONS BU-76).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
 // declarations its storage names; conformance bindings (ContractType) for a mapped projection whose base is not abstract.
-// Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (PublishSites).
+// Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
+// PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
 // reaches are iterated together from no exclusion to their least fixed point, which a family cut keeps finite; a warm rebind allocates
@@ -82,9 +83,19 @@ public sealed partial class Binding
             ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0], null) : result;
     }
 
-    // SPEC 23.1.1: each site a settled proof needed, recorded once at its stored Type: in Binding.Check's Final prologue, where a derived
-    // use held on it is settled (DECISIONS BU-76), and again after its loop, whose checks can still need one; a stored Type that failed by
-    // itself has its own record. Returns the number of records.
+    // SPEC 23.1.1 (DECISIONS BU-76): in Binding.Check's Final prologue, each site a settled proof needed so far fails its stored Type,
+    // where a derived use held on it is settled; the loop publishes and counts that Use once, as PublishNeededLimits' limits.
+    private void FailNeededSites()
+    {
+        for (var i = 0; this.capabilityMode == BindingMode.Final && i < this.neededSites.Count; i++)
+        {
+            this.Fail(this.neededSites[i].Use, BindingFailure.Unsupported);
+        }
+    }
+
+    // SPEC 23.1.1: each site the checks of Binding.Check's loop needed, recorded once at its stored Type after the loop (one needed before
+    // it failed in the prologue, FailNeededSites, and the loop published it); a stored Type that failed by itself has its own record.
+    // Returns the number of records.
     private int PublishSites()
     {
         var count = 0;

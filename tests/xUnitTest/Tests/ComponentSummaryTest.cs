@@ -162,6 +162,20 @@ public class ComponentSummaryTest
         Assert.True(complete == (records.Length == 0), id);
     }
 
+    // SPEC 23.1.1 (DECISIONS BU-76): a site a proof needed before Binding.Check's loop fails its Use in the prologue, and the loop
+    // publishes and counts it once: Bind gives the issues and the count CheckBound gives on the same facts.
+    [Fact]
+    public void ASiteNeededBeforeTheLoopIsPublishedOnce()
+    {
+        var c = CompilationTestHelper.ParseSuccess(Prelude + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: () -> () = func [x@move] () => ()\n    ()");
+        var bound = c.Bind();
+        var issues = c.Binding.Issues.Select(static x => x.Code).ToArray();
+        Assert.Single(issues, static x => x == DiagnosticCode.Unsupported_Kd);
+        var again = c.Binding.CheckBound();
+        Assert.Equal(issues, c.Binding.Issues.Select(static x => x.Code));
+        Assert.Equal(again.InvalidCount, bound.InvalidCount);
+    }
+
     // SPEC 8.3.3 (DECISIONS BU-22): a conformance binding that uses itself at a deeper instance grows a proof without end, at the use
     // (the growth guard) and in a summary's walk (Error resting on the stored Type); the conformance has its own record, and Binding ends.
     // A deeper instance of a declaration reached through another conformance is no such growth and stays exact.

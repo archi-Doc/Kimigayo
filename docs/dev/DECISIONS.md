@@ -9487,12 +9487,12 @@ resumed by R4-M86 (2026-10-20).
   SPEC 8.3.3, 23.1.2.
   - The Owned walk holds the node it reads: a stored Type that failed, or its failed operand context (`InvalidOperandContext`, the
     walk and predicate of `OperandContexts`). An Owned leaf is never Error, so the leaf's Error branch is deleted.
-  - At a re-entry it holds the re-entered conformance (the path `ContractType` resolved through, which ContractType publishes), whose
-    clause fails with its own record (SPEC 8.3.3). Pending U2: until then the walk holds the stored Type, which a nested stored Type
-    (r-opt, r-tup, r-arr) leaves not Invalid, so the settle reports those uses as `InternalInvariant_Kd`.
-  - A limit holds its Use. The prologue publishes it (PublishNeededLimits, then PublishSites; sites the loop needs still follow it).
-    The erasure that holds it runs in body binding, earlier (FailOwnedConversion's only caller is RecordMismatch).
-  - FailDerived lists the use, and the prologue settles it (`SettleDerivedUses`, after PublishSites): a part that is not Invalid is
+  - At a re-entry it holds the stored Type. That node is Invalid when the stored Type is the re-entering instance (reent), and not
+    when it nests one (r-opt, r-tup, r-arr, k-inh-opt, ch-opt, ch2): the settle reports those uses as `InternalInvariant_Kd` until U2.
+  - A limit holds its Use. The prologue fails it (PublishNeededLimits, then FailNeededSites) and Check's loop publishes and counts it
+    once; a site only the loop's checks need is recorded after the loop (PublishSites). The erasure that holds a limit runs in body
+    binding, earlier (FailOwnedConversion's only caller is RecordMismatch).
+  - FailDerived lists the use, and the prologue settles it (`SettleDerivedUses`, after FailNeededSites): a part that is not Invalid is
     `InternalInvariant_Kd`. The list is a temporary structure, separate from `specificationLinks` (that one chooses the node a
     conformance use rests on; this one checks a precondition). Removal condition: the erasure's Owned failure is decided after the
     prologue.

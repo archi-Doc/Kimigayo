@@ -14,8 +14,8 @@ namespace Kimi.Compiler;
 // keeps a cause a reader did not fail on from being taken by a later check; each pass starts with the channel clear; a limit is
 // published once per pass, only when a failing check rested on it; a Use is failed by its owner by the end of Binding.Check's Final
 // prologue, where the derived uses resting on it are settled (DECISIONS BU-76): a Type node by the Definition deadline, a limit when the
-// prologue publishes it (OCC-X limits, then the summaries' sites), after the erasure that holds a cause ran in body binding
-// (FailOwnedConversion's only caller is RecordMismatch).
+// prologue fails it (OCC-X limits, then the summaries' sites; the loop publishes each once), after the erasure that holds a cause ran
+// in body binding (FailOwnedConversion's only caller is RecordMismatch).
 // Must not publish a record itself or decide a proof.
 internal interface ICheckCause
 {

@@ -75,8 +75,8 @@ public sealed partial class Binding
     // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with
     // no record: the part is its pending prerequisite, and IsDerived's row (InvalidConstraint whose part is Invalid) classifies it. The
     // use is listed and settled in Binding.Check's Final prologue (SettleDerivedUses), since a held cause's node fails only there (a Type
-    // node at the Definition deadline, a limit's Use when it is published), after the erasure ran in body binding. Invariant: the part is
-    // Invalid by then: a held cause names a node its owner fails (ICheckCause), and an operand context is Invalid by construction
+    // node at the Definition deadline, a limit's Use when the prologue fails it), after the erasure ran in body binding. Invariant: the
+    // part is Invalid by then: a held cause names a node its owner fails (ICheckCause), and an operand context is Invalid by construction
     // (InvalidOperandContext). Any other case, including a subject no work judged without a failed context, is a broken contract
     // (InternalInvariant_Kd): the settle replaces the use's own InvalidConstraint, which Fail keeps as a node's first failure.
     private void FailDerived(Koto use, Koto? part)
@@ -90,8 +90,8 @@ public sealed partial class Binding
         this.Fail(use, part is not null ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
     }
 
-    // DECISIONS BU-76: after every producer's node has failed (Binding.Check's Final prologue, after PublishSites), a listed use whose part
-    // is not Invalid is a broken contract.
+    // DECISIONS BU-76: after every producer's node has failed (Binding.Check's Final prologue, after FailNeededSites), a listed use whose
+    // part is not Invalid is a broken contract.
     private void SettleDerivedUses()
     {
         for (var i = 0; this.derivedUses is { } uses && i < uses.Count; i++)

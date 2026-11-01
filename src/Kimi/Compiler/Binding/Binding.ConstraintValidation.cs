@@ -640,7 +640,7 @@ public sealed partial class Binding
 
     // SPEC 23.1.1: each conformance limit a failing check rested on, reported once at its location: an inherited conformance limited by
     // OCC-X at the derived Type's base clause (an explicit one was reported at its declaration, ValidateConformances). Runs in
-    // Binding.Check's Final prologue, before the summaries' sites (PublishSites) and the derived uses resting on either (DECISIONS BU-76).
+    // Binding.Check's Final prologue, before the summaries' sites (FailNeededSites) and the derived uses resting on either (BU-76).
     private void PublishNeededLimits()
     {
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
