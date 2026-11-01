@@ -321,7 +321,7 @@ internal static partial class LegacyRuntimeHelpers
     /// <summary>Writes the Array runtime, the capacity routines (SPEC 4.9.5, 4.9.8), which a module holds once when a helper or call of it
     /// declares it.</summary>
     /// <param name="output">The module text.</param>
-    internal static void WriteArrayRuntime(TextWriter output) => output.Write(Texts.Array);
+    internal static void WriteArrayRuntime(TextWriter output) => output.Write(Texts.ArrayRuntime);
 
     /// <summary>Writes one Array helper's definition: its ABI, its kind row's prologue and writer (PD2).</summary>
     /// <param name="output">The module text.</param>
@@ -685,7 +685,7 @@ internal static partial class LegacyRuntimeHelpers
     private static partial class Texts
     {
         // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy.
-        internal static readonly string Array =
+        internal static readonly string ArrayRuntime =
             RuntimeAbi.ArrayGrow.GetDefinition(exported: false) +
             ArrayGrowBody.Replace("REASON_SIZE", Number(AbortReasons.AllocationSize), StringComparison.Ordinal)
                 .Replace("ZERO_SIZED_BUFFER", Number(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +

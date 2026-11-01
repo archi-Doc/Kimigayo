@@ -163,7 +163,7 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Writes the formatting runtime: the templates with each row's routine defined once.</summary>
     /// <param name="output">The module text.</param>
-    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(Texts.Formatting);
+    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(Texts.FormattingRuntime);
 
     /// <summary>Writes a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a user formatter's write wrapper (SPEC 22.9.2):
     /// toString formats through a heap buffer and Aborts on BufferFull at its call's location; tryFormat formats into the caller's array and
@@ -312,6 +312,6 @@ internal static partial class LegacyRuntimeHelpers
     private static partial class Texts
     {
         // The runtime templates with each row's routine definition spliced in once.
-        internal static readonly string Formatting = ReadFormattingRuntime();
+        internal static readonly string FormattingRuntime = ReadFormattingRuntime();
     }
 }

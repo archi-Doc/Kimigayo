@@ -45,7 +45,8 @@
 // the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
 // runtime needs come from its row; warm writes allocate nothing; whether a value travels as a scalar is decided once, by
-// StoredValue.TravelsAsScalar.
+// StoredValue.TravelsAsScalar; the expanded runtime texts (Texts) are built only when a code generation writer first reads one,
+// never on the check path (G350).
 // Must not hold module state, take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
 // destination for its kind or bound (FormatKind, FormatBound, WriterKind), or use LINQ.
 
@@ -333,7 +334,7 @@ internal static partial class LegacyRuntimeHelpers
 
     // Code generation's expanded runtime texts (G350), one part beside each text's rows: the CLR initializes this class when a writer
     // (WriteArrayRuntime, WriteFormattingRuntime, StringComparisons) first reads one for a module, never on the check path, whose
-    // collector reads only the rows' ABIs (IntrinsicRows); no other member reads them. Building them allocates 8.2 MB.
+    // collector reads the rows and ABIs (Row, DictionaryRow, Construction, IntrinsicRows) but no text; no other member reads them.
     private static partial class Texts
     {
         internal static readonly string StringComparisons = ExpandRuntime(

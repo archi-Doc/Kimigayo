@@ -7,7 +7,8 @@ window with the thread's `GCAllocationTick` types and JIT events; suspect class 
 | Revision | Change |
 | --- | --- |
 | 0 (aecf6bc91) | Measurements and cause; recommended (b), an `AllocationMeasurement` cold-series entry. |
-| 1 | Planning ruling: (b) rejected as warm-up; (c), the cause, chosen. Prototype measured; RequireEnds still fails alone. |
+| 1 (cd5440a6a) | Planning ruling: (b) rejected as warm-up; (c), the cause, chosen. Prototype measured; RequireEnds still fails alone. |
+| 2 | Landed: (c) as G350a (3c2741dbc) with the fresh-process test below; the owner then adopted (b) as `MeasureSeries` (G350b, R5-M172). |
 
 ## Failing condition
 
@@ -57,9 +58,10 @@ from the measurement. `MeasureOnce`'s contract and every test stay as they are.
 
 ## Options
 
-- (a) an unmeasured build before each series, (b) the same as one `AllocationMeasurement` entry: **rejected** (planning ruling): an
-  unmeasured run added so that the series passes is the warm-up AGENTS forbids, whatever state it touches, and it removes the
-  sensitivity that found this cost.
+- (a) an unmeasured build before each series: rejected (a per-test warm-up). (b) the same as one `AllocationMeasurement` entry:
+  first rejected (planning ruling: the warm-up AGENTS forbids, and it removes the sensitivity that found this cost), then adopted by
+  the owner (2026-11-01, (A); R5-M172) as G350b, under R4's conditions: one contract, and the one-time cost owned by G350a's
+  fresh-process test with a stated bound.
 - **(c) chosen:** the expanded texts are initialized only when code generation writes them; the rows' ABIs stay where the collector
   reads them. One owner, `LegacyRuntimeHelpers` (src/Kimi/Compiler/Backend), not R4's hold.
 - Rejected inside (c): `Lazy<T>`, a flag or a mode (the CLR's class initialization of a holder does it); a holder per text (no measured
@@ -69,8 +71,8 @@ from the measurement. `MeasureOnce`'s contract and every test stay as they are.
 
 - `LegacyRuntimeHelpers.Texts`, a `private static partial class` at the end of each file that owns a text, with one comment stating the
   contract (code generation's expanded runtime texts; initialized when a writer first reads one; never by the check pipeline):
-  `StringComparisons` (from the field in LegacyRuntimeHelpers.cs), `Formatting` (was `FormattingRuntime`, .Formatting.cs) and `Array`
-  (was `ArrayRuntime`, .Arrays.cs). These are all of `LegacyRuntimeHelpers`' expanded-text statics; its other statics are rows and ABIs.
+  `StringComparisons` (LegacyRuntimeHelpers.cs), `FormattingRuntime` (.Formatting.cs) and `ArrayRuntime` (.Arrays.cs), each keeping
+  its name. These are all of `LegacyRuntimeHelpers`' expanded-text statics; its other statics are rows and ABIs.
 - Readers keep their signatures: `WriteArrayRuntime`, `WriteFormattingRuntime`, and `StringComparisons`, a field that becomes a get-only
   property over `Texts.StringComparisons` (its readers, `ModuleCodegen.Frame` and `FunctionCodegenTest.Strings`, unchanged).
 - Stay: `FormattingRows`, `ArrayRows`, `DictionaryRows`, `StorageKernelRows`, `FormatBounds` and the ABIs (14,008 B), which
@@ -116,10 +118,11 @@ their uniqueness checks).
   In their classes they pass before and after. The commit states the residual and the margins.
 - Generated IR: a fixture selection over formatting, string comparison and Arrays, `compare-fixtures.ps1` against the base run:
   byte-identical `.ll`.
-- Regression: the four tests fail before only alone, so a full run would not catch a return of the cost. Proposed (needs the ruling's
-  "no test file changes" relaxed for R5's own file): a `FreshProcess` pair in `MirBuildTest`, where after the process's first
-  `BuildMir`, `MeasureOnce(() => LegacyRuntimeHelpers.WriteFormattingRuntime(TextWriter.Null))` is above 0 (the text is built only
-  then); before the fix it is 0. It compiles before and after.
+- Regression (landed, R4's condition (2)): the four tests fail before only alone, so a full run would not catch a return of the cost.
+  `MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild` runs `TheFirstBuildOfAFreshProcess` in a `FreshProcess` child: the
+  first cold build allocates at most 64 KB more than a second one on a fresh `Compilation` (measured 21,456 B; before G350a 8,205,208
+  B more: fails). It owns the one-time cost that `MeasureSeries` keeps out of the series. Rejected: asserting that the first write
+  of the formatting runtime allocates (above 0), which states no bound on the rest of the one-time cost.
 
 ## Class and size
 
