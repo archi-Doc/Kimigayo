@@ -420,13 +420,9 @@ internal sealed class WorkspaceCheck
         var productMembers = new HashSet<SourceIdentity>(members);
         foreach (var test in project.ProjectFile.TestSources)
         {
-            try
+            if (SourceIdentity.TryFromPath(Path.Combine(directory, test), out var member))
             {
-                members.Add(SourceIdentity.FromPath(Path.GetFullPath(test, directory)));
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                // The check reports the invalid path.
+                members.Add(member); // An invalid path has no identity; the check reports it.
             }
         }
 

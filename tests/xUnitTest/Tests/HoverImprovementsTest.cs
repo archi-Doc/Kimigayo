@@ -278,6 +278,29 @@ public sealed class HoverImprovementsTest
         Assert.Equal(outside.Replace(Path.DirectorySeparatorChar, '/'), compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[1]));
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): a declaration moved into another module (the public AddLast) keeps its document's name, which the
+    // module the document came from gives (CodeContext.SourceModule), not one relative to the module it moved into.
+    [Fact]
+    public void AMovedDeclarationKeepsItsDocumentsName()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.CollectHover = true;
+        compilation.Project.Directory = Path.GetFullPath("moved-root");
+        var library = Path.GetFullPath("moved-library");
+        var other = new Kotonoha(compilation, "Other", Path.Combine(library, "Other.kimiproj"));
+        other.AddSource(new(Path.Combine(library, "src", "Moved.kimi"), "struct Moved\n"));
+        var moved = KotoTree.Walk(other.RootKoto).OfType<Kimi.Compiler.Parsing.StructKoto>().Single();
+        const string source = "func use(value: Moved) => ()\n";
+        var main = Path.Combine(compilation.Project.Directory, "Main.kimi");
+        compilation.Kotonoha.AddSource(new(main, source));
+        compilation.Kotonoha.RootKoto.AddLast(moved);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
+        var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(main)];
+        var entry = At(document, source.IndexOf("Moved", StringComparison.Ordinal));
+        Assert.Equal("src/Moved.kimi", Assert.Single(Assert.Single(entry.Info.Declarations).Origins).LogicalName);
+    }
+
     // PLAN G346 (DECISIONS R5-M175): a document whose path has an embedded NUL, which no client can name, has no hover
     // (SourceIdentity.TryFromPath), and the snapshot keeps every other document, where its build threw before.
     [Fact]

@@ -14856,12 +14856,14 @@ structure is recorded here by the unit that first implements it.
     NUL path no longer throws out of a command (`SourceDocumentAndDiagnosticTest.RendersAPathWithANulRelativeToTheBase`, which threw).
   - U9a-2: hover's rule: `Kotonoha.HoverSourceName(SourceDocument)` is the query, asked live, and none only for a built-in
     (`compiler://`) or Mod-generated document, so an outside, other-drive or other `://` source is named by its own text, never
-    relative to the consuming project (`HoverImprovementsTest`, null before); `HoverBuilder`'s per-build name cache is deleted (a
+    relative to the consuming project (`HoverImprovementsTest`, null before), and asked of the module its document came from
+    (`CodeContext.SourceModule`, which a cross-module move keeps; `AMovedDeclarationKeepsItsDocumentsName`, the moved-into module's
+    base before); `HoverBuilder`'s per-build name cache is deleted (a
     repeated hover build of eight documents 265,952 -> 264,952 B; names stay memoized in their module). Path containment under the
     host's comparison is `SourceIdentity.Under`, beside `PathComparison`, read by `LogicalName` and the displayed path.
     A document whose path has no identity (NUL: no client can name it) has no hover, so a hover build over it no longer throws:
-    `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri` and the LSP's project setting also read (their
-    copies gone); `FromPath` still rejects such a path (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
+    `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri`, the LSP's project setting and its TestSources
+    members also read (their copies gone); `FromPath` still rejects such a path (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need

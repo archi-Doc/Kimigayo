@@ -108,7 +108,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                     this.origins.Add(declaration, list = []);
                 }
 
-                list.Add(this.Origin(declaration, anchor.Source, anchor.Token));
+                list.Add(this.Origin(declaration, anchor.Syntax.CodeContext.SourceModule, anchor.Source, anchor.Token));
             }
         }
 
@@ -382,7 +382,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         var generated = syntax is FunctionKoto { IsGenerated: true } or FunctionKoto { IsImplicitConstructor: true };
         var origins = generated ? [] : this.origins.TryGetValue(syntax, out var fragments)
             ? fragments.ToArray()
-            : source is null ? [] : new HoverOrigin[] { this.Origin(syntax, source, syntax.Span) };
+            : source is null ? [] : new HoverOrigin[] { this.Origin(syntax, syntax.CodeContext.SourceModule, source, syntax.Span) };
         Array.Sort(origins, static (a, b) =>
         {
             var result = string.CompareOrdinal(a.Project, b.Project);
@@ -476,8 +476,10 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
     private string Project(Koto syntax)
         => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : query.Compilation.Project.FilePath ?? query.Compilation.Project.Directory;
 
-    private HoverOrigin Origin(Koto syntax, SourceDocument source, SourceSpan span)
-        => new(this.Project(syntax), source.Path, span, syntax.Kotonoha.HoverSourceName(source));
+    // An origin's document is named by the module it came from (CodeContext.SourceModule), which a cross-module move keeps; a
+    // split declaration's fragment keeps its own document.
+    private HoverOrigin Origin(Koto syntax, Kotonoha module, SourceDocument source, SourceSpan span)
+        => new(this.Project(syntax), source.Path, span, module.HoverSourceName(source));
 
     private HoverPlacement Placement(Kotonoha module)
     {
