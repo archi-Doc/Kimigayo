@@ -9,8 +9,9 @@ namespace Kimi.Compiler;
 // - Responsibility: the parts at one position of a join, a range of positionParts (Binding.ArgumentKinds.Positions.cs): its sources
 //   other than Never, through the forms that deliver them and the selections, `do` and `loop` none of whose sources supplies a
 //   candidate (AddResultPart); the parts a child Type of Tuple, array, fill or Dictionary literals is formed from, by element (an
-//   array's every element at its one element position), key and value (AddPartsAt); the common Type of a position's typed parts (PositionType); the common Type formed part by part
-//   (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its root's judgement of its tree (JudgeNested).
+//   array's every element at its one element position), key and value (AddPartsAt); the common Type of a position's typed parts
+//   (PositionType); the common Type formed part by part (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its
+//   root's judgement of its tree (JudgeNested).
 // - Inputs: the parts' bound Types, the literals still waiting unbound, the results' recorded sources (ResultContext).
 // - Outputs: the formed Type, or none with the conflict that prevents it (PartsConflict); a judged join's outcome (Conflict, Dependent).
 // - Invariants: a part of Type Never is no part; a failed part is no part either (the join rests on it); the walk binds nothing and

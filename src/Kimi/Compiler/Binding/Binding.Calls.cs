@@ -347,31 +347,7 @@ public sealed partial class Binding
 
             if (selection == CallSelection.Ambiguous)
             {
-                if (this.DeferNestedCall(call, expected))
-                {
-                    return Complete(call, null);
-                }
-
-                if (this.AmbiguityRestingPart(evaluation) is { } failed)
-                {
-                    // SPEC 23.1.2 (U1.6h B1): the kept candidates differ at a failed part, whose Type could have separated them.
-                    this.MarkWaitingHeaders(call);
-                    return this.CompleteDependent(call, failed);
-                }
-
-                var remaining = new RejectedCandidate[applicable];
-                var next = 0;
-                var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);
-                for (var i = 0; i < count; i++)
-                {
-                    if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
-                    {
-                        remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
-                    }
-                }
-
-                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
-                return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
+                return this.CompleteAmbiguous(evaluation);
             }
 
             var winner = evaluated[winnerIndex].Symbol!;
@@ -579,6 +555,39 @@ public sealed partial class Binding
             this.typeScratch.Return(scratch, clearArray: true);
             this.failedFits.RemoveRange(failedFits, this.failedFits.Count - failedFits);
         }
+    }
+
+    // SPEC 10.4, 23.1.2: the Ambiguous outcome of a call's selection. Under the argument probe a nested call waits (DeferNestedCall); an
+    // ambiguity that a failed part's Type could have resolved rests on that part (U1.6h B1, AmbiguityRestingPart), its waiting parts
+    // resting on the call; otherwise the kept candidates explain the failed selection.
+    private BoundType? CompleteAmbiguous(in CallEvaluation evaluation)
+    {
+        var call = evaluation.Call;
+        if (this.DeferNestedCall(call, evaluation.Expected))
+        {
+            return Complete(call, null);
+        }
+
+        if (this.AmbiguityRestingPart(evaluation) is { } failed)
+        {
+            this.MarkWaitingHeaders(call);
+            return this.CompleteDependent(call, failed);
+        }
+
+        var evaluated = evaluation.Evaluated;
+        var remaining = new RejectedCandidate[evaluation.Applicable];
+        var next = 0;
+        var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
+        for (var i = 0; i < evaluation.Count; i++)
+        {
+            if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+            {
+                remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
+            }
+        }
+
+        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
+        return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
     }
 
     // SPEC 7.2.3, 10.1 step 2: the `count` defaults the selected candidate uses (DefaultSlots), each with its instantiated parameter Type;
