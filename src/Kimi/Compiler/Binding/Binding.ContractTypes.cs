@@ -6,37 +6,49 @@ namespace Kimi.Compiler;
 
 // Owns a Type's Contract environment rewrite (ContractType): a Contract's Self replaced by the conforming Type, a bound Contract
 // reference's arguments substituted, and completed associated identities normalized in a scope, without member selection, each distinct
-// part once per call (contractParts). Reads the conformance tables and the scope's facts; publishes nothing.
+// part once per call (contractParts). Reads the conformance tables and the scope's facts; publishes each answer's hops (ResolutionHops):
+// the conformance paths a projection's specification resolved it through, outermost first, written by the run that made the image and
+// carried by the memo and the associated collection's batch, so a hit never resolves again (DECISIONS BU-76).
 public sealed partial class Binding
 {
     // The images of ContractType's queries (DECISIONS BU-64): one outermost call is a query, its scope, Self, normalize flag,
     // activeRequirementContract and normalizingAssociated's set fixed, so each distinct part is rewritten once per query. The set changes
     // only by a push after a part's components are rewritten, popped before that part returns, and what runs under the push enters
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
-    private readonly TypeMemo<BoundType> contractParts = new();
+    private readonly TypeMemo<(BoundType Image, ResolutionHops? Hops)> contractParts = new();
+
+    // The hop chains, one per path and inner chain: kept for the Binding's lifetime, as the paths they name (conformancePaths), so a
+    // warm pass allocates none.
+    private readonly Dictionary<(BoundConformancePath Path, ResolutionHops? Inner), ResolutionHops> hopChains = new();
 
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
     /// (DECISIONS BU-19). Any other part is rewritten once per call (contractParts, DECISIONS BU-64).</remarks>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
+        => this.ContractType(type, scope, out _, self, normalize);
+
+    // ContractType with the hops its answer resolved through (the component summaries' walk).
+    private BoundType ContractType(BoundType type, BindingScope scope, out ResolutionHops? hops, BoundType? self = null, bool normalize = true)
     {
+        hops = null;
         if (!type.HasAbstractPart && !type.CarriesOrigin)
         {
             return type;
         }
 
         var query = this.contractParts.Begin(this.storageVersion);
-        return this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
+        (var image, hops) = this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
+        return image;
     }
 
     // A component of a query: the associated collection's batch answers it where one is open (unchanged); otherwise a component with
     // components is recorded, a leaf being cheaper to rewrite again than to record and a query's root met once (DECISIONS BU-55).
-    private BoundType ContractPart(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    private (BoundType Image, ResolutionHops? Hops) ContractPart(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         if (!type.HasAbstractPart && !type.CarriesOrigin)
         {
-            return type;
+            return (type, null);
         }
 
         if (this.collectingAssociated is not null)
@@ -49,17 +61,17 @@ public sealed partial class Binding
             return this.ContractTypeCore(type, scope, self, normalize, query);
         }
 
-        if (!this.contractParts.TryGet(type, query, out var image))
+        if (!this.contractParts.TryGet(type, query, out var answer))
         {
-            image = this.ContractTypeCore(type, scope, self, normalize, query);
-            this.contractParts.Set(type, query, image);
+            answer = this.ContractTypeCore(type, scope, self, normalize, query);
+            this.contractParts.Set(type, query, answer);
         }
 
-        return image;
+        return answer;
     }
 
     // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch).
-    private BoundType BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    private (BoundType Image, ResolutionHops? Hops) BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         var batch = this.collectingAssociated!;
         var key = (type, scope, self, normalize, this.activeRequirementContract);
@@ -73,7 +85,8 @@ public sealed partial class Binding
         return result;
     }
 
-    private BoundType ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    // The image and its hops: a projection resolved by a specification adds its path to its subject's (component 0's) hops.
+    private (BoundType Image, ResolutionHops? Hops) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         type = this.ApplyContractEnvironment(type, scope);
         if (this.activeRequirementContract is { } bound)
@@ -85,7 +98,7 @@ public sealed partial class Binding
         // reference to a Contract, such as a projection's declaring Contract, only has its Type arguments substituted.
         if (IsContractSelf(type))
         {
-            return self ?? this.EnclosingContractSelf(scope) ?? type;
+            return (self ?? this.EnclosingContractSelf(scope) ?? type, null);
         }
 
         var count = type.Components.Count;
@@ -93,9 +106,12 @@ public sealed partial class Binding
         try
         {
             var changed = false;
+            ResolutionHops? inner = null;
             for (var i = 0; i < count; i++)
             {
-                components![i] = this.ContractPart(type.Components[i], scope, self, normalize, query);
+                var part = this.ContractPart(type.Components[i], scope, self, normalize, query);
+                components![i] = part.Image;
+                inner = i == 0 ? part.Hops : inner;
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
@@ -109,21 +125,23 @@ public sealed partial class Binding
 
             if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
             {
-                return result;
+                return (result, null);
             }
 
             try
             {
                 if (result.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(result, scope) is { Type: { } specified } outcome)
                 {
+                    var hops = outcome.Path is { } path ? this.Hop(path, inner) : inner;
+
                     // A container substitution can expose another associated projection (Wrapper<S>.Element -> S.Element). Normalize
                     // that identity too; the active query above still guards recursive specifications.
                     if (outcome.Subject is not { } subject)
                     {
-                        return specified;
+                        return (specified, hops);
                     }
 
-                    return this.StoredType(specified, subject) is { } stored ? this.ContractType(stored, scope, self) : result;
+                    return (this.StoredType(specified, subject) is { } stored ? this.ContractType(stored, scope, self) : result, hops);
                 }
 
                 for (var current = scope; current is not null; current = current.Parent)
@@ -137,12 +155,12 @@ public sealed partial class Binding
                     {
                         if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, result, out var required) && this.AvailableConstraintFact(environment, fact) && required is not null)
                         {
-                            return this.ContractType(required, scope, self);
+                            return (this.ContractType(required, scope, self), null);
                         }
                     }
                 }
 
-                return result;
+                return (result, null);
             }
             finally
             {
@@ -156,5 +174,24 @@ public sealed partial class Binding
                 this.typeScratch.Return(components, clearArray: true);
             }
         }
+    }
+
+    // The interned chain of a hop through path before inner.
+    private ResolutionHops Hop(BoundConformancePath path, ResolutionHops? inner)
+    {
+        if (!this.hopChains.TryGetValue((path, inner), out var hop))
+        {
+            this.hopChains.Add((path, inner), hop = new(path, inner));
+        }
+
+        return hop;
+    }
+
+    // The conformance paths one ContractType answer resolved through, outermost hop first; interned (Hop), so one chain is one object.
+    internal sealed class ResolutionHops(BoundConformancePath path, ResolutionHops? inner)
+    {
+        internal BoundConformancePath Path { get; } = path;
+
+        internal ResolutionHops? Inner { get; } = inner;
     }
 }
