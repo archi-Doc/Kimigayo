@@ -56,6 +56,10 @@ public sealed class CodeContext
     /// or after a cross-module move the module the document came from.</summary>
     internal Kotonoha SourceModule => this.sourceModule ?? this.Kotonoha;
 
+    /// <summary>Gets the logical name of this context's document, asked of the module it came from (<see cref="SourceModule"/>), or
+    /// <see langword="null"/> for a source-less entry point: the one access path for every reader of a node's document name.</summary>
+    internal string? SourceName => this.SourceDocument is { } document ? this.SourceModule.LogicalName(document) : null;
+
     internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default, SourceDocument? sourceDocument = null)
     {
         ArgumentNullException.ThrowIfNull(kotonoha);

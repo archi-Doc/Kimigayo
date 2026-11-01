@@ -108,7 +108,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                     this.origins.Add(declaration, list = []);
                 }
 
-                list.Add(this.Origin(declaration, anchor.Syntax.CodeContext.SourceModule, anchor.Source, anchor.Token));
+                list.Add(this.Origin(anchor.Syntax.CodeContext.SourceModule, anchor.Source, anchor.Token));
             }
         }
 
@@ -382,7 +382,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         var generated = syntax is FunctionKoto { IsGenerated: true } or FunctionKoto { IsImplicitConstructor: true };
         var origins = generated ? [] : this.origins.TryGetValue(syntax, out var fragments)
             ? fragments.ToArray()
-            : source is null ? [] : new HoverOrigin[] { this.Origin(syntax, syntax.CodeContext.SourceModule, source, syntax.Span) };
+            : source is null ? [] : new HoverOrigin[] { this.Origin(syntax.CodeContext.SourceModule, source, syntax.Span) };
         Array.Sort(origins, static (a, b) =>
         {
             var result = string.CompareOrdinal(a.Project, b.Project);
@@ -440,7 +440,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 }
 
                 var location = comment.Owner;
-                documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.Kotonoha)));
+                documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax.CodeContext.SourceModule), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.CodeContext.SourceModule)));
             }
 
             documentation.Sort(static (a, b) =>
@@ -473,13 +473,13 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         }
     }
 
-    private string Project(Koto syntax)
-        => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : query.Compilation.Project.FilePath ?? query.Compilation.Project.Directory;
+    // A document's project and name are its own module's, the module it came from (CodeContext.SourceModule), which a cross-module
+    // move keeps; a split declaration's fragment keeps its own document.
+    private string Project(Kotonoha module)
+        => module.Url.Length != 0 ? module.Url : query.Compilation.Project.FilePath ?? query.Compilation.Project.Directory;
 
-    // An origin's document is named by the module it came from (CodeContext.SourceModule), which a cross-module move keeps; a
-    // split declaration's fragment keeps its own document.
-    private HoverOrigin Origin(Koto syntax, Kotonoha module, SourceDocument source, SourceSpan span)
-        => new(this.Project(syntax), source.Path, span, module.HoverSourceName(source));
+    private HoverOrigin Origin(Kotonoha module, SourceDocument source, SourceSpan span)
+        => new(this.Project(module), source.Path, span, module.HoverSourceName(source));
 
     private HoverPlacement Placement(Kotonoha module)
     {
@@ -664,7 +664,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         if (!this.identities.TryGetValue(binder, out var result))
         {
             var text = new StringBuilder("binder;");
-            AppendKey(text, this.Project(binder));
+            AppendKey(text, this.Project(binder.CodeContext.SourceModule));
             AppendKey(text, binder.CodeContext.SourceDocument?.Path ?? string.Empty);
             text.Append((int)binder.Akind).Append(',').Append(binder.Span.Start).Append(',').Append(binder.Span.Length);
             result = new(text.ToString(), []);

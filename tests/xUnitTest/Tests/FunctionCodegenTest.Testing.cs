@@ -266,6 +266,27 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("tests/Named.kimi", Assert.Single(c.Tests.Sites).File);
     }
 
+    // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): a test moved into another module (the public AddLast) keeps its document's name, asked of
+    // the module the document came from, for its file and identity and its site's file.
+    [Fact]
+    public void AMovedTestKeepsItsDocumentsName()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.Directory = Path.GetFullPath("catalog-moved-root");
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var library = Path.GetFullPath("catalog-moved-library");
+        var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
+        other.AddSource(new SourceDocument(Path.Combine(library, "src", "Moved.kimi"), "#Test\nfunc tvMoved() => $expect(1 == 2)\n", isTestOnly: true));
+        var moved = KotoTree.Walk(other.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single(x => x.Name == "tvMoved");
+        c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "Main.kimi"), "#Test\nfunc tvMain() => $expect(true)\n", isTestOnly: true));
+        c.Kotonoha.RootKoto.AddLast(moved);
+        Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
+        c.Tests.Discover(c);
+        Assert.Equal("src/Moved.kimi", Assert.Single(c.Tests.Cases, x => x.Name == "tvMoved").File);
+        Assert.Equal("src/Moved.kimi", Assert.Single(c.Tests.Sites, x => x.Expression == "1 == 2").File);
+    }
+
     // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): the catalog's inputs name a dependency's source relative to its own project, so the artifact
     // identity does not depend on where the dependency lies relative to the root.
     [Fact]

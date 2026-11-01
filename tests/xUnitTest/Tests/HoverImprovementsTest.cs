@@ -298,7 +298,8 @@ public sealed class HoverImprovementsTest
         Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
         var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(main)];
         var entry = At(document, source.IndexOf("Moved", StringComparison.Ordinal));
-        Assert.Equal("src/Moved.kimi", Assert.Single(Assert.Single(entry.Info.Declarations).Origins).LogicalName);
+        var origin = Assert.Single(Assert.Single(entry.Info.Declarations).Origins);
+        Assert.Equal(("src/Moved.kimi", Path.Combine(library, "Other.kimiproj")), (origin.LogicalName, origin.Project));
     }
 
     // PLAN G346 (DECISIONS R5-M175): a document whose path has an embedded NUL, which no client can name, has no hover
