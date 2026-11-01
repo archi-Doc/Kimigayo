@@ -14830,9 +14830,8 @@ structure is recorded here by the unit that first implements it.
     and a warm read is a lookup. Readers: the location table (its path code gone; its memo keyed by the root module's `Base`, by
     reference), `TestCatalog` (cases, sites and inputs; its copy gone, G289 (3)), `Kotonoha.ParseSource`'s collection name, and
     documentation, which stores the name its parse gave (`SetLocation(name)`, the library's sources included: their `compiler://`
-    path): a later directory change does not rename a parsed documentation source, while hover's names are live: `HoverSourceName`
-    is the query except for a generated or `://` document, a fully qualified path outside the base and a rooted relative path, which
-    have none until U9a-2 (`PhysicalLogicalName` deleted; no hover name throws).
+    path): a later directory change does not rename a parsed documentation source, while hover's names are live (`HoverSourceName`,
+    U9a-2; `PhysicalLogicalName` deleted).
   - Behavior (U9a-1b): a dependency's location and catalog input name its own project's source (`Lib.kimi`, not `../Lib/Lib.kimi`);
     a relative in-memory path is named as given, not resolved against the process's directory (catalog, collection name); a NUL path
     inside the project checks and its location is relative with `\u{0}` escaped (G346's check half); a path under `C:\p\AppX` is not
@@ -14845,8 +14844,16 @@ structure is recorded here by the unit that first implements it.
     program publishes (`EmissionArtifactsTest.ANulInsideTheProjectIsPublished`), so G330b's code-generation row lost its trigger, as
     R5-M169 foresaw, and leaves; U9b moves generation outside `Publish`'s classifying catches and deletes the exclusion.
   - U9b (the planning session's ruling (b)): a diagnostic's displayed path (`Kimigayo.DisplayPath`, SPEC 23.4) is its remainder
-    under the project directory by the same prefix rule (`Kotonoha.Under`), any other path as it is, so rendering a diagnostic at a
+    under the project directory by the same prefix rule (`SourceIdentity.Under`), any other path as it is, so rendering a diagnostic at a
     NUL path no longer throws out of a command (`SourceDocumentAndDiagnosticTest.RendersAPathWithANulRelativeToTheBase`, which threw).
+  - U9a-2: hover's rule: `Kotonoha.HoverSourceName(SourceDocument)` is the query, asked live, and none only for a built-in
+    (`compiler://`) or Mod-generated document, so an outside, other-drive or other `://` source is named by its own text, never
+    relative to the consuming project (`HoverImprovementsTest`, null before); `HoverBuilder`'s per-build name cache is deleted (a
+    repeated hover build of eight documents 265,952 -> 264,952 B; names stay memoized in their module). Path containment under the
+    host's comparison is `SourceIdentity.Under`, beside `PathComparison`, read by `LogicalName` and the displayed path.
+    A document whose path has no identity (NUL: no client can name it) has no hover, so a hover build over it no longer throws:
+    `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri` and the LSP's project setting also read (their
+    copies gone); `FromPath` still rejects such a path (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need

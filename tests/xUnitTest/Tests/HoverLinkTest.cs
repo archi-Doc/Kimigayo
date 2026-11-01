@@ -107,7 +107,7 @@ public sealed class HoverLinkTest
         compilation.Kotonoha.AddSource(new(path, source));
         Assert.True(compilation.Bind().IsComplete);
         Assert.Equal("A.kimi", Assert.Single(compilation.Kotonoha.DocumentationSources).LogicalName);
-        Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(0));
+        Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[0]));
         var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(path)];
         var entry = document.Entries[document.Find(source.IndexOf("Value", StringComparison.Ordinal))];
         Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true).Body);

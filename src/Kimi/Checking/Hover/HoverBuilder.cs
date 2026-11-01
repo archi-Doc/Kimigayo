@@ -28,7 +28,6 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
     private readonly HashSet<string> syntaxErrorSources = new(SourceIdentity.PathComparer);
     private readonly HashSet<string> documentationErrorSources = new(SourceIdentity.PathComparer);
     private readonly List<EffectHover> legacyEffects = [];
-    private readonly Dictionary<SourceDocument, string?> logicalNames = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(string Operation, bool Full), HoverInfo> operations = new();
     private readonly HoverBudget budget = new(maximumWork: 4 * HoverLimits.Work);
 
@@ -54,11 +53,6 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
         foreach (var module in compilation.SourceModules.Append(query.Library.Kotonoha))
         {
-            for (var i = 0; i < module.SourceDocuments.Count; i++)
-            {
-                this.logicalNames.TryAdd(module.SourceDocuments[i], module.HoverSourceName(i));
-            }
-
             foreach (var source in module.SourceDocuments)
             {
                 if (compilation.Diagnostics.HasSyntaxErrors(source))
@@ -170,7 +164,11 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 }
             }
 
-            result.Add(SourceIdentity.FromPath(document.Key.Path), new(document.Key, entries.ToArray()));
+            // A document no client can name (a path with NUL, an in-memory source) has no hover.
+            if (SourceIdentity.TryFromPath(document.Key.Path, out var identity))
+            {
+                result.Add(identity, new(document.Key, entries.ToArray()));
+            }
         }
 
         return new(this.legacyEffects.ToArray()) { Documents = result };
@@ -479,7 +477,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : query.Compilation.Project.FilePath ?? query.Compilation.Project.Directory;
 
     private HoverOrigin Origin(Koto syntax, SourceDocument source, SourceSpan span)
-        => new(this.Project(syntax), source.Path, span, this.logicalNames.GetValueOrDefault(source));
+        => new(this.Project(syntax), source.Path, span, syntax.Kotonoha.HoverSourceName(source));
 
     private HoverPlacement Placement(Kotonoha module)
     {

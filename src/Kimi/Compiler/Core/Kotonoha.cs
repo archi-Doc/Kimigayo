@@ -104,63 +104,19 @@ public sealed partial class Kotonoha
         }
     }
 
-    /// <summary>Gets where a fully qualified path's remainder under a base directory starts, or 0 when the base does not contain it:
-    /// without allocation, the host's separators compare equal, letters as the host's paths do, and the prefix ends at a separator
-    /// (<c>C:\p\App</c> holds no <c>C:\p\AppX</c>). No path makes it throw. The rule of <see cref="LogicalName"/> and of a
-    /// diagnostic's displayed path.</summary>
-    /// <param name="path">The path.</param>
-    /// <param name="directory">The base directory, normalized.</param>
-    /// <returns>The remainder's start, or 0.</returns>
-    internal static int Under(string path, string directory)
-    {
-        if (directory.Length == 0 || path.Length <= directory.Length || !Path.IsPathFullyQualified(path))
-        {
-            return 0;
-        }
-
-        for (var start = 0; ; start++)
-        {
-            var separator = directory.AsSpan(start).IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var end = separator < 0 ? directory.Length : start + separator;
-            if (!directory.AsSpan(start, end - start).Equals(path.AsSpan(start, end - start), Checking.SourceIdentity.PathComparison))
-            {
-                return 0;
-            }
-
-            if (end == directory.Length)
-            {
-                if (IsSeparator(directory[^1]))
-                {
-                    return end; // A root base, such as C:\, ends in its separator.
-                }
-
-                return IsSeparator(path[end]) ? end + 1 : 0;
-            }
-
-            if (!IsSeparator(path[end]))
-            {
-                return 0;
-            }
-
-            start = end;
-        }
-    }
-
-    /// <summary>Gets the name hover shows for a source: its logical name, but none for a generated or built-in (<c>://</c>) document,
-    /// a fully qualified path outside <see cref="Base"/> or a rooted relative path (U9a-2 names the last two). No path makes it throw.</summary>
-    /// <param name="index">The document's index in <see cref="SourceDocuments"/>.</param>
+    /// <summary>Gets the name hover shows for a source, asked live: its logical name, but none for a built-in (<c>compiler://</c>) or
+    /// Mod-generated document, which hover identifies otherwise. No path makes it throw.</summary>
+    /// <param name="document">A document of this module.</param>
     /// <returns>The name, or <see langword="null"/>.</returns>
-    internal string? HoverSourceName(int index)
+    internal string? HoverSourceName(SourceDocument document)
     {
-        var document = this.sourceDocuments[index];
-        var path = document.Path;
-        if (this.generatedSourceLocations?.ContainsKey(index) == true || path.Contains("://", StringComparison.Ordinal))
+        if (document.Path.StartsWith(Checking.SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) ||
+            this.generatedSourceLocations?.ContainsKey(this.sourceDocuments.IndexOf(document)) == true)
         {
             return null;
         }
 
-        var named = Path.IsPathFullyQualified(path) ? Under(path, this.Base) > 0 : !Path.IsPathRooted(path);
-        return named ? this.LogicalName(document) : null;
+        return this.LogicalName(document);
     }
 
     /// <summary>Gets a document's logical name (IMPL 20.1): a fully qualified path under <see cref="Base"/> is its remainder, any other
@@ -174,7 +130,7 @@ public sealed partial class Kotonoha
         var names = this.names ??= new(ReferenceEqualityComparer.Instance);
         if (!names.TryGetValue(document, out var name))
         {
-            var start = Under(document.Path, directory);
+            var start = Checking.SourceIdentity.Under(document.Path, directory);
             name = start == 0 ? document.Path : document.Path[start..];
             name = Path.DirectorySeparatorChar == '/' ? name : name.Replace(Path.DirectorySeparatorChar, '/');
             names.Add(document, name);
@@ -379,9 +335,6 @@ public sealed partial class Kotonoha
     // API value: Project.TryCreate never produces one), and such a base matches only paths with its exact text.
     private static string Normalize(string directory)
         => Path.IsPathFullyQualified(directory) && !directory.Contains('\0') ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : directory;
-
-    private static bool IsSeparator(char value)
-        => value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;
 
     [TinyhandOnDeserializing]
     private void ResetSourceCompatibility()

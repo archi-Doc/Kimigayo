@@ -239,6 +239,8 @@ public sealed class HoverImprovementsTest
         Assert.Equal(plain.Info.Use, applied.Info.Use);
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): hover names a source by its own module's logical name, never relative to the consuming project:
+    // a dependency's source relative to its project, any other path by its own text; a built-in source has none.
     [Fact]
     public void DependencyAndUnknownSourceBasesNeverUseTheConsumingProjectAsAFallback()
     {
@@ -246,31 +248,51 @@ public sealed class HoverImprovementsTest
         var root = Path.GetFullPath("temp/dependency-hover");
         var known = new Kotonoha(compilation, "Dependency", Path.Combine(root, "Dependency.kimiproj"));
         known.AddSource(new(Path.Combine(root, "src", "Model.kimi"), "struct Model\n"));
-        Assert.Equal("src/Model.kimi", known.HoverSourceName(0));
+        Assert.Equal("src/Model.kimi", known.HoverSourceName(known.SourceDocuments[0]));
         var unknown = new Kotonoha(compilation, "Unknown", "unmapped-project");
         unknown.AddSource(new(Path.Combine(root, "Model.kimi"), "struct Model\n"));
-        Assert.Null(unknown.HoverSourceName(0));
+        Assert.Equal(Path.Combine(root, "Model.kimi").Replace(Path.DirectorySeparatorChar, '/'), unknown.HoverSourceName(unknown.SourceDocuments[0]));
         var embedded = new Kotonoha(compilation, "Embedded", string.Empty);
         embedded.AddSource(new("compiler://Kimi/Model.kimi", "struct Model\n"));
-        Assert.Null(embedded.HoverSourceName(0));
+        embedded.AddSource(new("https://example.test/Model.kimi", "struct Model\n"));
+        Assert.Null(embedded.HoverSourceName(embedded.SourceDocuments[0]));
+        Assert.Equal("https://example.test/Model.kimi", embedded.HoverSourceName(embedded.SourceDocuments[1]));
         if (OperatingSystem.IsWindows())
         {
             var otherDrive = new Kotonoha(compilation, "OtherDrive", @"Y:\Dependency\Dependency.kimiproj");
             otherDrive.AddSource(new(@"Z:\src\Model.kimi", "struct Model\n"));
-            Assert.Null(otherDrive.HoverSourceName(0));
+            Assert.Equal("Z:/src/Model.kimi", otherDrive.HoverSourceName(otherDrive.SourceDocuments[0]));
         }
     }
 
     // IMPL 20.1 (DECISIONS R5-M175): hover names a source by its logical name, which no path makes throw: a NUL inside the base of a
-    // project without a directory (the captured current directory) keeps its relative name; a path outside the base has none.
+    // project without a directory (the captured current directory) keeps its relative name; a path outside the base its own text.
     [Fact]
     public void HoverNamesASourceByItsLogicalNameWithoutThrowing()
     {
         var compilation = Compilation.CreateForTest();
+        var outside = Path.Combine(Path.GetDirectoryName(Directory.GetCurrentDirectory())!, "Outside.kimi");
         compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct A\n"));
-        compilation.Kotonoha.AddSource(new(Path.Combine(Path.GetDirectoryName(Directory.GetCurrentDirectory())!, "Outside.kimi"), "struct B\n"));
-        Assert.Equal("a\0b.kimi", compilation.Kotonoha.HoverSourceName(0));
-        Assert.Null(compilation.Kotonoha.HoverSourceName(1));
+        compilation.Kotonoha.AddSource(new(outside, "struct B\n"));
+        Assert.Equal("a\0b.kimi", compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[0]));
+        Assert.Equal(outside.Replace(Path.DirectorySeparatorChar, '/'), compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[1]));
+    }
+
+    // PLAN G346 (DECISIONS R5-M175): a document whose path has an embedded NUL, which no client can name, has no hover
+    // (SourceIdentity.TryFromPath), and the snapshot keeps every other document, where its build threw before.
+    [Fact]
+    public void AHoverSnapshotLeavesOutADocumentNoClientCanName()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.CollectHover = true;
+        var named = Path.Combine(Directory.GetCurrentDirectory(), "Named.kimi");
+        compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct Value\n"));
+        compilation.Kotonoha.AddSource(new(named, "struct Other\n"));
+        Assert.True(compilation.Bind().IsComplete);
+        var snapshot = HoverBuilder.Create(compilation);
+        Assert.True(Assert.Single(snapshot.Documents).Value.Find(7) >= 0);
+        Assert.True(snapshot.Documents.ContainsKey(SourceIdentity.FromPath(named)));
     }
 
     [Fact]

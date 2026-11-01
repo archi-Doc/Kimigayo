@@ -65,7 +65,7 @@ public class Kimigayo
     // makes throw (PLAN G346).
     private static string DisplayPath(string path, string baseDirectory)
     {
-        var start = Compiler.Kotonoha.Under(path, baseDirectory);
+        var start = Checking.SourceIdentity.Under(path, baseDirectory);
         return start == 0 ? path : path[start..];
     }
 

@@ -37,6 +37,25 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
     public static SourceIdentity FromPath(string path)
         => new(path.StartsWith(BuiltInPrefix, StringComparison.Ordinal) ? path : Path.GetFullPath(path));
 
+    /// <summary>Attempts to create an identity from a file path or built-in identifier: none for a path no file system names, such
+    /// as one with NUL (an in-memory source), which no client can name either.</summary>
+    /// <param name="path">The path; relative paths resolve against the current directory.</param>
+    /// <param name="identity">The canonical identity.</param>
+    /// <returns><see langword="true"/> when the path has an identity.</returns>
+    public static bool TryFromPath(string path, out SourceIdentity identity)
+    {
+        try
+        {
+            identity = FromPath(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            identity = default;
+            return false;
+        }
+    }
+
     /// <summary>Attempts to convert a <c>file:</c> URI to an identity.</summary>
     /// <param name="uri">The client URI.</param>
     /// <param name="identity">The identity of the local path.</param>
@@ -50,15 +69,7 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
             return false;
         }
 
-        try
-        {
-            identity = FromPath(parsed.LocalPath);
-            return true;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
+        return TryFromPath(parsed.LocalPath, out identity);
     }
 
     /// <summary>Converts a file identity to its <c>file:</c> URI.</summary>
@@ -91,4 +102,49 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
 
     public static bool operator !=(SourceIdentity left, SourceIdentity right)
         => !left.Equals(right);
+
+    /// <summary>Gets where a fully qualified path's remainder under a base directory starts, or 0 when the base does not contain it:
+    /// without allocation, the host's separators compare equal, letters as the host's paths do, and the prefix ends at a separator
+    /// (<c>C:\p\App</c> holds no <c>C:\p\AppX</c>). No path makes it throw. The rule of a source's logical name
+    /// (<c>Kotonoha.LogicalName</c>) and of a diagnostic's displayed path.</summary>
+    /// <param name="path">The path.</param>
+    /// <param name="directory">The base directory, normalized.</param>
+    /// <returns>The remainder's start, or 0.</returns>
+    internal static int Under(string path, string directory)
+    {
+        if (directory.Length == 0 || path.Length <= directory.Length || !Path.IsPathFullyQualified(path))
+        {
+            return 0;
+        }
+
+        for (var start = 0; ; start++)
+        {
+            var separator = directory.AsSpan(start).IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var end = separator < 0 ? directory.Length : start + separator;
+            if (!directory.AsSpan(start, end - start).Equals(path.AsSpan(start, end - start), PathComparison))
+            {
+                return 0;
+            }
+
+            if (end == directory.Length)
+            {
+                if (IsSeparator(directory[^1]))
+                {
+                    return end; // A root base, such as C:\, ends in its separator.
+                }
+
+                return IsSeparator(path[end]) ? end + 1 : 0;
+            }
+
+            if (!IsSeparator(path[end]))
+            {
+                return 0;
+            }
+
+            start = end;
+        }
+    }
+
+    private static bool IsSeparator(char value)
+        => value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;
 }
