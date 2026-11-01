@@ -14868,8 +14868,15 @@ structure is recorded here by the unit that first implements it.
     members also read (their copies gone); `FromPath` still rejects such a path (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
   - U9a-3a: the check of a module's names, `Kotonoha.CheckNames` (memoized with the names, emptied when a document is recorded), at
     one site, `Project.CheckFrontEnd` once every source is established, for every source module (the root's and each dependency's):
-    two names equal under simple case folding (CaseFolding.txt's C and S, never full folding: ß and ss differ), twins included, are
-    `ProjectPreparationFailed_Kd` with both names as the note, Blocked before the front end (`CheckServiceTest`, accepted before).
+    names equal under simple case folding (CaseFolding.txt's C and S, never full folding: ß and ss differ), twins included, are
+    `ProjectPreparationFailed_Kd` at the root project file, Blocked before the front end (`CheckServiceTest`, accepted before).
+    Each independent failure is its own record (SPEC 23.1.2; review B6): every module is checked, and each name not in NFC and each
+    group of names equal under folding is one record, a group of three naming all three (one failure: the names share one folded
+    spelling, and naming the group shows every name to rename; `DiagnosticOwner.Report` keeps records with different notes apart).
+    The note names the module (a dependency's failure is reported at the root project file, the one check site, rather than through
+    `DependencyResolver`). Names are compared within one module: a root `Main.kimi` beside a dependency's `main.kimi` is accepted.
+    TestSources are read only by test builds (SPEC 18.6), so a product source and a TestSources entry equal under folding are
+    reported by `kimi test`, not by `check` or `build`.
     `OrdinalIgnoreCase` is not the rule: it misses U+1E9E/U+00DF and U+017F/s. The data are pinned like `MarkdownUnicodeData`:
     Unicode 15.0.0 CaseFolding.txt (SHA-256 cdd49e55…a56f7, checked by `GenerateNameUnicode.ps1`, which writes
     `UnicodeNameData.cs`), 1,454 pairs (11,632 B of data, a 25,135 B source file); `UnicodeNameHelper.SimpleCaseFolding` compares

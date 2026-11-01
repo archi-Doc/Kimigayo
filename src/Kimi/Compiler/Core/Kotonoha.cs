@@ -143,40 +143,50 @@ public sealed partial class Kotonoha
     internal void ForgetNames()
     {
         this.names?.Clear();
-        this.nameCheck = default;
+        this.nameFailures = null;
     }
 
-    /// <summary>Checks this module's source names (IMPL 20.1): a name not in NFC, then two names equal under simple case folding, twins
-    /// included, are an error.
-    /// Memoized with the names and emptied when a document is recorded, so a repeated check allocates nothing.</summary>
-    /// <returns>The first failure, as a project preparation note, or <see langword="null"/>.</returns>
-    internal string? CheckNames()
+    /// <summary>Checks this module's source names (IMPL 20.1) and reports each independent failure (SPEC 23.1.2): every name not in NFC,
+    /// and every group of names equal under simple case folding, twins included, as one failure naming the whole group; a name not in
+    /// NFC joins no group. Memoized with the names and emptied when a document is recorded, so a repeated check allocates nothing.</summary>
+    /// <returns>The failures, as project preparation notes naming this module, in document order; empty when the names are valid.</returns>
+    internal IReadOnlyList<string> CheckNames()
     {
         _ = this.Base; // First: a new base empties the memo.
-        if (!this.nameCheck.Done)
+        if (this.nameFailures is null)
         {
-            string? failure = null;
-            var seen = new Dictionary<string, string>(this.sourceDocuments.Count, Helper.UnicodeNameHelper.SimpleCaseFolding);
+            List<string>? failures = null;
+            var first = new Dictionary<string, string>(this.sourceDocuments.Count, Helper.UnicodeNameHelper.SimpleCaseFolding);
+            Dictionary<string, List<string>>? groups = null;
             foreach (var document in this.sourceDocuments)
             {
                 var name = this.LogicalName(document);
                 if (!Helper.UnicodeNameHelper.IsNfc(name))
                 {
-                    failure = $"Source name '{name}' is not in Unicode Normalization Form C (IMPL 20.1).";
-                    break;
+                    (failures ??= []).Add($"Module '{this.Name}': source name '{name}' is not in Unicode Normalization Form C (IMPL 20.1).");
                 }
-
-                if (!seen.TryAdd(name, name))
+                else if (!first.TryAdd(name, name))
                 {
-                    failure = $"Source names '{seen[name]}' and '{name}' are equal under simple case folding (IMPL 20.1).";
-                    break;
+                    var key = first[name];
+                    if (!(groups ??= new(StringComparer.Ordinal)).TryGetValue(key, out var group))
+                    {
+                        groups.Add(key, group = [key]);
+                    }
+
+                    group.Add(name);
                 }
             }
 
-            this.nameCheck = (true, failure);
+            foreach (var group in groups?.Values ?? Enumerable.Empty<List<string>>())
+            {
+                var names = string.Join(", ", group.Select(static x => $"'{x}'"));
+                (failures ??= []).Add($"Module '{this.Name}': source names {names} are equal under simple case folding (IMPL 20.1).");
+            }
+
+            this.nameFailures = failures?.ToArray() ?? [];
         }
 
-        return this.nameCheck.Failure;
+        return this.nameFailures;
     }
 
     [IgnoreMember]
@@ -189,7 +199,7 @@ public sealed partial class Kotonoha
     private Dictionary<SourceDocument, string>? names;
 
     [IgnoreMember]
-    private (bool Done, string? Failure) nameCheck;
+    private string[]? nameFailures;
 
     private List<Documentation.DocumentationSource>? documentationSources;
 
@@ -345,7 +355,7 @@ public sealed partial class Kotonoha
         }
 
         this.sourceDocuments.Add(sourceDocument);
-        this.nameCheck = default;
+        this.nameFailures = null;
     }
 
     /// <summary>Records that the parser skipped a declaration at a syntax Error, so the member set of this source unit is incomplete.</summary>
@@ -417,7 +427,7 @@ public sealed partial class Kotonoha
         this.baseSource = this.Compilation.Project.Directory;
         this.baseDirectory = Normalize(this.BaseOrigin());
         this.names?.Clear();
-        this.nameCheck = default;
+        this.nameFailures = null;
     }
 
     // The directory the base comes from: for the root (no Url), its project's directory, else the current directory its compilation

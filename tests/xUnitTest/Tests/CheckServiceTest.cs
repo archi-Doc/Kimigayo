@@ -68,7 +68,8 @@ public sealed partial class CheckServiceTest : IDisposable
     {
         var project = this.WriteProject("App");
         var folder = Path.GetDirectoryName(project)!;
-        var inputs = new OverlayInputSource(new() { [Path.Combine(folder, first)] = Valid, [Path.Combine(folder, second)] = "public func two() -> i32 => 2\n" });
+        const string other = "public func two() -> i32 => 2\n";
+        var inputs = new OverlayInputSource(new() { [Path.Combine(folder, first)] = Valid, [Path.Combine(folder, second)] = other });
         var output = this.Run(project, inputs: inputs);
         if (!equal)
         {
@@ -109,6 +110,57 @@ public sealed partial class CheckServiceTest : IDisposable
         var failure = Assert.Single(output.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
         Assert.Contains("Normalization Form C", failure.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.1.2, IMPL 20.1 (DECISIONS R5-M175): each independent failure of a module's names is its own record: a name not in NFC,
+    // and each group of names equal under simple case folding, three names in one group naming them all.
+    [Fact]
+    public void EachIndependentNameFailureIsReported()
+    {
+        var project = this.WriteProject("App");
+        var folder = Path.GetDirectoryName(project)!;
+        var files = new[] { "S.kimi", "s.kimi", "\u017F.kimi", "e\u0301.kimi", "B.kimi", "b.kimi" };
+        var output = this.Run(project, inputs: new OverlayInputSource(files.ToDictionary(x => Path.Combine(folder, x), static _ => Valid)));
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        var notes = output.Diagnostics.Select(static x => x.Note!).ToArray();
+        Assert.Equal(3, notes.Length);
+        Assert.Single(notes, static x => x.Contains("e\u0301.kimi", StringComparison.Ordinal) && x.Contains("Normalization", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.Contains("'S.kimi', 's.kimi', '\u017F.kimi'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.Contains("'B.kimi', 'b.kimi'", StringComparison.Ordinal));
+    }
+
+    // SPEC 23.1.2, IMPL 20.1 (DECISIONS R5-M175): every module's names are checked, the root's and each dependency's, each failure naming
+    // its module; names are compared only within one module, so a root Main.kimi beside a dependency's main.kimi is accepted.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EveryModulesNamesAreCheckedWithinTheModule(bool invalid)
+    {
+        this.WriteLibrary("Lib", "lib", "public func value() -> i32 => 2\n");
+        const string dependency = "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}";
+        var project = this.WriteProject("App", ("Main.kimi", Valid), dependencies: dependency);
+        if (invalid)
+        {
+            File.WriteAllText(this.PathOf("App", "o\u0308.kimi"), "public func app() -> i32 => 3\n");
+            File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "public func lib() -> i32 => 4\n");
+        }
+
+        var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken);
+        var output = this.Run(project);
+        if (!invalid)
+        {
+            Assert.Equal(CheckOutcome.Completed, output.Outcome);
+            Assert.Empty(output.Diagnostics);
+            return;
+        }
+
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var notes = output.Diagnostics.Select(static x => x.Note!).ToArray();
+        Assert.Equal(2, notes.Length);
+        Assert.Single(notes, static x => x.Contains("o\u0308.kimi", StringComparison.Ordinal) && x.Contains("'App'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.Contains("e\u0301.kimi", StringComparison.Ordinal) && !x.Contains("'App'", StringComparison.Ordinal));
     }
 
     // IMPL 20.1 (DECISIONS R5-M175): a name used twice in one module (an in-memory source beside the listed one) is the same failure.

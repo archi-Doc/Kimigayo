@@ -524,14 +524,21 @@ public partial class Project
             projectKotonoha.AddSource(y);
         }
 
-        // IMPL 20.1: every module's source names, the root's and each dependency's, are checked once its sources are established.
+        // IMPL 20.1: every module's source names, the root's and each dependency's, are checked once its sources are established,
+        // and each independent failure is its own record (SPEC 23.1.2).
+        var namesFailed = false;
         foreach (var module in compilation.SourceModules)
         {
-            if (module.CheckNames() is { } failure)
+            foreach (var failure in module.CheckNames())
             {
                 this.Fail(compilation.Diagnostics, failure);
-                return this.PreparationFailed(compilation.Diagnostics);
+                namesFailed = true;
             }
+        }
+
+        if (namesFailed)
+        {
+            return this.PreparationFailed(compilation.Diagnostics);
         }
 
         if (context is not null)
