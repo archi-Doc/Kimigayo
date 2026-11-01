@@ -14814,6 +14814,12 @@ structure is recorded here by the unit that first implements it.
     `C/Emission`); and the reduction plan's table (`WindowsProfile` to `src/Kimi/Build` at R9). For the target half only: their reason,
     nothing moves twice, holds for the toolchain identity, which R9 still moves with the toolchain, and not for the target profile, which
     P2-P12 read and R9's move cannot take.
+  - Amended (PLAN G363, 2026-11-02): the known duplicate is gone; the layout has one copy, `WindowsProfile.DataLayout`. `IrTarget`
+    publishes the pointer width only (`IrTarget(int PointerWidth)`): its port of `Triple::computeDataLayout`, the triple parts only that
+    port read (vendor, object format, component names, eight predicates) and `CoreModelTest`'s tie are deleted. The emptiness check
+    stood for one fact, that an architecture without an LLVM backend (AMDIL, HSAIL and their 64-bit forms, Kalimba, SHAVE,
+    RenderScript32/64) has no IR target; that fact is now pointer width 0, `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s
+    one check, so every architecture and environment keeps its acceptance and width.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, R5;
   design `draft/Sketches/R5/LN-design.md` revision 2, accepted by design review 3; the owner's 「両レーンで GO！」) IMPL 20.1 names a source by
   its project-relative path with `/` separators. Five copies disagreed on the base (the root's or the source's own project), the

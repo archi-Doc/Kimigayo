@@ -7,22 +7,16 @@ namespace Kimi.Compiler.Target;
 #pragma warning disable SA1611 // Element parameters should be documented
 
 /// <summary>
-/// Parsed LLVM target triple: ARCHITECTURE-VENDOR-OS[-ENVIRONMENT].
-/// Faithful port of the llvm::Triple constructor (no normalization).
+/// Parsed LLVM target triple ARCHITECTURE-VENDOR-OS[-ENVIRONMENT]: the architecture, OS and environment, parsed as the llvm::Triple
+/// constructor does (no normalization). The vendor and the object format are not classified; nothing reads them.
 /// </summary>
 public sealed record class TargetTriple(
     string Value,
     Architecture Arch,
-    VendorType Vendor,
     OsType Os,
-    EnvironmentType Environment,
-    ObjectFormatType ObjectFormat,
-    string ArchName,
-    string VendorName,
-    string OsName,
-    string EnvironmentName)
+    EnvironmentType Environment)
 {
-    public static readonly TargetTriple Invalid = new(string.Empty, Architecture.Unknown, VendorType.Unknown, OsType.Unknown, EnvironmentType.Unknown, ObjectFormatType.Unknown, string.Empty, string.Empty, string.Empty, string.Empty);
+    public static readonly TargetTriple Invalid = new(string.Empty, Architecture.Unknown, OsType.Unknown, EnvironmentType.Unknown);
 
     /// <summary>
     /// Parse a target triple string. Mirrors Triple::Triple(std::string):
@@ -50,47 +44,24 @@ public sealed record class TargetTriple(
         ranges[count++] = new Range(start, s.Length);
 
         var archSpan = s[ranges[0]];
-        var arch = ParseArch(archSpan);
-        var vendor = VendorType.Unknown;
         var os = OsType.Unknown;
         var env = EnvironmentType.Unknown;
-        var format = ObjectFormatType.Unknown;
-        string vendorName = string.Empty, osName = string.Empty, envName = string.Empty;
-
-        if (count > 1)
+        if (count > 2)
         {
-            ReadOnlySpan<char> vendorSpan = s[ranges[1]];
-            vendor = ParseVendor(vendorSpan);
-            vendorName = vendorSpan.ToString();
-            if (count > 2)
+            os = ParseOs(s[ranges[2]]);
+            if (count > 3)
             {
-                ReadOnlySpan<char> osSpan = s[ranges[2]];
-                os = ParseOs(osSpan);
-                osName = osSpan.ToString();
-                if (count > 3)
-                {
-                    ReadOnlySpan<char> envSpan = s[ranges[3]];
-                    env = ParseEnvironment(envSpan);
-                    format = ParseFormat(envSpan);
-                    envName = envSpan.ToString();
-                }
+                env = ParseEnvironment(s[ranges[3]]);
             }
         }
-        else
+        else if (count == 1)
         {
             // Single-component triple: certain MIPS arch names imply an
             // environment (mirrors the special case in the Triple constructor).
             env = ImpliedMipsEnvironment(archSpan);
         }
 
-        var result = new TargetTriple(triple, arch, vendor, os, env, format, archSpan.ToString(), vendorName, osName, envName);
-
-        if (format == ObjectFormatType.Unknown)
-        {
-            result = result with { ObjectFormat = GetDefaultFormat(result) };
-        }
-
-        return result;
+        return new(triple, ParseArch(archSpan), os, env);
     }
 
     // ------------------------------------------------------------------
@@ -288,30 +259,6 @@ public sealed record class TargetTriple(
 
         return Architecture.Unknown;
     }
-
-    // ------------------------------------------------------------------
-    // Vendor (exact match, port of parseVendor / TripleName.def)
-    // ------------------------------------------------------------------
-
-    private static VendorType ParseVendor(ReadOnlySpan<char> name) => name switch
-    {
-        "amd" => VendorType.AMD,
-        "apple" => VendorType.Apple,
-        "csr" => VendorType.CSR,
-        "fsl" => VendorType.Freescale,
-        "ibm" => VendorType.IBM,
-        "img" => VendorType.ImaginationTechnologies,
-        "intel" => VendorType.Intel,
-        "mesa" => VendorType.Mesa,
-        "mti" => VendorType.MipsTechnologies,
-        "nvidia" => VendorType.Nvidia,
-        "oe" => VendorType.OpenEmbedded,
-        "pc" => VendorType.PC,
-        "scei" or "sie" => VendorType.SCEI,
-        "suse" => VendorType.SUSE,
-        "meta" => VendorType.Meta,
-        _ => VendorType.Unknown,
-    };
 
     // ------------------------------------------------------------------
     // OS (prefix match; declaration order from TripleName.def is significant:
@@ -952,51 +899,6 @@ public sealed record class TargetTriple(
         return EnvironmentType.Unknown;
     }
 
-    // ------------------------------------------------------------------
-    // Object format (port of parseFormat; suffix match on the 4th component)
-    // ------------------------------------------------------------------
-
-    private static ObjectFormatType ParseFormat(ReadOnlySpan<char> name)
-    {
-        // "xcoff" must be tested before "coff" (order-dependent suffix match).
-        if (name.EndsWith("xcoff"))
-        {
-            return ObjectFormatType.Xcoff;
-        }
-
-        if (name.EndsWith("coff"))
-        {
-            return ObjectFormatType.Coff;
-        }
-
-        if (name.EndsWith("elf"))
-        {
-            return ObjectFormatType.Elf;
-        }
-
-        if (name.EndsWith("goff"))
-        {
-            return ObjectFormatType.Goff;
-        }
-
-        if (name.EndsWith("macho"))
-        {
-            return ObjectFormatType.MachO;
-        }
-
-        if (name.EndsWith("wasm"))
-        {
-            return ObjectFormatType.Wasm;
-        }
-
-        if (name.EndsWith("spirv"))
-        {
-            return ObjectFormatType.SpirV;
-        }
-
-        return ObjectFormatType.Unknown;
-    }
-
     private static EnvironmentType ImpliedMipsEnvironment(ReadOnlySpan<char> arch)
     {
         if (arch.StartsWith("mipsn32"))
@@ -1027,137 +929,14 @@ public sealed record class TargetTriple(
     }
 
     // ------------------------------------------------------------------
-    // Default object format (port of getDefaultFormat)
+    // Environment predicates (read by IrTarget's pointer width)
     // ------------------------------------------------------------------
-
-    private static ObjectFormatType GetDefaultFormat(TargetTriple t)
-    {
-        switch (t.Arch)
-        {
-            case Architecture.Unknown:
-            case Architecture.AArch64:
-            case Architecture.AArch64_32:
-            case Architecture.Arm:
-            case Architecture.Thumb:
-            case Architecture.X86:
-            case Architecture.X86_64:
-                if (t.Os is OsType.Win32 or OsType.UEFI)
-                {
-                    return ObjectFormatType.Coff;
-                }
-
-                return t.IsOsDarwin ? ObjectFormatType.MachO : ObjectFormatType.Elf;
-
-            case Architecture.MipsEL:
-                return t.Os == OsType.Win32 ? ObjectFormatType.Coff : ObjectFormatType.Elf;
-
-            case Architecture.Ppc:
-            case Architecture.Ppc64:
-                if (t.Os == OsType.AIX)
-                {
-                    return ObjectFormatType.Xcoff;
-                }
-
-                if (t.IsOsDarwin)
-                {
-                    return ObjectFormatType.MachO;
-                }
-
-                return ObjectFormatType.Elf;
-
-            case Architecture.SystemZ:
-                return t.Os == OsType.ZOS ? ObjectFormatType.Goff : ObjectFormatType.Elf;
-
-            case Architecture.Wasm32:
-            case Architecture.Wasm64:
-                return ObjectFormatType.Wasm;
-
-            case Architecture.SpirV:
-            case Architecture.SpirV32:
-            case Architecture.SpirV64:
-                return ObjectFormatType.SpirV;
-
-            case Architecture.Dxil:
-                return ObjectFormatType.DXContainer;
-
-            default:
-                return ObjectFormatType.Elf;
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Convenience predicates (subset of Triple.h used by data layout code)
-    // ------------------------------------------------------------------
-
-    /// <summary>macOS, iOS, tvOS, watchOS, DriverKit, XROS, bridgeOS or Apple firmware.</summary>
-    public bool IsOsDarwin =>
-        this.Os is OsType.Darwin or OsType.MacOSX or OsType.IOS or OsType.TvOS
-           or OsType.WatchOS or OsType.DriverKit or OsType.XROS or OsType.BridgeOS
-        || (this.Vendor == VendorType.Apple && this.Os == OsType.Firmware);
-
-    public bool IsOsWindows => this.Os == OsType.Win32;
-
-    public bool IsWindowsMsvcEnvironment =>
-        this.IsOsWindows && this.Environment is EnvironmentType.Msvc or EnvironmentType.Unknown;
-
-    public bool IsMusl =>
-        this.Environment is EnvironmentType.Musl or EnvironmentType.MuslAbiN32
-            or EnvironmentType.MuslAbi64 or EnvironmentType.MuslEabi
-            or EnvironmentType.MuslEabiHF or EnvironmentType.MuslF32
-            or EnvironmentType.MuslSF or EnvironmentType.MuslX32
-            or EnvironmentType.MuslWali or EnvironmentType.OpenHos
-        || this.Os == OsType.LiteOS;
 
     /// <summary>x32 ABI: 32-bit pointers on x86-64.</summary>
     public bool IsX32 => this.Environment is EnvironmentType.GnuX32 or EnvironmentType.MuslX32;
 
     /// <summary>MIPS N32 ABI.</summary>
     public bool IsAbiN32 => this.Environment is EnvironmentType.GnuAbiN32 or EnvironmentType.MuslAbiN32;
-
-    public bool IsOsBinFormatMachO => this.ObjectFormat == ObjectFormatType.MachO;
-
-    public bool IsOsBinFormatCoff => this.ObjectFormat == ObjectFormatType.Coff;
-
-    public bool IsOsBinFormatGoff => this.ObjectFormat == ObjectFormatType.Goff;
-
-    public bool IsOsBinFormatXcoff => this.ObjectFormat == ObjectFormatType.Xcoff;
-
-    /// <summary>Port of Triple::isLittleEndian (enumerated by big-endian set).</summary>
-    public bool IsLittleEndian => this.Arch switch
-    {
-        Architecture.ArmEB or Architecture.ThumbEB or Architecture.AArch64BE or
-        Architecture.BpfEB or Architecture.M68k or Architecture.Mips or
-        Architecture.Mips64 or Architecture.Ppc or Architecture.Ppc64 or
-        Architecture.RiscV32BE or Architecture.RiscV64BE or Architecture.Sparc or
-        Architecture.SparcV9 or Architecture.SystemZ or Architecture.Tce or
-        Architecture.Lanai => false,
-        _ => true,
-    };
-
-    /// <summary>
-    /// Parse the major version number embedded in the OS component
-    /// (e.g. "freebsd13.2" -> 13). Returns 0 when absent.
-    /// </summary>
-    public int OsMajorVersion
-    {
-        get
-        {
-            ReadOnlySpan<char> s = this.OsName.AsSpan();
-            int i = 0;
-            while (i < s.Length && !char.IsAsciiDigit(s[i]))
-            {
-                i++;
-            }
-
-            int v = 0;
-            while (i < s.Length && char.IsAsciiDigit(s[i]))
-            {
-                v = (v * 10) + (s[i++] - '0');
-            }
-
-            return v;
-        }
-    }
 
     public override string ToString() => this.Value;
 }

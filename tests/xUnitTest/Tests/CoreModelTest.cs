@@ -53,21 +53,20 @@ public class CoreModelTest
         Assert.Equal(expectedPointerWidth, pointerWidth.I64);
     }
 
-    [Fact]
-    public void PrepareRejectsAnUnsupportedTargetAndClearsTargetVariables()
+    // An unknown architecture, and one without an LLVM backend (32- and 64-bit), has no IR target (DECISIONS R5-M174, G363).
+    [Theory]
+    [InlineData("unknown-unknown-unknown")]
+    [InlineData("amdil-unknown-unknown")]
+    [InlineData("hsail64-unknown-unknown")]
+    public void PrepareRejectsAnUnsupportedTargetAndClearsTargetVariables(string target)
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
 
-        Assert.False(compilation.Prepare("unknown-unknown-unknown"));
+        Assert.False(compilation.Prepare(target));
+        Assert.Contains(TestDiagnostics.Of(compilation), x => x.Code == nameof(DiagnosticCode.UnsupportedTarget_Kd));
         Assert.Same(TargetTriple.Invalid, compilation.TargetTriple);
         Assert.Same(IrTarget.Invalid, compilation.IrTarget);
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
-
-    // DECISIONS R5-M174: the checked triple's layout (IrTarget, any triple) and the one executable profile's pinned layout are two
-    // copies that neither reads; for windows-x64 they agree.
-    [Fact]
-    public void TheProfileLayoutIsItsTriplesLayout()
-        => Assert.Equal(WindowsProfile.DataLayout, IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).DataLayout);
 }

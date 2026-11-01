@@ -189,7 +189,7 @@ public partial class Compilation
     /// </summary>
     /// <param name="target">The target triple text.</param>
     /// <returns>
-    /// <see langword="true"/> when the language version, settings, pointer width, and LLVM data layout are supported;
+    /// <see langword="true"/> when the language version and settings are supported and the target has an IR target (a pointer width);
     /// otherwise, <see langword="false"/> and the target state is reset to invalid.
     /// </returns>
     /// <remarks>
@@ -232,9 +232,7 @@ public partial class Compilation
         var targetTriple = TargetTriple.Parse(target);
         var irTarget = IrTarget.Create(targetTriple);
 
-        if (targetTriple.Arch == Architecture.Unknown ||
-            irTarget.PointerWidth == 0 ||
-            irTarget.DataLayout.Length == 0)
+        if (irTarget.PointerWidth == 0)
         {
             this.TargetTriple = TargetTriple.Invalid;
             this.IrTarget = IrTarget.Invalid;
