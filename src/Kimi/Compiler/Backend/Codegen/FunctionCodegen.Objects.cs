@@ -69,6 +69,7 @@ internal sealed partial class FunctionCodegen
     // parameters the drop routine's, slot, location and length, which the release text names): a Sealed payload's (DropGlue.Parts gives it)
     // directly, ObjectRuntime.WriteSealedDrop's counted transition, the payload's glue (the glue item's one target, when the payload may need
     // a drop) and the free; any other through the runtime's release of its counting, whose descriptor's finalizer destroys the actual Type.
+    // It reads nothing else of the payload, so the item may stand for every handle of its release (InstanceCollector.GlueKey).
     private void Release(int glue, BoundType type, Value address, Site site)
     {
         var (parts, start) = (this.parts, this.parts.Count);

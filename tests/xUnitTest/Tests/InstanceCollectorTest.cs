@@ -721,13 +721,15 @@ public sealed partial class InstanceCollectorTest
     // of 128; a branching non-regular Type, at the 1,025th glue item of its declaration; and the Known limit, growth written into a chain
     // of distinct functions (each adding Option), at its 17th generation, though nothing recurs. A refused key is refused once: a
     // destructor creating a growing object requests its glue key from the creation, the descriptor and the local's handle glue, one record
-    // at the first request.
+    // at the first request. The cap is the requested Type's: a handle past it is refused though an earlier handle admitted the release key
+    // its glue shares (U11).
     [Theory]
     [InlineData("requested", "GenerationResourceLimit_Kd Expanding<Marker<T>>.init()")]
     [InlineData("mutual", "GenerationResourceLimit_Kd f(value@move, n)")]
     [InlineData("handle", "Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()")]
     [InlineData("cycle", "GenerationResourceLimit_Kd let v: Option<obj/C1<i32>> = .None")]
     [InlineData("height", "GenerationResourceLimit_Kd let v")]
+    [InlineData("shared", "GenerationResourceLimit_Kd rc/W<W<")]
     [InlineData("breadth", "GenerationResourceLimit_Kd let v: Option<obj/Nest<i32>> = .None")]
     [InlineData("written", "GenerationResourceLimit_Kd Helpers.wrap(A17<Option<T>>.init())")]
     public void GrowthStopsAtItsSite(string shape, string records)
@@ -746,6 +748,8 @@ public sealed partial class InstanceCollectorTest
                 "public func main() -> ()\n    let v: Option<obj/C1<i32>> = .None\n    return\n",
             "height" => "struct W<T>\n    public var next: Option<obj/T>\npublic func main() -> ()\n    let v: Option<obj/" +
                 string.Concat(Enumerable.Repeat("W<", 130)) + "i32" + new string('>', 130) + "> = .None\n    return\n",
+            "shared" => "struct W<T>\n    public var p: raw/T\nfunc use(v: rc/" + string.Concat(Enumerable.Repeat("W<", 130)) + "i32" +
+                new string('>', 130) + ", s: rc/W<i32>) -> ()\n    return\n",
             "breadth" => "struct Nest<T>\n    public let a: Option<obj/Nest<(T, i8)>>\n    public let b: Option<obj/Nest<(i8, T)>>\n" +
                 "public func main() -> ()\n    let v: Option<obj/Nest<i32>> = .None\n    return\n",
             _ => "contract Runner\n    func run(self: ref/Self) -> i32\ngroup Helpers\n    public func wrap<T>(x: T) -> i32\n        T is Runner\n" +
@@ -757,7 +761,7 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         var actual = string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
-        Assert.True(shape == "height" ? actual.StartsWith(records, StringComparison.Ordinal) && set.Records.Count() == 1 : actual == records, actual);
+        Assert.True(shape is "height" or "shared" ? actual.StartsWith(records, StringComparison.Ordinal) && set.Records.Count() == 1 : actual == records, actual);
         if (shape == "breadth")
         {
             Assert.Equal(1024, set.Items.ToArray().Count(x => Label(program, x).StartsWith("DropGlue Nest<", StringComparison.Ordinal)));
@@ -1638,6 +1642,28 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["DropGlue Leaf"], Targets(program, set, "DropGlue rc/Leaf"));
         Assert.Equal(["DropGlue Leaf"], Targets(program, set, "DropGlue arc/Leaf"));
         Assert.Empty(Targets(program, set, "DropGlue rc/Node"));
+    }
+
+    // DECISIONS R5-M60 (amended by U11), K 4.5 "DropGlue": an owning handle's glue is keyed by its release, the counting and the payload's
+    // glue or the descriptor's finalizer: Sealed payloads without a drop share one glue per counting whatever their size, open payloads
+    // (the finalizer's) one apart from them, with or without a drop, and a Sealed payload with a drop keeps its own.
+    [Fact]
+    public void HandleGluesShareTheirRelease()
+    {
+        var (program, set) = Collect("struct Small\n    public var a: i32\n    public init(a: i32) => self.a = a\nstruct Large\n" +
+            "    public var a: i64\n    public init(a: i64) => self.a = a\nstruct Leaf\n    public var name: string\n" +
+            "    public init(name: string) => self.name = name@move\nopen struct Node\n    public var a: i32\n    public init(a: i32) => self.a = a\n" +
+            "open struct Twig\n    public var name: string\n    public init(name: string) => self.name = name@move\nfunc use() -> ()\n" +
+            "    let a = Kimi.Intrinsics.makeRc(Small.init(1))\n    let b = Kimi.Intrinsics.makeRc(Large.init(2))\n" +
+            "    let c = Kimi.Intrinsics.makeArc(Small.init(3))\n    let d = Kimi.Intrinsics.makeRc(Leaf.init(\"d\"))\n" +
+            "    let e = Kimi.Intrinsics.makeRc(Node.init(4))\n    let f = Kimi.Intrinsics.makeRc(Twig.init(\"f\"))\n    return\n");
+        var handles = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.DropGlue && x.RepresentativeType!.HandleMode is not null);
+        // Requested last local first; a shared item's label names its first requester: rc/Twig for rc/Node, rc/Large for rc/Small.
+        Assert.Equal(
+            ["DropGlue rc/Twig", "DropGlue rc/Leaf", "DropGlue arc/Small", "DropGlue rc/Large"], handles.Select(x => Label(program, x)));
+        Assert.Empty(Targets(program, set, "DropGlue rc/Twig"));
+        Assert.Equal(["DropGlue Leaf"], Targets(program, set, "DropGlue rc/Leaf"));
+        Assert.Empty(Targets(program, set, "DropGlue rc/Large"));
     }
 
     // K 4.5 "DropGlue" (X23), rows 10 and 13: a Closure environment's glue destroys its captures last to first, and the Closure's erasure
