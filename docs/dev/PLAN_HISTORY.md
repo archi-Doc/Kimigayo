@@ -274,6 +274,12 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G363 (R5; batch 89; DECISIONS R5-M174's amendment):** `IrTarget` publishes the pointer width only: the unread LLVM data-layout port and the `TargetTriple` parts only it read are gone (about 1,000 lines); the eight architectures without an LLVM backend keep their rejection as width 0, and the 64-bit architectures are listed (no silent default). A differential probe over 2.1 M triple strings kept every accepted triple, width and diagnostic.
 <a id="g370"></a>
 - **G370 (R5; batch 89; DECISIONS R5-M178):** the built-in Conditions `os` and `arch` follow IMPL 20.2.1's table (`TargetTriple.OsFamily` and `ArchFamily`; darwin and macosx give `macos`, any other OS or architecture `unknown`); before, they were the triple's enum names. Windows values are unchanged; `ParseOs` and `OsType` are gone.
+<a id="g367"></a>
+- **G367 (R5; batch 90; DECISIONS R5-M177):** each independent configuration failure is its own record (SPEC 23.1.2): `DependencyConfiguration` owns the configuration rules and the one duplicate-TestSources rule (four copies gone) and returns one note per failure; the resolver carries a failure list (`kimi restore` prints each; a failed project is reported once); `Compilation.Prepare`, the dependency settings, the graph supplies (`ValidateGraphSupplies`), `TestSettings` and repeated map names report each failure too, with `Compilation.Conditions` the one table of built-in Conditions. Test preparation records these failures instead of throwing.
+<a id="g366"></a>
+- **G366 (R5; batch 90; R5-M172's amendment):** runtime templates take their ABI constants through `LlvmModuleText.ExpandRuntime` only: `RuntimeAbi.Expand` supplies `{{zero_sized_buffer}}` and `{{no_os_error}}` (19 template sites, 4 writers through `WriteNumber`), and `Texts.ArrayRuntime` is a template with its definitions spliced exactly once; every expanded text byte-identical. Follow-up: PLAN G371.
+<a id="g157-28"></a>
+- **G157 (28) (R5; batch 90, unit U11; R5-M60's amendment):** handle glues are keyed by their release (counting, and the payload's glue or the finalizer), decided once by the collector (`InstanceCollector.GlueKey`, memoized per run): 21 fixtures lost duplicate glues (112 -> 89 in ten families), the height cap is checked before the shared lookup. Follow-up: PLAN G372.
 
 ## Retired audit records
 
