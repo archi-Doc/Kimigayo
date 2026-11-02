@@ -70,7 +70,7 @@ public sealed partial class Binding
 
             if (target.RawOrigin is not null && !KotoHelper.IsUnsafeContext(conversion))
             {
-                _ = this.CheckTypeUse(this.types.Pointer(target.Components[0], source.RawOrigin), target, conversion.Left);
+                _ = this.CheckTypeUse(this.types.Pointer(target.Components[0], source.RawOrigin), target, conversion.Left, out _);
             }
 
             return Complete(conversion, target);

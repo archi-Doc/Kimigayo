@@ -210,9 +210,9 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsForPosition(node, expected))
+        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected))
         {
-            return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later.
+            return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later, a result for its call.
         }
 
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
@@ -222,22 +222,6 @@ public sealed partial class Binding
         this.Consulted(node);
         return type;
     }
-
-    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
-    // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
-    private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
-        => this.ErasureSignatureFits(actual, expected, node) &&
-            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }) &&
-            this.ProveOwned(actual, node) == ConstraintProof.Proven;
-
-    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
-    // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
-    // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
-    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
-        => expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
-            (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
@@ -282,6 +266,11 @@ public sealed partial class Binding
         {
             node.ErasedFunctionType = expected;
             return expected;
+        }
+
+        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        {
+            return null;
         }
 
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
@@ -476,7 +465,9 @@ public sealed partial class Binding
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
-                    return this.RecordMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType); // The Type keeps a generic default's parameter (SPEC 7.2.3).
+                    // The Type keeps a generic default's parameter (SPEC 7.2.3).
+                    var found = number.IsInteger ? "integer literal" : "floating-point literal";
+                    return this.RecordMismatch(node, node, found, numberType, ComparisonFailure.Shape);
                 }
 
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
@@ -591,9 +582,10 @@ public sealed partial class Binding
                         targetResult?.Add(jump.Expression, actual);
                     }
 
-                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
+                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node, out var failure) &&
+                        !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
                     {
-                        this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType);
+                        this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType, failure);
                     }
                 }
 
@@ -634,225 +626,13 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.Unsupported, true);
     }
 
-    // SPEC 10.5: a function Name with explicit Type arguments in a value position is a reference whose candidates take
-    // those arguments. It is resolved here and selected as a value, or against the fixed expected call signature.
-    private BoundType? BindExplicitReferenceName(GenericsKoto reference, BindingScope scope)
-    {
-        var name = reference.Identifier!;
-        this.BindNodeCore(name, scope, null);
-        if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
-        {
-            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
-            this.BindUnknownChildren(reference, scope);
-            var resolved = name.BindingState == BindingState.Resolved;
-            return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
-        }
-
-        for (var i = 0; i < reference.TypeArguments.Count; i++)
-        {
-            var syntax = reference.TypeArguments[i];
-            if (this.IsLengthArgument(syntax, scope))
-            {
-                if (this.BindLength(syntax, scope) is null)
-                {
-                    return this.CompleteDependent(reference, syntax);
-                }
-
-                continue;
-            }
-
-            if (this.BindType(syntax, scope) is null)
-            {
-                return this.CompleteDependent(reference, syntax);
-            }
-        }
-
-        reference.BoundSymbol = group;
-        reference.BindingState = BindingState.Resolved;
-        return null;
-    }
-
-    private BoundType? BindName(IdentifierNameKoto node, BindingScope scope)
-    {
-        var symbol = this.Lookup(node.IdentifierName, scope, node, false);
-        if (symbol is null)
-        {
-            return this.Fail(node, BindingFailure.MissingName, true);
-        }
-
-        return this.BindReference(node, symbol, scope);
-    }
-
-    private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
-    {
-        node.BoundSymbol = symbol;
-        if (Receiver(node) is { } receiver && ((symbol.Declaration is FunctionKoto { BaseInitializer: { } initializer } && IsWithin(node, initializer)) ||
-            (!receiver.Whole && (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))))
-        {
-            return this.Fail(node, BindingFailure.InvalidAssignment);
-        }
-
-        if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
-        {
-            var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
-            var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
-            if (proof != ConstraintProof.Proven)
-            {
-                this.RequireConstraint(node, proof, this.capabilityMode);
-                return null;
-            }
-        }
-
-        // SPEC 7.7.2: a static Property's storage there is a static access, never a capture (StaticStorageAccess).
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function &&
-            !StaticStorageAccess(symbol, scope))
-        {
-            if (this.CaptureOuterUse(node, symbol, scope) is not { } capture)
-            {
-                return this.Fail(node, BindingFailure.Capture);
-            }
-
-            symbol = capture;
-            node.BoundSymbol = symbol;
-        }
-
-        if (symbol.Kind == BindingSymbolKind.Function)
-        {
-            this.BindHeader(symbol);
-            if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
-            {
-                // SPEC 7: an unsafe function supports direct calls only. An overload group is checked after selection.
-                return this.Fail(node, BindingFailure.UnsafeFunctionValue);
-            }
-
-            // A function group is resolved for call selection, but not an inferred first-class value.
-            node.BindingState = BindingState.Resolved;
-            return null;
-        }
-
-        if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
-        {
-            if (variable is PropertyKoto)
-            {
-                // Property and storage Types belong to the header. A use never re-enters accessor bodies.
-                var declaration = variable.BoundSymbol!;
-                if (!declaration.HeaderBound && declaration.Resolving)
-                {
-                    this.Fail(variable, BindingFailure.Cycle, true);
-                }
-                else
-                {
-                    this.BindHeader(declaration);
-                }
-
-                if (symbol.Type is null)
-                {
-                    this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
-                }
-            }
-            else
-            {
-                this.BindVariable(variable, symbol.Scope);
-            }
-        }
-
-        if (symbol.Kind == BindingSymbolKind.Storage && symbol.Scope.Owner is PropertyAccessorKoto storageAccessor)
-        {
-            this.BindStorageProjection(node, Accessor(storageAccessor));
-        }
-
-        if (symbol.Property is { } property)
-        {
-            var target = Grouped(node);
-            var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-            var write = assignment && target.Parent!.Akind == KotoKind.Equals;
-            var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
-            if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
-            {
-                if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
-                    (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
-                {
-                    // SPEC 6.3.4, 11.7: construction forbids inherited Field and computed access and custom accessor calls on self.
-                    return this.Fail(node, BindingFailure.InvalidAssignment);
-                }
-
-                return Complete(node, this.MemberRead(node, symbol, scope));
-            }
-
-            var operation = write ? property.Setter : property.Getter;
-            var sourceReceiver = (node as MemberAccessKoto)?.Left;
-            if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
-            {
-                return this.FailWrite(node, node);
-            }
-
-            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
-            {
-                return this.Fail(node, BindingFailure.Access);
-            }
-
-            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType)))
-            {
-                return this.Fail(node, BindingFailure.Access);
-            }
-
-            if (!operation.IsStandard || (update && !property.Setter.IsStandard))
-            {
-                if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
-                    (pathSelection.Path is not null || IsObjectSemantics(sourceType.Semantics)) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
-                {
-                    // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
-                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
-                    {
-                        // SPEC 11.3: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
-                        if (this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update))
-                        {
-                            return null;
-                        }
-
-                        var objectProjection = IsObjectSemantics(sourceType.Semantics);
-                        return this.Fail(node, objectProjection ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, objectProjection);
-                    }
-
-                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol, operation);
-                    this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
-                }
-
-                var input = target.Parent is BinaryKoto parentBinary ? parentBinary.Right : target.Parent;
-                if (update && target.Parent is { } updateExpression)
-                {
-                    input = this.PropertyUpdateInput(node, updateExpression);
-                }
-
-                if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
-                {
-                    return null;
-                }
-
-                return update ? this.BindPropertyUpdate(node, scope) : Complete(node, this.AccessorUseType(node, operation));
-            }
-
-            if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)
-            {
-                this.receiverOperations[node] = new(sourceReceiver, storedSource, storageSelection.DeclaringType, ArgumentOperationKind.StorageProjection, ArgumentAdaptation.Exact, storageSelection.Path);
-            }
-        }
-
-        if (symbol.Type is null)
-        {
-            this.ConsultTypeSource(symbol);
-        }
-
-        return Complete(node, node is MemberAccessKoto ? this.MemberRead(node, symbol, scope) : symbol.Type);
-    }
-
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node) && !this.CheckLocalTypeUse(actual, expected, node))
+        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node, out var failure) &&
+            !this.CheckLocalTypeUse(actual, expected, node))
         {
-            this.FailMismatch(node, node, actual, expected);
+            this.FailMismatch(node, node, actual, expected, failure);
         }
 
         return actual;

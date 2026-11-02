@@ -139,7 +139,7 @@ public sealed partial class Binding
         }
 
         var result = Open(type);
-        _ = this.CheckTypeUse(type, result, value);
+        _ = this.CheckTypeUse(type, result, value, out _);
         return result;
 
         BoundType Open(BoundType current)
@@ -245,5 +245,5 @@ public sealed partial class Binding
     }
 
     private bool CheckLocalTypeUse(BoundType actual, BoundType expected, Koto use)
-        => (this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use);
+        => (this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use, out _);
 }

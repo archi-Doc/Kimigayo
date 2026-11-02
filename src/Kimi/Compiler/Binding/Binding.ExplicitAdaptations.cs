@@ -221,7 +221,7 @@ public sealed partial class Binding
         var operation = ExplicitAdaptationPlan.Select(source, target, shorthand);
         if (operation == ConversionBinding.None)
         {
-            this.FailMismatch(conversion, conversion, writtenSource, writtenTarget);
+            this.FailMismatch(conversion, conversion, writtenSource, writtenTarget, ComparisonFailure.Shape);
             return false;
         }
 
@@ -249,7 +249,7 @@ public sealed partial class Binding
     {
         if (operation == ConversionBinding.None)
         {
-            this.FailMismatch(conversion, conversion, source, target);
+            this.FailMismatch(conversion, conversion, source, target, ComparisonFailure.Shape);
             return false;
         }
 

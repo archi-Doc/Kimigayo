@@ -40,10 +40,11 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null, Koto? failureUse = null)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null)
     {
         var outer = this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
+        ClauseFact? best = null;
         for (var i = 0; i < clauses.Count; i++)
         {
             var constraint = (IsKoto)clauses[i];
@@ -65,6 +66,7 @@ public sealed partial class Binding
             if (constraint.BoundConstraint is not { } bound)
             {
                 result = ConstraintProof.Error;
+                best = FirstAtVerdict(best, new(constraint, null, ConstraintProof.Error, Limit: false));
                 continue;
             }
 
@@ -76,21 +78,32 @@ public sealed partial class Binding
 
             // Associated identities also need normalization for calls without a receiver.
             substituted = this.ContractConstraint(substituted, scope, self);
+            var unknown = this.unknownRead;
+            var limit = this.limitRead;
             var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
+                this.unknownRead = unknown; // A clause that is not judged contributes no U fact.
             }
-
-            if (failureUse is not null)
+            else if (this.unknownRead is { } fact && !ReferenceEquals(fact, unknown))
             {
-                this.RecordReferenceConstraint(failureUse, constraint, substituted, proof);
+                fact.Clause = constraint; // The outermost clause list's stamp is the last (design-r2 Amendment 4).
             }
 
-            result = CombineProof(result, bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof, true);
+            var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
+            if (outcome != ConstraintProof.Proven)
+            {
+                var onLimit = outcome == ConstraintProof.Unknown && this.limitRead is not null && !ReferenceEquals(this.limitRead, limit);
+                best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit));
+            }
+
+            result = CombineProof(result, outcome, true);
         }
 
-        return this.EndProof(outer, result);
+        var verdict = this.EndProof(outer, result);
+        this.LeaveClause(best, result);
+        return verdict;
     }
 
     // SPEC 10.5, 8.3: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves

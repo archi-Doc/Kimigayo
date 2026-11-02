@@ -4613,7 +4613,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
   - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
     the 70% rule).
-- **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (2026-10-26, R4's
+- **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (superseded in part
+  by R4-M155: its result half, the owner's (A)) (2026-10-26, R4's
   implementer lane under R4-M126 §2.15 (P10) and D-11, the planning session's scope confirmation; supersedes R4-M101 O1)
   - Rule (SPEC 15.3.4 "Nested signatures", which names Function Types, Callable and anonymous functions together as nested signatures
     with per-call direct-input quantification; SPEC 15.6.1: a definition assumes its signature's Types well-formed and each call proves
@@ -5751,6 +5752,67 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
     pair-cases' six a5-writes rows.
+- **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
+  (2026-10-31; R4's design round 2 and design-r2 Amendments 1-5 (`r4-notes\g216a-u21\design-r2.md`), BU agreeing to the proof
+  channel; the owner, verbatim: 「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and
+  「すべて推奨の内容でお願いします」 for the e1a split; units a-g, branch `claude/a5-g216a-u21`) SPEC 10.7, 15.3.5, 15.3.7, 15.6.1, 7.7.4,
+  8.3, 23.1. Supersedes R4-M137's result half and, in part, BU-26; amends BU-22.
+  - One fact: `ComparisonFailure` (Kind, Part, Path, Depth, Clause, ends, CallableInstance), produced once by the judgment that fails:
+    the relation walk (`RelationWalk`), ContractFits and its solve (a failed solve names fixed ends only, the unsolved variable
+    eliminated, Amendment 2), the common-Type search (`CommonOriginType`), the erasure judgment (`ErasesToFunction`) and the Callable
+    proof. Every recording site of census-a #1-#27 reads it through a required parameter; `RecordMismatch` is a table over its Kind;
+    nothing walks or judges again to explain a record (the explainers `ConversionContractFailure`, `FailedInstancePart`,
+    `ItemContractFailure`, `ConditionContractFailure`, `ContractFits(explain)` and the transitional path are deleted).
+  - Records: a whole-contract condition is one `UnprovenOriginContract_Kd` at the value (`ContractFact`); every failing position of a
+    walk is a record, further ones through one "records beyond the first" channel for relation and contract records (Amendment 1,
+    A2); a member's position whose relation only an inferred or body-local region decides is the located `Unsupported_Kd` (A1); a
+    structure that holds with no fact, a position its search cannot find, and a judged erasure failing without a condition are
+    `InternalInvariant_Kd` (S1, S2, S5). A Closure header is judged by structure; its Origins by erasure (SPEC 7.7.4, Amendment 3).
+  - The proof channel (`Binding.ConstraintValidation.Proofs.cs`) carries a Callable proof's Unknown comparison failure, the U fact,
+    stamped with its outermost clause and stored with its verdict in every cache; frames and epochs (Amendment 5): a judgment's
+    outermost BeginProof or a candidate trial opens a frame with a fresh epoch, a frame's end drops its untaken facts, a consumer takes
+    only its own frame's fact (a foreign one is `InternalInvariant_Kd`). `RequireConstraint` (`FailUnprovenConstraint`) is the one
+    recording owner of the Constraint record after a Callable clause's proof; selection's explanation reads its trial's fact.
+  - (A)'s use side by rule: a value call of a nested signature proves its instantiated result well formed at the call
+    (`RequireNestedResult`); an anonymous function's body assumes its own result's well-formedness. Superseded by R4-M162
+    (2026-11-02, U2.1 d-revert): the result half is judged where it is written; `RequireNestedResult`, the anonymous result premise
+    and TypeOrigins' Result exemption are deleted. The input half (R4-M137) stays.
+  - The implementation's own well-formedness (`FailedSignatureWellFormedness`, the owner's (a)) is judged after selection by the
+    selected candidate's fit, never before selection. These pre-selection fits read the structural part alone through one entry,
+    `FitsStructuralPartAt` (every Origin binding equal, inside Function Types too): the expected-result filters, the argument and
+    receiver fits, acquisition and adaptation (round 2: the census `r4-notes\g216a-u21\b1r-census.md`), and slot solving through the
+    static `FitsStructuralPart` (`IsStructuralSubtype` deleted). Not yet a Closure's or Function Item's erasure fit
+    (`ErasureSignatureFits`, below). This also takes dev's member-Origin drops (pre1b, apre) out
+    (SPEC 10.1, 10.3, 15.6.1; landing review B1 and its re-check, 2026-11-02). After selection the call judges each argument's and
+    the receiver's whole contract where it collects their fits (`CollectFitBounds`) and records a failure at the argument, where dev
+    gave the call's NoApplicableOverload_Kd (t1d_n). Open: a Callable constraint's proof (SPEC 10.7) is unchanged; no receiver form
+    was found whose required Type differs from the supplied one only in a Function Type's Origins. Open (landing re-check B1-r1-b):
+    `ErasureSignatureFits` still judges Origins before selection (a Closure's `CallableSubtype` without the use's premises, an Item's
+    `ItemContractFits`), so clsel and itsel are valid where SPEC 10.1 and 10.3 give ambiguous (as dev), and clselctl1 and itselctl1
+    are NoApplicableOverload_Kd; its structural reading alone (held `g216a-u21-landing-b1rb`) breaks the per-call Origin inference it
+    also serves (CallableSignatureInferenceTest: valid programs rejected, MissingOriginBinding_Kd lost), so it needs its own design.
+  - Staged: PLAN G351 (a reference's Refuted, fact-less and pending constraint outcomes still record through `referenceConstraints`;
+    removal: they route through RequireConstraint, then that record path is deleted). `OriginFitSearch`'s early return for a
+    Function component (removal: G216 (a) U2.2 removes the search).
+  - Rejected: a second walk to explain a record; the explainer as an interim; per-form clauses.
+  - Amendment (G351a, U2.1 r2-4, 2026-10-31; BU's census check): the proof channel also carries a clause fact, `ClauseFact` (the
+    clause, its Constraint as proven, its outcome, whether it rests on a limit). Each clause list (`CheckConstraints`,
+    `ProveConditionalPremises`) hands the first clause at its combined verdict (E > R > L > U) one step outward after its end, and only
+    when that verdict is the clause's outcome; a composite whose parts settle as separate judgments holds it across them
+    (`HoldClause`, as `HoldUnknown`), a candidate trial keeps it (`trialClause`), frames drop it as they drop the U fact; no decision
+    reads it. Its readers come with G352 (selection's `CandidateConstraintFailure`) and G351 (r2-5).
+  - G351 closed (U2.1 r2-5, 2026-10-31; BU's B1): a function reference's, a selection's pending candidate's and an overloaded
+    reference's Constraint records have one owner by meaning and one channel per node, RequireConstraint's shared path
+    (`Binding.ConstraintValidation.Records.cs`: `RequireClauses`, `FailClauseRecord`, `ReportClauseConstraint`), made from the one
+    clause fact after the proof (a Callable clause proven Unknown with its U fact names its member); no record is made during a proof.
+    `referenceConstraints`, `RecordReferenceConstraint` and `ReportReferenceConstraint` are deleted, with the `failureUse` parameter.
+  - Channel hygiene (U2.1 r2-6, 2026-10-31; BU's census check C5-C7 and design review P1-P2, the planning amendment G352-N1): a
+    candidate trial's frame is `TryCandidate`'s (`OpenTrial`, `CloseTrial`): a trial owns no earlier trial's fact, hands its own to the
+    enclosing frame (a selection's, `EvaluateCallCandidates`, which reads them per candidate) and drops them with none; a judgment drops
+    the facts the last one left untaken (`BeginProof`); an Unknown's consumer takes the U fact alone (`TakeUnknownFact`, formerly
+    `HoldUnknown`), and a Constraint no judgment of its own proved takes none (`RequireUnproven`); the clause fact's consumer reads it
+    at depth 0 in its own frame (`TakeClauseFact`, otherwise `InternalInvariant_Kd`); epochs are `long`. No proof decision reads a
+    carried fact; record selection does.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -5947,6 +6009,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: per-walk id stamps alone (they leave writingPlaces' near-copies); hash-consed Patricia tries (R4-M53's tree rejection,
     size, small-set risk); restating V16 (R4-M65). Not temporary.
   - Numbering: the next free R4-M number on dev and the open R4 branches at the commit.
+- **R4-M161 The erasure's outcome: a failed erasure publishes its part for its two Types (G216 (a) U2.1 r2-1a)** (2026-10-31;
+  R4's r2-1 design `r4-notes\g216a-u21\r2-1-design.md` with Revision 1, BU's design review 2 ACCEPT; r2-1b adds the engine's Owned
+  fact) SPEC 7.7.4, 15.2.3, 23.1.2. Amends R4-M155 (Owned's record).
+  - The erasure's row. `ErasesToFunction` decides once, in SPEC 7.7.4's order, which part failed (Receiver, Shape, Owned,
+    Condition) and publishes it with today's `SignatureFits`, the closure's receiver and an Owned Error's cause, held and not rested
+    (`HoldCause`: an erasure records nothing). The row is keyed by the converted and expected Types by identity (`erasureOutcomes`,
+    `ErasureKey`), because a join records from Types; it replaces the node-keyed `erasureSignatures`, which a join's record could not
+    find. One Owned proof (`ProveErasedOwned`, the channel cleared before it) replaces two; a Condition part's record is
+    `RecordCondition`'s.
+  - Limit: the last erasure of a pair in the pass wins. Within one body nothing changes (Owned's premises are the body's declared
+    Constraints); two bodies converting one closure value to the same Type could swap the explaining member and its R/U class. The
+    body is not keyed because the Note reads at publication, with no forming body.
+  - Readers prove nothing: `FailOwnedConversion` reads the part and rests the held cause, and `ClosureConversionNote` reads
+    `SignatureFits` and the receiver, with today's texts. A missing row for a Closure or Item against a Function Type is
+    `InternalInvariant_Kd`. Temporary until r2-1b: `FailOwnedConversion`'s member loop and `FirstUnownedOrigin` still prove each
+    member to find the explaining one (removal: the erasure publishes the member from the proof that decided).
+  - Amendment (r2-1b, 2026-11-01): the engine's Owned fact. A work's final evaluation keeps the first Origin not proven `static`
+    that its verdict rests on (`CapabilityWork.Origin`) and, for a Type judged by its parts, each part that is not Proven with its
+    member (a `Components` index; a requirement reference's arguments and Origin arguments are member 1) and Origin (`Parts`). The
+    Origin is a proof-scope read (`originRead`, beside `unknownRead`): BeginProof saves and clears it, EndProof joins it only for an
+    answer that is not Proven, so premises that prove a part leave none; `StaticOrigin` writes it, a child's work joins it at its read.
+    Both are cleared by `Reset`, outside the fixpoint's equality, and read by no decision. The erasure reads them once
+    (`ProveOwned(…, out OwnedRest)`) and names the member (`OwnedMember`, BU's n6): each member in order with its first part's Origin,
+    the first Refuted in the forming body, else the first. An Owned failure that no work judged (RequestCapability returned on a failed
+    operand context) is a derived failure on that context, and an Error's held cause likewise (BU-75; BU's n7). The member loop and
+    `FirstUnownedOrigin` are deleted.
+  - Rejected: the reader's cache read in its own scope (a join's scope can differ from its arm's); node keys; R/U in the engine.
+  - Removes: `erasureSignatures`, two receiver re-tests, the second Owned proof of the erasure and the gate's Owned proof.
 - **R4-M162 A nested signature's result is judged where it is written (G216 (a) U2.3s, the strict form)** (2026-11-02; the owner,
   verbatim 「(1) 厳格案を採る」, 2026-11-02, PLAN dev ae1ccb351, on R4's study `r4-notes\wfsig-study\study.md`; supersedes the result
   half of the owner's (A) of 2026-10-26, an R3 premise for nested signatures and a value-call result obligation; R4-M137, the input
@@ -6812,7 +6902,9 @@ resumed by R4-M86 (2026-10-20).
   Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
   binds as a transfer (PLAN G100; classification superseded by G224 Static Field classification, acquisition legality remains).
-- **BU-22** (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
+- **BU-22** (amended by R4-M161 (r2-1b): an Owned verdict also carries the Origin it rests on and its parts that are not Proven, a
+  proof-scope read like the U fact, and an Owned failure no work judged is a derived failure on its failed operand context (BU-75); amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2
+  Amendments 4-5) (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
   `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
   component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
   struct or enum, what its storage adds, in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments
@@ -6850,8 +6942,20 @@ resumed by R4-M86 (2026-10-20).
   instance), so the engine's growth guard covers every intrinsic at the use, as before, its second growth step Unknown; removal
   condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200). The walk resolving a concrete projection through a
   conformance binding it is already resolving through, at a deeper instance, is that conformance using itself (SPEC 8.3.3, review
-  N2), which has its own record: the summary is Error resting on the stored Type; a deeper instance of a declaration reached through
-  another conformance is no such growth and stays exact. Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive
+  N2), which has its own record: the summary is Error resting on the hops (BU-76); a deeper instance of a declaration reached through
+  another conformance is no such growth and stays exact. A step resolved through an identity premise (SPEC 8.2.3) is no re-entry; the
+  walk reads it. A scope's premise identities are finitely many. A Contract's own identities are bounded by SPEC 8.3.3: unbounded
+  growth through them is a Language error at the Contract, after which the walk reads a failed operand context. Growth through a
+  conformance meets the hops test. Only a step with ContractType's hops (BU-76) is tested. The tested steps are the steps the hops
+  resolved, which ContractType publishes with each hop (BU-76), and an identity-resolved step of the same chain is walked untested
+  (bu97 unit c′). When an outer step is resolved by an identity premise, or stays unresolved, its answer has no hops, and growth
+  through an inner conformance is walked untested. That growth is bounded as identity growth is: a scope has finitely many premise
+  identities, and a Contract's own identities are bounded by SPEC 8.3.3; an unresolved outer step instead ends the walk as Unknown.
+  The depth test stops the walk but does not prove growth (bu97 unit c″): a hop's step can be deeper only through an identity premise
+  (mx2), and then no hop clause fails and SPEC 8.3.3 gives no record. Such a use rests on the re-entry's site, F-a's located
+  `Unsupported_Kd` at the stored Type the walk read when it re-entered, never `InternalInvariant_Kd` (removal condition: PLAN G369,
+  an exact re-entry test with its termination argument).
+  Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive
   Type is exact (Unknown → Proven for `Chain<i32>`, `Nest`, `Nest15`, `Ping`/`Pong`, `Grow`, `Fold`); a requirement resting on a
   projection family gets one located `Unsupported_Kd` at the family's stored Type, its use derived, in place of
   `UnprovenConstraint_Kd`; no old-path guard (R4's Q6): such a value meets the old Emission's existing generation depth limit.
@@ -6861,6 +6965,8 @@ resumed by R4-M86 (2026-10-20).
   `CandidateConstraintFailure` reads a clause whose L decides nothing), a solve per strongly connected set (a conformance binding can
   name a declaration no written storage of the set names), option 1 (the owner's X-2 candidate). Not temporary; the guard and the
   bound keep their conditions above.
+  - Amendment (G352, U2.1 round 2, 2026-10-31; BU): `CandidateConstraintFailure` is deleted; a failed candidate's explanation reads
+    its trial's clause fact (U2.1 r2-4's frame; PLAN G352).
 
 - **BU-23** (2026-10-22; the BU planning session's ruling on bu20's verify-first S1, R4 agreeing; PLAN G178; unit bu20 C0c) A
   constructor's or destructor's receiver `self` is a Place of its own: its symbol takes the reserved slot `ReceiverSlot`
@@ -6906,7 +7012,9 @@ resumed by R4-M86 (2026-10-20).
   `.Defaults`' copy rows, `MirAnalysisTest`'s effect row (now an R3 Drop) and `OriginRowsTest`'s static rows 6, 7 and 7' (7 and 7' keep
   an accessor storage witness; R4 restores row 6's Closure case), the effect rule's witnesses being `MirBorrowsTest.Rooted`'s.
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
-- **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed") (2026-10-22;
+- **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed"; superseded in
+  part by R4-M155: a nested Function Type part's result well-formedness for an owner without a named declaration (the owner's (A)))
+  (2026-10-22;
   the BU planning session after the full process: designs A and B, the design review's merge M, R4
   agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
   body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
@@ -8503,6 +8611,17 @@ resumed by R4-M86 (2026-10-20).
     `TypeMismatch_Kd` from the join to the call), and the call rejects (i64, ref/i64) at (i64, i64), as dev does for the literal twin
     `takeT(if c => (y, x@ref) else => (5, x))`; `firstArr`'s candidate is (i64, Array<i64>) (4.3.1). Whether a Never part should
     remove such a source from the candidates is PLAN G159's SPEC question. Not temporary.
+  - Amendment (U2.1 r2-2, 2026-11-01; R4's r2-23 design §2, BU's review 3 ACCEPT): a part bound with a Type whose own binding failed
+    (Invalid: its own BindingFailure, recorded or derived, such as a conversion's condition at a Closure, an Item or a Function value)
+    is failed for its consumers, as an unbound part with a failure cause is. A join rests on it and does not fit it against its Target
+    Result Type (ResultCandidates). PartFailed stays the one owner; no consumer tests BindingFailure itself.
+  - Amendment (U2.1 r2-3, 2026-11-01; R4's r2-23 design §3, BU's review 3 ACCEPT): a call's fit takes a failed argument that kept its
+    Type (PartFailed) as fitting every candidate the evidence walk keeps, with the operation its kept Type takes at that parameter by
+    structure; the candidate is judged by its other arguments, and the record stays the argument's. An independent
+    NoApplicableOverload_Kd (every candidate rejected by arity or by another argument) stays. This half is a failed argument that kept
+    its Type; an unbound failed part is U1.6h's (FailedFit from the evidence walk, BU-77; the planning session's decision after r2-3's
+    gate stop, C19).
+    (FailedFit and BU-77 superseded by BU-79, rule W; the row is rule W at the argument's top and still takes only a typed part.)
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; R4's design 2 for PLAN G264, chosen by the planning session, design review 1 REVISE (B1, N1–N4), revision 1, design
   review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side, to
@@ -9500,6 +9619,198 @@ resumed by R4-M86 (2026-10-20).
     `(s).a`, the chain), `T is Array<Pair>` (`s[i]`) and `T is (Pair, i32)` (`s.0`), the same object after a warm rebind; absent
     without a premise, under `T is Pick` and at c1's `xs[i]` and `xs[i].a`; `AWarmRebindRepublishesAnAccesssIdentityWithoutAllocating`
     (Purpose=Allocation, a chain to `Array<Pair>`).
+- **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
+  (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; design
+  `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g216a-p1\u16g3r-design.md`, R4's ACCEPT under C9-C11; the owner's
+  「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds publishes a part's relation to its call as one fact,
+  and no consumer infers that relation from BoundType or BindingState. G1b B4 (a consumer read
+  "awaits its call" from the raw record and BindingState) and the U1.6g3 stop (ConflictWaits read "its call completed parts" from
+  BoundType, HoldsCompletedPart, which a nested join's step 3 also satisfies during classification) share that cause: the relation was
+  inferred, not published.
+  - The fact: `CallRelation`, a [Flags] byte, the third column of the existing record, `ArgumentPart(Kind, Default, Relation)`, keyed
+    and cleared with the kind; no table. `Awaits`, per part: its producer recorded it as awaiting its call. `Taken`, on a call
+    argument's own record (created if absent, reading as an absent one): its call has selected and takes it.
+  - Writers, one per bit (both through the one `ref` accessor `PartRecord`): `RecordPart`, the producers' one writer, writes Awaits by
+    one row, every recorded kind awaits but Literal, and keeps Taken (ClassifiedByCall and DeferNestedCall re-record the probe while
+    DecideTaken decides it again: R4's C5). It replaces Awaits' kind list `not (Typed or Literal or Aggregate)`; no producer records
+    Typed or Aggregate, so the bit holds exactly where that test held. `SlotSolution.Default` records a Literal through RecordPart and
+    adds its default (R4's N5), so it keeps only Taken. `TakeArgument`, called only by CompleteWaiting at the head of its loop, before
+    IsWaiting, TakeWaiting and DecideTaken, writes Taken.
+  - Readers, one per bit: `Awaits(core, record)`, for AwaitsCall, AwaitedKind and KindOf: the bit while the core is unbound and has no
+    failure of its own. A join's step 3 may bind the part while its call classifies the argument (SPEC 14.9.2), so binding is not
+    completion. `TakenByCall`, for ConflictWaits: decision (i)'s premise, "the call has selected", replacing HoldsCompletedPart (its
+    BoundType walk and its copy of the awaiting kinds are deleted). Taken ends no Awaits: TryCandidate's re-check reads KindOf after
+    CompleteWaiting, so a taken Join argument stays Join, and a taken Literal or Typed argument does not start awaiting.
+  - ResultPropagation's `Completed` decided position waiting (a waited source whose parts are bound since, by its call or its join's
+    step 3), not a call relation: gated by Taken, 11 rows keep a lone PrerequisiteUnavailable_Kd (SPEC 23.1.2). U1.6g3b renames it
+    `BoundSince` under that contract (R4's C9: "complete" is the call's word). Deferred's `AwaitsFor || BoundSince` still reconstructs
+    position waiting from BoundType; that is R4's N4, PLAN G335's open issue (position waiting published once per join).
+  - Rejected: a side table read by one consumer (R4's U1.6g3 stop review, Q2); Taken per part (HoldsCompletedPart's walk again);
+    Taken ending Awaits (above); a Taken mark at a Case construction (InferPayloads binds its payloads at their Types, so ConflictWaits
+    is never reached there).
+
+- **BU-75 A site whose own check fails because a part it judged failed is a derived failure** (2026-11-01; PLAN G216 (a) U2.1, r2-1b's
+  fix; BU's bu95 design Revision 1 (R1-3 to R1-5) and R4's review 2 ACCEPT; the owner's option (B), 「推奨どおり」, 2026-11-01)
+  SPEC 23.1.2.
+  - The rule: a site whose own check fails (it computed a failing verdict: a fit, a proof, a conversion) because a part it judged
+    failed, wherever that part is, is a derived failure: `Fail` plus a part prerequisite, classified by IsDerived, with no record.
+    Fail's Invalid survives the site's completion, and the publisher's Rejected folds the site as an Error node (R4-M109 unchanged, not
+    extended). A node that only read a part that did not resolve rests by consultation (`CompleteDependent` or a consultation frame),
+    and the publisher keeps its Op (R4-M88). The site decides locally: its own verdict failed on a failed part, or it only consulted one.
+  - Precondition (R1-5): the part the site rests on is Invalid, so IsDerived's existing row (InvalidConstraint whose part is Invalid)
+    classifies it; any other case is a broken contract, `InternalInvariant_Kd`. IsDerived is not widened. It is checked where every
+    producer's node has failed: in Binding.Check's Final prologue (BU-76).
+  - First site: `FailOwnedConversion` (`FailDerived`). An Owned failure that no work judged rests on the subject's failed operand
+    context (`InvalidOperandContext`: its cause when Invalid, else the failed declaration, Invalid by construction); an Error's held
+    cause rests on the node its producer holds (BU-76). They were `InternalInvariant_Kd` (BU's n7) and a `CompleteDependent` rest, which
+    `BindVariableCore`'s and the `return`'s completions overwrite, so MIR built a Resolved node over an invalid Type.
+  - Open: an Owned proof that reads a field or payload Type left unresolved inside a Resolved declaration (PLAN G354 (3)).
+  - Rejected: folding every final-pass dependent node as Error (it loses independent A1/A5 records, against R4-M88, R5-M63 and G121);
+    UnprovenConstraint (an IsDerived case for one site); widening IsDerived and the context walk to Unresolved parts (prototype C moved
+    nothing).
+
+- **BU-76 A held cause names a node its owner fails by the end of Binding.Check's Final prologue** (2026-11-01; PLAN G216 (a) U2.1,
+  r2-1b B1, bu97 U1; BU's bu97 design revision 2 and R4's review 2 ACCEPT; the owner's option (1), 「推奨どおり (1)」, 「(1) で進める」;
+  bu97 U2: design §U2 option 2 and R4's review 4 ACCEPT, the owner's 「2. 段の一覧を公開し、prologue で確定する」, 「推奨どおり (2)」)
+  SPEC 8.3.3, 23.1.2.
+  - The Owned walk holds the node it reads: a stored Type that failed, or its failed operand context (`InvalidOperandContext`, the
+    walk and predicate of `OperandContexts`). An Owned leaf is never Error, so the leaf's Error branch is deleted.
+  - Every held cause is a candidate list (ICheckCause: `Use` is its first candidate, `Next` the next): a node, a summary, a site or a
+    conformance path is a list of one; a summary holding hops carries their list.
+  - At a re-entry the walk holds the hops `ContractType` resolved through (`ResolutionHops`, outermost first, whose candidates are the
+    hops' clauses). ContractTypes publishes each answer's hops (bu97 U2 unit a): a projection resolved by a specification adds its
+    conformance path to its subject's (component 0's) hops, a specification with no path forwards its subject's hops, and any other
+    answer has none; its memo (`contractParts`, BU-64) and batch (`Normalized`) values carry the (image, hops) pair, written by the run
+    that made the image, so a hit never resolves again; the chains are interned per (path, step, inner) for the Binding's lifetime, as the
+    paths they name. The settle points a use at the first hop whose clause failed by the prologue, the prerequisite its derived fact
+    names.
+    - By SPEC 8.3.3 some hop revisits itself and fails with its own record.
+    - By SPEC 23.1.2 any failed hop gives the same records (bu97: first and last give identical output on a two-hop failure, ch2).
+    - If none failed, the use rests on the re-entry's site, which the settle fails as FailNeededSites fails a site (BU-22, bu97 unit
+      c″); a summary carries the site (`ReentrySite`) as it carries its candidates. Every re-entry has hops: an identity step is no
+      re-entry (BU-22).
+    - Each hop carries the projection step it resolved, and that step is the one WalkProjection tests (bu97 unit c′).
+  - A limit holds its Use. The prologue fails it (PublishNeededLimits, then FailNeededSites) and Check's loop publishes and counts it
+    once; a site only the loop's checks need is recorded after the loop (PublishSites). The erasure that holds a limit runs in body
+    binding, earlier (FailOwnedConversion's only caller is RecordMismatch).
+  - FailDerived lists the use, and the prologue settles it (`SettleDerivedUses`, after FailNeededSites): a part that is not Invalid is
+    `InternalInvariant_Kd`, except a re-entry's site (above). The list is a temporary structure, separate from `specificationLinks` (that one chooses the node a
+    conformance use rests on; this one checks a precondition). Removal condition: the erasure's Owned failure is decided after the
+    prologue. An entry carries its held cause (none for an operand context, recorded at once); the settle reads only its candidates
+    and never replaces a part another site recorded first (BU-61); the contract and removal condition are unchanged. FailDerived
+    snapshots the held cause's candidates at failure (its Use and Next) and its ReentrySite.
+  - Rejected:
+    - naming the outer stored Type (r-opt);
+    - naming the binding's Type node (not kept per path);
+    - re-resolving the projection to find the path (it re-runs resolution);
+    - a Language record for a broken contract (R4 B2);
+    - IsDerived reading PartFailed (G354 (3) stays open);
+    - one list with `specificationLinks` (another contract; R4's review 2 (ii));
+    - the innermost hop (ch: W:Has2 is valid); a hop read at resolution time (it fails only at the Definition deadline); a single-hop
+      limit (option 1); a candidate facet only one cause kind implements (R4's review 4, 1).
+
+- **BU-77 FailedFit: the evidence walk publishes, per candidate, each unbound failed part it meets and the candidate's pattern there**
+  (Superseded by BU-79, rule W.)
+  (2026-11-01; PLAN G216 (a) Part 1 U1.6h-1; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g216a-p1\u16h-design.md` revisions 4
+  and 4a, R4's ACCEPT under C19-C23; the owner's 「推奨どおり」 and 「改訂 4でGO！」) A failed part fits every candidate (U1.6d), so a
+  slot or an ambiguity that only its Type could decide is dependent (SPEC 23.1.2). Deciding that needs the candidate's Type at the
+  failed part, which no component published.
+  - The fact: `FailedFit(Candidate, Part, Pattern)`. The evidence walk (SlotSolution: InferParts, and InferPosition's one-part default
+    row) publishes it where it meets an unbound failed part (PartFailed, no BoundType). Pattern is the candidate's pattern at that
+    position, open or closed. Both passes publish; a later pass replaces the entry of the same (candidate, part). The evidence results
+    are unchanged: an unbound failed part is never evidence. FitsPosition and FitArgument publish nothing. An unbound Tuple, array or
+    Dictionary literal the walk meets whole publishes the failed parts it holds at that pattern (U1.6h-3', fix (b): ACRT's
+    `applyArg(... ["k": func [] (v) => v] ...)`, whose F otherwise had no fact and gave a dependent UnboundTypeArgument_Kd).
+  - Storage: one Binding list in the call evaluation's scratch. The evaluation marks its first entry (`CallEvaluation.FailedFits`) and
+    releases its entries when it ends, as `obligations` are, so a nested evaluation keeps its own (R4's C22). A candidate's solution
+    carries its scope (`FailedFitScope`: the evaluation's first entry, the candidate's index); no other solution publishes.
+  - Readers (U1.6h-1): SolveSelected, where the selected candidate's unsolved slot would be the inference boundary. When every
+    unsolved slot occurs in one of the candidate's FailedFit patterns (C15), the call rests on that failed part
+    (`RestingFailedPart`). SolveSelected owns the decision of what an unsolved slot leads to: a waiting nested call, a Literal
+    default's misfit (`CompleteDependent(call, misfit)`), a failed part, or else the inference boundary. FailUnboundSlots only forms
+    the boundary's record.
+  - Readers (U1.6h-2): BindCallCore's Ambiguous outcome. The call rests on a failed part, its waiting parts resting on the call as
+    FailWaitingSelection rests them, when two kept candidates' patterns differ there (C16, `AmbiguityRestingPart`). Superseded by
+    "the U1.6h-2 reader superseded" below.
+    - "Differ" is structural. Each candidate's own Type and length slots are paired one-to-one in order of first occurrence, across all
+      the failed parts the pair met. Origin bindings are not read (10.4 step 2).
+    - The paired slots' Constraints must be equal: each candidate's clauses that name a paired slot, in order, agree pairwise.
+    - With no difference, the ambiguity is independent and recorded: h3e (i64 against i64), h8 (T against U).
+  - Scope (R4's C19, C23): only an unbound failed part is covered. A failed argument that kept its Type (r2-2) is r2-3's: its fit row
+    and its kept Type's structural operation. The merge into U2.1 decides one answer for such a part at a join position and as the
+    argument.
+  - Rejected:
+    - FitsPosition and FitArgument as producers. They are reached only at a closed Type, so they never meet a failed part at an
+      unsolved slot (g028, h7, h8; the implementer's unit-1 stop).
+    - A Binding-wide list keyed by function, the prototype. Its entries outlived their call, so another call's independent
+      UnboundTypeArgument_Kd was lost (R4's s1, s2, s4), and its linear search over the whole list was quadratic.
+  - **The U1.6h-2 reader superseded** (2026-11-02, the owner's 「3件とも推奨どおり」; PLAN dev 0721c3eec; design `u16-cert-design.md`).
+    C16's structural comparison modulo own slots is replaced.
+    - The reason that no longer holds: C16 assumed that a structural difference at the failed part means a Type of the part could
+      separate the candidates. Slots fixed elsewhere break it: in pe1, y fixes T = i64, so `Option<T>` against `Option<i64>` is
+      independent; so do clause-only slots fixed by evidence (c7_chain, c9_mixed) and an undecided pairing (sel3_swap). A comparison of
+      patterns cannot be certain of dependence, and SPEC 23.1.2 never allows losing an independent record.
+    - The rule: the ambiguity rests only on a certain mismatch (`CertainMismatch`): a head mismatch outside every own slot (OwnSlot; a
+      length slot by its BoundLength parameter, `IsOwnLength`) and every Function Type, which the adaptation rules
+      (`ExpectedAdaptation`, without recording a plan) bridge in neither direction. Every other case is reported; clauses are not
+      compared.
+    - Precondition (R4's C29): the certainty relies on parameter shapes forbidding layer differences at a position. ExpectedAdaptation on
+      a pattern with an own slot below the mismatch could depend on the instance (`ref/T` against `i64`); today that is unreachable
+      (ParameterShapeMismatch_Kd, MissingOriginBinding_Kd, and no adaptation inside Option).
+    - Rejected: (4) and B7, renaming plus clause-set matching, which cannot see evidence-fixed slots; (2), a slot correspondence in
+      SignatureEquals.
+
+- **BU-78 A failed source takes no part in its join: its join rests on it at its verdict, and a failed part makes its position wait**
+  (superseded in part by BU-79: B4 / fix (a) and the FailedFit readers)
+  (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design `u16h-design.md` revision 4, triage `u16h-3t.md`; R4's ACCEPT; the
+  owner's 「改訂 4でGO！」 and 「(1) 3′ で進める」) Amends U1.6d: a failed source of a join that waits for its position fits every
+  candidate as a source, not as its whole join (SPEC 23.1.2, 10.4, 10.5.1, 14.9.2). It covers joins their call classifies; a typed
+  join that decides by itself is not covered (PLAN).
+  - Site 1, the verdict: RestOn records the cause during classification and decides nothing. `DecideRest`, the one writer of
+    Dependent, writes the verdict when the join decides (DecideResult; DecideWaiting under a failed position). Conflict prevails.
+  - Sites 2 and 6 (U1.6h-4): a failed source takes no part in whether its join's sources await (SourcesAwait, BoundSince), and a
+    waited source that fails when its join decides (BindWaitedSources) is the join's cause (RestOn), so g192's J1 takes twice's Item
+    Type from twice alone and J2's anonymous source fails at it on its own.
+  - Site 3: a failed part makes its position Call, Waiting under 10.5.1 (PositionKind). Supersedes BU-43 R6's "`PositionKind`'s row is
+    deleted (a classified join holds no failed part)" and "a nested join with a failed part decides at once". The reason they rested
+    on no longer holds: a join with a failed part was Dependent at once, one failed part, so no classified join held one. Now
+    Dependent is written only at the verdict, so a classified, waiting join holds failed parts, and PositionKind regains a row with
+    a new meaning: Waiting, not "takes no part".
+  - Site 4 (U1.6h-5): a join its survey left unclassified (no Literal record: a failed or unknown source beside its literals) is a
+    Join (ClassifiedByCall), so its call classifies and selects (A's five rows reach dev's records; h3, h3b and h4 regain dev's
+    independent AmbiguousBinding_Kd and UnboundTypeArgument_Kd, which the literal join resting at classification had hidden).
+  - U1.6d as amended (Part 1): a failed source of a join its call classifies fits every candidate as a source, not as its whole join.
+    Its argument and its position are Waiting (10.5.1); its join records it as its cause and rests on it at its verdict (DecideRest).
+    The evidence walk publishes the candidate's pattern at each unbound failed part (FailedFit, BU-77, with fix (b)); an ambiguity
+    rests on it only where kept candidates' Types differ there, and an unsolved slot only when every one occurs at one; an unselected
+    call publishes only the verdicts its waiting join judged and links every other part to them (fix (a)). Only unbound failed parts
+    are covered (R4's C19); a typed one is decided at the merge into U2.1.
+  - B4 and fix (a) below are superseded by BU-79 (rule W): only a held join's own Conflict report stays (ReportHeldConflicts).
+  - B4 and fix (a), the unselected call's completion (CompleteUnselectedPart's one row, PublishJudged): a held join judged Conflict
+    writes its own record once (`FailJudged`, the record's one form, shared with DecideWaiting: R4's N9). A held waiting join rests
+    through its verdict (`DecideRest`: R4's C25) on its recorded Cause, or else on the verdict it lies under. Every other unbound part
+    of the tree with no cause of its own (PartFailed, HasFailureCauses) rests on the nearest judged verdict, by the join tree JudgeHeld
+    walks, from the outermost form that delivers each waited source (`ResultSourceForm`, the result-source walk's delivery chain that
+    ResultTarget reads: R4's C24, the unused local's derived PrerequisiteUnavailable_Kd). Nothing is bound and no default is taken (review 2's B4).
+  - Rejected: a call resting on its taken argument's cause at Calls.cs:391 (h2 never reaches selection); a shared join-rests
+    completion for DecideResult (it changed no probe).
+
+- **BU-79 Rule W: a failed part is a wildcard; only a node's own verdict over a failed child is suppressed** (2026-11-02, the owner's
+  「了解しました。5件とも推奨どおり進めてください。」; PLAN dev 4c7d13a9c; audit `simplify\impl-audit.md` §2;
+  the done-when, DECISIONS Q13)
+  Supersedes BU-77 (FailedFit, its readers C15 and C16, B1, B2, and step 1's certain rule) and BU-78's B4 and fix (a).
+  - The reason that no longer holds: those readers tried to decide exactly which records a failed part makes dependent. That cannot
+    be decided locally (evidence-fixed slots, clause-only slots, pairings), and SPEC 23.1.2 does not require it: an implementation
+    may report a dependent failure, and must not lose an independent one.
+  - The rule (ArgumentKinds' contract): a failed part fits every candidate and is no evidence (U1.6d). Only a node's own verdict over
+    a failed child is suppressed: a join's DecideRest, BU-78's sites 2-4, and CompleteJoinResults. Every other record of the call is
+    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records.
+  - An unselected call's held join that its formation judged Conflict still writes its own record (ReportHeldConflicts, the part of
+    BU-78's fix (a) that reports, not rests). Without it, an independent TypeMismatch_Kd would be lost (ACRT a1 and a3, f1).
+  - Deleted: Binding.ArgumentKinds.FailedFits.cs (FailedFit, its scope, PublishFailedFit, PublishHeldFailures, RestingFailedPart,
+    AmbiguityRestingPart, CertainMismatch); PublishJudged, RestJudged, RestOnVerdict, HasOwnCause and FailJudged; IsOwnLength.
+  - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
+    record blocks; dependent records added or removed are counted by class.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

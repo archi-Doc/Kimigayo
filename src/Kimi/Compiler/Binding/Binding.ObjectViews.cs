@@ -204,7 +204,7 @@ public sealed partial class Binding
         {
             if (actual.HandleMode is not { } actualMode || actualMode != targetMode)
             {
-                return this.FailMismatch(conversion, conversion, actual, target);
+                return this.FailMismatch(conversion, conversion, actual, target, ComparisonFailure.Shape);
             }
 
             if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
@@ -229,9 +229,10 @@ public sealed partial class Binding
             result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
             if (target.Origin is not null)
             {
-                if (!this.CheckTypeUse(result, target, conversion))
+                if (!this.CheckTypeUse(result, target, conversion, out var failure))
                 {
-                    return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                    return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure)
+                        : this.Fail(conversion, BindingFailure.InvalidAssignment);
                 }
 
                 result = target;

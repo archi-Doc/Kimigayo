@@ -269,7 +269,8 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
-            return this.ReadVerdict(work.Result, work.Cause);
+            this.originRead ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
+            return this.ReadVerdict(work.Result, work.Cause, work.Fact);
         }
 
         var outer = this.BeginProof();
@@ -282,8 +283,13 @@ public sealed partial class Binding
                 this.capabilityConsumer = next;
                 this.limitRead = null;
                 this.errorRead = null;
+                this.unknownRead = null;
+                this.originRead = null;
+                next.Parts?.Clear();
                 var result = this.ComputeCapability(next);
                 var cause = result == ConstraintProof.Unknown ? this.limitRead : result == ConstraintProof.Error ? this.errorRead : null;
+                next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
+                next.Origin = result == ConstraintProof.Proven ? null : this.originRead;
                 if (result == next.Result && ReferenceEquals(cause, next.Cause))
                 {
                     continue;
@@ -309,7 +315,9 @@ public sealed partial class Binding
 
         this.limitRead = null;
         this.errorRead = null;
-        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause));
+        this.unknownRead = null;
+        this.originRead = work.Result == ConstraintProof.Proven ? null : work.Origin;
+        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)
@@ -368,8 +376,7 @@ public sealed partial class Binding
         }
         else
         {
-            var origin = OwnedOrigin(type) is not { } owned ||
-                this.ProvesOriginOutlives(owned, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
             return CombineProof(origin, this.StructuralCapability(work), true);
         }
 
@@ -462,21 +469,29 @@ public sealed partial class Binding
             return this.SummaryCapability(work, (DeclarationContainerKoto)work.Type.Symbol!.Declaration);
         }
 
+        // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        foreach (var (part, argument) in new CapabilityParts(work.Type))
+        var parts = new CapabilityParts(work.Type);
+        while (parts.MoveNext())
         {
+            var (part, argument) = parts.Current;
+            var saved = this.originRead;
+            this.originRead = null;
             var proof = argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
+            this.originRead = work.Part(parts.Member, proof, this.originRead, saved);
         }
 
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
             {
-                var origin = reference.OriginArguments[a];
-                var outlives = origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner);
-                result = CombineProof(result, outlives ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+                var saved = this.originRead;
+                this.originRead = null;
+                var proof = this.StaticOrigin(reference.OriginArguments[a], work.Scope);
+                result = CombineProof(result, proof, true);
+                this.originRead = work.Part(1, proof, this.originRead, saved);
             }
         }
 
@@ -602,6 +617,9 @@ public sealed partial class Binding
 
         public (BoundType Part, bool Argument) Current { readonly get; private set; }
 
+        // The current part's member: its component's index; a requirement reference's Type arguments are member 1.
+        public readonly int Member => this.argument >= 0 ? 1 : this.index;
+
         public readonly CapabilityParts GetEnumerator() => this;
 
         public bool MoveNext()
@@ -631,45 +649,5 @@ public sealed partial class Binding
 
             return false;
         }
-    }
-
-    private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
-    {
-        internal BoundType Type { get; } = type;
-
-        internal BindingSymbol Intrinsic { get; } = intrinsic;
-
-        internal BindingScope Scope { get; } = scope;
-
-        internal bool Derivation { get; } = derivation;
-
-        // Recursive Owned structure starts optimistically; everything else starts unknown.
-        internal ConstraintProof Result { get; set; } = InitialResult(intrinsic, type);
-
-        internal bool Evaluated { get; set; }
-
-        internal bool Queued { get; set; }
-
-        internal CapabilityWork? Parent { get; set; }
-
-        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
-        internal ICheckCause? Cause { get; set; }
-
-        internal List<CapabilityWork> Dependents { get; } = new();
-
-        internal void Reset()
-        {
-            this.Result = InitialResult(this.Intrinsic, this.Type);
-            this.Evaluated = false;
-            this.Queued = false;
-            this.Parent = null;
-            this.Cause = null;
-            this.Dependents.Clear();
-        }
-
-        private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract
-                ? ConstraintProof.Proven
-                : ConstraintProof.Unknown;
     }
 }

@@ -305,14 +305,16 @@ public sealed partial class Binding
             }
 
             BoundType adapted;
+            var failure = default(ComparisonFailure);
             var fits = pattern.IsObjectBorrow
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
                 !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
-                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
+                (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
             {
-                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
+                return failure.IsCondition ? this.RecordMismatch(conversion, conversion, adapted, pattern, failure)
+                    : this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
             }
 
             var result = pattern.Origin is null ? adapted : pattern;
@@ -358,7 +360,7 @@ public sealed partial class Binding
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
             var operandExpectation = semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) &&
-                this.KindOf(conversion.Left) == ArgumentKind.Literal &&
+                this.KindOf(conversion.Left) == PartKind.Literal &&
                 expected is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && expected.Semantics == semantics ? referent : null;
             var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
             if (operandType is null || (IsExclusive(semantics) && this.HolderPlaceFailure(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion)))
@@ -548,7 +550,7 @@ public sealed partial class Binding
         {
             if (!ReferenceEquals(source.Underlying, target.Underlying))
             {
-                return this.FailMismatch(conversion, conversion, source, target);
+                return this.FailMismatch(conversion, conversion, source, target, ComparisonFailure.Shape);
             }
 
             conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
@@ -596,7 +598,7 @@ public sealed partial class Binding
         if (!ReferenceEquals(source, target) && source.Semantics == SemanticsKind.Owner && target.Semantics == SemanticsKind.Owner &&
             ((source.Kind == BoundTypeKind.Primitive) != (target.Kind == BoundTypeKind.Primitive) || (IsPositionOrRangeType(source) && IsPositionOrRangeType(target))))
         {
-            return this.FailMismatch(conversion, conversion, source, target);
+            return this.FailMismatch(conversion, conversion, source, target, ComparisonFailure.Shape);
         }
 
         // SPEC 13.5.3: an owned target never extracts its Core through a safe reference (only the value read of a read Type does,

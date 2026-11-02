@@ -30,12 +30,16 @@ public sealed partial class Binding
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
     // An independent failure can keep the signature valid; a failed declaration part still rejects that context.
     private Koto? InvalidDeclarationContextCause(Koto declaration)
+        => this.FailedDeclarationContext(declaration) is { } context ? this.InvalidDeclarationCause(context) : null;
+
+    // That nearest failed declaration (or conditional conformance) itself, which is Invalid (InvalidDeclarationCause).
+    private Koto? FailedDeclarationContext(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && this.InvalidDeclarationCause(node) is { } cause)
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && this.InvalidDeclarationCause(node) is not null)
             {
-                return cause;
+                return node;
             }
         }
 
@@ -113,6 +117,28 @@ public sealed partial class Binding
                 this.OperandContexts(type.Components[i], query, ref found);
             }
         }
+    }
+
+    // The Invalid node a check that could not judge a Type rests on (DECISIONS BU-75): the failed context of the first part that names one,
+    // its cause when that is Invalid, else the failed declaration; each distinct part visited once (DECISIONS BU-19).
+    private Koto? InvalidOperandContext(BoundType type) => this.InvalidOperandContext(type, this.visitedParts.Begin(this.storageVersion));
+
+    private Koto? InvalidOperandContext(BoundType type, uint query)
+    {
+        if (type.Symbol is { } symbol && this.FailedDeclarationContext(symbol.Declaration) is { } context)
+        {
+            return this.InvalidDeclarationCause(context) is { BindingState: BindingState.Invalid } cause ? cause : context;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.InvalidOperandContext(type.Components[i], query) is { } inner)
+            {
+                return inner;
+            }
+        }
+
+        return null;
     }
 
     private bool ProjectionPart(BoundType type, uint query)

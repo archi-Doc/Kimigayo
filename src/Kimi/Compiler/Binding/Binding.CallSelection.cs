@@ -50,6 +50,7 @@ public sealed partial class Binding
     private void EvaluateCallCandidates(ref CallEvaluation evaluation, in CallCandidates candidates)
     {
         this.candidateTrials++;
+        var selection = this.OpenFrame(); // Each trial hands its facts to the selection, which reads them per candidate (r2-6).
         try
         {
             foreach (var candidate in candidates)
@@ -59,6 +60,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.CloseFrame(selection);
             this.candidateTrials--;
         }
     }
@@ -138,8 +140,8 @@ public sealed partial class Binding
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
             evaluation.PremisesOnly &= premiseUnknown;
-            evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Scratch, evaluation.LengthArguments, evaluation.Mapping, scope, evaluation.Self, declaringType) : null;
-            evaluation.ConstraintFailure ??= this.CandidateConstraintFailure(function, evaluation.Scratch, evaluation.LengthArguments, scope, evaluation.Self, declaringType, ConstraintProof.Unknown);
+            evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
+            evaluation.ConstraintFailure ??= rejectedConstraint;
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;
@@ -196,7 +198,7 @@ public sealed partial class Binding
                 // parameter Type to rank. Select from ordinary inputs/defaults first; only the winner supplies a body context, even when
                 // the candidates' signatures differ. Slots acquired in different modes violate the parameter acquisition shape (SPEC
                 // 7.3.1), which the declarations report; such candidates select nothing.
-                comparable = ComparableCallableSlots(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride);
+                comparable = this.ComparableCallableSlots(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride);
                 break;
             }
         }

@@ -255,15 +255,17 @@ public sealed partial class Binding
             var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch.
+                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch; a Function
+                // component's failed contract is the construction's contract record, whose fact its walk gives (RecordMismatch).
                 if (!FitsStructurally(result, expected))
                 {
-                    return this.Fail(use, BindingFailure.TypeMismatch);
+                    return !this.FitsTypeAt(result, expected, use, out var contract) && contract.IsCondition
+                        ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
-                if (!this.FitsTypeAt(result, expected, use) && !this.CheckLocalTypeUse(result, expected, use))
+                if (!this.FitsTypeAt(result, expected, use, out var failure) && !this.CheckLocalTypeUse(result, expected, use))
                 {
-                    return this.RecordMismatch(use, use, result, expected);
+                    return this.RecordMismatch(use, use, result, expected, failure);
                 }
             }
 
@@ -275,7 +277,8 @@ public sealed partial class Binding
             var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
             if (proof != ConstraintProof.Proven)
             {
-                return this.Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)
+                    : this.Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
             }
 
             if (!this.enumConstructions.TryGetValue(use, out var plan))
@@ -468,18 +471,20 @@ public sealed partial class Binding
             }
 
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+            var failure = default(ComparisonFailure);
+
             // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source) &&
+                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source, out failure) &&
                 !this.CheckLocalTypeUse(adapted, type, source)))
             {
                 if (this.acquisitionFailure is { } acquisition)
                 {
                     this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object);
                 }
-                else if (FitsStructurally(adapted, type))
+                else if (failure.IsCondition || FitsStructurally(adapted, type))
                 {
-                    this.RecordMismatch(source, source, adapted, type);
+                    this.RecordMismatch(source, source, adapted, type, failure);
                     Complete(use, null);
                 }
                 else
