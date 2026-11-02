@@ -6186,6 +6186,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
   - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
     written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
+  - U1e: the well-formedness visit (`VisitWellFormedPremises`, `Binding.ResultPremises.cs`) makes each entry call one query of
+    `wellFormedParts` and each borrow layer's stored visit one of `storedParts` (BU-55's TypeMemo), a pattern part skipped only when
+    met again beside the same substituted and argument parts, so each pattern part is visited at most once per distinct (substituted
+    part, argument part) beside which it is met consecutively: the pattern-identical forms are linear (an Evidence input whose argument
+    Type is its instantiated parameter, TypeDagScalingTest's `ref` row: unfinished after 60 s on 15405315f, 0.15 s after), while
+    argument parts that diverge and alternate beside a shared pattern part can still cost 2^n, as before U1e (an open issue).
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
