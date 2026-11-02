@@ -31,7 +31,7 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        this.originRead ??= origin;
+        this.ScopeReads.Origin ??= origin;
         return ConstraintProof.Unknown;
     }
 

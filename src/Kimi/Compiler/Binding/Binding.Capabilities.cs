@@ -269,11 +269,11 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
-            this.originRead ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
+            this.ScopeReads.Origin ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
             return this.ReadVerdict(work.Result, work.Cause, work.Fact);
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         try
         {
             while (this.capabilityQueue.TryDequeue(out var next))
@@ -281,15 +281,12 @@ public sealed partial class Binding
                 next.Queued = false;
                 next.Evaluated = true;
                 this.capabilityConsumer = next;
-                this.limitRead = null;
-                this.errorRead = null;
-                this.unknownRead = null;
-                this.originRead = null;
+                this.ScopeReads = default;
                 next.Parts?.Clear();
                 var result = this.ComputeCapability(next);
-                var cause = result == ConstraintProof.Unknown ? this.limitRead : result == ConstraintProof.Error ? this.errorRead : null;
+                var cause = this.ProofCause(result);
                 next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
-                next.Origin = result == ConstraintProof.Proven ? null : this.originRead;
+                next.Origin = result == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
                 if (result == next.Result && ReferenceEquals(cause, next.Cause))
                 {
                     continue;
@@ -313,11 +310,9 @@ public sealed partial class Binding
             this.capabilityConsumer = null;
         }
 
-        this.limitRead = null;
-        this.errorRead = null;
-        this.unknownRead = null;
-        this.originRead = work.Result == ConstraintProof.Proven ? null : work.Origin;
-        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause, work.Fact));
+        this.ScopeReads = default;
+        this.ScopeReads.Origin = work.Result == ConstraintProof.Proven ? null : work.Origin;
+        return this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)
@@ -475,23 +470,23 @@ public sealed partial class Binding
         while (parts.MoveNext())
         {
             var (part, argument) = parts.Current;
-            var saved = this.originRead;
-            this.originRead = null;
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
             var proof = argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
-            this.originRead = work.Part(parts.Member, proof, this.originRead, saved);
+            this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved);
         }
 
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
             {
-                var saved = this.originRead;
-                this.originRead = null;
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
                 var proof = this.StaticOrigin(reference.OriginArguments[a], work.Scope);
                 result = CombineProof(result, proof, true);
-                this.originRead = work.Part(1, proof, this.originRead, saved);
+                this.ScopeReads.Origin = work.Part(1, proof, this.ScopeReads.Origin, saved);
             }
         }
 

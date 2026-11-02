@@ -387,7 +387,7 @@ public sealed partial class Binding
 
         try
         {
-            var outer = this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
+            this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < identity.PathStorage.Count; i++)
             {
@@ -419,7 +419,7 @@ public sealed partial class Binding
                 evidence = null;
             }
 
-            return this.EndProof(outer, result);
+            return this.EndProof(result);
         }
         finally
         {
@@ -465,25 +465,25 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         var result = ConstraintProof.Proven;
         ClauseFact? conditions = null;
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
-            var limit = this.limitRead;
+            var limit = this.ScopeReads.Limit;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
             if (proof != ConstraintProof.Proven)
             {
-                var onLimit = proof == ConstraintProof.Unknown && this.limitRead is not null && !ReferenceEquals(this.limitRead, limit);
+                var onLimit = proof == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
                 conditions = FirstAtVerdict(conditions, new(condition, bound, proof, onLimit));
             }
 
             result = CombineProof(result, proof, true);
         }
 
-        var verdict = this.EndProof(outer, result);
+        var verdict = this.EndProof(result);
         this.LeaveClause(conditions, result); // The conditions are a clause list (G351a).
         return verdict;
     }
