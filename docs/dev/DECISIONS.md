@@ -10046,6 +10046,13 @@ resumed by R4-M86 (2026-10-20).
   - `FailedTypeArgument` (L184): an explicit Type argument that did not bind. Writer: the explicit-argument loop. Reader:
     `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
     parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
+  - `EnvironmentResult` (L488, L531(b)): an argument whose known signature's result over its closure's environment is no evidence
+    for a slot (SPEC 8.10, 7.7.4), which stays unsolved. Writer: `Infer` (`Binding.CallSlots`), where it judges that result; the
+    trial's flag `environmentEvidence` becomes this fact (the argument and the slot), and the two Pending returns it decides publish
+    it as the trial's (`PendingOnEnvironment`). Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
+    the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
+    `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
+    and the Note "The result of c over its environment is no evidence for T".
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
 

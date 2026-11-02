@@ -1,12 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
+
+    // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
+    private Dictionary<Koto, PendingJudgment>? pendingJudgments;
 
     private enum CandidateApplicability : byte
     {
@@ -21,6 +25,7 @@ public sealed partial class Binding
     private enum PendingJudgmentKind : byte
     {
         FailedTypeArgument,
+        EnvironmentResult,
     }
 
     // SPEC 10.4, 8.3.3: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
@@ -115,6 +120,18 @@ public sealed partial class Binding
     // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
     private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
         => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
+
+    // DECISIONS BU-86: the record of a selection that an EnvironmentResult judgment blocks: the argument whose result over its closure's
+    // environment gives the slot no evidence (SPEC 8.10, 7.7.4), named without its acquisition spelling.
+    private static void ReportPendingJudgment(Koto node, PendingJudgment judgment, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var argument = KotoHelper.UnwrapParentheses(judgment.Part) is ConversionKoto { Left: { } place } ? place : judgment.Part;
+        node.Report(
+            requirement,
+            code,
+            note: $"The result of {argument} over its environment is no evidence for {judgment.Slot?.Name}",
+            related: [("argument", judgment.Part, null)]);
+    }
 
     // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
     // unsolved slot or is absent (no Callable Constraint on F), compares equal there when the candidates acquire it in one mode.
@@ -226,6 +243,13 @@ public sealed partial class Binding
         return this.Fail(call, failure, true);
     }
 
+    // SPEC 8.10, 7.7.4 (DECISIONS BU-86): a selection that a single Pending candidate's judgment blocks, explained by that judgment.
+    private BoundType? FailPendingJudgment(InvocationKoto call, PendingJudgment judgment)
+    {
+        this.MarkWaitingHeaders(call);
+        return this.FailExplained(ref this.pendingJudgments, call, BindingFailure.UnprovenConstraint, judgment, true);
+    }
+
     // SPEC 8.3, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
     private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
     {
@@ -267,7 +291,9 @@ public sealed partial class Binding
 
     // DECISIONS BU-86: a judgment that leaves a candidate Pending before its proof, written once where TryCandidateCore decides it.
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
-    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part)
+    // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
+    // (SPEC 8.10, 7.7.4), which stays unsolved.
+    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
         internal long Epoch { get; init; }

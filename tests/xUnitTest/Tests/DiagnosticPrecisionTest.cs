@@ -140,6 +140,8 @@ public class DiagnosticPrecisionTest
     [InlineData(Payload + "func read(o: objref/P) -> P => o@follow\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P, c: bool) -> P\n    if c => return o@follow\n    return P.init(1)\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P) -> i32\n    let p = o@follow\n    return p.v\npublic func main() => ()", "TransferRequired_Kd")]
+    // The valid twin of a failed explicit Type argument (DECISIONS BU-86): an argument that binds selects the candidate.
+    [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<i32>(1)", "")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
         => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 

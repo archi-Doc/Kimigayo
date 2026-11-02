@@ -441,7 +441,13 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     {
         var source = declaration + "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n" + body + "    Console.writeLine(\"\\(s[0])\")\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), body.Trim().Split('\n')[0][8..]), (error.Code, Text(source, error.Span)));
+        var call = body.Trim().Split('\n')[0][8..];
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), call), (error.Code, Text(source, error.Span)));
+
+        // DECISIONS BU-86: the record carries the judgment that left the candidate pending, the argument and the slot.
+        Assert.Equal("The result of c over its environment is no evidence for T", error.Note);
+        var argument = Assert.Single(error.Related!);
+        Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span)));
 
         var valid = "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\npublic func main() -> ()\n    var x: i32 = 5\n    let r = x@ref\n    let c = func [r] () => r\n    let s = make(c@ref)\n    x = 6\n    Console.writeLine(\"\\(s@follow)\")\n";
         var conflict = Assert.Single(DiagnosticCorpus.Check(valid).Diagnostics);

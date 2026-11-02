@@ -146,6 +146,7 @@ public sealed partial class Binding
             evaluation.PremisesOnly &= premiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
             evaluation.ConstraintFailure ??= rejectedConstraint;
+            evaluation.PendingJudgment ??= this.trialPending is { Kind: PendingJudgmentKind.EnvironmentResult } judged ? judged : null;
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;
@@ -261,6 +262,7 @@ public sealed partial class Binding
         internal bool Error;
         internal CallableConstraintFact? CallableFailure;
         internal ReferenceConstraintFailure? ConstraintFailure;
+        internal PendingJudgment? PendingJudgment;
         internal Koto? IncompleteSignature;
         internal Koto? FailedPendingSignature;
         internal Koto? InvalidDeclaration;
