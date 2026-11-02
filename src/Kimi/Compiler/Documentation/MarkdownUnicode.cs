@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Helper;
+
 namespace Kimi.Compiler.Documentation;
 
 internal static class MarkdownUnicode
@@ -16,7 +18,7 @@ internal static class MarkdownUnicode
             return scalar >= 0 && IsAsciiPunctuation((char)scalar);
         }
 
-        var ranges = MarkdownUnicodeData.Punctuation;
+        var ranges = new IntegerTable<int>(MarkdownUnicodeData.Punctuation);
         var low = 0;
         var high = (ranges.Length / 2) - 1;
         while (low <= high)
