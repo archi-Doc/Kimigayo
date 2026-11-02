@@ -33,13 +33,7 @@ public sealed partial class Binding
         if (mode == BindingMode.Final)
         {
             this.formationCauses?.Clear();
-            for (var i = 0; i < this.obligations.Count; i++)
-            {
-                if (this.obligations[i].Deadline == BindingDeadline.Definition)
-                {
-                    this.FailTypeRole(this.obligations[i]);
-                }
-            }
+            this.JudgeObligations();
 
             this.SettleSpecificationLinks();
             this.PublishNeededLimits();

@@ -28,18 +28,6 @@ public sealed partial class Binding
     private readonly List<BindingSymbol> activeLengthConstants = new();
     private readonly ScratchBuffers<BoundLength?> lengthScratch = new();
 
-    internal bool IsVerifiedLengthObligation(BindingObligation obligation)
-    {
-        if (obligation is not { Kind: BindingObligationKind.TypeFormation, Deadline: BindingDeadline.Instantiation, Length: { } length } ||
-            obligation.Use.BindingState != BindingState.Resolved || obligation.Use.BoundType is not { IsInteger: true })
-        {
-            return false;
-        }
-
-        var function = this.ConstraintScope(obligation.Use).Function;
-        return (function is not null && IsSignatureLength(obligation.Use, function)) || this.ProveLength(length, function);
-    }
-
     internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
     {
         if (expression.Parameter is { } parameter)

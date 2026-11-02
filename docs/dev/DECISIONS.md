@@ -9963,6 +9963,16 @@ resumed by R4-M86 (2026-10-20).
     class requirement, `, ` where every binder must give the class (a product) and `; ` where one suffices (a union), which is not a
     found case set.
 
+- **BU-85 Binding judges its obligations at Final; no obligation reaches Analysis unjudged** (2026-11-03; R6-check H1b, H0b-13 of
+  `draft/Sketches/R6-check/H0b-flip.md`, BU's answer BU-5; H0's division, R5-M182)
+  - The reason is H1b's census (`C:\Users\bwff1\AppData\Local\Temp\claude\bu\r6check\h1b-census.md`, evidence
+    `artifacts/verify/r6-h1b/`). Over the test suite, the corpus, the library and the harnessed milestones (23,298 Final Binds,
+    16,010 complete), no obligation reached the old non-relation branch (`UnprovenConstraint_Kd`) under complete Binding.
+  - `Binding.Obligations` owns the obligations: their record (`AddObligation`), the length verification and the Final pass's
+    verdict (`JudgeObligations`, today the Definition obligations' `FailTypeRole`). Its entry file states the contract.
+  - H1b-1 (behavior-preserving) deletes `BindingObligationKind.Loan` and `StaticStorage`: no rule produced either, so they were
+    unreachable by construction.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
