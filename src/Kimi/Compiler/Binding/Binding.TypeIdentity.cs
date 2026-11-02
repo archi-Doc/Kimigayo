@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // SPEC 8.2, 8.8.1: an available Type-identity premise `X is U` makes X and U one Type in its scope. Expressions bound
@@ -22,6 +24,16 @@ public sealed partial class Binding
         return false;
     }
 
+    // The index pass's reset of a member or element access's identity premise, which each pass publishes again (DECISIONS BU-72).
+    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
+    private static void ClearIdentityPremise(Koto node)
+    {
+        if (node is MemberAccessKoto or IndexKoto)
+        {
+            HirTables.PlanFor(node, written: false).Second = null;
+        }
+    }
+
     /// <summary>Substitutes the Type-identity premises available in <paramref name="scope"/> into <paramref name="type"/>.</summary>
     /// <param name="type">A bound expression Type.</param>
     /// <param name="scope">The scope whose Constraint environments supply the premises.</param>
@@ -34,6 +46,34 @@ public sealed partial class Binding
         }
 
         return this.SubstituteIdentity(type, scope);
+    }
+
+    // DECISIONS BU-72: a member access or an element access whose receiver's Type, through its Semantics layers, is a Type parameter P
+    // that the premises make the complete Type U was resolved on U; it publishes the interned `P is U` (HirTables.IdentityPremise), since
+    // a MIR Place keeps P.
+    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
+    private void PublishIdentityPremise(Koto receiver, BoundType actual, BoundType substituted)
+    {
+        var access = receiver.Parent;
+        while (access is ParenthesizedKoto)
+        {
+            access = access.Parent;
+        }
+
+        if (access is not (MemberAccessKoto or IndexKoto) || !ReferenceEquals(KotoHelper.UnwrapParentheses(((BinaryKoto)access).Left), receiver))
+        {
+            return;
+        }
+
+        while (actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && substituted is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
+        {
+            (actual, substituted) = (actual.Components[0], substituted.Components[0]);
+        }
+
+        if (actual.Kind == BoundTypeKind.Parameter && substituted.Kind != BoundTypeKind.Parameter)
+        {
+            HirTables.PlanFor(access, written: true).Second = this.InternConstraint(new(ConstraintKind.TypeIdentity, actual, substituted));
+        }
     }
 
     private BoundType SubstituteIdentity(BoundType type, BindingScope scope, bool parametersOnly = false)

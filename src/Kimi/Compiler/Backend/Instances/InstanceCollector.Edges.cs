@@ -246,7 +246,7 @@ internal sealed partial class InstanceCollector
                 LayoutNeeds.Of((MirBinaryOp)rvalue.Op, OperandType(body, body.Operands[rvalue.Start])) != LayoutNeed.None &&
                 this.In(item, subject, LayoutNeeds.TypeOf(body, rvalue)) is { } needed)
             {
-                _ = this.LaysOut(subject, needed); // K 4.8 (DECISIONS R5-M149): a raw pointer's displacement reads its pointee's stride.
+                _ = this.LaysOut(item, subject, needed); // K 4.8 (DECISIONS R5-M149): a raw pointer's displacement reads its pointee's stride.
             }
 
             return -1;
@@ -265,7 +265,7 @@ internal sealed partial class InstanceCollector
 
         if (aggregate)
         {
-            _ = this.LaysOut(subject, closed);
+            _ = this.LaysOut(item, subject, closed);
             return (MirAggregateKind)rvalue.Op switch
             {
                 MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
@@ -280,7 +280,7 @@ internal sealed partial class InstanceCollector
         }
 
         var adapter = closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter;
-        return this.In(item, subject, rvalue.Type!) is { } function && this.LaysOutSignature(subject, function)
+        return this.In(item, subject, rvalue.Type!) is { } function && this.LaysOutSignature(item, subject, function)
             ? this.AdmitType(item, subject, new(adapter, default, null, null, 0, this.types.Erase(function)), closed, null) : -1;
     }
 }

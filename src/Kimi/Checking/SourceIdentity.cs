@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Kimi.Checking;
 
 /// <summary>Identifies one source input: a canonical file path, or a <c>compiler://</c> identifier of a built-in source.</summary>
@@ -11,8 +13,11 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
 
     private const string FilePrefix = "file:";
 
+    /// <summary>Gets the path comparison of the current platform.</summary>
+    public static StringComparison PathComparison { get; } = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     /// <summary>Gets the path comparer of the current platform.</summary>
-    public static StringComparer PathComparer { get; } = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    public static StringComparer PathComparer { get; } = StringComparer.FromComparison(PathComparison);
 
     private SourceIdentity(string value)
     {
@@ -34,6 +39,25 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
     public static SourceIdentity FromPath(string path)
         => new(path.StartsWith(BuiltInPrefix, StringComparison.Ordinal) ? path : Path.GetFullPath(path));
 
+    /// <summary>Attempts to create an identity from a file path or built-in identifier: none for a path no file system names, such
+    /// as one with NUL (an in-memory source), which no client can name either.</summary>
+    /// <param name="path">The path; relative paths resolve against the current directory.</param>
+    /// <param name="identity">The canonical identity.</param>
+    /// <returns><see langword="true"/> when the path has an identity.</returns>
+    public static bool TryFromPath(string path, out SourceIdentity identity)
+    {
+        try
+        {
+            identity = FromPath(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            identity = default;
+            return false;
+        }
+    }
+
     /// <summary>Attempts to convert a <c>file:</c> URI to an identity.</summary>
     /// <param name="uri">The client URI.</param>
     /// <param name="identity">The identity of the local path.</param>
@@ -47,21 +71,41 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
             return false;
         }
 
-        try
-        {
-            identity = FromPath(parsed.LocalPath);
-            return true;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
+        return TryFromPath(parsed.LocalPath, out identity);
     }
 
-    /// <summary>Converts a file identity to its <c>file:</c> URI.</summary>
+    /// <summary>Converts the identity to its URI (<see cref="TryToUri"/>).</summary>
     /// <returns>The URI text.</returns>
+    /// <exception cref="UriFormatException">No URI spells the path.</exception>
     public string ToUri()
-        => new Uri(this.Value).AbsoluteUri;
+        => this.TryToUri(out var uri) ? uri : throw new UriFormatException("No URI spells the path " + this.Value + ".");
+
+    /// <summary>Attempts to convert the identity to its URI, the one canonical spelling (DECISIONS R5-M180): a built-in identifier's own,
+    /// a path's <c>file:</c> URI with each <c>%</c>, <c>#</c> and <c>?</c> (and a non-Windows <c>\</c>) escaped as path data, so it names
+    /// this file; none for a path no URI spells, such as a device path (<c>\\?\</c>, <c>\\.\</c>).</summary>
+    /// <param name="uri">The URI text.</param>
+    /// <returns><see langword="true"/> when a URI spells the identity.</returns>
+    public bool TryToUri([NotNullWhen(true)] out string? uri)
+    {
+        if (this.IsBuiltIn)
+        {
+            uri = new Uri(this.Value).AbsoluteUri;
+            return true;
+        }
+
+        // Uri otherwise reads a literal %41 in a file name as an escape of A, and # or ? as a URI part.
+        var escaped = this.Value.Replace("%", "%25", StringComparison.Ordinal).Replace("#", "%23", StringComparison.Ordinal)
+            .Replace("?", "%3F", StringComparison.Ordinal);
+        escaped = OperatingSystem.IsWindows() ? escaped.Replace('\\', '/') : escaped.Replace("\\", "%5C", StringComparison.Ordinal);
+        var prefix = escaped switch
+        {
+            ['/', '/', ..] => "file:",
+            ['/', ..] => "file://",
+            _ => "file:///",
+        };
+        uri = Uri.TryCreate(prefix + escaped, UriKind.Absolute, out var parsed) ? parsed.AbsoluteUri : null;
+        return uri is not null;
+    }
 
     /// <inheritdoc/>
     public bool Equals(SourceIdentity other)
@@ -88,4 +132,49 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
 
     public static bool operator !=(SourceIdentity left, SourceIdentity right)
         => !left.Equals(right);
+
+    /// <summary>Gets where a fully qualified path's remainder under a base directory starts, or 0 when the base does not contain it:
+    /// without allocation, the host's separators compare equal, letters as the host's paths do, and the prefix ends at a separator
+    /// (<c>C:\p\App</c> holds no <c>C:\p\AppX</c>). No path makes it throw. The rule of a source's logical name
+    /// (<c>Kotonoha.LogicalName</c>) and of a diagnostic's displayed path.</summary>
+    /// <param name="path">The path.</param>
+    /// <param name="directory">The base directory, normalized.</param>
+    /// <returns>The remainder's start, or 0.</returns>
+    internal static int Under(string path, string directory)
+    {
+        if (directory.Length == 0 || path.Length <= directory.Length || !Path.IsPathFullyQualified(path))
+        {
+            return 0;
+        }
+
+        for (var start = 0; ; start++)
+        {
+            var separator = directory.AsSpan(start).IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var end = separator < 0 ? directory.Length : start + separator;
+            if (!directory.AsSpan(start, end - start).Equals(path.AsSpan(start, end - start), PathComparison))
+            {
+                return 0;
+            }
+
+            if (end == directory.Length)
+            {
+                if (IsSeparator(directory[^1]))
+                {
+                    return end; // A root base, such as C:\, ends in its separator.
+                }
+
+                return IsSeparator(path[end]) ? end + 1 : 0;
+            }
+
+            if (!IsSeparator(path[end]))
+            {
+                return 0;
+            }
+
+            start = end;
+        }
+    }
+
+    private static bool IsSeparator(char value)
+        => value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;
 }

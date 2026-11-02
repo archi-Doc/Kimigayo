@@ -320,6 +320,22 @@ internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? de
     // The input Origins in parameter-slot order.
     internal ReadOnlySpan<BoundOrigin> Inputs => inputs;
 
+    // DECISIONS BU-71: the greatest height of the Types it binds (BoundType.Height of its Types, Self and Declaring), 0 for none; a Closure
+    // Type's height counts it as one child. One read per bound Type, no walk.
+    internal int Height
+    {
+        get
+        {
+            var height = Math.Max(self?.Height ?? 0, declaring?.Height ?? 0);
+            foreach (var type in types)
+            {
+                height = Math.Max(height, type?.Height ?? 0);
+            }
+
+            return height;
+        }
+    }
+
     // Binds nothing: the binder's own body.
     internal bool IsIdentity => self is null && declaring is null && types.Length + origins.Length + inputs.Length == 0;
 }

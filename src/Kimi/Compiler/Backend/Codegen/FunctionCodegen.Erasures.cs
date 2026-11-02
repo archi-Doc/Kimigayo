@@ -8,9 +8,9 @@ namespace Kimi.Compiler.Backend;
 // IMPL 21.1.3; DECISIONS R5-M104, R5-M108): erasure, the adapter items' functions and a Function value's destruction, every call through the one call writer.
 // A common Function value is IMPL 21.1.3's 16 bytes, its environment word at 0 and its table's address at 8 (Layout's FunctionHandle). An
 // adapter item's table is a private constant {entry, context, drop} at the offsets FunctionCodegen.Closures reads: its entry, a null
-// context and its drop entry, which takes a glue function's parameters at the Function value's address, the environment word's: the
-// environment's own glue for an inline environment that may need a drop, the adapter's release for a heap one (its glue, then the heap
-// release), else null.
+// context and its drop entry, which takes a glue function's parameters at the address of a copy of the environment word (DestroyErased):
+// the environment's own glue for an inline environment that may need a drop, the adapter's release for a heap one (its glue, then the
+// heap release), else null.
 // Erasure (a Cast of the Erasure kind): the source as the builder acquired it; an environment of 8 bytes or less and alignment 8 or less
 // is put in the zero-filled word, also one that needs destruction (PD19); a larger one is allocated when the value is formed, at the
 // conversion's location (SPEC 7.7.4, 22.5.1), the heap's 16-byte alignment covering every Layout alignment (IMPL 21.4.3; DECISIONS
@@ -23,7 +23,9 @@ namespace Kimi.Compiler.Backend;
 // any other a broken contract at the adapter's site; an update Item's entry writes the update over its own parameters,
 // FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
 // also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
-// A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
+// A Function value's glue row (DestroyErased, only in its glue function): its table's drop entry, when present, at the address of a copy
+// of its environment word in a slot of the glue's own, so the value's address does not escape into the call and an optimizer can drop
+// the value's table store and with it an entry no call reaches (G182).
 internal sealed partial class FunctionCodegen
 {
     // A drop entry's signature, a glue function's (DropGlue.Parameters), called through a table's pointer.
@@ -307,7 +309,9 @@ internal sealed partial class FunctionCodegen
         this.output.Write("  ret void\n}\n");
     }
 
-    // SPEC 16.4 (above): a Function value's destruction at its address, its table's drop entry called when present, at the site.
+    // SPEC 16.4 (above): a Function value's destruction at its address, written first in its glue's entry block: the word's slot, then its
+    // table's drop entry called when present, at the site, on the word moved to the slot (the value is dead after its drop, and an
+    // adapter entry already passes an inline word so, Environment).
     private void DestroyErased(BoundType type, Value address, Site site)
     {
         if (this.Laid(type) is not { } handle)
@@ -315,6 +319,9 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded.
         }
 
+        var slot = this.next++;
+        this.WriteSlot("  %t", slot, WordLayout);
+        var word = new Value('t', slot);
         var id = this.next++;
         var table = this.LoadAt(this.Offset(address, handle.Layout.FieldOffsets.Span[1]), PointerLayout);
         var drop = this.LoadAt(this.Offset(table, TableDrop), PointerLayout);
@@ -325,7 +332,8 @@ internal sealed partial class FunctionCodegen
         this.WriteValue(drop);
         this.output.Write(", null\n");
         this.Guard(id, present);
-        this.Destroy(DropEntry, address, site, drop);
+        this.StoreAt(word, WordLayout, this.LoadAt(this.Offset(address, handle.Layout.FieldOffsets.Span[0]), WordLayout));
+        this.Destroy(DropEntry, word, site, drop);
         this.Join(id);
     }
 }

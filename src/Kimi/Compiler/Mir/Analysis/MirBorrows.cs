@@ -34,9 +34,10 @@
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
-// (drop-liveness, MirBorrows.Holders; R4-M153); its state is a MirLoanSets node of Loans, addresses and
-// markers, of which only Loans conflict and only Loans, with their indirect markers, an ending removes (Φ_E, the per-local markers of the
-// role table, Marker, and rule W's indirect markers, MirBorrows.Causes). An
+// (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
+// reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
+// indirect markers, an ending removes (Φ_E, the per-local markers of the role table, Marker, and rule W's indirect markers,
+// MirBorrows.Causes). An
 // Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
 // Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
 // (E3), named by its whole Place, a raw Place borrow's, past a raw Deref, its fresh anchor's, which no access reaches (SPEC 5.2.2,

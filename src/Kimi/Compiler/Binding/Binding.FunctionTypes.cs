@@ -497,8 +497,16 @@ public sealed partial class Binding
                 Complete(tuple, parameters);
             }
 
+            // SPEC 15.3.4, 15.6.1 (DECISIONS R4-M162): the result is a written Type of the enclosing declaration, so its Types' own
+            // clauses are obligations where it is written, under the enclosing premises and this signature's inputs; inputs add none.
             var result = this.BindType(function.ReturnType, scope, new(TypePosition.Result, function));
-            return result is null ? null : this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
+            if (result is null)
+            {
+                return null;
+            }
+
+            this.AddTypeClauseObligations(result, function.ReturnType);
+            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
         }
         finally
         {

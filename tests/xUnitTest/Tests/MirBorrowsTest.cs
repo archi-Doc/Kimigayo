@@ -2428,18 +2428,20 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
-    // Design §8 (DECISIONS R4-M154): the Loan stratum's second pass over a program allocates nothing, whichever role its two swapped Loan
-    // arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7 regrew 32 Loans before). The standard window
-    // (AllocationMeasurement) warms up before it measures, which absorbs a second-pass regrow, so this pass is measured on its own.
+    // V16, design §8 (DECISIONS R4-M154): A5's second pass over a program allocates nothing, the Origin stratum's and the Loan stratum's
+    // runs alike: whichever role the Loan stratum's two swapped Loan arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7
+    // regrew 32 Loans before), and whatever atoms the first pass added to a body's table (MirOrigins sizes its Anchor table by the Refs'
+    // own atoms; Milestone7 regrew it by 64 B before). The standard window (AllocationMeasurement) warms up before it measures, which
+    // absorbs a second-pass regrow, so this pass is measured on its own.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void TheLoanStratumsSecondPassAllocatesNothing()
+    public void A5sSecondPassAllocatesNothing()
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone7");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         stratum.Run(program);
-        Assert.Equal(0, stratum.MeasuredRun(program));
+        Assert.Equal(0, AllocationMeasurement.MeasureOnce(() => stratum.Run(program)));
     }
 
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
@@ -2615,24 +2617,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 this.cases.Select(body, view);
                 this.Borrows.Run(program, body, view);
             }
-        }
-
-        // A run that returns what the Loan stratum's runs allocated on the thread (the Origin stratum's Judge apart), each view's run in
-        // its own MeasureOnce window. Run measures nothing, so the Measure windows over it collect nothing per view.
-        internal long MeasuredRun(MirProgram program)
-        {
-            long allocated = 0;
-            foreach (var body in program.Bodies)
-            {
-                this.Begin(program, body);
-                for (var view = 0L; view < MirCases.Count(body); view++)
-                {
-                    this.cases.Select(body, view);
-                    allocated += AllocationMeasurement.MeasureOnce(() => this.Borrows.Run(program, body, view));
-                }
-            }
-
-            return allocated;
         }
 
         // A4's summaries of the program version, then the body's dataflow, Moves and Origin stratum, before its views.

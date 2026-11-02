@@ -83,18 +83,18 @@ internal static partial class NativeToolchain
         var support = root.GetProperty("backendSupport");
         if (root.GetProperty("target").GetString() != WindowsProfile.Target ||
             root.GetProperty("outputKind").GetString() != "Application" || root.GetProperty("entry").GetString() != WindowsProfile.EntrySymbol || root.GetProperty("subsystem").GetString() != WindowsProfile.Subsystem ||
-            code.GetProperty("profile").GetString() != WindowsProfile.Name || code.GetProperty("llvmVersion").GetString() != WindowsProfile.LlvmVersion ||
-            code.GetProperty("cpu").GetString() != WindowsProfile.Cpu || !WindowsProfile.SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) ||
+            code.GetProperty("profile").GetString() != WindowsProfile.Name || code.GetProperty("llvmVersion").GetString() != ToolchainIdentity.LlvmVersion ||
+            code.GetProperty("cpu").GetString() != WindowsProfile.Cpu || !ToolchainIdentity.SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) ||
             code.GetProperty("relocationModel").GetString() != WindowsProfile.RelocationModel || code.GetProperty("codeModel").GetString() != WindowsProfile.CodeModel || code.GetProperty("unwindTables").GetString() != WindowsProfile.UnwindTables ||
             code.GetProperty("optimization").GetString() is not ("O0" or "O2"))
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
 
-        var valid = support.GetProperty("packageId").GetString() == WindowsProfile.BackendPackageId && support.GetProperty("abiVersion").GetInt32() == WindowsProfile.BackendAbiVersion &&
-            support.GetProperty("packageVersion").GetString() == WindowsProfile.BackendVersion && support.GetProperty("artifactSha256").GetString() == WindowsProfile.BackendSha256 &&
-            support.GetProperty("library").GetString() == WindowsProfile.BackendLibrary && WindowsProfile.SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols) &&
-            WindowsProfile.SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
+        var valid = support.GetProperty("packageId").GetString() == ToolchainIdentity.BackendPackageId && support.GetProperty("abiVersion").GetInt32() == ToolchainIdentity.BackendAbiVersion &&
+            support.GetProperty("packageVersion").GetString() == ToolchainIdentity.BackendVersion && support.GetProperty("artifactSha256").GetString() == ToolchainIdentity.BackendSha256 &&
+            support.GetProperty("library").GetString() == WindowsProfile.BackendLibrary && ToolchainIdentity.SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols) &&
+            ToolchainIdentity.SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
         foreach (var dependency in root.GetProperty("expectedUndefinedSymbols").EnumerateArray())
         {
             valid &= dependency.GetProperty("provider").GetString() == WindowsProfile.BackendLibrary &&
@@ -248,7 +248,7 @@ internal static partial class NativeToolchain
 
     private static JsonObject CreateBuildRecord() => new()
     {
-        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = WindowsProfile.LlvmVersion,
+        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
 
@@ -301,7 +301,7 @@ internal static partial class NativeToolchain
 
             string path;
             string? stagedHash = null;
-            if (name == Kernel32Imports.LibraryName)
+            if (name == WindowsProfile.Kernel32Library)
             {
                 Kernel32Imports.ValidateManifest(item);
                 path = RequireInstalledFile(Path.Combine(toolchainRoot, "windows_x64", "kernel32.lib"));
@@ -318,7 +318,7 @@ internal static partial class NativeToolchain
                 if (item.TryGetProperty("input", out _))
                 {
                     path = StageInput(path, paths.Stem, out stagedHash);
-                    if (stagedHash != WindowsProfile.BackendSha256)
+                    if (stagedHash != ToolchainIdentity.BackendSha256)
                     {
                         throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
                     }
@@ -330,14 +330,14 @@ internal static partial class NativeToolchain
             }
 
             var hash = stagedHash;
-            if ((name == Kernel32Imports.LibraryName && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
+            if ((name == WindowsProfile.Kernel32Library && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
             {
                 throw new InvalidDataException("Native library kind mismatch.");
             }
 
             // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
             // requirement/supply hash assertions checked against the actual bytes that are linked.
-            if (project is not null && name is not (Kernel32Imports.LibraryName or WindowsProfile.BackendLibrary))
+            if (project is not null && name is not (WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary))
             {
                 var supply = project.ProjectFile.NativeLibraries.TryGetValue(WindowsProfile.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(project.ProjectFile, WindowsProfile.Target, name, supply);
@@ -357,7 +357,7 @@ internal static partial class NativeToolchain
             libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, directory), ["sha256"] = hash });
         }
 
-        if (!seen.Contains(Kernel32Imports.LibraryName) || !seen.Contains(WindowsProfile.BackendLibrary))
+        if (!seen.Contains(WindowsProfile.Kernel32Library) || !seen.Contains(WindowsProfile.BackendLibrary))
         {
             throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
         }
@@ -456,9 +456,9 @@ internal static partial class NativeToolchain
     private static HashSet<string> CreateAllowedUndefined()
     {
         var allowed = new HashSet<string>(WindowsProfile.ProvidedSymbols, StringComparer.Ordinal);
-        foreach (var import in WindowsProfile.RuntimeImports)
+        foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
         {
-            allowed.Add("__imp_" + import);
+            allowed.Add("__imp_" + symbol);
         }
 
         return allowed;

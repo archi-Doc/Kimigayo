@@ -47,8 +47,8 @@ internal sealed class LoadedProject : DerivedItem
     /// <summary>Gets the loaded project, or null when the load failed.</summary>
     public Project? Project { get; init; }
 
-    /// <summary>Gets the load failure message.</summary>
-    public string? Failure { get; init; }
+    /// <summary>Gets the load failures, one per independent failure (SPEC 23.1.2); empty when loaded.</summary>
+    public IReadOnlyList<string> Failures { get; init; } = [];
 
     /// <summary>Gets the members: the discovered sources plus the <c>TestSources</c>.</summary>
     public HashSet<SourceIdentity> Members { get; init; } = [];

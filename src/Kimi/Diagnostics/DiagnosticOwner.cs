@@ -418,11 +418,25 @@ public sealed partial class DiagnosticOwner
         return null;
     }
 
-    /// <summary>Finds a registered document by path; tests read the text under a record's span through it.</summary>
+    /// <summary>Finds the one registered document with a path; tests read the text under a record's span through it.</summary>
     /// <param name="path">The display path.</param>
-    /// <returns>The first document with that path, or <see langword="null"/>.</returns>
+    /// <returns>The document, or <see langword="null"/> when none has that path.</returns>
+    /// <exception cref="InvalidOperationException">Two snapshots of the path are registered: sources are keyed by document, so a path
+    /// cannot tell which one a record names.</exception>
     internal SourceDocument? FindDocument(string path)
-        => this.sources.Find(x => x.Document is not null && x.Path == path)?.Document;
+    {
+        SourceDocument? found = null;
+        foreach (var entry in this.sources)
+        {
+            if (entry.Document is { } document && entry.Path == path)
+            {
+                found = found is null ? document : throw new InvalidOperationException(
+                    $"Two snapshots of '{path}' are registered, so the path cannot tell which one a record names; a test reading either passes the document itself.");
+            }
+        }
+
+        return found;
+    }
 
     internal int ModuleIndex(Kotonoha module)
     {

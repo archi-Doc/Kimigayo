@@ -92,7 +92,7 @@ internal sealed partial class HoverBuilder
             "Variable",
             owner,
             symbol.Name + ": " + spelling,
-            source is null ? [] : [this.Origin(syntax, source, nameSpan)],
+            source is null ? [] : [this.Origin(syntax.CodeContext.SourceModule, source, nameSpan)],
             documentationOwner.Documentation,
             documentationOwner.DocumentationNotice,
             Parameter: parameter?.ExternalName,

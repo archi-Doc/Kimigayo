@@ -250,6 +250,63 @@ public sealed partial class FunctionCodegenTest
         Assert.All(GeneratedIr.Parse(text).Functions, static x => Assert.Empty(Windows(x)));
     }
 
+    // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): a case's and a site's file is its source's logical name: a relative in-memory path as given,
+    // never resolved against the process's directory.
+    [Fact]
+    public void ACatalogNamesARelativeSourceAsGiven()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.Directory = Path.GetFullPath("catalog-relative");
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("tests/Named.kimi", "#Test\nfunc tvNamed() => $expect(1 == 2)\n", isTestOnly: true));
+        Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
+        c.Tests.Discover(c);
+        Assert.Equal("tests/Named.kimi", Assert.Single(c.Tests.Cases).File);
+        Assert.Equal("tests/Named.kimi", Assert.Single(c.Tests.Sites).File);
+    }
+
+    // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): a test moved into another module (the public AddLast) keeps its document's name, asked of
+    // the module the document came from, for its file and identity and its site's file.
+    [Fact]
+    public void AMovedTestKeepsItsDocumentsName()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.Directory = Path.GetFullPath("catalog-moved-root");
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var library = Path.GetFullPath("catalog-moved-library");
+        var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
+        other.AddSource(new SourceDocument(Path.Combine(library, "src", "Moved.kimi"), "#Test\nfunc tvMoved() => $expect(1 == 2)\n", isTestOnly: true));
+        var moved = KotoTree.Walk(other.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single(x => x.Name == "tvMoved");
+        c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "Main.kimi"), "#Test\nfunc tvMain() => $expect(true)\n", isTestOnly: true));
+        c.Kotonoha.RootKoto.AddLast(moved);
+        Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
+        c.Tests.Discover(c);
+        Assert.Equal("src/Moved.kimi", Assert.Single(c.Tests.Cases, x => x.Name == "tvMoved").File);
+        Assert.Equal("src/Moved.kimi", Assert.Single(c.Tests.Sites, x => x.Expression == "1 == 2").File);
+    }
+
+    // IMPL 20.1, 20.6.2 (DECISIONS R5-M175): the catalog's inputs name a dependency's source relative to its own project, so the artifact
+    // identity does not depend on where the dependency lies relative to the root.
+    [Fact]
+    public void ACatalogNamesADependencysSourceByItsOwnProject()
+    {
+        static string Identity(string library)
+        {
+            var root = Path.GetFullPath("catalog-dependency/App");
+            var c = ModuleBindingTest.Prepared(root, Path.GetFullPath(library));
+            c.IsTestBuild = true;
+            c.SourceModules[0].AddSource(new SourceDocument(Path.Combine(root, "App.kimi"), "#Test\nfunc tvRoot() => $expect(1 == 2)\n", isTestOnly: true));
+            c.SourceModules[1].AddSource(new SourceDocument(Path.Combine(Path.GetFullPath(library), "Lib.kimi"), "public func value() => ()\n"));
+            Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
+            c.Tests.Discover(c);
+            return c.Tests.ArtifactId;
+        }
+
+        Assert.Equal(Identity("catalog-dependency/Lib"), Identity("catalog-elsewhere/deeper/Lib"));
+    }
+
     // The phase a function's instruction runs in (TestRuntime.WritePhase, RestorePhase): the phase set by the window around it, from its
     // save to its restore in text order, or to the end of its block when none restores it; else the phase its caller is in, Body here.
     private static int PhaseOf(IrFunction function, IrValue instruction)

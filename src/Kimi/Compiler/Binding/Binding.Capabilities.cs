@@ -9,7 +9,6 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundConstraint Proposition, BindingScope Scope, bool Derivation), CapabilityWork> capabilityNodes = new();
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
-    private readonly Dictionary<BoundType, int> capabilityTypeDepths = new(ReferenceEqualityComparer.Instance);
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -178,23 +177,6 @@ public sealed partial class Binding
         return null;
     }
 
-    private int CapabilityTypeDepth(BoundType type)
-    {
-        if (this.capabilityTypeDepths.TryGetValue(type, out var depth))
-        {
-            return depth;
-        }
-
-        depth = 1;
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            depth = Math.Max(depth, 1 + this.CapabilityTypeDepth(type.Components[i]));
-        }
-
-        this.capabilityTypeDepths.Add(type, depth);
-        return depth;
-    }
-
     private void ResetCapabilities(BindingMode mode)
     {
         this.capabilitiesReady = false;
@@ -245,13 +227,12 @@ public sealed partial class Binding
         if (!derivation && type.Symbol is not null)
         {
             var growing = false;
-            var depth = 0;
+            var depth = type.Height;
             for (var ancestor = this.capabilityConsumer; ancestor is not null; ancestor = ancestor.Parent)
             {
                 if (ReferenceEquals(ancestor.Type.Symbol, type.Symbol) && !ReferenceEquals(ancestor.Type, type))
                 {
-                    depth = depth == 0 ? this.CapabilityTypeDepth(type) : depth;
-                    var previous = this.CapabilityTypeDepth(ancestor.Type);
+                    var previous = ancestor.Type.Height;
                     if (depth > previous)
                     {
                         if (growing)

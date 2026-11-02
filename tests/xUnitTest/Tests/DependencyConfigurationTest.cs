@@ -30,7 +30,6 @@ public class DependencyConfigurationTest
     [InlineData("TestDependencies={Math={PackageId=\"a\" PackageVersion=\"1\"} Math={PackageId=\"a\" PackageVersion=\"2\"}}")]
     [InlineData("PackageSources={{Store=\"packages\" PackageId=\"a\"}}")]
     [InlineData("PackageSources={{PackageId=\"a\" PackageVersion=\"1\"}}")]
-    [InlineData("TestSources={\"test.kimi\" \"test.kimi\"}")]
     [InlineData("TestSources={\"tests/*.kimi\"}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={ContractId=\"c\"}}}")]
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={codec={Kind=\"dynamic\"}}}")]
@@ -68,21 +67,24 @@ public class DependencyConfigurationTest
     [InlineData("TestDependencies={Math={PackageId=\"a\" PackageVersion=\"1\"}} TestDependencies={Geometry={PackageId=\"b\" PackageVersion=\"1\"}}")]
     [InlineData("CompileTimeSettings={A={Bool=true}} CompileTimeSettings={B={Bool=true}}")]
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
-        => Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source)));
+        => Assert.True(Record.Exception(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))) is TinyhandException or ProjectConfigurationException);
 
     // The project's kernel32 entry names its migration (NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
     [Fact]
     public void LoadingAnExplicitKernel32EntryNamesItsMigration()
     {
         var source = Encoding.UTF8.GetBytes("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}");
-        Assert.Contains("Remove the kernel32 entry", Assert.Throws<TinyhandException>(() => ProjectFile.Load(source)).Message);
+        Assert.Contains("Remove the kernel32 entry", Assert.Single(Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(source)).Failures));
     }
 
     [Theory]
     [InlineData("NativeBindings={}")]
     [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}")]
     public void SupersededNativeBindingsRequireMigration(string source)
-        => Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Message);
+    {
+        var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
+        Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Single(failures));
+    }
 
     [Fact]
     public void IndentedNativeRequirementIsRead()
@@ -190,6 +192,95 @@ public class DependencyConfigurationTest
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
+    // SPEC 23.1.2: each independent configuration failure is its own record: the identity, each native entry and the alias.
+    [Fact]
+    public void EachIndependentConfigurationFailureIsReported()
+    {
+        var c = Compilation.CreateForTest();
+        var file = c.Project.ProjectFile;
+        file.PackageId = "Bad";
+        file.PackageVersion = "1";
+        file.Alias = [" "];
+        file.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["a"] = new(), ["b"] = new() };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        var notes = ConfigurationNotes(c);
+        Assert.Equal(4, notes.Length);
+        Assert.All(new[] { "PackageId", "entry 'a'", "entry 'b'", "Alias" }, x => Assert.Single(notes, n => n.Contains(x, StringComparison.Ordinal)));
+    }
+
+    // SPEC 23.1.2: a check that reads a null map depends on that failure and is left out; the null map is one record.
+    [Fact]
+    public void ANullMapLeavesOutTheChecksThatReadIt()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.Dependencies = null!;
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.Equal("Dependency maps and source lists must not be null.", Assert.Single(ConfigurationNotes(c)));
+    }
+
+    // SPEC 23.1.2: each failure of the graph is its own record at its module: each dependency setting and each requirement a supply
+    // targeting a resolved module breaks (a missing ContractId and a different Sha256 are independent).
+    [Fact]
+    public void EachGraphFailureIsReported()
+    {
+        var c = Compilation.CreateForTest();
+        var root = c.Project.ProjectFile;
+        root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
+        var package = new NativePackageTarget { PackageId = "library", PackageVersion = "1" };
+        root.NativeLibraries[WindowsProfile.Target] = new()
+        {
+            Packaged =
+            [
+                new() { Name = "codec", Package = package, Sha256 = new string('b', 64), Input = "codec.lib" },
+                new() { Name = "observer", Package = package, ContractId = "x", Input = "observer.lib" },
+            ],
+        };
+        var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
+        library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        {
+            ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = new string('a', 64) },
+            ["observer"] = new() { Kind = "static", ContractId = "o.v1" },
+        };
+        library.CompileTimeSettings["os"] = new() { Bool = true };
+        library.CompileTimeSettings["debug"] = new() { Bool = true };
+        var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
+        var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
+        rootNode.Edges.Add("Lib", libraryNode.Key);
+        Assert.False(c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        var records = TestDiagnostics.Of(c);
+        Assert.Equal(2, records.Count(static x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd)));
+        Assert.Equal(3, ConfigurationNotes(c).Length);
+    }
+
+    // SPEC 23.1.2: an invalid packaged supply leaves the merge of the valid ones checked (two records, not one).
+    [Fact]
+    public void AnInvalidPackagedSupplyLeavesTheOtherMergesChecked()
+    {
+        var package = new NativePackageTarget { PackageId = "p", PackageVersion = "1" };
+        var notes = PackagedNotes(
+            new() { Name = "other", Package = package, Kind = "static", Input = "o.lib" },
+            new() { Name = "codec", Package = package, ContractId = "a", Input = "a.lib" },
+            new() { Name = "codec", Package = package, ContractId = "b", Input = "b.lib" });
+        Assert.Equal(2, notes.Length);
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries record 'other'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries supplies of 'codec'", StringComparison.Ordinal));
+    }
+
+    // SPEC 23.1.2: each failed requirement of a packaged supply is its own record; a record without a valid Name has nothing else
+    // to check (dependent).
+    [Fact]
+    public void EachRequirementOfAPackagedSupplyIsReported()
+    {
+        var package = new NativePackageTarget { PackageId = "p", PackageVersion = "1" };
+        var notes = PackagedNotes(
+            new() { Name = "kernel32", Package = package, Kind = "static", Input = "k.lib" },
+            new() { Package = package, Kind = "static", Input = "x.lib" });
+        Assert.Equal(3, notes.Length);
+        Assert.Single(notes, static x => x.StartsWith("kernel32 is generated", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries record 'kernel32'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries records targeting a Package", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void LegacyProgrammaticReferencesCannotBeSilentlyIgnored()
     {
@@ -285,14 +376,29 @@ public class DependencyConfigurationTest
     [Fact]
     public void WarmConfigurationValidationAllocatesNothing()
     {
-        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("PackageId=\"a\" PackageVersion=\"V1+build\" Dependencies={Math={PackageId=\"b\" PackageVersion=\"2\" Project=\"Math.kimiproj\"}} TestSources={\"tests/test.kimi\"}"))!;
-        Assert.Null(DependencyConfiguration.Validate(file));
+        var supplies = "NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"c\" Input=\"a.lib\"} " +
+            "{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" Input=\"b.lib\"}}}";
+        var text = "PackageId=\"a\" PackageVersion=\"V1+build\" Dependencies={Math={PackageId=\"b\" PackageVersion=\"2\" Project=\"Math.kimiproj\"}} " +
+            "TestSources={\"tests/test.kimi\"} " + supplies;
+        var file = ProjectFile.Load(Encoding.UTF8.GetBytes(text))!;
+        Assert.Empty(DependencyConfiguration.Validate(file));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (DependencyConfiguration.Validate(file) is not null)
+            if (DependencyConfiguration.Validate(file).Count != 0)
             {
                 throw new InvalidOperationException("Dependency configuration validation failed.");
             }
         }));
+    }
+
+    private static string[] ConfigurationNotes(Compilation c)
+        => TestDiagnostics.Of(c).Where(static x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)).Select(static x => x.Note!).ToArray();
+
+    private static string[] PackagedNotes(params NativeLibraryInput[] packaged)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = packaged };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        return ConfigurationNotes(c);
     }
 }

@@ -396,6 +396,7 @@ public sealed record BoundType
     private readonly bool containsPairLayer;
     private readonly bool containsClosure;
     private readonly bool hasAbstractPart;
+    private readonly int height;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
     {
@@ -430,6 +431,7 @@ public sealed record BoundType
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var closure = kind == BoundTypeKind.Closure;
+        var height = closureContext is null ? 0 : closureContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -440,6 +442,7 @@ public sealed record BoundType
             pair |= components[i].containsPairLayer;
             closure |= components[i].containsClosure;
             abstractPart |= components[i].hasAbstractPart;
+            height = Math.Max(height, components[i].height + 1);
         }
 
         this.carriesOrigin = found;
@@ -464,6 +467,7 @@ public sealed record BoundType
         this.containsPairLayer = pair;
         this.containsClosure = closure;
         this.hasAbstractPart = abstractPart;
+        this.height = height;
     }
 
     // SPEC 3.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
@@ -587,6 +591,12 @@ public sealed record BoundType
     /// <summary>Gets a value indicating whether this subtree contains a Type parameter, which a Type-identity premise
     /// may substitute (SPEC 8.2).</summary>
     internal bool ContainsParameter => this.containsParameter;
+
+    /// <summary>Gets the height of this Type as an interned term (DECISIONS BU-71): 0 for a leaf, else 1 + the greatest height of its
+    /// children, the parts its identity holds as Types: its components and a Closure's whole context (<see cref="Subst.Height"/>).</summary>
+    /// <remarks>SPEC-neutral: a measure of the term, which no language rule reads; the instance collector bounds Type growth by it (PLAN
+    /// G332). Its children are not <see cref="ContainsParameter"/>'s, which reads only a held context's instance (BU-60).</remarks>
+    internal int Height => this.height;
 
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
     /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>

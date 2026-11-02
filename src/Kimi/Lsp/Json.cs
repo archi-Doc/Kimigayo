@@ -5,6 +5,7 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kimi.Checking;
 using Kimi.Diagnostics;
 
 #pragma warning disable SA1402 // The wire model is one vocabulary.
@@ -308,10 +309,15 @@ public sealed record LspDiagnostic(SourceRange Range, int Severity, string Code,
 /// <param name="Message">The alternative text of the location.</param>
 public sealed record LspRelatedInformation(LspLocation Location, string Message);
 
-/// <summary>A range in a document.</summary>
-/// <param name="Uri">The document URI.</param>
+/// <summary>A range in a document: the worker places it by the document's identity, and the state owner gives it the URI it is sent
+/// under, the spelling the client opened the document with (<c>LspSession.UriOf</c>).</summary>
+/// <param name="Document">The document.</param>
 /// <param name="Range">The range.</param>
-public sealed record LspLocation(string Uri, SourceRange Range);
+public sealed record LspLocation([property: JsonIgnore] SourceIdentity Document, SourceRange Range)
+{
+    /// <summary>Gets the URI the location is sent under; null until the state owner spells it.</summary>
+    public string? Uri { get; init; }
+}
 
 public sealed class LogMessageParams
 {

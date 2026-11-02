@@ -131,6 +131,26 @@ internal static class AllocationMeasurement
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
+    // The allocations of a cold scaling series, sizes in ascending order: for each index, fresh(index) makes that size's fresh state
+    // outside any window and returns the run that MeasureOnce measures, the operation the series measures and nothing else (what that
+    // operation reads, such as a built body, belongs to the state). Before the series, one unmeasured run of one more
+    // fresh copy of the smallest size (fresh(0)), so that the process's one-time initialization of the operation (class constructors,
+    // the runtime's first instantiations) falls in no measured run and every size is measured in the same process state, alone or after
+    // other tests (R5-M172). That one-time cost stays measured and bounded on the check path by its owner,
+    // MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild. A series has no warm-up of its own.
+    internal static long[] MeasureSeries(int count, Func<int, Action> fresh)
+    {
+        ArgumentNullException.ThrowIfNull(fresh);
+        fresh(0)();
+        var allocated = new long[count];
+        for (var i = 0; i < count; i++)
+        {
+            allocated[i] = MeasureOnce(fresh(i));
+        }
+
+        return allocated;
+    }
+
     // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to ~8 KB)
     // to this thread. Retire it so zero-allocation work holds none. A gen0 collection retires it; a full one would also trim
     // shared pools (gen2 callbacks) under the measurements running on other threads.

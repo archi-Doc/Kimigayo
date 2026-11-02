@@ -37,41 +37,18 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): a case adaptation that creates an object (MirCases.Adapt's ObjectCreation, its rvalue the Use
-    // of its operand) calls the factory of the statement's target descriptor as a creation call does: its Place the result, the operand at
-    // the payload's kind, the control value of the Place's handle and the statement's location, in the factory's parameter order.
+    // of its operand) calls the factory of the statement's target descriptor as a creation call does, through the one call path (Pass): the
+    // statement in MIR's Call form, its one operand, its Place the destination and its location, given the control value of the Place's
+    // handle; an in-memory Copy payload's copy slot is a creation call's (FunctionCodegen.Arguments' CreationSlot); no successor ends the
+    // call (Finish).
     private void Creation(in MirStatement statement, in MirRvalue use)
     {
         var factory = this.Create(this.InstanceType(statement.Place), this.Target(new(this.at, this.position)), out var given);
-        if (factory is null || !this.Location(statement.Source, out var site) || !this.Destination(statement, out var result))
+        var call = MirTerminator.Call(default, use.Start, use.Count, statement.Place, -1, statement.Source);
+        if (factory is not null && this.Pass(call, factory, new(null, MirBodyKind.Fn), given))
         {
-            return; // Recorded.
+            _ = this.WriteCall(factory, this.arguments.AsSpan(0, factory.Parameters.Length));
         }
-
-        var parameters = factory.Parameters;
-        this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            var kind = parameters[i].Kind;
-            if (kind is AbiParameterKind.Value or AbiParameterKind.OwnedSlot or AbiParameterKind.SharedReference)
-            {
-                if (!this.Argument(this.body.Operands[use.Start], -1, kind, out this.arguments[i]))
-                {
-                    return; // A broken contract, recorded.
-                }
-
-                continue;
-            }
-
-            this.arguments[i] = kind switch
-            {
-                AbiParameterKind.ResultSlot => result,
-                AbiParameterKind.Context => given[0],
-                AbiParameterKind.Location => site.Text,
-                _ => site.Length,
-            };
-        }
-
-        _ = this.WriteCall(factory, this.arguments.AsSpan(0, parameters.Length));
     }
 
     // SPEC 13.6.2: a clone's routine (above); null, with InternalInvariant_Kd, for a result that is no counted handle (Binding admits a clone
@@ -92,6 +69,7 @@ internal sealed partial class FunctionCodegen
     // parameters the drop routine's, slot, location and length, which the release text names): a Sealed payload's (DropGlue.Parts gives it)
     // directly, ObjectRuntime.WriteSealedDrop's counted transition, the payload's glue (the glue item's one target, when the payload may need
     // a drop) and the free; any other through the runtime's release of its counting, whose descriptor's finalizer destroys the actual Type.
+    // It reads nothing else of the payload, so the item may stand for every handle of its release (InstanceCollector.GlueKey).
     private void Release(int glue, BoundType type, Value address, Site site)
     {
         var (parts, start) = (this.parts, this.parts.Count);

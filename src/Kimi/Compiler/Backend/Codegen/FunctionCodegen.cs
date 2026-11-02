@@ -41,11 +41,12 @@
 // (.Phases.cs; DECISIONS R5-M137).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
-// out-string failures or catch-alls, or lay out a Type outside the item's by-value set (its locals, constants and aggregates) and its
-// type-driven Type but through Needed, the Type a form's LayoutNeeds row names (DECISIONS R5-M149), so the collector's K 4.8 uses cover
-// every Type code generation lays out. An Opaque value (the gate admits none), a Type TypeOf cannot make, a Layout outcome other than Ok
-// and any other input validated MIR never has are broken contracts: InternalInvariant_Kd, recorded once by the owner that detects it, at
-// the site it has, else the body's subject (DECISIONS R5-M146).
+// out-string failures or catch-alls, or lay out a Type outside the item's by-value set (its locals, constants and aggregates), its
+// type-driven Type and its operator rows' Types (a scalar or string read through reference layers, Compute) but through Needed, the Type a
+// form's LayoutNeeds row names (DECISIONS R5-M149), so every Type code generation lays out is a use the collector checked (K 4.8, past a
+// pair layer under the item's view too) or a row Type, which always lays out. An Opaque value (the gate admits none), a Type TypeOf
+// cannot make, a Layout outcome other than Ok and any other input validated MIR never has are broken contracts: InternalInvariant_Kd,
+// recorded once by the owner that detects it, at the site it has, else the body's subject (DECISIONS R5-M146).
 
 using Kimi.Compiler.Mir;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -241,6 +242,20 @@ internal sealed partial class FunctionCodegen
         this.output.Write("  br ");
         this.WriteLabel(target);
         this.output.Write('\n');
+    }
+
+    // A conditional branch between two of the function's own numbered labels (a drop guard, a comparison part, a write wrapper's frame):
+    // `br i1 <condition>, label <then><id>, label <otherwise><id>`.
+    private void Branch(Value condition, string then, string otherwise, int id)
+    {
+        var output = this.output;
+        output.Write("  br i1 ");
+        this.WriteValue(condition);
+        output.Write(", label ");
+        Name(output, then, id);
+        output.Write(", label ");
+        Name(output, otherwise, id);
+        output.Write('\n');
     }
 
     // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location

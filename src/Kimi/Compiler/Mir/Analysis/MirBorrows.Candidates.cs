@@ -22,13 +22,13 @@ internal sealed partial class MirBorrows
     private (int Stamp, int Via)[] markDropped = []; // By marker: the check whose drop tier first saw it, and that tier's holder.
     private int candidateCount;
 
-    // A set found in a holder (-1: a transit value) by the pass: its elements.
-    private void Scan(int set, int via)
+    // A state found in a holder (-1: a transit value, a state of one part) by the pass: its elements, in ascending order.
+    private void Scan(ulong found, int via)
     {
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        this.Work += this.Count(found);
+        foreach (var element in this.ElementsOf(found))
         {
-            this.Consider(element, set, via);
+            this.Consider(element, found, via);
         }
     }
 
@@ -36,9 +36,9 @@ internal sealed partial class MirBorrows
     // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; an address only its named holder;
     // Φ_E makes E live. An activation keeps the first two holders the Based, Seeded and Valued passes find it in. A carrier that keeps a W
     // element (MirBorrows.Causes' Kept) marks its candidate or guard marker kept. The drop tier tags its drop-live holder as the via.
-    private void Consider(int element, int set, int via)
+    private void Consider(int element, ulong found, int via)
     {
-        var kept = this.Kept(set, element, via);
+        var kept = this.Kept(found, element, via);
         var dropped = (this.pass & DropTier) != 0;
         if (element == Escaped)
         {

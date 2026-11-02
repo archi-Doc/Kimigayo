@@ -100,7 +100,9 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.All(document.Sources, static x => Assert.True(x.IsInput));
 
         // The entry is shared, so the records are those the check service publishes for the same inputs.
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
         var expected = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(expected.Diagnostics, document.Diagnostics);
         var record = Assert.Single(document.Diagnostics);
@@ -141,6 +143,21 @@ public sealed class CheckJsonOutputTest : IDisposable
         var record = Assert.Single(document.Diagnostics);
         Assert.Equal(code, record.Code);
         Assert.All(document.Sources, static x => Assert.Null(x.Sha256));
+    }
+
+    // SPEC 23.1.2: each independent configuration failure of a project that cannot be loaded is its own record.
+    [Fact]
+    public void EachConfigurationFailureOfAnUnloadedProjectIsReported()
+    {
+        var project = this.WriteProject("App", "main.kimi", "()");
+        File.AppendAllText(project, " PackageId=\"Bad\" PackageVersion=\"1\" Alias={\" \"}");
+        var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken);
+        Assert.Equal(CheckOutcome.Blocked, document.Outcome);
+        Assert.All(document.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectLoadFailed_Kd), x.Code));
+        Assert.Equal(2, document.Diagnostics.Length);
+        const string identity = "PackageId and PackageVersion must both be supplied with valid exact identity spellings.";
+        Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith(identity, StringComparison.Ordinal));
+        Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("Alias requires nonempty Container paths.", StringComparison.Ordinal));
     }
 
     // Standard output carries the document alone; the exit code follows acceptance as in the text form.

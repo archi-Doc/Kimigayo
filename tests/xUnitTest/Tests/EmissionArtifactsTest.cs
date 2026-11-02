@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -35,9 +36,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path!))), root.GetProperty("irSha256").GetString());
         Assert.Equal("Hello.ll", root.GetProperty("irFile").GetString());
         using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64/profile.json"))));
-        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), WindowsProfile.LlvmVersion);
-        Assert.Equal(WindowsProfile.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
-        Assert.Equal(WindowsProfile.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
+        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), ToolchainIdentity.LlvmVersion);
+        Assert.Equal(ToolchainIdentity.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
+        Assert.Equal(ToolchainIdentity.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
@@ -296,18 +297,33 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
     }
 
+    // PLAN G157 (7), DECISIONS R5-M181: code generation never reads the native configuration, so a publication-time configuration
+    // failure (an unused native input that is not a .lib) and a generation failure (a runtime Drop without a verdict, InternalInvariant_Kd
+    // at the Drop) are independent, and both are reported.
+    [Fact]
+    public void AConfigurationFailureLeavesGenerationsRecords()
+    {
+        var c = this.Create();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = "unused.dll" } };
+        FunctionCodegenTest.RemoveTheDropVerdict(c);
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
+        Assert.Null(path);
+        Assert.Equal(
+            [("ArtifactPublicationFailed_Kd", (string?)null), ("InternalInvariant_Kd", "\"Hello, world!\"")],
+            TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text)).Order());
+        Assert.Contains(".lib", PublicationFailure(c), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
+    }
+
     // DECISIONS R5-M169: a command ends a result that an exception ends as Faulted (Project.Faults): one CheckFaulted_Kd (Exception) at
     // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
     // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
-    // (ArtifactFiles.CheckPath, PublishArtifacts' fault); code generation writes the location of a source whose path has an embedded NUL,
-    // which throws ArgumentException (Publish's generating exclusion leaves it to the fault) only because of a defect, PLAN G346:
-    // SourceLocationTable.Text's GetRelativePath rejects the path before its escaping (IMPL 21.4.2) runs. The source is checked without a
-    // project directory, since the whole command's parse rejects the path the same way (a front-end fault). Removal condition: when G346
-    // is fixed, this row needs another trigger for the generating exclusion.
+    // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
+    // (DECISIONS R5-M175: naming a source never throws); generation runs outside Publish's classifying catches (R5-M169's amendment),
+    // and no program makes it throw without a production seam.
     [Theory]
     [InlineData("front end")]
     [InlineData("publication")]
-    [InlineData("code generation")]
     public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
@@ -321,12 +337,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         }
         else
         {
-            var c = phase == "publication" ? this.Create() :
-                this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
-            if (phase == "publication")
-            {
-                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
-            }
+            var c = this.Create();
+            c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
 
             Assert.False(project.PublishArtifacts(c, null, null, out var path));
             Assert.Null(path);
@@ -337,6 +349,22 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.DoesNotContain(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*.l*", SearchOption.AllDirectories));
+    }
+
+    // PLAN G346 (DECISIONS R5-M175): a source path with an embedded NUL inside the project is published, its location escaped (IMPL
+    // 21.4.2), where its location text faulted the command before.
+    [Fact]
+    public void ANulInsideTheProjectIsPublished()
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        var c = this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
+        Assert.True(project.PublishArtifacts(c, null, null, out var path), console.Text);
+        Assert.Equal("He\\u{0}llo.kimi:3:24", c.Locations.Text(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single())));
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
+        Assert.True(File.Exists(path));
     }
 
     [Fact]

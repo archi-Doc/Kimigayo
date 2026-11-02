@@ -48,7 +48,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        this.slots[place.Root] = this.slots[place.Root] with { Home = Home.Region, Index = (int)estimate.Total };
+        this.slots[place.Root] = this.slots[place.Root] with { Home = Home.Region, Bytes = (int)estimate.Total };
     }
 
     // FormatBuffer (R3-10): the private buffer into its destination, over its Region's bytes or on the heap (above).
@@ -60,7 +60,7 @@ internal sealed partial class FunctionCodegen
         }
 
         this.module.Request(HelperNeeds.FormattingRuntime);
-        if (call.Place is { Root: >= 0, Projection: 0 } && this.slots[call.Place.Root] is { Home: Home.Region, Index: var size })
+        if (call.Place is { Root: >= 0, Projection: 0 } && this.slots[call.Place.Root] is { Home: Home.Region, Bytes: var size })
         {
             var region = LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextFixed)!.Abi;
             _ = this.WriteCall(region, [buffer, new('r', call.Place.Root), new('\0', size)]);

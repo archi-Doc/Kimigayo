@@ -7,8 +7,9 @@ namespace XunitTest;
 // SPEC 8.15.3 with DECISIONS R5-M144 and R5-M149 (the owner's LayoutNeed): a form whose generated code reads a layout past its root's
 // storage is a use of the Type it reads, InvalidCLayout_Kd at the form for an unavailable C layout on every pipeline. A Field, Case payload
 // or element projected through a borrow, raw pointer, object handle or a sequence's storage needs its container's offsets or its stride; a
-// raw pointer's displacement, a whole-value update through references and a Dictionary operation need their Types' sizes; a comparison of a
-// Tuple's parts through a reference needs its offsets (SPEC 13.4). The twins, the same forms without the unavailable layout, are accepted.
+// raw pointer's displacement, a whole-value update through references (swap, replace, exchange; a value given or taken is a by-value use too)
+// and a Dictionary operation need their Types' sizes; a comparison of a Tuple's parts through a reference needs its offsets (SPEC 13.4). The
+// twins, the same forms without the unavailable layout, are accepted.
 public partial class LayoutAttributeBindingTest
 {
     private const string EquatableP = "#Layout(\"C\")\nstruct P<T>\n    Self is Equatable\n    public var n: i32\n    public var value: T\n" +
@@ -25,6 +26,22 @@ public partial class LayoutAttributeBindingTest
 
     private const string TwoSites = "func two(p: ref/(X, i32), q: ref/(X, i32)) -> bool\n    let first = p == q\n    let second = p != q\n" +
         "    return first and second\n";
+
+    // The pair-layer forms over S (the review of G157 (47)): a ref/uniq pair layer selected by a pattern below a Tuple or Option Subject; a
+    // twin is the form without UnitS's attribute, whose S has its layout.
+    private const string UnitS = "#Layout(\"C\")\n";
+
+    private const string PairCase = "struct S\n    public var n: i32\n    public var u: ()\nfunc f<s/T>(a: s/T, e: s/Option<S>) -> i32\n" +
+        "    s is ref or uniq\n    let t = (e, 1)\n    match t\n        (.Some(let x), _) => return 1\n        _ => return 0\n" +
+        "func g(x: ref/i32, y: ref/Option<S>) -> i32 => f(x, y)\nlet zz = 1\n";
+
+    private const string PairNested = "struct S\n    public var n: i32\n    public var u: ()\nfunc f<s/T>(a: s/T, e: s/Option<S>) -> i32\n" +
+        "    s is ref or uniq\n    let o = Option.Some(e)\n    match o\n        .Some(.Some(let x)) => return 1\n        _ => return 0\n" +
+        "func g(x: ref/i32, y: ref/Option<S>) -> i32 => f(x, y)\nlet zz = 1\n";
+
+    private const string PairPart = "struct S\n    public var n: i32\n    public var u: ()\nfunc f<s/T>(a: s/T, e: s/(S, i32)) -> i32\n" +
+        "    s is ref or uniq\n    let t = (e, 1)\n    match t\n        ((_, let k), _) => return k\n" +
+        "func g(x: ref/i32, y: ref/(S, i32)) -> i32 => f(x, y)\nlet zz = 1\n";
 
     // The declarations whose C layout is unavailable with a public Field n, the Type text X of their uses, and their twins.
     private static readonly (string Name, string Declaration, string Type, string TwinDeclaration, string TwinType)[] Projected =
@@ -57,6 +74,14 @@ public partial class LayoutAttributeBindingTest
         ("array", "func f(a: ref/Array<X>) -> i32 => a[0].n\n", "InvalidCLayout_Kd a[0].n"),
         ("displace", "func f(p: raw/X) -> raw/X\n    var q = p\n    unsafe\n        q = p + 1\n    return q\n", "InvalidCLayout_Kd p + 1"),
         ("swap", "func f(a: uniq/X, b: uniq/X)\n    Kimi.Intrinsics.swap(a, b)\n", "InvalidCLayout_Kd Kimi.Intrinsics.swap(a, b)"),
+        (
+            "replace",
+            "func f(a: uniq/Option<X>)\n    Kimi.Intrinsics.replace(a, with: .None)\n",
+            "InvalidCLayout_Kd .None|InvalidCLayout_Kd Kimi.Intrinsics.replace(a, with: .None)"),
+        (
+            "exchange",
+            "func f(a: uniq/Option<X>)\n    let old = Kimi.Intrinsics.exchange(a, with: .None)\n",
+            "InvalidCLayout_Kd let old|InvalidCLayout_Kd .None|InvalidCLayout_Kd Kimi.Intrinsics.exchange(a, with: .None)"),
         ("dictionary", "func f(d: ref/Dictionary<i32, X>) -> i32\n    let r = d[1]@ref\n    return 0\n", "InvalidCLayout_Kd d[1]@ref"),
     ];
 
@@ -77,6 +102,11 @@ public partial class LayoutAttributeBindingTest
             EquatableP + TwoSites.Replace("X", "P<()>", StringComparison.Ordinal),
             "InvalidCLayout_Kd p == q|InvalidCLayout_Kd p != q",
             EquatableP + TwoSites.Replace("X", "P<i32>", StringComparison.Ordinal)),
+        // G157 (47): a structural pattern selects a qualifying pair layer (SPEC 14.8.1, 13.5.5), so a case or part past it in a borrow case
+        // reads its container's layout there.
+        ("pair-case", UnitS + PairCase, "InvalidCLayout_Kd let x", PairCase),
+        ("pair-nested", UnitS + PairNested, "InvalidCLayout_Kd let x", PairNested),
+        ("pair-part", UnitS + PairPart, "InvalidCLayout_Kd let k", PairPart),
     ];
 
     // SPEC 8.15.3 (DECISIONS R5-M149): each form that reads a layout past its root's storage is one record at the form.

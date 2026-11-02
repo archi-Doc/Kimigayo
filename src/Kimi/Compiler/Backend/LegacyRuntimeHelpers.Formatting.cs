@@ -91,9 +91,6 @@ internal static partial class LegacyRuntimeHelpers
     // One row per formatting compiler function, indexed from TextFixed; a new kind adds a row.
     private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
 
-    // The runtime templates with each row's routine definition spliced in once; read after the rows.
-    private static readonly string FormattingRuntime = ReadFormattingRuntime();
-
     // The maximum encoded bytes of a value by its formatting kind (FormatKind's numbering), the runtime's own __kimi_format_bounds, which
     // __kimi_format_capacity reads (FunctionCodegenTest's FormatBoundsAreTheRuntimesTable ties them): kind 0 is no value, and a string or a
     // view (16, 17) is unbounded.
@@ -166,7 +163,7 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Writes the formatting runtime: the templates with each row's routine defined once.</summary>
     /// <param name="output">The module text.</param>
-    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(FormattingRuntime);
+    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(Texts.FormattingRuntime);
 
     /// <summary>Writes a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a user formatter's write wrapper (SPEC 22.9.2):
     /// toString formats through a heap buffer and Aborts on BufferFull at its call's location; tryFormat formats into the caller's array and
@@ -207,7 +204,9 @@ internal static partial class LegacyRuntimeHelpers
         {
             output.Write("  call void @__kimi_abort(i32 ");
             WriteNumber(output, AbortReasons.Format);
-            output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
+            output.Write(", ptr %location, i64 %location_length, i64 ");
+            WriteNumber(output, RuntimeAbi.NoOsError);
+            output.Write(")\n  unreachable\n}\n");
         }
     }
 
@@ -286,17 +285,17 @@ internal static partial class LegacyRuntimeHelpers
         void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextFixed] = new(kind, abi, needs);
     }
 
-    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, expanded by LlvmModuleText's checked splice:
-    // each routine's definition at its marker, from the first row of its symbol.
+    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, joined once and expanded by LlvmModuleText's
+    // checked one-scan expansion: each routine's definition at its marker, from the first row of its symbol.
     private static string ReadFormattingRuntime()
     {
-        string? text = null;
-        foreach (var name in new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" })
+        var names = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" };
+        var parts = new string[names.Length];
+        for (var i = 0; i < names.Length; i++)
         {
-            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + name + ".ll.in")!;
+            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + names[i] + ".ll.in")!;
             using var reader = new StreamReader(resource);
-            var part = reader.ReadToEnd();
-            text = text is null ? part : text + "\n" + part;
+            parts[i] = reader.ReadToEnd();
         }
 
         var symbols = new HashSet<string>(StringComparer.Ordinal);
@@ -309,6 +308,12 @@ internal static partial class LegacyRuntimeHelpers
             }
         }
 
-        return ExpandRuntime(text!, CollectionsMarshal.AsSpan(definitions));
+        return ExpandRuntime(string.Join('\n', parts), CollectionsMarshal.AsSpan(definitions));
+    }
+
+    private static partial class Texts
+    {
+        // The runtime templates with each row's routine definition spliced in once.
+        internal static readonly string FormattingRuntime = ReadFormattingRuntime();
     }
 }

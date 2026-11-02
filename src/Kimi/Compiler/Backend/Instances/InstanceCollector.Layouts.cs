@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
@@ -50,9 +51,10 @@ internal sealed partial class InstanceCollector
             _ = TyCtxt.Signature(function, null, -1, out var count);
             for (var slot = -1; slot < count; slot++)
             {
-                if (TyCtxt.Signature(function, null, slot, out _) is { } type)
+                if (TyCtxt.Signature(function, null, slot, out _) is { } type && TyCtxt.SignatureSite(function, slot) is var site &&
+                    this.Verdict(site, type).IsLimit)
                 {
-                    _ = this.LaysOut(TyCtxt.SignatureSite(function, slot), type);
+                    this.Limit(this.types.Erase(type), new(function, MirBodyKind.Fn), site); // The import is its own declaration.
                 }
             }
         }
@@ -68,13 +70,13 @@ internal sealed partial class InstanceCollector
             if (local.Kind != MirLocalKind.DropFlag && local.Role != MirLocalRole.Receiver &&
                 this.Subject(item, body, local.Source) is var subject && this.In(item, subject, local.Type) is { } type)
             {
-                _ = this.LaysOut(subject, type);
+                _ = this.LaysOut(item, subject, type);
             }
         }
     }
 
     // K 4.8 (DECISIONS R5-M149): each listed need of an item's body, its Type (LayoutNeeds.TypeOf) a use at its location in the item's
-    // instance; a need past a PairLayer only where the item's view makes that layer a referent (MirCases.Layer), not the owner case's Place.
+    // instance; a need past a PairLayer only where the item's view makes that layer leave its root's storage (LeavesStorage).
     private void LayOutNeeds(int item, MirBody body)
     {
         for (var i = this.needStarts[body.Ordinal]; i < this.needStarts[body.Ordinal + 1]; i++)
@@ -82,22 +84,22 @@ internal sealed partial class InstanceCollector
             var (at, step, pair) = this.needs[i];
             var block = body.Blocks[at.Block];
             var subject = this.Subject(item, body, at.Index == block.Count ? block.Terminator.Source : body.Statements[block.Start + at.Index].Source);
-            if ((pair == 0 || this.Referent(item, body, step with { Projection = pair })) &&
+            if ((pair == 0 || this.LeavesStorage(item, body, step with { Projection = pair })) &&
                 this.In(item, subject, LayoutNeeds.TypeOf(body, step)) is { } type)
             {
-                _ = this.LaysOut(subject, type);
+                _ = this.LaysOut(item, subject, type);
             }
         }
     }
 
-    // Whether a PairLayer step of an item's body selects a referent under the item's view (SPEC 13.5.5), its case's; the owner case's is the
-    // Place itself.
-    private bool Referent(int item, MirBody body, MirPlace layer)
+    // Whether a PairLayer step of an item's body leaves its root's storage under the item's view (SPEC 13.5.5, MirCases.Layer): its case's
+    // reference or handle selects a referent; the owner case's step is the Place itself.
+    private bool LeavesStorage(int item, MirBody body, MirPlace layer)
     {
         _ = this.cases.Select(body, this.Set.Items[item].View);
-        var referent = this.cases.Layer(layer) is not null;
+        var leaves = this.cases.Layer(layer) is not null;
         this.cases.Deselect();
-        return referent;
+        return leaves;
     }
 
     // K 4.8 (DECISIONS R5-M149): a call's TypeArguments need, every Type its substitution binds (LayoutNeeds.TypeOf), each a use at the call.
@@ -108,7 +110,7 @@ internal sealed partial class InstanceCollector
         {
             if (types[i] is { } argument && this.In(item, subject, argument) is { } type)
             {
-                _ = this.LaysOut(subject, type);
+                _ = this.LaysOut(item, subject, type);
             }
         }
     }
@@ -121,8 +123,9 @@ internal sealed partial class InstanceCollector
     }
 
     // A Place's steps root first: one leaves its root's storage where its prefix is laid out without its component (Layout.Indirect) or is
-    // a pair layer, whose case decides it per item; the next step with a need (LayoutNeeds) is past that storage, a use, after which the
-    // Type it read is the storage again.
+    // a pair layer, whose case decides it per item (a pattern selects one, SPEC 14.8.1) when it is the first such step since the last need,
+    // and every case after another (`((*r)@b0).1`; PLAN G157 (47)); the next step with a need (LayoutNeeds) is past that storage, a use,
+    // after which the Type it read is the storage again.
     private void ListNeeds(MirBody body, MirLocation at, MirPlace place)
     {
         var projections = body.Projections;
@@ -145,7 +148,7 @@ internal sealed partial class InstanceCollector
             var row = projections[step.Projection];
             if (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!))
             {
-                (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer ? step.Projection : 0);
+                (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer && !past ? step.Projection : 0);
             }
 
             if (past && LayoutNeeds.Of(row.Kind) != LayoutNeed.None)
@@ -173,24 +176,36 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.8 (DECISIONS R5-M108): a Function Type's inputs and result, each a by-value use at a site (an erasure's target: its adapter's entry
-    // takes and gives them); whether every one is laid out, each checked.
-    private bool LaysOutSignature(SourceRef subject, BoundType function)
+    // takes and gives them), requested by an item; whether every one is laid out, each checked.
+    private bool LaysOutSignature(int item, SourceRef subject, BoundType function)
     {
         var inputs = function.Components[0].Components;
-        var laid = this.LaysOut(subject, function.Components[1]);
+        var laid = this.LaysOut(item, subject, function.Components[1]);
         for (var i = 0; i < inputs.Count; i++)
         {
-            laid &= this.LaysOut(subject, inputs[i]); // By index: a warm run allocates no enumerator.
+            laid &= this.LaysOut(item, subject, inputs[i]); // By index: a warm run allocates no enumerator.
         }
 
         return laid;
     }
 
-    // Whether a by-value use's Type is laid out, by Layout's verdict, memoized per program version and the same for Types that differ in
-    // Origins only (Layout reads no Origin). A Language record is at each use (SPEC 8.15.3; one per code and subject), a layout over
-    // 2^63 - 1 bytes (IMPL 21.1.1, R5-M52) beside a CLayout's when both hold; a limit is the erased Type's one Resource record, at its
-    // first use (IMPL 21.3.2: the declaration, call or token).
-    private bool LaysOut(SourceRef subject, BoundType type)
+    // Whether a by-value use's Type, at a site of an item's records, is laid out (Verdict); a limit is a use of its erased Type in the
+    // item's declaration (Limit).
+    private bool LaysOut(int item, SourceRef subject, BoundType type)
+    {
+        var result = this.Verdict(subject, type);
+        if (result.IsLimit)
+        {
+            this.Limit(this.types.Erase(type), this.Declaration(item), subject);
+        }
+
+        return result.Outcome == Layout.Outcome.Ok;
+    }
+
+    // Layout's verdict on a by-value use's Type, memoized per program version and the same for Types that differ in Origins only (Layout
+    // reads no Origin). A Language record is at each use (SPEC 8.15.3; one per code and subject), a layout over 2^63 - 1 bytes (IMPL
+    // 21.1.1, R5-M52) beside a CLayout's when both hold; a limit's record is Limit's.
+    private Layout.Result Verdict(SourceRef subject, BoundType type)
     {
         var result = this.layout.Of(type);
         if (result.Oversized)
@@ -198,12 +213,46 @@ internal sealed partial class InstanceCollector
             this.Report(DiagnosticCode.OversizedLayout_Kd, subject);
         }
 
-        if (this.RecordOf(result.Outcome) is { } code && (!result.IsLimit || this.limited.Add(this.types.Erase(type))))
+        if (!result.IsLimit && this.RecordOf(result.Outcome) is { } code)
         {
             this.Report(code, subject);
         }
 
-        return result.Outcome == Layout.Outcome.Ok;
+        return result;
+    }
+
+    // IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171): a use of an erased Type over a limit in a declaration, kept
+    // as the least subject of the declaration's uses in SourceRef order (module, then the syntax table's pre-order), whatever the
+    // collection's order; RecordLimits makes each Type's one record per declaration.
+    private void Limit(BoundType erased, MirDefKey declaration, SourceRef subject)
+    {
+        ref var least = ref CollectionsMarshal.GetValueRefOrAddDefault(this.limits, (erased, declaration), out var found);
+        if (!found || Order(subject, least) < 0)
+        {
+            least = subject;
+        }
+    }
+
+    // IMPL 21.3.2 (DECISIONS R5-M171): the record of each erased Type over a limit in each declaration that uses it, at its least use, in
+    // subject order (DIAGNOSTICS rule 6), after the run, when every use has been seen.
+    private void RecordLimits()
+    {
+        if (this.limits.Count == 0)
+        {
+            return;
+        }
+
+        this.limitSubjects.Clear();
+        foreach (var subject in this.limits.Values)
+        {
+            this.limitSubjects.Add(subject);
+        }
+
+        this.limitSubjects.Sort(static (x, y) => Order(x, y));
+        foreach (var subject in this.limitSubjects)
+        {
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, subject);
+        }
     }
 
     // The Places a location uses, each listed by its needs (ListNeeds).

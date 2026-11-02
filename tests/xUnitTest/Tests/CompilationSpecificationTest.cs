@@ -77,11 +77,17 @@ public class CompilationSpecificationTest
         Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar text = \"unterminated")));
     }
 
+    // IMPL 20.2.1's table: the OS component without its version suffix and the architecture component, any other spelling unknown.
     [Theory]
     [InlineData("amd64-pc-win32-msvc", "windows", "x86_64", 64)]
     [InlineData("x86_64-pc-windows-msvc", "windows", "x86_64", 64)]
     [InlineData("arm64-apple-macosx13.0", "macos", "aarch64", 64)]
+    [InlineData("x86_64-apple-darwin23.1.0", "macos", "x86_64", 64)]
     [InlineData("i686-unknown-linux-gnu", "linux", "x86", 32)]
+    [InlineData("armv7-unknown-linux-gnueabihf", "linux", "unknown", 32)]
+    [InlineData("x86_64h-apple-macosx", "macos", "unknown", 64)]
+    [InlineData("x86_64-unknown-freebsd13.2", "unknown", "x86_64", 64)]
+    [InlineData("x86_64-unknown-linuxfoo", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-unrecognized", "unknown", "x86_64", 64)]
     public void PreparedTargetValuesAreCanonicalAndConsistent(string target, string os, string arch, int width)
     {
@@ -226,6 +232,39 @@ public class CompilationSpecificationTest
         Assert.Contains(TestDiagnostics.Of(compilation), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd));
     }
 
+    // SPEC 23.1.2: the language version and each compile-time setting are independent records; an unsupported target leaves out the
+    // settings, which are checked against the fixed Condition names, whatever the target.
+    [Theory]
+    [InlineData(WindowsProfile.Target, new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd" })]
+    [InlineData(
+        "unknown-none-elf",
+        new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd", "UnsupportedTarget_Kd" })]
+    public void EachIndependentPreparationFailureIsReported(string target, string[] codes)
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.ProjectFile.LangVersion = "future";
+        compilation.Project.ProjectFile.CompileTimeSettings["os"] = new() { Bool = true };
+        compilation.Project.ProjectFile.CompileTimeSettings["debug"] = new() { Bool = true };
+        Assert.False(compilation.Prepare(target));
+        Assert.Null(compilation.BuildMetadata);
+        Assert.Equal(codes, TestDiagnostics.Of(compilation).Select(static x => x.Code).Order(StringComparer.Ordinal));
+    }
+
+    // SPEC 23.1.2: each repeated or invalid setting of a project file is its own load failure, and so is each configuration failure;
+    // only the rules that read a repeated map (here Dependencies' reference) are left out.
+    [Fact]
+    public void EachRepeatedSettingIsALoadFailure()
+    {
+        var text = "CompileTimeSettings={A={Bool=true} A={Bool=false}} NativeBindings={} Test={Timeout=\"1s\" Timeout=\"2s\"} " +
+            "PackageId=\"Bad\" PackageVersion=\"1\" Dependencies={x={PackageId=\"a\" PackageVersion=\"1\"}} Dependencies={y={PackageId=\"Bad\"}}";
+        var source = System.Text.Encoding.UTF8.GetBytes(text);
+        var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(source)).Failures;
+        Assert.Equal(5, failures.Count);
+        Assert.Contains(NativeConfiguration.SupersededBindings, failures);
+        Assert.Contains("PackageId and PackageVersion must both be supplied with valid exact identity spellings.", failures);
+        Assert.Contains("Duplicate Dependencies setting.", failures);
+    }
+
     [Fact]
     public void SettingMustSpecifyExactlyOneValue()
     {
@@ -285,7 +324,7 @@ public class CompilationSpecificationTest
         Assert.Same(second, items[1].CodeContext.SourceDocument);
         Assert.Null(entryPoint.SourceDocument);
         items[0].AddDiagnostic(DiagnosticCode.TypeMismatch_Kd);
-        Assert.Equal(first.Path, Assert.Single(TestDiagnostics.Of(compilation)).Path);
+        Assert.Equal(first.Path, Assert.Single(TestDiagnostics.Of(compilation, first)).Path);
         Assert.Throws<InvalidOperationException>(() => items[0].CodeContext.Parse(root, second));
     }
 
@@ -330,8 +369,8 @@ public class CompilationSpecificationTest
     [InlineData("CompileTimeSettings={Feature={Bool=true}} CompileTimeSettings={Feature={Bool=false}}")]
     public void ProjectFileLoadingRejectsDuplicateDecodedSettingNames(string source)
     {
-        var exception = Assert.Throws<TinyhandException>(() => ProjectFile.Load(System.Text.Encoding.UTF8.GetBytes(source)));
-        Assert.Contains("Duplicate", exception.Message);
+        var exception = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(System.Text.Encoding.UTF8.GetBytes(source)));
+        Assert.Contains("Duplicate", Assert.Single(exception.Failures));
     }
 
     [Theory]

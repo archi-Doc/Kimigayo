@@ -172,7 +172,7 @@ internal sealed partial class FunctionCodegen
         }
 
         right = operands.Length == 2 ? right : left; // A unary operator's operand is on both sides; its row fixes the other.
-        if (left.Lowering is null || right.Lowering is null || this.LoweringOf(statement.Place) is not { } target)
+        if (this.LoweringOf(statement.Place) is not { } target)
         {
             return; // A broken contract, recorded.
         }
@@ -194,7 +194,7 @@ internal sealed partial class FunctionCodegen
     // Proven (the column's unchecked entry), which Aborts at the source's location; its value, or null after a record.
     private Value? Apply(int row, int column, in Computed left, in Computed right, bool proven, in SourceInfo source)
     {
-        if (left.Lowering!.Layout.Size == 0)
+        if (left.Lowering.Layout.Size == 0)
         {
             return new Value('\0', Rows[row].Reflexive ? 1 : 0);
         }
@@ -231,7 +231,7 @@ internal sealed partial class FunctionCodegen
             entry.Right ?? Spell(right.Value, text.Slice(SpellingLength, SpellingLength)),
             Spell(result, text[(2 * SpellingLength)..]),
             comparison: row >= (int)MirBinaryOp.Eq && row < UnaryRows);
-        this.Write(check, operation, (int)result.Number, site, right.Lowering!.ComputationType);
+        this.Write(check, operation, (int)result.Number, site, right.Lowering.ComputationType);
         return result;
     }
 
@@ -288,7 +288,7 @@ internal sealed partial class FunctionCodegen
             output.Write("  ");
             this.WriteValue(bytes);
             output.Write(" = mul ");
-            output.Write(count.Lowering!.ComputationType);
+            output.Write(count.Lowering.ComputationType);
             output.Write(' ');
             this.WriteValue(count.Value);
             output.Write(", ");
@@ -301,34 +301,26 @@ internal sealed partial class FunctionCodegen
     }
 
     // A covered operand's value in its computation representation (I4: a local loaded, bool narrowed; a constant its literal), read at its
-    // terminal Place through its safe value-reference layers (Referent; SPEC 13.4: only a comparison's operand has any, MIR's contract), its
-    // terminal Type and that Type's representation in the item's instance; false after a broken contract's record (Operand's), true without
-    // a representation after another's.
+    // terminal Place through its safe value-reference layers (TerminalAddress; SPEC 13.4: only a comparison's operand has any, MIR's contract), its
+    // terminal Type and that Type's representation in the item's instance; false after a broken contract's record (Operand's,
+    // TerminalAddress's or the representation's).
     private bool Compute(in MirOperand operand, out Computed computed)
     {
         computed = default;
-        if (!this.Operand(operand, out var value))
+        if (!this.Operand(operand, out var value) || this.TerminalAddress(operand, value, default, out var terminal) is not { } place ||
+            (terminal.References == 0 ? this.LoweringOf(operand) : this.Laid(terminal.Type)) is not { } lowering)
         {
             return false;
         }
 
-        if (this.Referent(operand, value, default, out var terminal) is not { } place)
-        {
-            return true; // A broken contract, recorded.
-        }
-
-        if ((terminal.References == 0 ? this.LoweringOf(operand) : this.Laid(terminal.Type)) is { } lowering)
-        {
-            var read = terminal.References == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
-            var constant = operand.Kind == MirOperandKind.Const;
-            computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal.Type!, lowering);
-        }
-
+        var read = terminal.References == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
+        var constant = operand.Kind == MirOperandKind.Const;
+        computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal.Type!, lowering);
         return true;
     }
 
     // An operand of an operator: its value, closed terminal Type and that Type's representation.
-    private readonly record struct Computed(Value Value, BoundType Type, ValueLowering? Lowering);
+    private readonly record struct Computed(Value Value, BoundType Type, ValueLowering Lowering);
 
     // An entry of the table: the LLVM operator (null: none, an operator Binding admits on no operand of the column's Types), the check and a
     // unary operator's fixed operand.

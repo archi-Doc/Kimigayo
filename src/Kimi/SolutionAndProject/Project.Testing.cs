@@ -2,6 +2,7 @@
 
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Kimi;
 
@@ -14,18 +15,29 @@ public partial class Project
     /// <param name="cancellationToken">Cancels dependency resolution.</param>
     /// <param name="context">The check context, or null for the command, which reads the disk.</param>
     /// <returns>The accepted test compilation, or null.</returns>
-    /// <exception cref="InvalidDataException">The test configuration is invalid.</exception>
+    /// <exception cref="InvalidDataException">The test target cannot be selected.</exception>
     internal Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context)
     {
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
         cancellationToken.ThrowIfCancellationRequested();
-        if (DependencyConfiguration.Validate(this.ProjectFile) is { } invalid)
+
+        // As for a product build, each configuration, test setting and resolution failure is its own record (SPEC 23.1.2), blocking the
+        // check before the front end (SPEC 23.2.2); a command renders them.
+        var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
+        var valid = this.ValidateConfiguration(diagnostics, out var sources);
+        valid &= !this.Reported(diagnostics, this.ProjectFile.Test.Validate());
+        if (Testing.TestCatalog.TryProjectIdOf(this) is null)
         {
-            throw new InvalidDataException(invalid);
+            this.Fail(diagnostics, Testing.TestCatalog.InvalidProjectId);
+            valid = false;
         }
 
-        this.ProjectFile.Test.Validate();
-        _ = Testing.TestCatalog.ProjectIdOf(this); // SPEC 23.2.2: an invalid configuration blocks the check before the front end.
+        if (!valid)
+        {
+            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+            return null;
+        }
+
         var target = this.KimiOptions.Target;
         if (string.IsNullOrEmpty(target))
         {
@@ -42,22 +54,14 @@ public partial class Project
             throw new InvalidDataException("Testing requires a configured Windows x64 target.");
         }
 
-        var sources = new HashSet<string>(SourceIdentity.PathComparer);
-        foreach (var source in this.ProjectFile.TestSources)
-        {
-            if (!sources.Add(Path.GetFullPath(source, Path.GetFullPath(this.Directory))))
-            {
-                throw new InvalidDataException("Duplicate resolved TestSources path: " + source);
-            }
-        }
-
         DependencyPartition? graph = null;
         if (this.FilePath is { } path)
         {
             var resolution = DependencyResolver.Resolve(path, target, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, TinyhandSerializer.SerializeToUtf8(this.ProjectFile), true, inputs);
-            if (DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true, inputs) is { } failure)
+            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true, inputs)))
             {
-                throw new InvalidDataException(failure);
+                this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+                return null;
             }
 
             graph = resolution.Test;

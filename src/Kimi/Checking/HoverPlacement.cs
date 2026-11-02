@@ -4,12 +4,24 @@ using Kimi.Compiler.Documentation;
 
 namespace Kimi.Checking;
 
-/// <summary>An immutable, partial logical-to-physical map. It performs no file access.</summary>
+/// <summary>An immutable, partial logical-to-physical map. It performs no file access when it maps.</summary>
 internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?>[] Files)
 {
     internal static readonly HoverPlacement Unsupported = new(null, []);
 
-    internal string? Map(DocumentationLinkTarget target)
+    // Each mapped file's identity, taken where the placement is built, so a mapped file's link normalizes no path when it is resolved.
+    private readonly SourceIdentity?[] documents = Array.ConvertAll(
+        Files, static x => x.Value is { } path && SourceIdentity.TryFromPath(path, out var document) ? document : (SourceIdentity?)null);
+
+    /// <summary>Gets the URIs of a host without a client: each document's own (<see cref="SourceIdentity.TryToUri"/>).</summary>
+    internal static Func<SourceIdentity, string?> Canonical { get; } = static document => document.TryToUri(out var uri) ? uri : null;
+
+    /// <summary>Maps a logical target to the URI of its physical file, which the host spells (<c>LspSession.UriOf</c>; DECISIONS
+    /// R5-M180).</summary>
+    /// <param name="target">The target.</param>
+    /// <param name="uriOf">The host's URI of a document, or null for a path no URI spells.</param>
+    /// <returns>The URI, or null without a placement or a URI (the link is shown as text).</returns>
+    internal string? Map(DocumentationLinkTarget target, Func<SourceIdentity, string?> uriOf)
     {
         var low = 0;
         var high = this.Files.Length - 1;
@@ -19,7 +31,7 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
             var order = string.CompareOrdinal(target.LogicalPath, this.Files[middle].Key);
             if (order == 0)
             {
-                return FileUri(this.Files[middle].Value);
+                return this.documents[middle] is { } document ? uriOf(document) : null;
             }
 
             if (order < 0)
@@ -32,35 +44,20 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
             }
         }
 
-        if (this.Root is not { } root)
+        if (this.Root is not { } root || !SourceIdentity.TryFromPath(Path.Join(root, target.LogicalPath), out var placed))
         {
             return null;
         }
 
         try
         {
-            var path = Path.GetFullPath(target.LogicalPath, root);
-            var relative = Path.GetRelativePath(root, path);
-            return relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative) ? null : FileUri(path);
+            var relative = Path.GetRelativePath(root, placed.Value);
+            var outside = relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative);
+            return outside ? null : uriOf(placed);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
             return null;
         }
-    }
-
-    internal static string? FileUri(string? path)
-    {
-        if (path is null || !Path.IsPathFullyQualified(path))
-        {
-            return null;
-        }
-
-        // Uri otherwise treats a literal %20 in a file name as an existing escape. Protect path data before URI parsing.
-        var normalized = OperatingSystem.IsWindows() ? path.Replace('\\', '/') : path;
-        var escaped = normalized.Replace("%", "%25", StringComparison.Ordinal).Replace("#", "%23", StringComparison.Ordinal).Replace("?", "%3F", StringComparison.Ordinal);
-        var prefix = normalized.StartsWith("//", StringComparison.Ordinal) ? "file:" : normalized.StartsWith('/') ? "file://" : "file:///";
-        return Uri.TryCreate(prefix + escaped, UriKind.Absolute, out var uri) && uri.IsFile && SourceIdentity.PathComparer.Equals(uri.LocalPath, path)
-            ? uri.AbsoluteUri : null;
     }
 }

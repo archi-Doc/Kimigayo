@@ -500,7 +500,7 @@ public sealed partial class Binding
             foreach (var outer in this.resolvingSteps)
             {
                 if (ReferenceEquals(outer.Symbol, hop.Step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
-                    this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
+                    root.Height > outer.Components[0].Height)
                 {
                     return true;
                 }

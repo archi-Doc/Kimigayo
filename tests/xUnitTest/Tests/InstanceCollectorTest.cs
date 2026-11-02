@@ -665,13 +665,15 @@ public sealed partial class InstanceCollectorTest
         };
     }
 
-    // DECISIONS BU-12: a ring of structs linked by Option<rc/…> is an instance up to the storage walk's cap, so a value of it reaches the
-    // collector's drop glue, whose depth limit it meets past 42 structs: GenerationResourceLimit_Kd at the destroyed value, and no
-    // storage-nesting gap at the call.
+    // DECISIONS BU-12, R5-M170 (the owner's approval names this row): a ring of structs linked by Option<rc/…> is an instance up to the
+    // storage walk's cap, so a value of it reaches the collector's drop glue; its glue items repeat Option at one height, no growth, so 50
+    // structs, past K 4.6's former depth of 128 items, have no record and no storage-nesting gap at the call, up to 64, the largest ring
+    // under the storage walk's cap; 65 is that cap's storage-nesting gap at the call (PLAN G128), not this rule's.
     [Theory]
-    [InlineData(42, "")]
-    [InlineData(50, "GenerationResourceLimit_Kd v@move")]
-    public void StorageRingsMeetTheGlueDepth(int ring, string records)
+    [InlineData(50, "")]
+    [InlineData(64, "")]
+    [InlineData(65, "Unsupported_Kd pick(v@move)")]
+    public void StorageRingsHaveNoGrowth(int ring, string records)
     {
         var c = MirBuildTest.Compile(
             Ring(ring) + "func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: Option<rc/S1> = .None\n    let w = pick(v@move)\n" +
@@ -680,6 +682,112 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
+    }
+
+    // DECISIONS R5-M170: nesting without growth has no limit, where K 4.6's depth counted every admission: an 80-deep generic chain comparing
+    // a closed 50-deep Tuple nest (R5-M166's parts), the chain ending in 50 nested generic constructors, and 20 Runner structs each run
+    // through one shared generic helper, whose items repeat at one substitution height.
+    [Theory]
+    [InlineData("compare")]
+    [InlineData("constructors")]
+    [InlineData("helper")]
+    public void NestingWithoutGrowthHasNoLimit(string shape)
+    {
+        var c = MirBuildTest.Compile(shape switch
+        {
+            "compare" => Chain("    let x = " + new string('(', 50) + "\"s\"" + string.Concat(Enumerable.Repeat(", 1)", 50)) + "\n    return x == x\n"),
+            "constructors" => string.Concat(Enumerable.Range(1, 49).Select(static k => $"struct D{k}<T>\n    T is Copy\n    public var x: D{k + 1}<T>\n" +
+                $"    public init(value: T) => self.x = D{k + 1}<T>.init(value)\n    drop => ()\n")) +
+                "struct D50<T>\n    T is Copy\n    public var v: T\n    public init(value: T) => self.v = value\n    drop => ()\n" +
+                Chain("    let x = D1<T>.init(a)\n    return true\n"),
+            _ => "contract Runner\n    func run(self: ref/Self) -> i32\ngroup Helpers\n    public func wrap<T>(x: T) -> i32\n        T is Runner\n" +
+                "        return x.run()\n" + string.Concat(Enumerable.Range(1, 20).Select(static k =>
+                $"struct A{k}<T>\n    Self is Runner\n    public init() => ()\n" +
+                $"    public func run(self: ref/Self) -> i32 => {(k == 20 ? "0" : $"Helpers.wrap(A{k + 1}<T>.init())")}\n")) +
+                "public func main() -> ()\n    let r = Helpers.wrap(A1<i32>.init())\n    return\n",
+        });
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(string.Empty, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
+
+        static string Chain(string last)
+            => string.Concat(Enumerable.Range(1, 79).Select(static i => $"func g{i}<T>(a: T) -> bool\n    T is Copy\n    return g{i + 1}(a)\n")) +
+                "func g80<T>(a: T) -> bool\n    T is Copy\n" + last + "func start() -> bool => g1(1)\n";
+    }
+
+    // DECISIONS R5-M170: growth stops at its site with GenerationResourceLimit_Kd: a mutual cycle adding Option, at its 17th generation;
+    // a non-regular value behind an object handle, its drop glue at the destroyed local (beside the creating call's storage-nesting gap,
+    // PLAN G128); a drop glue cycle through 130 structs growing once per lap; a written nest of 130 behind a handle, past the height cap
+    // of 128; a branching non-regular Type, at the 1,025th glue item of its declaration; and the Known limit, growth written into a chain
+    // of distinct functions (each adding Option), at its 17th generation, though nothing recurs. A refused key is refused once: a
+    // destructor creating a growing object requests its glue key from the creation, the descriptor and the local's handle glue, one record
+    // at the first request. The cap is the requested Type's: a handle past it is refused though an earlier handle admitted the release key
+    // its glue shares (U11).
+    [Theory]
+    [InlineData("requested", "GenerationResourceLimit_Kd Expanding<Marker<T>>.init()")]
+    [InlineData("mutual", "GenerationResourceLimit_Kd f(value@move, n)")]
+    [InlineData("handle", "Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()")]
+    [InlineData("cycle", "GenerationResourceLimit_Kd let v: Option<obj/C1<i32>> = .None")]
+    [InlineData("height", "GenerationResourceLimit_Kd let v")]
+    [InlineData("shared", "GenerationResourceLimit_Kd rc/W<W<")]
+    [InlineData("breadth", "GenerationResourceLimit_Kd let v: Option<obj/Nest<i32>> = .None")]
+    [InlineData("written", "GenerationResourceLimit_Kd Helpers.wrap(A17<Option<T>>.init())")]
+    public void GrowthStopsAtItsSite(string shape, string records)
+    {
+        var c = MirBuildTest.Compile(shape switch
+        {
+            "requested" => "struct Marker<T>\nstruct Expanding<T>\n    drop\n        let next = Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())\n" +
+                "let root = Expanding<i32>.init()\n",
+            "mutual" =>"func f<T>(value: T, n: i32) -> i32\n    require n > 0 else => return 0\n    return g<Option<T>>(.Some(value@move), n - 1)\n" +
+                "func g<T>(value: T, n: i32) -> i32 => h(value@move, n)\nfunc h<T>(value: T, n: i32) -> i32 => f(value@move, n)\n" +
+                "func start() -> i32 => f(1, 3)\n",
+            "handle" => "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" +
+                "public func main() -> ()\n    let c = Chain<i32>.init()\n    return\n",
+            "cycle" => string.Concat(Enumerable.Range(1, 130).Select(static k =>
+                $"struct C{k}<T>\n    public var next: obj/C{(k % 130) + 1}<{(k == 130 ? "(T, T)" : "T")}>\n")) +
+                "public func main() -> ()\n    let v: Option<obj/C1<i32>> = .None\n    return\n",
+            "height" => "struct W<T>\n    public var next: Option<obj/T>\npublic func main() -> ()\n    let v: Option<obj/" +
+                string.Concat(Enumerable.Repeat("W<", 130)) + "i32" + new string('>', 130) + "> = .None\n    return\n",
+            "shared" => "struct W<T>\n    public var p: raw/T\nfunc use(v: rc/" + string.Concat(Enumerable.Repeat("W<", 130)) + "i32" +
+                new string('>', 130) + ", s: rc/W<i32>) -> ()\n    return\n",
+            "breadth" => "struct Nest<T>\n    public let a: Option<obj/Nest<(T, i8)>>\n    public let b: Option<obj/Nest<(i8, T)>>\n" +
+                "public func main() -> ()\n    let v: Option<obj/Nest<i32>> = .None\n    return\n",
+            _ => "contract Runner\n    func run(self: ref/Self) -> i32\ngroup Helpers\n    public func wrap<T>(x: T) -> i32\n        T is Runner\n" +
+                "        return x.run()\n" + string.Concat(Enumerable.Range(1, 20).Select(static k =>
+                $"struct A{k}<T>\n    Self is Runner\n    public init() => ()\n" +
+                $"    public func run(self: ref/Self) -> i32 => {(k == 20 ? "0" : $"Helpers.wrap(A{k + 1}<Option<T>>.init())")}\n")) +
+                "public func main() -> ()\n    let r = Helpers.wrap(A1<i32>.init())\n    return\n",
+        });
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        var actual = string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        Assert.True(
+            shape is "height" or "shared" ? actual.StartsWith(records, StringComparison.Ordinal) && set.Records.Count() == 1 : actual == records,
+            actual);
+        if (shape == "breadth")
+        {
+            Assert.Equal(1024, set.Items.ToArray().Count(x => Label(program, x).StartsWith("DropGlue Nest<", StringComparison.Ordinal)));
+        }
+    }
+
+    // DECISIONS R5-M170, V16: a chain of 200, 400 and 800 distinct generic functions has no record, and the collector's items and Work grow
+    // in proportion; Work counts admission's walk, which a key of an identity without an admitted item skips (no ancestor can share it).
+    [Fact]
+    public void AChainWithoutGrowthScalesLinearly()
+    {
+        var work = new[] { 200, 400, 800 }.Select(static n =>
+        {
+            var c = MirBuildTest.Compile(string.Concat(Enumerable.Range(0, n).Select(i =>
+                $"func step{i}<T>(value: T) -> T => {(i == n - 1 ? "value@move" : $"step{i + 1}<T>(value@move)")}\n")) + "let x = step0<i32>(1)\n");
+            var collector = new InstanceCollector(c.Types, c.Layout);
+            var set = collector.Run(c.BuildMir(), 1);
+            Assert.Empty(set.Records);
+            return (Items: (double)set.Items.Length, Work: (double)collector.Work);
+        }).ToArray();
+        Assert.InRange(work[1].Items / work[0].Items, 1.8, 2.2);
+        Assert.InRange(work[2].Items / work[0].Items, 3.6, 4.4);
+        Assert.InRange(work[1].Work / work[0].Work, 1.8, 2.2);
+        Assert.InRange(work[2].Work / work[0].Work, 3.6, 4.4);
     }
 
     // DECISIONS BU-38 (R5's guard), R5-M151: the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row map
@@ -1538,6 +1646,28 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "DropGlue rc/Node"));
     }
 
+    // DECISIONS R5-M60 (amended by U11), K 4.5 "DropGlue": an owning handle's glue is keyed by its release, the counting and the payload's
+    // glue or the descriptor's finalizer: Sealed payloads without a drop share one glue per counting whatever their size, open payloads
+    // (the finalizer's) one apart from them, with or without a drop, and a Sealed payload with a drop keeps its own.
+    [Fact]
+    public void HandleGluesShareTheirRelease()
+    {
+        var (program, set) = Collect("struct Small\n    public var a: i32\n    public init(a: i32) => self.a = a\nstruct Large\n" +
+            "    public var a: i64\n    public init(a: i64) => self.a = a\nstruct Leaf\n    public var name: string\n" +
+            "    public init(name: string) => self.name = name@move\nopen struct Node\n    public var a: i32\n    public init(a: i32) => self.a = a\n" +
+            "open struct Twig\n    public var name: string\n    public init(name: string) => self.name = name@move\nfunc use() -> ()\n" +
+            "    let a = Kimi.Intrinsics.makeRc(Small.init(1))\n    let b = Kimi.Intrinsics.makeRc(Large.init(2))\n" +
+            "    let c = Kimi.Intrinsics.makeArc(Small.init(3))\n    let d = Kimi.Intrinsics.makeRc(Leaf.init(\"d\"))\n" +
+            "    let e = Kimi.Intrinsics.makeRc(Node.init(4))\n    let f = Kimi.Intrinsics.makeRc(Twig.init(\"f\"))\n    return\n");
+        var handles = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.DropGlue && x.RepresentativeType!.HandleMode is not null);
+        // Requested last local first; a shared item's label names its first requester: rc/Twig for rc/Node, rc/Large for rc/Small.
+        Assert.Equal(
+            ["DropGlue rc/Twig", "DropGlue rc/Leaf", "DropGlue arc/Small", "DropGlue rc/Large"], handles.Select(x => Label(program, x)));
+        Assert.Empty(Targets(program, set, "DropGlue rc/Twig"));
+        Assert.Equal(["DropGlue Leaf"], Targets(program, set, "DropGlue rc/Leaf"));
+        Assert.Empty(Targets(program, set, "DropGlue rc/Large"));
+    }
+
     // K 4.5 "DropGlue" (X23), rows 10 and 13: a Closure environment's glue destroys its captures last to first, and the Closure's erasure
     // targets the environment's glue after its body; a Function value's glue has no target, since its environment's destruction is erased.
     [Fact]
@@ -1630,7 +1760,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
     // whose verdicts join the glue item's: a C-layout element storing a zero-sized Field is InvalidCLayout_Kd at each request of the glue,
     // an empty local's declaration (written or inferred alike; Binding reports none, DECISIONS R4-M134 Q8), and a limit element the erased
-    // Type's one Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
+    // Type's one Resource record in the declaration, at its least request (DECISIONS R5-M171), not the first in drop order; such a glue has
+    // no item. Records by code and the subject's first line, in record order.
     [Theory]
     [InlineData(
         "func use() -> ()\n    let a: Array<P<()>> = []\n    let b: Array<P<()>> = []\n    return\n",
@@ -1639,7 +1770,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", "")]
     [InlineData(
         "func use() -> ()\n    let a: Array<[2147483648 of u8]> = []\n    let b: Array<[2147483648 of u8]> = []\n    return\n",
-        "GenerationResourceLimit_Kd let b: Array<[2147483648 of u8]> = []")]
+        "GenerationResourceLimit_Kd let a: Array<[2147483648 of u8]> = []")]
     public void ACollectionsGlueLaysOutItsElements(string uses, string records)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
@@ -1709,8 +1840,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Fn make [i32]"));
     }
 
-    // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
-    // use: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
+    // K 4.8, IMPL 21.3.2, DECISIONS R5-M44, R5-M171: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the
+    // Type's least use in its declaration: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
     // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
     [Theory]
@@ -2025,16 +2156,18 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
-    // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.
+    // X19, DECISIONS R5-M170 (superseding K 4.6's depth 128): a chain of 130 distinct generic functions has no growth, so no limit; the
+    // 1,025th item of one definition is GenerationResourceLimit_Kd at its call.
     [Fact]
-    public void TheDepthAndSetLimitsStopAtTheirCalls()
+    public void AChainWithoutGrowthHasNoLimitAndTheSetLimitStopsAtItsCall()
     {
         var chain = string.Concat(Enumerable.Range(0, 130).Select(static i => $"func step{i}<T>(value: T) -> T => {(i == 129 ? "value@move" : $"step{i + 1}<T>(value@move)")}\n"));
         var c = MirBuildTest.Compile(chain + "let x = step0<i32>(1)\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal([(DiagnosticCode.GenerationResourceLimit_Kd, "step128<T>(value@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-        Assert.Equal(128, set.Items.ToArray().Max(static x => x.Depth));
+        var steps = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(steps, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(130, set.Items.ToArray().Count(x => Label(steps, x).StartsWith("Fn step", StringComparison.Ordinal)));
 
         var sizes = string.Concat(Enumerable.Range(1, 1025).Select(static n => $"_ = size<{n}>()\n"));
         c = MirBuildTest.Compile("func size<length N>() -> isize => N\n" + sizes);

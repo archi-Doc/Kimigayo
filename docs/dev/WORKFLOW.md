@@ -124,6 +124,26 @@ acceptance, wrong result, internal fault, regression, departure from the design,
 findings become open issues. The reviewer states what is wrong and which rule it breaks, and writes no fix, so it never
 becomes an author of the design or the implementation.
 
+**Diagnostics scope** (DECISIONS Q13). Of the differences in the records a program reports, only these are regressions;
+the other blocking findings above stand:
+
+1. an acceptance move the design does not name: a valid program newly rejected, or an invalid one newly accepted;
+2. a new `InternalInvariant_Kd` on any program, or a new Language error on a valid program (one the base does not give);
+3. a lost independent record: one the base reports and the change no longer reports, other than a removal by rule W.
+
+- **Rule W** suppresses a record only where its check reads a failed or resting input directly and that input's record, or
+  the record it rests on, is still reported (SPEC 23.1.2, "caused only by another reported failure"). Such a removal, and
+  any other record added on a program the base already rejects (other than `InternalInvariant_Kd`), is dependent: counted
+  by diagnostic code in the commit, never argued and never blocking.
+- The commit names DECISIONS Q13 for each expectation it changes under rule W. Q13 never moves an expectation of acceptance or of an
+  independent record.
+- A form found outside the unit's rows that is none of 1-3 becomes an open issue, and a pre-existing defect stays one.
+- A heuristic that a second form breaks is not refined.
+  - Where the program is rejected anyway, its record is reported.
+  - Where the program may be valid, a located `Unsupported_Kd` marks the analysis limit. On a program the base accepts,
+    that is regression 1. Replacing an independent Language record with `Unsupported_Kd` is regression 3.
+- A unit has one review, by one reviewer; a fix after REVISE is that reviewer's repeated review.
+
 | Verdict | Design review | Implementation review | Next |
 | --- | --- | --- | --- |
 | **ACCEPT** | No blocking finding. | No blocking finding. | Implementation, or completion. |
@@ -153,10 +173,10 @@ becomes an author of the design or the implementation.
 - A unit does not converge when two reviews' blocking findings share a cause or when its third design review or third
   implementation review does not ACCEPT; a Full change also when no candidate qualifies at the choice or the choosing
   sessions disagree; and any unit when the [working-time limit](#working-time-limit) stops it after its work has
-  already been split twice under that limit. The planning session then suspends the unit and asks the owner how to
-  proceed
-  ([Owner decisions](#owner-decisions)). Any change stays on a `held/…` branch with its evidence and merges into neither
-  dev nor main, and the unit resumes only on the owner's answer.
+  already been split twice under that limit. The planning session then suspends the unit. It asks the owner how to proceed
+  ([Owner decisions](#owner-decisions)) unless the cause is record selection only, which it decides itself (DECISIONS Q13).
+  Any change stays on a `held/…` branch with its evidence and merges into neither dev nor main, and the unit resumes
+  only on the owner's answer or, for record selection, the planning session's decision.
 - A review count is never a reason to ACCEPT a change with a blocking defect.
 
 ## Owner decisions
@@ -166,7 +186,9 @@ At any point, suspend the unit and ask the owner on finding:
 - a contradiction in the specification;
 - a significant measured slowdown of compilation or generated code;
 - a way to make the specification simpler and cleaner by unifying concepts;
-- a unit that does not converge ([Repeated reviews](#repeated-reviews));
+- a unit that does not converge ([Repeated reviews](#repeated-reviews)), except on record selection: about diagnostics
+  the owner is asked only acceptance, soundness and SPEC questions, and the planning session decides which records a
+  rejected program reports (DECISIONS Q13);
 - a unit stopped by the [working-time limit](#working-time-limit).
 
 The report names the SPEC sections, the measurements or evidence (for a unit that does not converge, each review's

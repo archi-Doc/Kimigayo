@@ -143,7 +143,7 @@ internal sealed partial class FunctionCodegen
 
     // The Type below the reference layer of a Type in the item's instance (TyCtxt.Layer, as the collector reads it); null, with
     // InternalInvariant_Kd at the body, for a Type with no reference layer.
-    private BoundType? Referent(BoundType? reference)
+    private BoundType? ReferencedType(BoundType? reference)
     {
         if (TyCtxt.Layer(reference, out var referent, out _) == HirPlaceKind.Deref)
         {

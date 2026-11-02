@@ -12,7 +12,7 @@ internal sealed partial class MirBuilder
     // SPEC 15.1.3: a fixed-array element at a literal position in range (its PlaceShape): at the position the index's own plan row keeps
     // (Folded); the position evaluates nothing.
     private MirPlace ConstElement(IndexKoto index, bool input)
-        => this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value);
+        => this.Selected(this.Place(index.Left, input), index.Left, MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value, index);
 
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
     // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n). SPEC 4.7.4: the receiver is located once, before the index: a handle the
@@ -23,6 +23,12 @@ internal sealed partial class MirBuilder
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
+        if (this.Identical(sequence, index.Left, index))
+        {
+            this.Evaluate(index.Right);
+            return this.Unidentified(sequence, index);
+        }
+
         sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
         var key = ExpansionPlan.Of(index)?.First;
@@ -51,6 +57,16 @@ internal sealed partial class MirBuilder
         }
 
         return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
+    }
+
+    // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a written ^x's offset) or a key, built for its
+    // own code and records, while nothing reads the parameter's Place.
+    private void Evaluate(Koto? node)
+    {
+        if (node is not null)
+        {
+            _ = this.Operand(node is FromEndIndexKoto { Operand: var offset } ? offset : node, expected: null);
+        }
     }
 
     // SPEC 4.7.4, 12.2: a selection's receiver whose value it reads, a Slice handle or a raw pointer, secured where it is located (before an
@@ -129,6 +145,16 @@ internal sealed partial class MirBuilder
     {
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var sequence = this.Place(index.Left);
+        if (this.Identical(sequence, index.Left, index))
+        {
+            this.Evaluate(range is null ? index.Right : range.Start);
+            this.Evaluate(range?.End);
+            this.roots.Clear();
+            this.roots.Add(sequence.Root);
+            this.Unsupported(index, destination, index);
+            return;
+        }
+
         var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);

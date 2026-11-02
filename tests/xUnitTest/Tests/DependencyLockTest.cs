@@ -20,8 +20,8 @@ public sealed class DependencyLockTest : IDisposable
     {
         var empty = this.Resolution();
         var path = Path.Combine(this.directory, "missing.kimi.lock.json");
-        Assert.Null(DependencyLock.Validate(path, empty, false));
-        Assert.NotNull(DependencyLock.Validate(path, this.Resolution(dependency: true), false));
+        Assert.Empty(DependencyLock.Validate(path, empty, false));
+        Assert.NotEmpty(DependencyLock.Validate(path, this.Resolution(dependency: true), false));
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public sealed class DependencyLockTest : IDisposable
         Assert.Contains("\"root\"", text);
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         Assert.True(DependencyLock.Update(path, result, TestContext.Current.CancellationToken));
-        Assert.Null(DependencyLock.Validate(path, result, true));
+        Assert.Empty(DependencyLock.Validate(path, result, true));
         Assert.Equal(bytes, File.ReadAllBytes(path));
     }
 
@@ -66,7 +66,7 @@ public sealed class DependencyLockTest : IDisposable
     {
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         File.WriteAllText(path, text);
-        Assert.NotNull(DependencyLock.Validate(path, this.Resolution(), false));
+        Assert.NotEmpty(DependencyLock.Validate(path, this.Resolution(), false));
         Assert.Equal(text, File.ReadAllText(path));
     }
 
@@ -75,7 +75,7 @@ public sealed class DependencyLockTest : IDisposable
     {
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         Directory.CreateDirectory(path);
-        Assert.NotNull(DependencyLock.Validate(path, this.Resolution(), false));
+        Assert.NotEmpty(DependencyLock.Validate(path, this.Resolution(), false));
     }
 
     [Theory]
@@ -87,7 +87,7 @@ public sealed class DependencyLockTest : IDisposable
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         DependencyLock.Update(path, this.Resolution(dependency: true), TestContext.Current.CancellationToken);
         var changed = this.Resolution(dependency: change != "empty", version: change == "version" ? "2" : "1", reference: change == "reference" ? "Renamed" : "Use");
-        Assert.NotNull(DependencyLock.Validate(path, changed, false));
+        Assert.NotEmpty(DependencyLock.Validate(path, changed, false));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class DependencyLockTest : IDisposable
         DependencyLock.Update(path, this.Resolution(dependency: true), TestContext.Current.CancellationToken);
         var moved = this.Resolution(dependency: true);
         moved.Product.Nodes[1].Input.Sources[0].Content.GetBytes()[0] ^= 1;
-        Assert.Null(DependencyLock.Validate(path, moved, false));
+        Assert.Empty(DependencyLock.Validate(path, moved, false));
         Assert.False(DependencyLock.Update(path, moved, TestContext.Current.CancellationToken));
     }
 
@@ -105,11 +105,11 @@ public sealed class DependencyLockTest : IDisposable
     public void TestOnlyFailureIsRecordedWithoutBlockingProductValidation()
     {
         var good = this.Resolution();
-        var result = new DependencyResolution(good.Product, new([], "InvalidProjectInput", "host path must not enter lock"));
+        var result = new DependencyResolution(good.Product, new([], [new("InvalidProjectInput", "host path must not enter lock")]));
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         DependencyLock.Update(path, result, TestContext.Current.CancellationToken);
-        Assert.Null(DependencyLock.Validate(path, good, false));
-        Assert.NotNull(DependencyLock.Validate(path, good, true));
+        Assert.Empty(DependencyLock.Validate(path, good, false));
+        Assert.NotEmpty(DependencyLock.Validate(path, good, true));
         Assert.DoesNotContain("host path", File.ReadAllText(path));
     }
 
@@ -119,9 +119,9 @@ public sealed class DependencyLockTest : IDisposable
         var path = Path.Combine(this.directory, "Root.kimi.lock.json");
         var good = this.Resolution();
         DependencyLock.Update(path, good, TestContext.Current.CancellationToken);
-        var failed = new DependencyResolution(new([], "Cycle", "cycle path"), new([], "ProductUnresolved"));
+        var failed = new DependencyResolution(new([], [new("Cycle", "cycle path")]), new([], [new("ProductUnresolved", "unresolved")]));
         DependencyLock.Update(path, failed, TestContext.Current.CancellationToken);
-        Assert.NotNull(DependencyLock.Validate(path, good, false));
+        Assert.NotEmpty(DependencyLock.Validate(path, good, false));
         Assert.Contains("ProductUnresolved", File.ReadAllText(path));
     }
 

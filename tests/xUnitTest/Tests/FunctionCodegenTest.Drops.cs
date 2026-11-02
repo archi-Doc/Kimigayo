@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
 using Xunit;
@@ -325,13 +327,38 @@ public sealed partial class FunctionCodegenTest
     public void ARuntimeDropWithoutAVerdictIsABrokenContract()
     {
         var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
-        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
-        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
+        RemoveTheDropVerdict(c);
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
+    }
+
+    // Package C 3.2 I8 (PLAN G157 (17), (44)): the collector targets a destroyed value's glue exactly when its instance Type may need a drop
+    // (MirTypes.MayNeedDrop), so a destruction without that target is a broken contract, InternalInvariant_Kd at its site: a Keep Drop of a
+    // string temporary, a replace's old string and a property witness's Set of a Resource Field. The subject item (named by its definition
+    // or Field) loses its DropGlue targets in the checked set to make it so.
+    [Theory]
+    [InlineData("Console.writeLine(\"a\")\n", OutputKind.Application, null, "\"a\"")]
+    [InlineData(Updates, OutputKind.Library, "replaceText", "Kimi.Intrinsics.replace(t, with: \"new\")")]
+    [InlineData(Witnesses, OutputKind.Library, "item", "x.item = value@move")]
+    public void ADestructionWithoutItsGlueTargetIsABrokenContract(string source, OutputKind output, string? subject, string site)
+    {
+        var c = Analyze(source, output);
+        var set = c.Instances!;
+        var item = Assert.Single(Enumerable.Range(0, set.Items.Length), x => (set.Items[x].Key.Symbol ?? set.Items[x].Key.Body.Def.Decl)?.Name == subject &&
+            set.Targets(x).ToArray().Any(y => set.Items[y.Item].Key.Kind == MonoKind.DropGlue));
+        var targets = set.Targets(item);
+        var kept = 0;
+        foreach (var target in targets)
+        {
+            if (set.Items[target.Item].Key.Kind != MonoKind.DropGlue)
+            {
+                Unsafe.AsRef(in targets[kept++]) = target;
+            }
+        }
+
+        Unsafe.AsRef(in set.Items[item]).TargetCount = kept;
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal([("InternalInvariant_Kd", (string?)site)], Records(c));
     }
 
     // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96, R4-M102): a body A1 or A2 left inexact is not written; its refusal is the problem's
@@ -414,6 +441,17 @@ public sealed partial class FunctionCodegenTest
         Assert.True(c.Accepts);
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("MovedPlace_Kd", (string?)"a.indices"), ("MovedPlace_Kd", "b.indices")], Records(c));
+    }
+
+    // Moves the one drop row of a program's top-level body past its blocks, so its runtime Drop has no verdict group: a broken contract
+    // code generation records (PD12).
+    internal static void RemoveTheDropVerdict(Compilation c)
+    {
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
+        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
+        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
+        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }
 
     // The glue a Library function's body calls on its parameter (its one DropGlue call).
