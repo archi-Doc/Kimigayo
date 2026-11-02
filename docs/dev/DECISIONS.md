@@ -15098,30 +15098,38 @@ structure is recorded here by the unit that first implements it.
   - Rejected: keying the table on `OsType` and `Architecture` (LLVM's prefix and alias matches would give `linuxfoo`, `x86_64h` or
     `arm64e` a family IMPL does not list, and keep a 320-line OS parse for one Condition); a switch per form in Compilation (a
     consumer deciding what the triple's owner publishes).
-- **R5-M179 Constant integer tables as little-endian bytes: `Int32Table` and `UInt64Table` (PLAN G357)** (2026-11-02, R5; the
-  owner: 「(ii) テーブルを byte 列にして、リトルエンディアンで読み出す」) Major.
+- **R5-M179 Constant integer tables as little-endian bytes: `IntegerTable<T>` (PLAN G357)** (2026-11-02, R5; the owner:
+  「(ii) テーブルを byte 列にして、リトルエンディアンで読み出す」) Major.
   - Cause: under Debug's JIT minopts a constant collection expression of a non-byte element converted to `ReadOnlySpan<T>` compiles
     to `RuntimeHelpers.CreateSpan`, whose `ldtoken` allocates a 72 B `RuntimeFieldInfoStub` per call; Release (tier-0 included)
     folds it. The six generated Unicode tables (82,776 B) were such spans, so `Tokenizer.ReadNonAsciiIdentifier` allocated and
     `LexicalLayoutRecoveryTest.OrdinaryIndentationAndUnicodeReuseTokenStorage` measured 1,728 B in Debug. A constant
     `ReadOnlySpan<byte>` is static data in every configuration.
   - Rule: a constant table of integers is stored as little-endian bytes, which its owner publishes as `ReadOnlySpan<byte>`, and its
-    one reader wraps them once in the reader of their width, `Helper/IntegerTable.cs`'s `Int32Table` or `UInt64Table`: `Length` (the
-    element count) and `this[index]` (one range check and one load, as an int span's, reversed on a big-endian host), so the readers
-    index it as before.
+    one reader wraps them once in `Helper/IntegerTable.cs`'s `IntegerTable<T>` of the element type (`int` or `ulong`, specialized
+    by the JIT): `Length` (the element count) and `this[index]` (one range check and one load, as an integer span's; the element's
+    bytes reversed on a big-endian host), so the readers index it as before.
   - Tables: `UnicodeIdentifierData.Properties` and `Decompositions` (were `uint`; every value is below 2^31) and
-    `UnicodeNameData.SimpleCaseFolding`, `CombiningClasses` and `MarkdownUnicodeData.Punctuation` are read as `Int32Table`;
-    `UnicodeIdentifierData.Compositions` as `UInt64Table`. `GenerateNameUnicode.ps1` and `GenerateMarkdownUnicode.ps1` emit the
-    byte form (decimal bytes, 24 a line: the three sources grow from 174,765 to 321,466 B; Kimi.dll by 512 B);
+    `UnicodeNameData.SimpleCaseFolding`, `CombiningClasses` and `MarkdownUnicodeData.Punctuation` are read as `IntegerTable<int>`;
+    `UnicodeIdentifierData.Compositions` as `IntegerTable<ulong>`. `GenerateNameUnicode.ps1` and `GenerateMarkdownUnicode.ps1` emit
+    the byte form (decimal bytes, 24 a line: the three sources grow from 174,765 to 321,466 B; Kimi.dll by 512 B);
     `UnicodeIdentifierData`, which has no generator, was converted once with every value shown equal.
-  - Measured (Release, interleaved, pinned, against a copy of the base as control): within the control's noise on identifier
-    validation, tokenizing, NFC/folding and Markdown. The planning session took two departures from its design on figures:
-    the read is a `MemoryMarshal.Cast` element, swapped on a big-endian host, because `BinaryPrimitives.Read*LittleEndian` at
-    index × width adds a range check per read (identifiers 1.15–1.34×, tokenizing 1.08–1.24×, names 1.06–1.22×); and each
-    reader wraps its bytes, because a typed getter (`Int32Table X => new([..])`) is not inlined without PGO (1.08–1.14×). A
-    remaining 3–7% on identifiers in some runs was code layout: the hot loops are instruction-identical, the base's gets
-    Dynamic PGO and loop alignment, and with `DOTNET_JitAlignLoops=0` the new code is 1–3% faster.
+  - Departures from the planning session's design, which it took on figures: the read is a `MemoryMarshal.Cast` element, because
+    `BinaryPrimitives.Read*LittleEndian` at index × width adds a range check per read (identifiers 1.15–1.34×, tokenizing
+    1.08–1.24×, names 1.06–1.22×); and each reader wraps its bytes, because a typed getter (`Int32Table X => new([..])`) is not
+    inlined without PGO (1.08–1.14×).
+  - Measured (Release, interleaved, pinned, against a copy of the base as control C; new/base): the result depends on the run's
+    window. Default settings: identifiers 0.974–1.068 (C 0.986–1.035), tokenizing 0.989–1.029 (C 0.989–1.030); the reviewer's run
+    1.035 and 1.026 (C 1.008, 1.005). With `DOTNET_JitAlignLoops=0`: 0.968 and 0.989 (C 1.006, 1.002); the reviewer's 0.975 and
+    0.984 (C 1.016, 1.005). Names and Markdown are level. Cause: loop alignment, not the table form. In Tier1 `GetProperties` the
+    new loop is three instructions shorter (it compares 32-bit values straight from memory, where the base loaded, sign-extended
+    and compared 64-bit) and unpadded, where the base's, under Dynamic PGO, has 5 B of padding (the new one's profile is
+    Synthesized).
   - Rejected: (i) `static readonly` arrays (about 83 KB per process) and (iii) Debug `Purpose=Allocation` results as advisory (the
-    owner); accessors on each table's owner (the rule spelled in three files and two generators, and wordier readers); a
-    generic reader (`IBinaryInteger<T>`'s `ReadLittleEndian` branches on length and sign; a `typeof(T)` dispatch through `object`
-    boxes under minopts, the cause itself).
+    owner); accessors on each table's owner (the rule spelled in three files and two generators, and wordier readers); a reader
+    type per width (`Int32Table`, `UInt64Table`: near-copies of one rule; the generic reader's Tier1 readers take the same forms
+    and its timing is level: identifiers 0.963, tokenizing 1.003 of the two types'); `IBinaryInteger<T>.ReadLittleEndian` on
+    little-endian hosts (branches on length and sign); a `typeof(T)` dispatch through `object` (boxes under minopts, the cause
+    itself).
+  - Open: no mechanical rule stops a new non-byte constant `ReadOnlySpan<T>` table, which would bring the Debug allocation back;
+    none is added.

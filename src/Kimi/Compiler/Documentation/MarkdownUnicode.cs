@@ -18,7 +18,7 @@ internal static class MarkdownUnicode
             return scalar >= 0 && IsAsciiPunctuation((char)scalar);
         }
 
-        var ranges = new Int32Table(MarkdownUnicodeData.Punctuation);
+        var ranges = new IntegerTable<int>(MarkdownUnicodeData.Punctuation);
         var low = 0;
         var high = (ranges.Length / 2) - 1;
         while (low <= high)

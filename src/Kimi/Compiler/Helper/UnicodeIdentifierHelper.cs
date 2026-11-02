@@ -115,7 +115,7 @@ internal static class UnicodeIdentifierHelper
 
     private static int GetProperties(int scalar)
     {
-        var data = new Int32Table(UnicodeIdentifierData.Properties);
+        var data = new IntegerTable<int>(UnicodeIdentifierData.Properties);
         var low = 0;
         var high = (data.Length / 3) - 1;
         while (low <= high)
@@ -154,7 +154,7 @@ internal static class UnicodeIdentifierHelper
             return;
         }
 
-        var data = new Int32Table(UnicodeIdentifierData.Decompositions);
+        var data = new IntegerTable<int>(UnicodeIdentifierData.Decompositions);
         var low = 0;
         var high = (data.Length / 3) - 1;
         while (low <= high)
@@ -213,7 +213,7 @@ internal static class UnicodeIdentifierHelper
         }
 
         var key = ((ulong)first << 21) | (uint)second;
-        var data = new UInt64Table(UnicodeIdentifierData.Compositions);
+        var data = new IntegerTable<ulong>(UnicodeIdentifierData.Compositions);
         var low = 0;
         var high = data.Length - 1;
         while (low <= high)

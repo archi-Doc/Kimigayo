@@ -51,7 +51,7 @@ internal static class UnicodeNameHelper
     /// <returns>The combining class.</returns>
     internal static int CombiningClass(int scalar)
     {
-        var data = new Int32Table(UnicodeNameData.CombiningClasses);
+        var data = new IntegerTable<int>(UnicodeNameData.CombiningClasses);
         var low = 0;
         var high = (data.Length / 3) - 1;
         while (low <= high)
@@ -80,7 +80,7 @@ internal static class UnicodeNameHelper
     /// <returns>The folded scalar.</returns>
     internal static int Fold(int scalar)
     {
-        var data = new Int32Table(UnicodeNameData.SimpleCaseFolding);
+        var data = new IntegerTable<int>(UnicodeNameData.SimpleCaseFolding);
         var low = 0;
         var high = (data.Length / 2) - 1;
         while (low <= high)

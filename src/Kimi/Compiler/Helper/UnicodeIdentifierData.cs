@@ -3,7 +3,7 @@
 // Unicode data license: https://www.unicode.org/license.txt
 // UnicodeData.txt SHA-256: 806e9aed65037197f1ec85e12be6e8cd870fc5608b4de0fffd990f689f376a73
 // DerivedNormalizationProps.txt SHA-256: d5687a48c95c7d6e1ec59cb29c0f2e8b052018eb069a4371b7368d0561e12a29
-// Little-endian bytes of 32-bit (Properties, Decompositions) and 64-bit (Compositions) integers, read by Int32Table and UInt64Table.
+// Little-endian bytes of 32-bit (Properties, Decompositions) and 64-bit (Compositions) integers, read by IntegerTable<int> and <ulong>.
 namespace Kimi.Compiler.Helper;
 
 internal static class UnicodeIdentifierData
