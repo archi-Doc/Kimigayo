@@ -86,7 +86,7 @@ exit:
   %count64 = zext i32 %count to i64
   %v1 = insertvalue %kimi.string zeroinitializer, ptr %buffer, 0
   %v2 = insertvalue %kimi.string %v1, i64 %count64, 1
-  %v3 = insertvalue %kimi.string %v2, i8 1, 2
+  %v3 = insertvalue %kimi.string %v2, i8 {{heap_release_kind}}, 2
   store %kimi.string %v3, ptr %result, align 8
   ret void
 invalid:
