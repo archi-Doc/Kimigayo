@@ -4641,7 +4641,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     has no body, E1's formation context moves); a view rule for a nested signature's `Input` (no Closure rule, R4-M126); no input
     well-formedness obligation for any signature, retiring `CallBorrows`' declaration path (BU-26's judge, the view vocabulary and the
     old analysis; beyond the package).
-  - Open (PLAN at landing, the planning session's): a Closure's or a body's Function Type's result well-formedness (`func [q] (p:
+  - Open (PLAN at landing, the planning session's; superseded by R4-M162, which judges a nested signature's result where it is
+    written and drops the R3 premise and the value-call result obligation): a Closure's or a body's Function Type's result well-formedness (`func [q] (p:
     ref/i32) -> Option<ref/(ref/i32 during q)>`, `var f: (ref/i32) -> Option<ref/(ref/i32 during q)>`) keeps its row in the evaluating
     body and the default rejects it (`UnprovenOriginRelation_Kd`): it needs an R3 premise for nested signatures and a value-call result
     obligation; a named function's Function Type parameter keeps its result premise in that function's body, which no call proves: an
@@ -5946,6 +5947,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: per-walk id stamps alone (they leave writingPlaces' near-copies); hash-consed Patricia tries (R4-M53's tree rejection,
     size, small-set risk); restating V16 (R4-M65). Not temporary.
   - Numbering: the next free R4-M number on dev and the open R4 branches at the commit.
+- **R4-M162 A nested signature's result is judged where it is written (G216 (a) U2.3s, the strict form)** (2026-11-02; the owner,
+  verbatim 「(1) 厳格案を採る」, 2026-11-02, PLAN dev ae1ccb351, on R4's study `r4-notes\wfsig-study\study.md`; supersedes the result
+  half of the owner's (A) of 2026-10-26, an R3 premise for nested signatures and a value-call result obligation; R4-M137, the input
+  half, stays) SPEC 15.3.4, 15.6.1.
+  - Rule: a nested signature's result is a written Type of the declaration that contains it, well-formed where it is written under that
+    declaration's premises and the nested signature's own inputs, for every choice of its per-call Origins, and never a premise of the
+    containing body. A relation among the enclosing Origins is an `origin` clause, which each call proves; a per-call Origin's relation
+    must follow from the inputs.
+  - Code: `AddTypePremises` returns at a Function Type, so the result's borrow-layer obligation (`RetainInnerOutlives`) is no longer
+    discharged by its own premise (the circular discharge); `ExtractOriginPremises` reads a `FunctionTypeKoto` as a signature, so its
+    inputs remain premises there. `AddReceiverPremises` and associated formations reach it through `AddTypePremises`. `BindFunctionType`
+    adds the result's Types' own clauses (SPEC 15.3.3, `AddTypeClauseObligations`) at the result's occurrence, in a parameter, receiver,
+    Type argument, Closure parameter, local annotation or Field at any depth; inputs add none.
+  - Evidence: the study's z1, z1n, r3, lpok and arr gain the declaration record, z1d is refuted at its call, z1t, cap, inwf and lpfix
+    stay valid, ann2 and loc are unchanged; 49 classes passed 3,603/3,603 on both pipelines with the premise stop; 0 programs change in
+    the library, SPEC/IMPL examples, milestones, `tests/mir`, the Benchmark corpus and `docs/examples`.
+  - Loss: a result relating a per-call Origin beyond what its inputs entail is unwritable (r3, `cb: (ref/i32) -> Option<ref/(ref/i32
+    during q)>`); the outlives-outer direction is written with a fixed input (lpfix, `(ref/i32 during static) -> …`).
+  - Rejected: the limited form (per-call relations kept as an implementation premise and a value-call obligation; keeps r3 writable and
+    U2.1's value-call result proof).
+  - Net size: Binding +15/−11 (comments included), tests +76, SPEC two sentences and one example, DECISIONS and STATUS one entry
+    each.
+  - Known: a Field's Function Type result also keeps the Field formation's `UnprovenConstraint_Kd` (that check enters Function Types,
+    their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A).
+  - Numbering: R4-M162 (dev's highest is R4-M160; `claude/a5-g216a-u21` holds R4-M161).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
