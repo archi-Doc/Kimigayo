@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
 using System.Text;
 using Kimi.Compiler.Parsing;
 
@@ -52,24 +51,6 @@ public sealed partial class Binding
 
         this.BareAcquisition(type, node, out var reborrow);
         return reborrow != SemanticsMask.None;
-    }
-
-    /// <summary>Formats the Semantics cases in which a bare acquisition of a pair layer neither Copies nor Reborrows, for a Note
-    /// (SPEC 8.14, 23.1.2); empty for another Type or when every case has a plan.</summary>
-    /// <param name="type">The stored Type.</param>
-    /// <param name="node">The acquiring syntax.</param>
-    /// <returns>The Note's tail, such as <c> in the Semantics case s = owner (SPEC 8.14)</c>.</returns>
-    internal string FailingCaseNote(BoundType type, Koto node)
-    {
-        if (!TryPairLayer(type, out var whole, out _) || (this.BareAcquisition(type, node, out _) is var failing && failing == SemanticsMask.None))
-        {
-            return string.Empty;
-        }
-
-        var text = new StringBuilder(" in the Semantics case").Append(BitOperations.PopCount((uint)failing) == 1 ? " " : "s ");
-        text.Append(whole.Symbol is { } symbol ? symbol.Pair?.Name ?? symbol.Name : "s").Append(" = ");
-        AppendSemantics(text, failing, " or ");
-        return text.Append(" (SPEC 8.14)").ToString();
     }
 
     /// <summary>Tells whether a pair layer is invariant in its target (SPEC 15.3.5): its binder admits <c>uniq</c>, <c>obj</c>,
