@@ -15294,3 +15294,25 @@ structure is recorded here by the unit that first implements it.
     fail-first: only the publication record). A generation fault beside such a failure was verified by the review's throwaway
     reflection probe (`CheckFaulted_Kd` and the publication record; the base only the latter); no lasting test, since no program makes
     generation throw without a production seam (R5-M175).
+- **R5-M182 R6-check's design H0 (OQ11)** (2026-11-02, the owner, verbatim 「1承認します 2はい 3はい」 answering the approval of H0, O-1 and O-2; R5's
+  planning session, design review ACCEPT after one revision; under R4-M35, R5-M1 and Q13)
+  - Design: `draft/Sketches/R6-check/H0-design.md` with parts H0a, H0b and H0c is the owner-approved design for H1-H5 and the order of
+    H6-H15. Division (the owner, 2026-11-02): R5 leads R6-check, R4 owns the MIR side, BU the Binding side.
+  - Groups: G:R6-check-flip (H1, H1b, Q8-3, H5 with H6: one branch, one group review, one merge, after H1a, Q8-6, H3 and H4); G:check-tests
+    (H10a, H8a-c); G:check-del (H7, H9, H10b, H11, H12, H14). H7 waits for G157 (1)'s fix (BU-4).
+  - Rules: H3 lands one publisher of MIR records with no published change; H5 makes the MIR decide and publish on every pipeline; from H5
+    the old analysis runs only through `Compilation.AnalyzeLegacyOwnership()` for its test and benchmark readers until H10b
+    (`Compilation.Ownership` private from H5); H1b gives Binding's verdict for the unproven non-relation obligations (a located
+    `Unsupported_Kd` where a kind cannot be judged yet); an `Incomplete` body implies a published Error.
+  - H3b, the group branch's first run: each row a Q13 class and an exit-gate category ((a) for 1r, 1a, 1x; (b) or, accepted by the owner,
+    (e) for 2; (d) for 3 and 4; (b) for 5 until fixed; (c) for a SPEC ambiguity, the owner's); class 5 stops and class 2 blocks H5. O-2 (the
+    owner's 「はい」): 1a (newly accepted, including programs past the old deferred-cleanup limit, which has no MIR counterpart) reach the owner
+    as one list; 1r (newly rejected, each closing a named old unsound acceptance) are the planning session's, reported as a list.
+  - Order: P42's remainder, H7, H8b, H8c and H10a wait for H5's post-merge sweep; H10 splits into H10a and H10b. H3-2 and H5 write their own
+    entries.
+  - Supersedes (each with its amendment line when the unit lands): R4-M71's merge placement (pending R4's answer R4-1); PD30's single owner
+    (H0a-11 (A)); the plan rows' derived requirement, P10 fallback and mir publication at H3; plan H4's published records; plan H6 and H10
+    as units; Q8's 'until H11' for the renderer's old caller; R4-M112's kept ledger row (successor H1b); PD12's refusal and R5-M96's interim
+    at H5.
+  - O-1 (the owner's 「はい」): COMPILER_ARCHITECTURE's D5 freeze lists R4-M159's G273 exception (recorded with this entry). Open: R4's answers
+    R4-1..R4-13 and BU-2 (H0 §8); BU answered BU-1, BU-3, BU-4, BU-5.

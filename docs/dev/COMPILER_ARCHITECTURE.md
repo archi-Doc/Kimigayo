@@ -238,7 +238,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   normally (`AcquireElement`), until R6-check; the old generator generates them except an exclusive borrow of such an element, or of
   a part of one (a Field, a Tuple element, a nested element), taken as a call's input (a `@uniq` argument, a `uniq/Self` receiver,
   user or library, `replace`, `exchange`), which it refuses with `GenerationFailed_Kd`, three part forms it generated before
-  included, until G4 ended its selection (DECISIONS R5-M159, R5-M160).
+  included, until G4 ended its selection (DECISIONS R5-M159, R5-M160), and the owner's exception for G273 (2026-10-31): a
+  maker-returned Closure value whose Type carries Origin arguments is a located `Unsupported_Kd` on the default pipeline, the old
+  Analysis stopping at that refusal, until R6-check (DECISIONS R4-M159; listed here on the owner's 「はい」, R5-M182).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.
