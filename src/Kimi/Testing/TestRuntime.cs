@@ -29,7 +29,8 @@ internal static class TestRuntime
         Shutdown, // Static shutdown (SPEC 22.4.3), never in a test case before P42.
     }
 
-    /// <summary>Gets the routines of the test runtime, the part of a test build's runtime its catalog does not change.</summary>
+    /// <summary>Gets the routines of the test runtime, the part of a test build's runtime its catalog does not change: a runtime
+    /// template (LlvmModuleText.ExpandRuntime) whose markers are RuntimeAbi's constants.</summary>
     internal static string Text { get; } = Read();
 
     /// <summary>Gets the kind an observed scalar's frame gives its Type, as the runner reads it: 1 bool, 2 a signed integer, 3 an
@@ -119,6 +120,6 @@ internal static class TestRuntime
     {
         using var stream = typeof(TestRuntime).Assembly.GetManifestResourceStream("Kimi.Testing.TestRuntime.ll")!;
         using var reader = new StreamReader(stream);
-        return reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        return LlvmModuleText.ExpandRuntime(reader.ReadToEnd(), []);
     }
 }

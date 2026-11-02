@@ -237,7 +237,7 @@ define internal void @__kimi_free(ptr %memory, ptr %location, i64 %location_leng
 entry:
   ; Null and the zero-sized-element buffer substitute lie in the low 64 KiB, which Windows never maps for heap blocks.
   %address = ptrtoint ptr %memory to i64
-  %reserved = icmp ult i64 %address, 65536
+  %reserved = icmp ult i64 %address, {{unmapped_bound}}
   br i1 %reserved, label %done, label %heap
 heap:
   %process_heap = call ptr @GetProcessHeap()
@@ -263,8 +263,8 @@ done:
 entry:
   %kind_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 2
   %kind = load i8, ptr %kind_ptr, align 1
-  switch i8 %kind, label %invalid [ i8 0, label %done
-                                  i8 1, label %heap ]
+  switch i8 %kind, label %invalid [ i8 {{static_release_kind}}, label %done
+                                  i8 {{heap_release_kind}}, label %heap ]
 heap:
   %data = load ptr, ptr %text, align 8
   call void @__kimi_free(ptr %data, ptr %location, i64 %location_length)

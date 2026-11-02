@@ -17,7 +17,7 @@ public sealed class HoverLinkTest
     [InlineData("http://example.test/日本", "http://example.test/%E6%97%A5%E6%9C%AC")]
     [InlineData("mailto:author@example.test", "mailto:author@example.test")]
     public void ExternalLinksUseTheExistingProfile(string value, string expected)
-        => Assert.Equal(expected, DocumentationLinks.ResolveEditor(value, null, null, HoverPlacement.Unsupported.Map));
+        => Assert.Equal(expected, DocumentationLinks.ResolveEditor(value, null, null, Unsupported));
 
     [Theory]
     [InlineData("")]
@@ -56,9 +56,21 @@ public sealed class HoverLinkTest
     {
         var physical = Path.GetFullPath("elsewhere/external.kimi");
         var mapping = new HoverPlacement(null, [new("src/external.kimi", physical)]);
-        Assert.Equal(physical, new Uri(Assert.IsType<string>(DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", mapping.Map))).LocalPath);
-        Assert.Null(DocumentationLinks.ResolveEditor("neighbor.kimi", "src/external.kimi", "P", mapping.Map));
-        Assert.Null(DocumentationLinks.ResolveEditor("peer.kimi", "compiler://Kimi/Core.kimi", "Kimi", HoverPlacement.Unsupported.Map));
+        var resolved = DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Canonical));
+        Assert.Equal(physical, new Uri(Assert.IsType<string>(resolved)).LocalPath);
+        Assert.Null(DocumentationLinks.ResolveEditor("neighbor.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Canonical)));
+        Assert.Null(DocumentationLinks.ResolveEditor("peer.kimi", "compiler://Kimi/Core.kimi", "Kimi", Unsupported));
+    }
+
+    // DECISIONS R5-M180: a file no URI spells (a device path) has no link, so its label is shown as text.
+    [Theory]
+    [InlineData(@"\\?\C:\device\external.kimi")]
+    [InlineData(@"\\.\C:\device\external.kimi")]
+    public void ADevicePathHasNoLink(string physical)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows device paths.");
+        var mapping = new HoverPlacement(null, [new("src/external.kimi", physical)]);
+        Assert.Null(DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Canonical)));
     }
 
     [Fact]
@@ -110,9 +122,12 @@ public sealed class HoverLinkTest
         Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[0]));
         var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(path)];
         var entry = document.Entries[document.Find(source.IndexOf("Value", StringComparison.Ordinal))];
-        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true).Body);
+        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true, HoverPlacement.Canonical).Body);
     }
 
+    private static string? Unsupported(DocumentationLinkTarget target)
+        => HoverPlacement.Unsupported.Map(target, HoverPlacement.Canonical);
+
     private string? Resolve(string destination)
-        => DocumentationLinks.ResolveEditor(destination, "src/main.kimi", "P", new HoverPlacement(this.root, []).Map);
+        => DocumentationLinks.ResolveEditor(destination, "src/main.kimi", "P", x => new HoverPlacement(this.root, []).Map(x, HoverPlacement.Canonical));
 }

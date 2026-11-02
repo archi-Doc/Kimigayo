@@ -14840,6 +14840,23 @@ structure is recorded here by the unit that first implements it.
     Open, different contracts (PLAN): the string release kinds spelled by hand, `i8 0` and `i8 1` in `__kimi_destroy_string`
     (`WindowsRuntime.ll.in`), `zext i1 %heap to i8` in `__kimi_format_take_string` and `store i8 0` in `__kimi_format_stack_finish`
     (`Utf8FormatRuntime.ll.in`); `__kimi_free`'s 65536 reserved-address bound.
+  - Amended by G371 (2026-11-02; closes G366's Open): each fact's owner publishes it and `RuntimeAbi.Expand`'s one table lists it, a
+    marker being its constant's name. `RuntimeAbi`, the string representation's owner, adds `HeapReleaseKind` (1) beside
+    `StaticReleaseKind` (0); `WindowsProfile`, the target profile, `UnmappedBound` (65536: Windows maps no address below 64 KiB, its
+    null-pointer partition), a Windows fact the table reads (one expansion owner). Markers `static_release_kind`, `heap_release_kind`,
+    `unmapped_bound`: `__kimi_destroy_string`'s switch and `__kimi_free`'s bound (`WindowsRuntime.ll.in`), `__kimi_format_stack_finish`'s
+    store and, found by the search, the test runtime's heap string (`TestRuntime.ll`, now a template: `TestRuntime.Text` is
+    `ExpandRuntime(text, [])`). `zext i1 %heap to i8` stays in `__kimi_format_take_string` and, found by the search,
+    `__kimi_buffer_into_string`: the kinds' numbering (Static false's 0, Heap true's 1) is a checked fact,
+    `Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold`, with `ZeroSizedBuffer` below `UnmappedBound` (formerly a doc comment).
+    Every expanded text byte-identical (SHA-256). Kept, other meanings: the UTF-8 and code point bounds 65536 and the writer's failed
+    flag `store i8 1` in the formatting runtime. Cost: `TestRuntime.Text`'s one build per process (a test build's first frame) allocates
+    115,280 B instead of 62,544 B (the expansion's builder and copy, which `Replace` without a `\r\n` skipped); retained unchanged.
+    `Kernel32ImportsTest.TheRuntimeTextsOfAFreshProcess` bounds it with the other texts (1,806,408 B for 185,918 chars, 11 B/char
+    allowed). Not avoided: the text holds a marker, so returning a marker-free input unexpanded would not apply.
+    Rejected: a `select` of the two kind markers (changes the text); a compile-time assertion (C# has none; a constant-overflow trick
+    would be the only one in the code); the bound in `RuntimeAbi` (a Windows fact, not the runtime's representation); a marker table in
+    `WindowsProfile` (a second expansion owner).
 - **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, R5; PLAN
   G157 (17), (25)'s cache clause, (44)'s test; R5's U1, its review; amends R5-M102 and R5-M114) A call through a pointer (a common
   Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;
@@ -15155,6 +15172,49 @@ structure is recorded here by the unit that first implements it.
     itself).
   - Open: no mechanical rule stops a new non-byte constant `ReadOnlySpan<T>` table, which would bring the Debug allocation back;
     none is added.
+- **R5-M180 One owner of the URI a sent location names: `LspSession.UriOf` (PLAN G237)** (2026-11-02, R5; the owner's request to
+  start G237) Major.
+  - Cause: the server names a document by `SourceIdentity` (`Path.GetFullPath`: 8.3 names expanded, `..` resolved) and published a
+    document's list under the URI the client opened it with, but the worker spelled related locations canonically
+    (`WorkspaceCheck.Place`, `ToUri()`) and hover links by their file URI (`HoverPlacement.Map`), so a related location or a link into
+    a document open under another spelling (an 8.3 name, a `..` segment, another case) opened a second editor; and a document closed
+    after its list was sent under the client's spelling had the list cleared under the canonical URI, so the client kept it. The two
+    canonical builders also disagreed: `ToUri` (`new Uri(path)`) read a literal `%41` in a file name as `A` and `%2e%2e` as `..`,
+    naming another file, where `HoverPlacement.FileUri` escaped it.
+  - Rule: `LspSession`, which maps a client URI to its document (`FindOpen`), alone maps a document's identity to the URI it sends,
+    `UriOf`: the URI the client opened the document with (the first while it is open; two spellings stay one document), else the
+    canonical URI of `SourceIdentity.TryToUri`, the one builder: a built-in identifier's own URI, a path's `file:` URI with `%`, `#`,
+    `?` (and a non-Windows `\`) escaped as path data (`FileUri` deleted); none for a path no URI spells (a device path, `\\?\` or
+    `\\.\`), whose hover link is shown as text as before, and which a send cannot name (`SentUri` throws, as `ToUri` always did). Every
+    location is spelled when it is sent: a publication's URI and related locations (`Publish`, `Spell`), a code action's diagnostics,
+    and hover links (`HoverState` and `HoverRenderer` take `UriOf`, which `HoverPlacement.Map` calls with the identity it took for each
+    mapped file where the placement was built, so such a link normalizes no path; a link resolved against the project root normalizes
+    its path once, as `GetFullPath` did before).
+  - Representation: `LspLocation` names its document by identity (`Document`, not serialized) and carries the URI the state owner
+    gives it (`Uri`); the worker places identity and range only, so a reused result never carries a stale spelling. A diagnostic
+    reaching the sender with an unspelled location is a broken contract (`Spelled`, the one check before both sends, throws
+    `UnreachableException`): the JSON context omits a null URI, so it would otherwise be sent silently.
+  - Publication: `sent` keeps the placed payload, the spelled one, the version, the URI and the spelling generation, which an open or a
+    close advances (`Respell`, which also forgets every HoverState's renderings: a result released unchanged keeps its HoverState). An
+    unchanged placed payload under the same generation reuses what was sent and its URI, without spelling or `ToUri` (no allocation);
+    otherwise it is spelled, and sent unless equal to what was sent. A list sent under another spelling (the document opened or closed
+    since) is cleared there first.
+  - Rejected: spelling in the worker from the base's open URIs (reused results and later opens keep a stale spelling); parsing the
+    canonical URI back to an identity when sending (a second parse path, an allocation per location); a JSON converter (it cannot see
+    the open documents, and repeat suppression would compare unspelled payloads); discarding HoverStates on an open or a close (no
+    Hover until the next adoption); keeping `FileUri` beside `ToUri` (two canonical spellings of one file).
+  - Tests: `LspProjectDiagnosticTest.ADocumentOpenedUnderAnotherSpellingGetsItsLocationsUnderThatSpelling` (the related location, and
+    the clear after the close, under that spelling; the canonical URI before) and
+    `LspHoverTest.LinksNameAnOpenDocumentAsTheClientSpelledIt` (a link to a document opened under the spelling while its unit's result
+    is kept, the file URI again after the close; the file URI before), each for a `..` spelling (every host) and the directory's 8.3
+    short name (skipped where the volume has none); `LspProjectDiagnosticTest.ANeverNamedDocumentIsSentUnderItsPathsUri` (`a%41.kimi`,
+    `a%2e%2e.kimi`: the published URI names the file and the hover link is that URI; `aA.kimi` and `a...kimi` before);
+    `LspCodeActionTest.AQuickFixsDiagnosticSpellsItsRelatedLocationsAsPublished` (the quick fix's related locations equal the
+    published ones; without `Spell` there, they lack their URI);
+    `LspProjectDiagnosticTest.ARelatedLocationIsRespelledWhenItsDocumentOpens` (a related location into another document is resent
+    under the spelling it is opened with; none is resent without `Respell`'s generation); `HoverLinkTest.ADevicePathHasNoLink` (no
+    link, where `ToUri` threw out of the Hover).
+  - Unverified: non-Windows hosts (the `\` escape and `TryToUri` there).
 - **R5-M181 A publication failure leaves code generation's records (PLAN G157 (7))** (2026-11-02, R5; under R5-M165, R5-M169 and
   Q13; amends R5-M165 with its amendment line) Minor.
   - Cause: `EmissionArtifacts.Publish` checks its inputs (the embedded backend record, paths, native configuration and supplies,

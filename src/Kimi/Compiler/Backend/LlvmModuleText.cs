@@ -3,7 +3,7 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the runtime routines a module
 // defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked one-scan expansion
-// every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' runtime texts too), the external declarations, the overflow and memory
+// every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' and TestRuntime's texts too), the external declarations, the overflow and memory
 // intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
 // numbers formatted on the stack and the bits of a floating constant's
 // hexadecimal spelling. Code generation writes the frame through it (PD2: promoted, never copied; Name came from the old writer with
@@ -180,7 +180,7 @@ internal static partial class LlvmModuleText
         }
     }
 
-    // A runtime template (the Windows runtime, the formatting and Array runtimes) expanded in one ordered scan into one builder sized
+    // A runtime template (the Windows, formatting, Array and test runtimes) expanded in one ordered scan into one builder sized
     // for the template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at its `{{name}}` marker line and every
     // other marker takes its owner's text, an abort reason's (AbortReasons.Expand) or an ABI constant's (RuntimeAbi.Expand), whose
     // names are disjoint. Compiler-facing runtime signatures come from the same FunctionAbi records as calls and each is defined once,

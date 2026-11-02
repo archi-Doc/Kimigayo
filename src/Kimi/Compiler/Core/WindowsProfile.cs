@@ -4,7 +4,7 @@
 // Backend's module frame and runtime ABI, target selection (Project, Solution, LSP) and the native build read (DECISIONS R5-M174).
 // Input: none. Output: the triple, the profile name, data layout, CPU, features and code generation settings, the entry and subsystem,
 // the reserved runtime name, the reserved supplies' names (kimi_backend, kernel32) with the backend's helper catalog and kernel32's
-// symbol set, and the runtime's kernel32 declarations.
+// symbol set, the runtime's kernel32 declarations, and the bound below which the system maps no address.
 // Invariants: constants and arrays only; the native build checks the embedded backend record against them (ToolchainIdentity).
 // Must not read a file, a resource or the toolchain (its identity is ToolchainIdentity's), nor stand for the checked triple
 // (Compilation.TargetTriple and IrTarget: any triple a check selects).
@@ -31,6 +31,10 @@ public static class WindowsProfile
     internal const string EntrySymbol = "__kimi_start";
     internal const string Subsystem = "console";
     internal const string FloatMarker = "_fltused";
+
+    /// <summary>The bound below which Windows maps no address (the null-pointer partition, 64 KiB): no heap block lies below it, so
+    /// the runtime's release skips such an address.</summary>
+    internal const int UnmappedBound = 65536;
 
     /// <summary>Gets the helper symbols supplied by the backend archive, in catalog order.</summary>
     internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];

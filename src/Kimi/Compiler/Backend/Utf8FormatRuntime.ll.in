@@ -25,7 +25,7 @@ define internal void @__kimi_format_stack_finish(ptr %ret, ptr %buffer, ptr %wri
 entry:
   call void @__kimi_format_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length)
   %kindp = getelementptr i8, ptr %ret, i64 16
-  store i8 0, ptr %kindp, align 1
+  store i8 {{static_release_kind}}, ptr %kindp, align 1
   ret void
 }
 

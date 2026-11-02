@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Kimi.Checking;
 
 /// <summary>Identifies one source input: a canonical file path, or a <c>compiler://</c> identifier of a built-in source.</summary>
@@ -72,10 +74,38 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
         return TryFromPath(parsed.LocalPath, out identity);
     }
 
-    /// <summary>Converts a file identity to its <c>file:</c> URI.</summary>
+    /// <summary>Converts the identity to its URI (<see cref="TryToUri"/>).</summary>
     /// <returns>The URI text.</returns>
+    /// <exception cref="UriFormatException">No URI spells the path.</exception>
     public string ToUri()
-        => new Uri(this.Value).AbsoluteUri;
+        => this.TryToUri(out var uri) ? uri : throw new UriFormatException("No URI spells the path " + this.Value + ".");
+
+    /// <summary>Attempts to convert the identity to its URI, the one canonical spelling (DECISIONS R5-M180): a built-in identifier's own,
+    /// a path's <c>file:</c> URI with each <c>%</c>, <c>#</c> and <c>?</c> (and a non-Windows <c>\</c>) escaped as path data, so it names
+    /// this file; none for a path no URI spells, such as a device path (<c>\\?\</c>, <c>\\.\</c>).</summary>
+    /// <param name="uri">The URI text.</param>
+    /// <returns><see langword="true"/> when a URI spells the identity.</returns>
+    public bool TryToUri([NotNullWhen(true)] out string? uri)
+    {
+        if (this.IsBuiltIn)
+        {
+            uri = new Uri(this.Value).AbsoluteUri;
+            return true;
+        }
+
+        // Uri otherwise reads a literal %41 in a file name as an escape of A, and # or ? as a URI part.
+        var escaped = this.Value.Replace("%", "%25", StringComparison.Ordinal).Replace("#", "%23", StringComparison.Ordinal)
+            .Replace("?", "%3F", StringComparison.Ordinal);
+        escaped = OperatingSystem.IsWindows() ? escaped.Replace('\\', '/') : escaped.Replace("\\", "%5C", StringComparison.Ordinal);
+        var prefix = escaped switch
+        {
+            ['/', '/', ..] => "file:",
+            ['/', ..] => "file://",
+            _ => "file:///",
+        };
+        uri = Uri.TryCreate(prefix + escaped, UriKind.Absolute, out var parsed) ? parsed.AbsoluteUri : null;
+        return uri is not null;
+    }
 
     /// <inheritdoc/>
     public bool Equals(SourceIdentity other)

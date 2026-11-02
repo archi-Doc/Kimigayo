@@ -1,11 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the runtime ABI of the windows-x64-v1 profile (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
-// string values and string handles, the static string release kind, the zero-sized buffer address, and the FunctionAbi of each
+// string values and string handles, the string release kinds, the zero-sized buffer address, and the FunctionAbi of each
 // runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them, and the
 // text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
-// `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`).
-// Input: none; the entry symbol comes from WindowsProfile; a marker's name and the expanded text being written.
+// `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at `{{static_release_kind}}`
+// and `{{heap_release_kind}}`, and WindowsProfile's unmapped bound at `{{unmapped_bound}}`).
+// Input: none; the entry symbol and the unmapped bound come from WindowsProfile; a marker's name and the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
 // RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells a
@@ -23,8 +24,13 @@ internal static class RuntimeAbi
     /// <summary>The Static string releaseKind: compiler constant backing that is never freed (the string representation, IMPL 21.1.3).</summary>
     internal const int StaticReleaseKind = 0;
 
+    /// <summary>The Heap string releaseKind: bytes of a process heap block, which the string's destruction frees. A buffer's string
+    /// takes its kind as `zext i1 %heap to i8` (the formatting runtime's __kimi_buffer_into_string and __kimi_format_take_string), so
+    /// Heap is 1 and Static 0 (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
+    internal const int HeapReleaseKind = 1;
+
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
-    /// element, and below the 64 KiB that Windows never maps, so it is never allocated or released (__kimi_free skips it).</summary>
+    /// element, and below WindowsProfile.UnmappedBound, so it is never allocated or released (__kimi_free skips it).</summary>
     internal const int ZeroSizedBuffer = 4096;
 
     /// <summary>The runtime Abort's os_error for a failure without an operating system error, which the runtime does not print (it prints
@@ -138,7 +144,11 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
 
     // The constants a runtime template spells through a marker, by the marker's name (Expand).
-    private static readonly (string Name, long Value)[] Constants = [("zero_sized_buffer", ZeroSizedBuffer), ("no_os_error", NoOsError)];
+    private static readonly (string Name, long Value)[] Constants =
+    [
+        ("zero_sized_buffer", ZeroSizedBuffer), ("no_os_error", NoOsError), ("static_release_kind", StaticReleaseKind),
+        ("heap_release_kind", HeapReleaseKind), ("unmapped_bound", WindowsProfile.UnmappedBound),
+    ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
     internal static AbiParameter Location => new("ptr", "location", AbiParameterKind.Location);

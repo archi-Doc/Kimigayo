@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
+using Kimi.Testing;
 using Xunit;
 
 namespace XunitTest;
@@ -57,29 +58,42 @@ public sealed class Kernel32ImportsTest
         => Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
     // A definition's marker line ends in `\n` or `\r\n`; `\r\n` becomes `\n` and a lone `\r` stays; adjacent markers each expand; an
-    // ABI constant's marker takes the constant (G366).
+    // ABI constant's marker takes the constant (G366), the string release kinds and the profile's unmapped bound among them (G371).
     [Theory]
     [InlineData("{{__kimi_exit}}\r\n  unreachable\n}\n", "  unreachable\n}\n")]
     [InlineData("{{__kimi_exit}}\n  ret\r void\r\r\n}\r", "  ret\r void\r\n}\r")]
     [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1812\n")]
     [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
+    [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
-    // PLAN G358, G366: the one ordered scan writes what replacing each marker of a real runtime template, the Windows runtime's or the
-    // Array runtime's (the definitions, the reason indices, the reason table and its count, the ABI constants), by its text throughout
-    // the whole text wrote.
+    // PLAN G371: what the runtime templates read without a marker. A buffer's string takes its release kind as `zext i1 %heap to i8`
+    // (__kimi_buffer_into_string, __kimi_format_take_string), so Static is false's 0 and Heap true's 1; the zero-sized buffer lies below
+    // the unmapped bound, so __kimi_free never releases it.
+    [Fact]
+    public void TheRuntimeTemplatesUnmarkedFactsHold()
+    {
+        Assert.Equal((0, 1), (RuntimeAbi.StaticReleaseKind, RuntimeAbi.HeapReleaseKind));
+        Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, WindowsProfile.UnmappedBound - 1);
+    }
+
+    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the Windows runtime's,
+    // the Array runtime's or the test runtime's (the definitions, the reason indices, the reason table and its count, the ABI
+    // constants), by its text throughout the whole text wrote.
     [Theory]
     [InlineData("WindowsRuntime")]
     [InlineData("ArrayRuntime")]
+    [InlineData("TestRuntime")]
     public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var windows = runtime == "WindowsRuntime";
-        var template = windows
-            ? File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"))
-            : LegacyRuntimeHelpers.ArrayRuntimeTemplate;
-        var definitions = windows ? RuntimeAbi.RuntimeDefinitions : LegacyRuntimeHelpers.ArrayRuntimeDefinitions;
+        var (template, definitions) = runtime switch
+        {
+            "WindowsRuntime" => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")), RuntimeAbi.RuntimeDefinitions),
+            "TestRuntime" => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), []),
+            _ => (LegacyRuntimeHelpers.ArrayRuntimeTemplate, LegacyRuntimeHelpers.ArrayRuntimeDefinitions),
+        };
         var expected = template;
         foreach (Match marker in Regex.Matches(template, @"\{\{(\w+)\}\}"))
         {
@@ -111,9 +125,10 @@ public sealed class Kernel32ImportsTest
             template.Replace(marker, replacement, StringComparison.Ordinal), LegacyRuntimeHelpers.ArrayRuntimeDefinitions));
     }
 
-    // PLAN G358: a process's first code generation builds its runtime texts once, each read, expanded in one scan and kept: about
-    // 10 bytes per char of the texts (1,691,080 B for 172,775 chars on .NET 10). The bound, 11 bytes per char, admits no further whole
-    // copy of the formatting runtime (79% of the chars); the per-marker whole-text copies G358 removed cost 51 bytes per char.
+    // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
+    // expanded in one scan and kept: about 10 bytes per char of the texts (1,806,408 B for 185,918 chars on .NET 10). The bound, 11
+    // bytes per char, admits no further whole copy of the formatting runtime (74% of the chars); the per-marker whole-text copies G358
+    // removed cost 51 bytes per char.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public Task AFreshProcessBuildsTheRuntimeTextsOnce()
@@ -132,10 +147,11 @@ public sealed class Kernel32ImportsTest
         {
             LlvmModuleText.WriteRuntime(TextWriter.Null, null);
             LegacyRuntimeHelpers.WriteFormattingRuntime(TextWriter.Null);
+            LlvmModuleText.WriteRuntime(TextWriter.Null, TestRuntime.Text);
         });
         var texts = new StringWriter();
         LlvmModuleText.WriteRuntime(texts, null);
-        LlvmModuleText.WriteRuntime(texts, string.Empty);
+        LlvmModuleText.WriteRuntime(texts, TestRuntime.Text);
         LegacyRuntimeHelpers.WriteFormattingRuntime(texts);
         LegacyRuntimeHelpers.WriteArrayRuntime(texts);
         texts.Write(LegacyRuntimeHelpers.StringComparisons + LlvmModuleText.TryAllocate + LlvmModuleText.TransferBytes);

@@ -26,7 +26,6 @@ internal sealed partial class LspSession : IDisposable
     private readonly Dictionary<SourceIdentity, LoadedProject> projects = new();
     private readonly Dictionary<UnitKey, UnitState> units = new();
     private readonly Dictionary<SourceIdentity, HashSet<UnitKey>> contributors = new();
-    private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Payload, int? Version)> sent = new();
     private readonly Dictionary<SourceIdentity, LspRepair[]> repairs = new();
     private readonly List<(UnitKey Key, LspDiagnostic[] Payload)> contributions = [];
     private readonly List<LspDiagnostic[]> orderedContributions = [];
@@ -462,6 +461,7 @@ internal sealed partial class LspSession : IDisposable
         var document = new OpenDocument(item.Uri, identity, role, new(text), item.Version);
         this.documents.Add(identity, document);
         this.documentsByUri.TryAdd(item.Uri, document);
+        this.Respell();
         this.OpenCloseEvent(now, false, identity);
     }
 
@@ -532,6 +532,7 @@ internal sealed partial class LspSession : IDisposable
 
         this.documents.Remove(document.Identity);
         this.documentsByUri.Remove(document.Uri);
+        this.Respell();
         document.Text.Dispose();
         this.OpenCloseEvent(now, false, document.Identity);
     }
@@ -554,7 +555,7 @@ internal sealed partial class LspSession : IDisposable
                     (actions ??= []).Add(new()
                     {
                         Title = candidate.Title,
-                        Diagnostics = [candidate.Diagnostic],
+                        Diagnostics = Spelled([this.Spell(candidate.Diagnostic)]),
                         Edit = new() { DocumentChanges = [new() { TextDocument = new() { Uri = document.Uri, Version = document.Version }, Edits = candidate.Edits }] },
                     });
                 }
@@ -1012,26 +1013,7 @@ internal sealed partial class LspSession : IDisposable
                 payload = WorkspaceCheck.Merge(this.orderedContributions);
             }
 
-            var document = this.documents.GetValueOrDefault(uri);
-            var version = document?.Version;
-            if (payload.Length == 0)
-            {
-                if (!this.sent.Remove(uri))
-                {
-                    continue; // A URI never sent counts as sent empty.
-                }
-            }
-            else if (this.sent.TryGetValue(uri, out var last) && last.Version == version && last.Payload.AsSpan().SequenceEqual(payload))
-            {
-                continue;
-            }
-            else
-            {
-                this.sent[uri] = (payload, version);
-            }
-
-            var parameters = new PublishDiagnosticsParams { Uri = document?.Uri ?? uri.ToUri(), Version = version, Diagnostics = payload };
-            this.sender.Notify(LspMethods.PublishDiagnostics, parameters, LspJsonContext.Default.PublishDiagnosticsParams);
+            this.Publish(uri, payload);
         }
     }
 
