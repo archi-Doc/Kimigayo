@@ -473,6 +473,20 @@ public partial class OriginRelationDiagnosticTest
         }
     }
 
+    // SPEC revision B (the group review's B5): a warm rebind of a reference join at a call argument, whose sources revision B fits one
+    // by one (tests/mir/calls.kimi's `shared`), allocates nothing, publication included.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AWarmRebindOfAReferenceJoinArgumentAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile("func see(target: ref/i32, by: i32) -> i32 => by\nfunc shared(flag: bool, n: i32) -> i32\n    let a: i32 = 1\n" +
+            "    let b: i32 = 2\n    return see(if flag => a@ref else => b@ref, n)\n" + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var complete = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
+    }
+
     // U1.4 (warm Bind allocation): a warm rebind of the depth-32 nested join argument allocates nothing.
     [Fact]
     [Trait("Purpose", "Allocation")]

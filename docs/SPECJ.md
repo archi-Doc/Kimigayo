@@ -960,7 +960,7 @@ let wrong: [3 of i32] = [1, 2]              // Error: element count.
 
 ```kimi
 func zeros<length N>() -> [N of i64] => [N of 0]
-func takeN<length M>(x: [M of i64]) => ()
+func takeN<length M>(x: [M of i64]) -> () => ()
 
 func choose(ready: bool)
     takeN(if ready => zeros() else => [1@i64, 2@i64]) // M = 2: an argument source's count is evidence.

@@ -10037,6 +10037,13 @@ resumed by R4-M86 (2026-10-20).
     get `zeros()`'s misfit (NoApplicableOverload_Kd) instead of UnboundTypeArgument; q2a and r10 TypeMismatch again as on dev; q2d
     and q2e get dev's records again; p65 and u6f_g_wait valid by class (3). p48 is Unsupported_Kd (an Origin fit after selection): a
     slot fixed by one source's whole evidence fits the other's elements instead of comparing its whole evidence, a limit left open.
+  - **Class (3)** (the group review's N4; main informs the owner): with one candidate, a slot that Literal or waiting leaves left
+    open is formed after selection from their Types after the literal defaults, position by position (SPEC 10.5.1's last sentence, the
+    approved text), or bound by a typed leaf beside a waiting one. UnboundTypeArgument_Kd -> valid: cp3, cp6, g051, g150, g200,
+    wj_ctor, p62, p65, u6f_g_wait; pw1 and pw4 then reach their own TransferRequired_Kd.
+  - **Fix-C** (the group review's B5): warm Bind with publication allocated 104 B on a reference join argument
+    (`see(if flag => a@ref else => b@ref, n)`); Fix-A's Typed row (evidence as a typed argument's) removed it (1f65242a8 allocates,
+    83dfb46e9 does not); the regression is ORDT's AWarmRebindOfAReferenceJoinArgumentAllocatesNothing.
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
