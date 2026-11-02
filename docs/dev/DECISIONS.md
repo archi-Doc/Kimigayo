@@ -12288,9 +12288,10 @@ structure is recorded here by the unit that first implements it.
     for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
     writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
     are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
-  - Amended (PLAN G157 (25), 2026-11-02): `ModuleCodegen.Erased` is the one computation of a Function Type's erased signature;
-    `Adapter` names it (the previous name kept while it names the same parameter list), so an entry and the calls of its Type share one
-    parameter list. An erased call is written under its callee value's Function Type (`TyCtxt.Layer`'s Callable, in the item's
+  - Amended (PLAN G157 (25), 2026-11-02): `ModuleCodegen.Erased` is the one computation of a Function Type's erased signature, kept
+    by the Type with its Origins erased (`TyCtxt.Erase`; Abi reads no Origin), the Type an adapter's key holds; `Adapter` names it (the
+    previous name kept while it names the same parameter list), so an entry and every call of its Type share one parameter list (a
+    value Type stating an Origin included, `FunctionCodegenTest.AFunctionTypesErasedSignatureIsItsErasedTypes`, failing before). An erased call is written under its callee value's Function Type (`TyCtxt.Layer`'s Callable, in the item's
     instance), the Type the adapter's key erases, not the call's Callable signature: they differ only for a Never-result Function value
     at another result, which Binding rejects (PLAN G159 (3)), so no program changes (the erasing families' fixtures are byte-identical).
     `FunctionCodegenTest.AnAdapterEntryIsItsTargetsErasedSignature` pins the shared list (failing before). Deleted: the erased call's

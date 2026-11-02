@@ -132,6 +132,19 @@ public sealed partial class FunctionCodegenTest
         Assert.All(adapters, x => Assert.Same(module.Erased(set.Items[x].Key.Function!).Parameters, module.Adapter(x).Parameters));
     }
 
+    // IMPL 21.3.1 (DECISIONS R5-M108 as G157 (25) amends it): a Function Type's erased signature is its Origin-erased Type's (Abi reads no
+    // Origin), the Type an adapter's key holds, so a call of a value whose Type states an Origin shares that entry's parameter list
+    // (fail-before: a list of its own).
+    [Fact]
+    public void AFunctionTypesErasedSignatureIsItsErasedTypes()
+    {
+        var c = Analyze("func apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 => f(x)\n", OutputKind.Library);
+        var (program, _, module, _) = WrittenModule(c);
+        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "apply").Locals[1].Type;
+        Assert.NotSame(c.Types.Erase(function), function);
+        Assert.Same(module.Erased(c.Types.Erase(function)), module.Erased(function));
+    }
+
     // SPEC 22.5.1 (DECISIONS R5-M104): an erased Item whose function is a caller-location body (FromEnd.resolve) gives it the location its
     // own entry received, the erased call's, after its other parameters: the entry's, but for its environment word and its context.
     [Fact]

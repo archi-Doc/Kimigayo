@@ -21,12 +21,16 @@ internal sealed partial class ModuleCodegen
     /// <summary>Gets the erased signature of a Function Type, the one computation of it (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102, R5-M108
     /// as G157 (25) amends it): Abi.Of's internal convention with an i64 environment word first and the context last (ErasedClosure),
     /// taking the call's location (SPEC 22.5.1: a Kimi operation called through a function value reports that call); unnamed, kept across
-    /// Writes (Unnamed). A call of a common Function value writes it for the value's Type, and an adapter's entry is it named
-    /// (<see cref="Adapter"/>), so a call and the entry it reaches share one parameter list.</summary>
+    /// Writes (Unnamed), keyed by the Type with its Origins erased (TyCtxt.Erase; Abi reads no Origin), the Type an adapter's key holds.
+    /// A call of a common Function value writes it for the value's Type, and an adapter's entry is it named (<see cref="Adapter"/>), so a
+    /// call and the entry it reaches share one parameter list.</summary>
     /// <param name="function">The closed Function Type: its inputs' Tuple (or Unit) and its result.</param>
     /// <returns>The signature.</returns>
     internal FunctionAbi Erased(BoundType function)
-        => this.Unnamed(ErasedFlags, function.Components[1], (BoundType[])function.Components[0].Components);
+    {
+        var erased = this.types.Erase(function);
+        return this.Unnamed(ErasedFlags, erased.Components[1], (BoundType[])erased.Components[0].Components);
+    }
 
     /// <summary>Gets the entry signature of a ClosureErasure or ItemAdapter item (IMPL 21.1.3, 21.3.1; DECISIONS R5-M108): the erased
     /// signature of its target Function Type (its key's, <see cref="Erased"/>), named <see cref="AdapterPrefix"/> with its index, so a
