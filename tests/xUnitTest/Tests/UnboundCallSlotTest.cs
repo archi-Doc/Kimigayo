@@ -17,6 +17,16 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
 {
     private const string RunR = "func run<R, F>(action: ref/F) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\n";
 
+    private const string LengthG = "func identity<T>(v: T) -> T => v@move\nfunc g<length N>(x: [N of i64]) -> i32 => 0\n";
+
+    private const string LengthPair = "func identity<T>(v: T) -> T => v@move\nfunc g<length N>(x: [N of i64], y: [N of i64]) -> i32 => 0\n";
+
+    private const string Zeros = "func zeros<length N>() -> [N of i64] => [N of 0]\n";
+
+    private const string Takes3 = "func takes3(x: [3 of i64]) -> i32 => 0\n";
+
+    private const string TakeN = "func takeN<length M>(x: [M of i64]) -> i32 => 0\n";
+
     [Theory]
     [InlineData("OmittedParameter", "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 7\npublic func main() -> ()\n    require run(func (n) => 1) == 7 else => $abort(\"c0c\")\n", "run(func (n) => 1)", "T", "func (n) => 1")]
     [InlineData("OmittedResult", RunR + "public func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)", "R", "func (n) => n + 1")]
@@ -239,6 +249,36 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
+
+    // SPEC 10.8, 10.5.1 (BU-80): a length slot is a slot like a Type slot. Unbound, it is no mismatch and its Constraints are not judged;
+    // after selection it is the inference boundary (lp_def1, z2, z3, z5_elem_let, z8_join_let, m_elemN, m_tupN). A nested call whose
+    // result holds an unbound length defers under its probe, so the selected parameter, element, join position or Tuple element fixes it
+    // (z1, z5_elem, z6_join, z7_tuple); a `[N of i64]` result never fits Unit (z4_ret_inf). The typed twins are valid, conflicting
+    // evidence is NoApplicable (lp_bad), and a literal source binds after selection (lp_one, lp_after).
+    [Theory]
+    [InlineData("lp_def1", LengthG + "func k(c: bool) -> i32\n    return g(if c => identity([3, 4]) else => identity([1, 2]))\n", "UnboundTypeArgument_Kd g(if c => identity([3, 4]) else => identity([1, 2]))")]
+    [InlineData("lp_one", LengthG + "func k(c: bool) -> i32\n    return g(if c => undefinedName else => [1, 2])\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("lp_name", LengthG + "func k(c: bool) -> i32\n    return g(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("lp_after", LengthPair + "func k(c: bool) -> i32\n    return g(identity([1, 2]), [3, 4])\n", "")]
+    [InlineData("lp_bad", LengthPair + "func k(c: bool) -> i32\n    return g([1, 2], [1, 2, 3])\n", "NoApplicableOverload_Kd g([1, 2], [1, 2, 3])")]
+    [InlineData("lp_bad_t", LengthPair + "func k(c: bool) -> i32\n    return g([1, 2], [3, 4])\n", "")]
+    [InlineData("z1", Zeros + Takes3 + "func k() -> i32\n    return takes3(zeros())\n", "")]
+    [InlineData("z1_t", Zeros + Takes3 + "func k() -> i32\n    let z: [3 of i64] = zeros()\n    return takes3(z)\n", "")]
+    [InlineData("z2", Zeros + "func k() -> i32\n    let a: [3 of i64] = zeros()\n    let b = zeros()\n    return 0\n", "UnboundTypeArgument_Kd zeros()")]
+    [InlineData("z2_t", Zeros + "func k() -> i32\n    let b: [2 of i64] = zeros()\n    return 0\n", "")]
+    [InlineData("z3", Zeros + TakeN + "func k() -> i32\n    return takeN(zeros())\n", "UnboundTypeArgument_Kd takeN(zeros())")]
+    [InlineData("z3_t", Zeros + TakeN + "func k() -> i32\n    let z: [2 of i64] = zeros()\n    return takeN(z)\n", "")]
+    [InlineData("z4_ret", Zeros + "func k() -> [3 of i64]\n    return zeros()\n", "")]
+    [InlineData("z4_ret_inf", Zeros + "func k()\n    return zeros()\n", "NoApplicableOverload_Kd zeros()")]
+    [InlineData("z5_elem", Zeros + "func takeA(x: [2 of [3 of i64]]) -> i32 => 0\nfunc k() -> i32\n    return takeA([zeros(), zeros()])\n", "")]
+    [InlineData("z5_elem_let", Zeros + "func k() -> i32\n    let a = [zeros(), zeros()]\n    return 0\n", "UnboundTypeArgument_Kd zeros(); UnboundTypeArgument_Kd zeros()")]
+    [InlineData("z6_join", Zeros + Takes3 + "func k(c: bool) -> i32\n    return takes3(if c => zeros() else => zeros())\n", "")]
+    [InlineData("z7_tuple", Zeros + "func takeT(x: ([3 of i64], i32)) -> i32 => 0\nfunc k() -> i32\n    return takeT((zeros(), 1))\n", "")]
+    [InlineData("z8_join_let", Zeros + "func k(c: bool) -> i32\n    let j = if c => zeros() else => [1, 2]\n    return 0\n", "UnboundTypeArgument_Kd zeros()")]
+    [InlineData("m_elemN", Zeros + "func takeAN<length M>(x: [2 of [M of i64]]) -> i32 => 0\nfunc k() -> i32\n    return takeAN([zeros(), zeros()])\n", "UnboundTypeArgument_Kd takeAN([zeros(), zeros()])")]
+    [InlineData("m_tupN", Zeros + "func takeTN<length M>(x: ([M of i64], i32)) -> i32 => 0\nfunc k() -> i32\n    return takeTN((zeros(), 1))\n", "UnboundTypeArgument_Kd takeTN((zeros(), 1))")]
+    public void AnUnboundLengthIsASlotLikeATypeSlot(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords($"{form} [B2a]", body, records, null);
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
 }

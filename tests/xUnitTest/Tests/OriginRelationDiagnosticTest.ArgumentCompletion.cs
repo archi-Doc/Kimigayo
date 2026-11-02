@@ -79,6 +79,12 @@ public partial class OriginRelationDiagnosticTest
 
     private const string FArrays = "func f(x: Array<i64>) -> i32 => 0\nfunc f(x: Array<bool>) -> i32 => 1\n";
 
+    private const string ZerosN = "func zeros<length N>() -> [N of i64] => [N of 0]\nfunc takeN<length M>(x: [M of i64]) -> i32 => 0\nfunc takes3(x: [3 of i64]) -> i32 => 0\n";
+
+    private const string Consume = "func consume<T>(x: Array<T>) -> i32 => 0\nfunc consume<length N, T>(x: [N of T]) -> i32 => 1\n";
+
+    private const string RefLocals = "func k(c: bool) -> i32\n    var x: i32 = 1\n    var y: i32 = 2\n";
+
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
     // (`h(a)` and a value call `h(a)` give NoApplicableOverload_Kd at the call); its twins pass sources of the parameter Type.
@@ -177,8 +183,8 @@ public partial class OriginRelationDiagnosticTest
     // D2 (R4's U1.5 design review 2): a position with a typed part is typed at its typed parts' common Type whatever else it holds, and
     // the waiting `identity(1)` beside `x` takes it (SPEC 14.9.2 steps 2-3), at a join's child position (d2, its `match` d2_m, d2_lit3)
     // as at its root (d2_root) and as an element (d2_elem); so it is evidence for a slot (d2_g; d2_g_t writes it), and with no candidate
-    // of that Type the call has none (d2_n). U1.6g (a): typed parts that conflict at a position fix no Type without the call, so the
-    // position waits and no candidate is best (e4; SPEC 10.5.1, 10.4; it was the join's own record under BU-43, U1.6). BU's landing B2
+    // of that Type the call has none (d2_n). SPEC revision B (BU-80, superseding U1.6g (a) at call arguments): typed parts that conflict
+    // at a position are argument sources fitted per candidate, so no candidate admits them (e4; SPEC 10.5.1, 10.8). BU's landing B2
     // rows: a part-by-part join is fitted per position and its typed part is evidence (e11, t3x; SPEC 10.5.1), and a reference that needs
     // S waits while the typed source selects (e6b; SPEC 10.5.3, 10.5.1); a typed `o` beside `.None` selects (e1) and binds T (e2); SPEC
     // 10.5.1's example at a bare slot (w1); a typed Function value binds T, at which the anonymous function is checked (e5g; 10.8, 10.5.4).
@@ -191,7 +197,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "d2_g", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_g_t", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g<i64>" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
-    [InlineData("U1.6g", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "AmbiguousBinding_Kd f(match c")]
+    [InlineData("B2b", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "NoApplicableOverload_Kd f(match c")]
     [InlineData("U1.2", "e11", IdentityT + FTuples + KX + "    return f(if c => (identity(1), 2) else => (if c => (x, 3) else => (identity(4), 5)))\n", "")]
     [InlineData("U1.2", "t3x", IdentityT + "func f(x: ((i64, i32), i32)) -> i32 => 0\nfunc f(x: ((bool, i32), i32)) -> i32 => 1\n" + KX + "    return f(if c => ((identity(1), 2), 3) else => ((x, 3), 4))\n", "")]
     [InlineData("U1.3", "e6b", "func one(x: i64) -> i64 => x\nfunc one(x: bool) -> bool => x\nfunc f(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc f(x: ((bool) -> bool, i32)) -> i32 => 1\nfunc k(c: bool, gv: (i64) -> i64) -> i32\n    return f(if c => (one, 1) else => (gv@move, 2))\n", "")]
@@ -202,31 +208,52 @@ public partial class OriginRelationDiagnosticTest
     public void ATypedPartGivesItsPositionItsType(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
-    // R4's N3 (U1.6): `[x, 4]` holds no Never and no waiting part, so it is independently typable as Array<i64> (SPEC 4.3.1, 12.3.1) and
-    // supplies the join its Type (14.9.2 step 2). No `[N of T]` parameter admits an established Array (4.1, 10.2, 4.4.1), so the call has
-    // no candidate at a named call (n3) as at a value call (n3_v); an Array<i64> parameter admits it (n3_arr).
+    // SPEC revision B, argument sources (BU-80; the owner, 2026-11-02): an argument's sources are found through Tuple and array literals,
+    // fills and control-flow expressions, and each is fitted per candidate at its position (SPEC 10.5.1). So `[x, 4]` beside
+    // `[identity(1), 3]` fits `[2 of i64]` at a named call (n3) as at a value call (n3_v), as an Array<i64> parameter admits it (n3_arr),
+    // and a typed array literal source beside a waiting `zeros()` fits per candidate (z6n_lit64, m_j3_lit64), as two typed sources do
+    // (t_j2lit64_N, t_j2lit64_3). At a fixed-array position an array literal source's count and a fill source's length are length
+    // evidence (4.4.1), so they bind `M` beside a waiting source (z6_join_n, m_jN_fill, m_jN_fill64); conflicting counts make the candidate
+    // inapplicable (u1_counts; 10.8), and waiting sources alone bind nothing (u2_nozeros). Without an expected Type a join's typed array
+    // literal is Array<i64>, so `zeros()` misfits (z8_lit64; 4.3.1, 14.9.2 step 2). Unchanged: an empty literal needs an expected element
+    // Type (u4_empty), fixed and dynamic literals get no preference (c2_consume_join, c3_consume), and one join's sources that differ
+    // only in safe reference layers over one Type agree on it (q1_join; 10.5.1, 14.9.2 step 2).
     [Theory]
-    [InlineData("U1.6", "n3", IdentityT + "func f(x: [2 of i64]) -> i32 => 0\n" + KX + "    return f(" + N3Join + ")\n", "NoApplicableOverload_Kd f(" + N3Join + ")")]
-    [InlineData("U1.6", "n3_v", IdentityT + "func g(x: [2 of i64]) -> i32 => 0\n" + KX + "    let h = g\n    return h(" + N3Join + ")\n", "NoApplicableOverload_Kd h(" + N3Join + ")")]
+    [InlineData("B2b", "n3", IdentityT + "func f(x: [2 of i64]) -> i32 => 0\n" + KX + "    return f(" + N3Join + ")\n", "")]
+    [InlineData("B2b", "n3_v", IdentityT + "func g(x: [2 of i64]) -> i32 => 0\n" + KX + "    let h = g\n    return h(" + N3Join + ")\n", "")]
     [InlineData("U1.6", "n3_arr", IdentityT + "func f(x: Array<i64>) -> i32 => 0\n" + KX + "    return f(" + N3Join + ")\n", "")]
-    public void ATypedArraySourceTypesItsJoinAsAWhole(string unit, string form, string body, string records)
+    [InlineData("B2b", "z6n_lit64", ZerosN + KHead + "    return takeN(if c => zeros() else => [1@i64, 2@i64])\n", "")]
+    [InlineData("B2b", "m_j3_lit64", ZerosN + KHead + "    return takes3(if c => zeros() else => [1@i64, 2@i64, 3@i64])\n", "")]
+    [InlineData("B2b", "t_j2lit64_N", ZerosN + KHead + "    return takeN(if c => [3@i64, 4@i64] else => [1@i64, 2@i64])\n", "")]
+    [InlineData("B2b", "t_j2lit64_3", ZerosN + KHead + "    return takes3(if c => [3@i64, 4@i64, 5@i64] else => [1@i64, 2@i64, 6@i64])\n", "")]
+    [InlineData("B2b", "z6_join_n", ZerosN + KHead + "    return takeN(if c => zeros() else => [1, 2])\n", "")]
+    [InlineData("B2b", "m_jN_fill", ZerosN + KHead + "    return takeN(if c => zeros() else => [2 of 0])\n", "")]
+    [InlineData("B2a", "m_jN_fill64", ZerosN + KHead + "    return takeN(if c => zeros() else => [2 of 0@i64])\n", "")]
+    [InlineData("B2b", "u1_counts", ZerosN + KHead + "    return takeN(if c => [1, 2] else => [1, 2, 3])\n", "NoApplicableOverload_Kd takeN(if c => [1, 2] else => [1, 2, 3])")]
+    [InlineData("B2a", "u2_nozeros", ZerosN + KHead + "    return takeN(if c => zeros() else => zeros())\n", "UnboundTypeArgument_Kd takeN(if c => zeros() else => zeros())")]
+    [InlineData("B2b", "z8_lit64", ZerosN + KHead + "    let j = if c => zeros() else => [1@i64, 2@i64]\n    return 0\n", "NoApplicableOverload_Kd zeros()")]
+    [InlineData("B2b", "u4_empty", "func g<T>(x: Array<T>) -> i32 => 0\n" + KHead + "    return g([])\n", "UnboundTypeArgument_Kd g([])")]
+    [InlineData("B2b", "c2_consume_join", Consume + KHead + "    return consume(if c => [1, 2] else => [3, 4])\n", "AmbiguousBinding_Kd consume(if c => [1, 2] else => [3, 4])")]
+    [InlineData("B2b", "c3_consume", Consume + KHead + "    return consume([1, 2, 3])\n", "AmbiguousBinding_Kd consume([1, 2, 3])")]
+    [InlineData("B2b", "q1_join", IdentityT + RefLocals + "    let r = identity(if c => x@ref else => y)\n    return 0\n", "")]
+    public void AnArgumentSourceIsFittedPerCandidate(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
-    // U1.6g (a) and (b) (SPEC 10.5.1, 14.9.2 step 2; supersedes BU-43's "fails at once" for call arguments): typed parts with no common
-    // Type fix no complete Type without the call, so a call argument holding them waits. No candidate is best with two (sc_ov, and the
-    // Tuple results sc_tov; 10.4); one candidate completes it at its Type, where a typed source that does not fit is its own record (sc_fi,
-    // sc_elem, and the value call sc_h; 23.1.2), a Tuple source that awaits its position still the join's (sc_tfi), and Tuple results of
-    // another length fit no candidate (sc_len; 10.5.1's last paragraph). Outside a call argument the conflict is the join's (sc_let).
+    // SPEC revision B (BU-80; supersedes U1.6g (a) and (b) at call arguments): typed sources in conflict at a call argument are argument
+    // sources fitted per candidate (SPEC 10.5.1), as typed array elements are, so no candidate admits both: with two candidates (sc_ov,
+    // the Tuple results sc_tov) and with one, at a named call (sc_fi, sc_elem, sc_tfi) and a value call (sc_h), the record is
+    // NoApplicableOverload_Kd at the call, as a typed join's is (d1h). Tuple results of another length fit no candidate (sc_len; 10.5.1).
+    // Outside a call argument the conflict is the join's (sc_let).
     [Theory]
-    [InlineData("U1.6g", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "AmbiguousBinding_Kd f(if c => x else => b)")]
-    [InlineData("U1.6g", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "TypeMismatch_Kd b")]
-    [InlineData("U1.6g", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "TypeMismatch_Kd b")]
-    [InlineData("U1.6g", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "TypeMismatch_Kd b")]
-    [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "AmbiguousBinding_Kd f(if c => (x, 1) else => (b, 2))")]
-    [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "TypeMismatch_Kd if c => (x, 1) else => (b, 2)")]
+    [InlineData("B2b", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
+    [InlineData("B2b", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
+    [InlineData("B2b", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "NoApplicableOverload_Kd f((if c => x else => b))")]
+    [InlineData("B2b", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "NoApplicableOverload_Kd h(if c => x else => b)")]
+    [InlineData("B2b", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
+    [InlineData("B2b", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
     [InlineData("U1.6g", "sc_let", KXB + "    let v = if c => x else => b\n    return 0\n", "TypeMismatch_Kd if c => x else => b")]
-    public void TypedPartsInConflictAtACallArgumentWaitForTheCall(string unit, string form, string body, string records)
+    public void TypedSourcesInConflictAtACallArgumentFitNoCandidate(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // U1.6g2 (SPEC 10.5.1's last paragraph, 14.9.2 step 3, 7.7.4): step 3 applies at every position of a join's results, so at a child
