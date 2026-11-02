@@ -78,7 +78,7 @@ fact table and the cause resolver; `MirRecords` reads the class rows):
   `Binding.LintErrors` (`Binding.Lints.cs:81`, Transitional "H10") alive past its stage. Effect: a test reading `c.Analyze().IsVerified`
   on a lint-error program without publication sees `true`; H3b lists these as class 3 test re-points (check's verdict is unchanged).
 - **`PendingBinding` term and the `Unresolved` fallback (review B2).** Not dropped on an assumption: H1b's census gives each of the old
-  CFA's 8 pending sites a successor (a Binding failure, a MIR construction record or an `InternalInvariant_Kd` contract) before H5.
+  CFA's 9 pending sites (re-review 2) a successor (a Binding failure, a MIR construction record or an `InternalInvariant_Kd` contract) before H5.
 - `C/Core/Compilation.Generation.cs`: gate step 1 → `if (!this.Accepts) return false;` (every MIR record now fails `Analysis`); the
   contract lines `:6-8`, `:14-20` lose step 2. `FunctionCodegen.cs:90-101`'s refusal goes; in its place one contract (review N2): an
   `Incomplete` body implies a published Error, its own or, for an inline copy (index −1), the template's (R4-M69), so an `Incomplete`
@@ -88,7 +88,9 @@ fact table and the cause resolver; `MirRecords` reads the class rows):
   editor service would fault checks the MIR accepts. `Compilation.AnalyzeLegacyOwnership()` (`[Transitional("R6-check")]`, removal
   H10b) runs it once per version and returns it; its readers are the tests (46 `Ownership.Bodies/Issues/Result` reads in 26 files,
   through their helpers), the ledger's old side until H10a and the benchmarks' 13 `Ownership.Analyze()` calls until H9.
-  `Compilation.Ownership` has no other reader outside `C/Analysis`; `AnalyzeControlFlow()` is already an explicit test-only entry (H8b).
+  H5 makes `Compilation.Ownership` private, so the entry's returned object is the only path and no test read passes without the
+  analysis having run (re-review 3); its readers are re-pointed in H5 and migrated off by H8a–c and H9. `AnalyzeControlFlow()` is
+  already an explicit test-only entry (H8b).
 - `C/Core/Compilation.Switch.cs` contract: unchanged by H3 (review B1); the switch selects the ledger, the mark and the manifest entry.
 - `Project.cs`: none (H0b-5). `src/Kimi/Testing/TestCatalog.cs:82` reads `Analysis.IsVerified` as before.
 - Hover (H6, review B3): `HoverBuilder.Virtual.cs:75` reads "completed" when the function's MIR body has no problem in `MirReport`,
@@ -130,9 +132,11 @@ Successors of each old report (review B2): the old CFA's `RequireFallthrough_Kd`
 guessed-recovery derived form needs 2g-1's Binding cause, H0a §6); `ReportUnprovenOriginObligations`' relation branch
 (`UnsatisfiedOriginRelation_Kd`, `UnprovenOriginRelation_Kd`) → A5's Origin stratum and Binding's `OriginRelation` twins; its
 non-relation branch (`UnprovenConstraint_Kd`) → H1b (Binding at Final); the derived `Unresolved` fallback and the `PendingBinding` term
-→ H1b's census of the 8 pending sites; the effect reports (`EffectBound`, `CallableEffectBound`, `VirtualEffectBound`, effect
-`Unsupported`) → A4, published from H5; `TransferRequired` → H1 (Binding); the old `DeferredExpansionLimit_Kd` (`OwnershipModel.cs:198`)
-→ the builder's `DefaultExpansionLimit_Kd` (`MirBuilder.Defaults.cs`); every other `OwnershipRequirement` → its A1/A2/A5 code in the
+→ H1b's census of the 9 pending sites (re-review 2); the effect reports (`EffectBound`, `CallableEffectBound`, `VirtualEffectBound`, effect
+`Unsupported`) → A4, published from H5; `TransferRequired` → H1 (Binding); the old `DeferredExpansionLimit_Kd` (`OwnershipModel.cs:198`, the deferred-cleanup
+limit `DeferredOperationLimit` = 8,192, `OwnershipAnalysis.cs:11`) → none: the builder's `DefaultExpansionLimit_Kd`
+(`MirBuilder.Defaults.cs:16`, `:133`) is the inline-default limit, another bound, so programs past the old limit are class 1a
+moves listed for the owner under O-1 (re-review 1); every other `OwnershipRequirement` → its A1/A2/A5 code in the
 ledger's compared set (`MirDifferenceLedger.ComparedSet.cs`), held by R4's exit gate. MIR reads no `Binding.Obligations` (grep).
 
 ### 2.4 `KIMI_PIPELINE` from H5 to H12
@@ -176,8 +180,8 @@ obligation (`TypeFormation` with a `Length`, `Binding.Lengths.cs:423`) and any o
 `StaticStorage`) not verified, discharged by `CallBorrows` or judged (`:72-94`). Nothing in Mir, Backend or Core produces that code;
 the ledger credits it to A5 (`MirDifferenceLedger.ComparedSet.cs:51`), which never reports it; R4-M112's departure keeps that row and
 names no successor. H1b gives each such kind Binding's verdict at Final (the same code, Binding partition, at the obligation's use),
-or an `InternalInvariant_Kd` contract check at Final where it shows the kind cannot stay unchecked. It also censuses the old CFA's 8
-`pending.Add` sites (`ControlFlowAnalysis.cs:471-864`), the input of the old verdict's `PendingBinding` term and of the derived
+or an `InternalInvariant_Kd` contract check at Final where it shows the kind cannot stay unchecked. It also censuses the old CFA's 9
+`pending.Add` sites (`ControlFlowAnalysis.cs:471-864` and `:951` in `Finish`, re-review 2), the input of the old verdict's `PendingBinding` term and of the derived
 `Unresolved` fallback (`OwnershipAnalysis.cs:337-341`): each gets a Binding failure, a MIR construction record or an
 `InternalInvariant_Kd` contract (Binding complete implies no pending node). In the group for H1's reason. Size (H) +60, t +60.
 
@@ -359,7 +363,7 @@ Known rows, named in advance (H where unverified):
 | BU-1 | BU | Will H1a and Q8-6 land on dev before H3, and Q14 run before H1's code, with its rows in `artifacts/verify/r6-q14/`? |
 | BU-2 | BU | Do you take H5's Binding hunk (§2.2's Binding rows, ≈ −1,830) as its author, with R5's review? |
 | BU-3 | BU | Will H1b give every obligation kind the old `ReportUnprovenOriginObligations` reports a Binding verdict at Final, or a shown-unreachable `InternalInvariant_Kd` contract (review B2)? |
-| O-1 | owner | H3b's class 1: 1a (newly accepted) reach you as one list; 1r (newly rejected, each closing a named old unsound acceptance with its clause, like G177) are decided by the planning session and listed to you for information. Confirm? (Recommended: yes.) |
+| O-1 | owner | H3b's class 1: 1a (newly accepted) reach you as one list; 1r (newly rejected, each closing a named old unsound acceptance with its clause, like G177) are decided by the planning session and listed to you for information. The 1a list includes programs past the old deferred-cleanup limit (8,192 operations), which has no MIR counterpart (re-review 1). Confirm? (Recommended: yes.) |
 
 ## 11. DECISIONS text (H5 writes it)
 
@@ -377,7 +381,7 @@ production check of the library's rows."
 ## 12. Not done
 
 - No probe or run: the class counts of §5.4 are proposals; Q14 and Q19's second reading are absent (Q19: an R4/R5 item at R4's exit,
-  before H3b, review N5); H1b's census of the obligation kinds and the 8 pending sites is its own first step (review B2).
+  before H3b, review N5); H1b's census of the obligation kinds and the 9 pending sites is its own first step (review B2, re-review 2).
 - Exact line ranges inside `Binding.CallableEffects.cs` (`CheckCallableEffectUses`, `:179-224`, may record uses the obligations read)
   are checked by H5's author; §2.2 marks it ≈.
 - The STATUS rows to rewrite and the per-row clauses of §5.4's known rows (G124, G228, G313, G160) follow from the run.

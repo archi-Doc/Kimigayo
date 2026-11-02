@@ -4,7 +4,7 @@ Status: H0's one design (plan §4.10 row H0, FP), revision 1 after the design re
 R1–R4 ("(ruling Rn)"), the integration's edits ("(integration)") and the planning session's rulings on the review's findings ("(review Bn/Nn)").
 Working record, not authority: it becomes authority only as the DEC entry of §10 after the owner's approval under OQ11 (DECISIONS R5-M1).
 
-Working time (WORKFLOW "Working-time limit", DECISIONS Q12): integration 2026-11-02 18:23–18:36; revision 1 18:47–19:01; one session each.
+Working time (WORKFLOW "Working-time limit", DECISIONS Q12): integration 2026-11-02 18:23–18:36; revision 1 18:47–19:01; re-review fixes ≈ 10 min.
 
 Base: dev `1d23d559d` (the parts read `1ec539c79` and `e8ba140b3`; only PLAN differs). "Plan" is the
 [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`,
@@ -71,7 +71,7 @@ R6-check, the check-only SPEC/IMPL pass and the exit gate (plan §5.5). The owne
 | R4 | `FallthroughKey` and both old `ReportDiagnostics` go at H5, having lost their only caller |
 | B1 | The mir column between H3 and H5 is dropped: H3-2 lands the publisher, default unchanged; every pipeline flips at H5 |
 | B2 | H1b, a BU unit and H5 prerequisite, gives the unproven non-relation obligations a Binding verdict; each old report names its successor (H0b §2.3) |
-| B3 | The old analysis leaves `Compilation.Analyze` at H5; one transitional entry serves its readers until H10b; hover's line moves into H5 |
+| B3 | The old analysis leaves `Compilation.Analyze` at H5; one transitional entry serves its readers until H10b (`Compilation.Ownership` private, re-review 3); hover's line moves into H5 |
 | N1 | P42's remainder, H7, H8b, H8c and H10a wait for H5's post-merge sweep; H0c's prerequisites follow D-c3's order |
 | N2 | Gate step 2's deletion states its contract: an `Incomplete` body implies a published Error, checked as `InternalInvariant_Kd` |
 | N3 | H5's `C/Analysis` hunk (≈ −380) is R5's; BU reviews H4's Binding edits |
@@ -93,9 +93,9 @@ Groups: G:R6-check-flip (H1, H1b, Q8-3, H5 with H6), G:check-tests (H10a, H8a–
 | Q14 | Q8's probe, evidence in `artifacts/verify/r6-q14/` | BU | H1a; Q8-3's rule as a probe | — | — | 0 |
 | H3b | Rehearsal on `claude/r6-flip` (H1, H1b, Q8-3, H5 as implemented) and the classification table (Doc) | R5 (R4, BU confirm rows) | H3, H4, Q19, H1a, Q8-6; drafts of H1, H1b, Q8-3, H5 | R | — | 0 (Evid + Doc) |
 | H1 | TransferRequired judged in Binding (Q8 §3.7); the 10 old sites and `Ownership.TransferRequired` deleted | BU | H1a, Q8-6, Q14, OQ11 | group (one reviewer, BU dispatches) | G:R6-check-flip | +110/−75, t +150 |
-| H1b | Binding's verdict at Final (or an `InternalInvariant_Kd` contract) for the unproven non-relation obligations; the 8 pending sites' successors (B2) | BU | H1a, OQ11 | group | G:R6-check-flip | +60, t +60 |
+| H1b | Binding's verdict at Final (or an `InternalInvariant_Kd` contract) for the unproven non-relation obligations; the 9 pending sites' successors (B2, re-review 2) | BU | H1a, OQ11 | group | G:R6-check-flip | +60, t +60 |
 | Q8-3 | `MirValidator`'s Copy rule (Q8 §3.9) | BU (H, R4-11) with R4's review | H1 | group | G:R6-check-flip | +30, t +40 |
-| H5 | The flip on every pipeline; the transitional entry (B3); hover (H6); the `Incomplete` contract (N2); old effect checks, both old `ReportDiagnostics`, `FallthroughKey`, PD12's refusal, OldRule traits, Old sides deleted | R5 (Core, Backend gate, `C/Analysis`, hover, tests), BU (Binding hunk), R4 (`Incomplete` contract) | H1, H1b, Q8-3, H3b (no open class 2/5 row), H4, Q9–Q12, Q20/A-4, A-7, Q18 or H2 | FP (H0) + group + H15 | G:R6-check-flip | ≈ −2,350/+90, t −250/+210 |
+| H5 | The flip on every pipeline; the transitional entry (B3), `Compilation.Ownership` private (re-review 3); hover (H6); the `Incomplete` contract (N2); old effect checks, both old `ReportDiagnostics`, `FallthroughKey`, PD12's refusal, OldRule traits, Old sides deleted | R5 (Core, Backend gate, `C/Analysis`, hover, tests), BU (Binding hunk), R4 (`Incomplete` contract) | H1, H1b, Q8-3, H3b (no open class 2/5 row), H4, Q9–Q12, Q20/A-4, A-7, Q18 or H2 | FP (H0) + group + H15 | G:R6-check-flip | ≈ −2,350/+90, t −250/+210 |
 | H2 | (Conditional) Problem Loan facts, only if Q18 has not landed through A6; not designed by H0 (plan row) | R4 | Q18 not landed | D+R (A3 §6) | — | +100 |
 | H6 | Hover's "Ownership checks" line from MIR problems: part of H5 (B3) | R5 | (H5's) | (H5's) | G:R6-check-flip | ±20 |
 | H10a | Ledger harness, `Analyzed`, `KIMI_MIR_DIFF`, `IsTwinRecord`; MIR helpers into `CompilationTestHelper` | R5 | H5's post-merge sweep (N1) | group | G:check-tests | ≈ −1,000/+80 t |
@@ -173,14 +173,14 @@ D-c1's shadow ran frozen code in every check (B3). All three are ruled and appli
 | BU-4 | BU | Fix G157 (1) before H7, or keep the wide-division gate until it is fixed? [Q-c1] |
 | BU-5 | BU | Will H1b give every obligation kind the old reporter leaves unchecked a Binding verdict at Final, or a shown-unreachable `InternalInvariant_Kd` contract? [H0b BU-3, was R4-2; B2] |
 | O-1 | owner | Add R4-M159's G273 stop to ARCH's D5 exception list in the next ARCH edit (recommended: yes)? [Q-c3] |
-| O-2 | owner | H3b's class 1: 1a (newly accepted) reach you as one list; 1r (newly rejected, each closing a named old unsound acceptance with its clause, like G177) are the planning session's, listed to you for information. Confirm? (Recommended: yes.) [H0b O-1] |
+| O-2 | owner | H3b's class 1: 1a (newly accepted) reach you as one list; 1r (newly rejected, each closing a named old unsound acceptance with its clause, like G177) are the planning session's, listed to you for information. The 1a list includes programs past the old deferred-cleanup limit (8,192 operations, no MIR counterpart; re-review 1). Confirm? (Recommended: yes.) [H0b O-1] |
 
 Counts: R4 13 (H0a's R4-3 withdrawn by B1; H0b's R4-2 moved to BU), BU 5, owner 2. OQ11's approval of H0 is the request, not a question.
 
 ## 9. Not done
 
 - No build, test, probe or run: Q14, Q19, R4-5's reproducer, H1b's census and H3b's class counts are inputs of their units.
-- No re-review of revision 1 (the review's re-check is the planning session's next step).
+- Revision 1 was re-reviewed (ACCEPT); its three non-blocking findings are applied (re-review 1–3).
 - H8a–c's per-file split and F4's recount; H13's site-by-site table; H14's exact counts; `Binding.CallableEffects.cs`' exact ranges.
 - PLAN not edited (F7, F14 are proposed records); STATUS rows and per-row clauses follow from H3b's run. No SPEC or IMPL change proposed.
 
