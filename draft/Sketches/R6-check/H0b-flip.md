@@ -1,6 +1,7 @@
 # R6-check H0b: the acceptance flip (H5) with H1 and H4, and the rehearsal's classification method (H3b)
 
-Status: H0's design part b (plan §4.10 rows H0, H1, H3b, H4, H5; PD29, PD12, PD31), revision 0, design only, not reviewed. Working
+Status: H0's design part b (plan §4.10 rows H0, H1, H3b, H4, H5; PD29, PD12, PD31), revision 0, design only, not reviewed; integrated by [H0-design](H0-design.md) (the planning session's rulings
+R1–R4 applied in place, each marked). Working
 record, not authority: what it decides becomes authority only through H0's DEC entry after OQ11's approval (DECISIONS R5-M1), and its
 owner items only by the owner's answers.
 
@@ -27,11 +28,11 @@ Counts are greps over the base. No build, test or probe was run. (H) marks an un
 | H0b-4 | `Analysis.IsVerified` reads **no `Binding.LintErrors` term** from H5: a lint Error rejects through `Accepts`' Binding-partition error state (SPEC 23.2.2); `AnalysisResult.BodyCount` (the old analysis's count) is deleted | 2.1 |
 | H0b-5 | `Project.cs` needs **no edit**: `:550-554` already reads `Analyze`, `ReportAnalysis` and `Accepts`, which decide by MIR from H5 | 2.1 |
 | H0b-6 | Generation's gate step 1 becomes `!Accepts` alone; gate step 2 (`FunctionCodegen.cs:90-101`, PD12's refusal and R5-M96's arena interim) is deleted; the `Group == -1` invariant (`FunctionCodegen.Drops.cs:25-28`) stays | 2.1 |
-| H0b-7 | H5 also deletes what the flip leaves without a caller: both old `ReportDiagnostics` (`OwnershipAnalysis.cs:140, 220-456`, `ControlFlowAnalysis.cs:114-127`) and `Binding.FallthroughKey`; their readers outside tests are only `ReportAnalysis` | 2.2 |
+| H0b-7 | H5 also deletes what the flip leaves without a caller: both old `ReportDiagnostics` (`OwnershipAnalysis.cs:140, 220-456`, `ControlFlowAnalysis.cs:114-127`) and `Binding.FallthroughKey`; their readers outside tests are only `ReportAnalysis` (ruling R4); the one test reader, `T/OptionalTryDiscardTest.cs:246` (`AnalyzeControlFlow().ReportDiagnostics()`), is re-pointed in H5's test hunk (integration) | 2.2 |
 | H0b-8 | **H4 is test-level** (recommended (A)): A4's summary of a row operation's own body replaces `SummarizePublishedOperation`, which has no production caller today; no production record; the four Array compiler-function rows are added (`Row: None`, SPEC 4.9.6 "None"); H4 deletes `Binding.PublishedOperations.cs` before H5 | 4 |
 | H0b-9 | Five classes under Q13 (§5.3), one row per signature, pre-classified by a fixed map from ledger kind and category and from snapshot kind; the Session, the snapshot and the milestones decide, the ledger only proposes | 5 |
 | H0b-10 | Stop rule: any class 5 row stops H5; class 2 rows block H5 until fixed on dev or accepted by the owner as one list (PD27's form); a second rehearsal round finding a new row of a family already fixed goes one level higher (AGENTS), two on one family to the owner (plan §5.2) | 5.5 |
-| H0b-11 | H6 (hover from MIR) lands **right after H5**, before H10a: between them the hover line shows the shadow's verdict | 7 |
+| H0b-11 | H6 (hover from MIR) lands **right after H5**, before H10a: between them the hover line shows the shadow's verdict (ruling R3) | 7 |
 | H0b-12 | Rollback window: a revert of the group's merge alone until H10a lands; H10a waits for the post-merge sweep on dev (G3's model) | 2.5 |
 
 ## 1. State on dev (facts)
@@ -66,7 +67,7 @@ fact table and the cause resolver; `MirRecords` reads the class rows):
 | `Analyze` (`:70-76`) | `BuildMir`, `Ownership.Analyze()`, `Analyzed`, `Analysis` | `Diagnostics.Invalidate(ControlFlow)`, `Invalidate(Ownership)` (moved from `OwnershipAnalysis.cs:68-69`), `BuildMir`, `Ownership.Analyze()` as an unpublished shadow `[Transitional("R6-check")]`, removal H10b (D-c1), `Analyzed` (removal H10a), `Analysis` |
 | `Analysis` (`:35-43`) | old `IsVerified` and no MIR record; `BodyCount` the old analysis's | `new(this.mir is not null && errors == 0, errors)` where `errors` counts the published rows of Error severity (Warnings and the derived records' suppression as H3's publisher defines); after `InvalidateOwnership` (`mir == null`) not verified |
 | `Problems` (`:51-65`) | old issues, then MIR records | the publisher's rows, in its order (H0a-2) |
-| `ReportAnalysis` (`:82-94`) | old CFA, MIR records, old analysis | the publisher's rows only; the table collapses to "every record" (H0a §2's removal condition) |
+| `ReportAnalysis` (`:82-94`) | old CFA, MIR records, old analysis | the publisher's rows only (the old CFA's `:84` and the old analysis's `:93` stop, ruling R2); the table collapses to "every record" (H0a §2's removal condition) |
 | `AnalysisResult` (`:157`) | `(IsVerified, BodyCount, ErrorCount)` | `(IsVerified, ErrorCount)`; readers of `BodyCount`: `T/OwnershipAnalysisTest.cs:190, 209` (deleted asserts; the class goes at H8c), `T/ProductTestMembershipTest.cs:23` (re-pointed: the MIR program has no `Test` body), `T/SemanticSnapshotTest.cs:253` (printed; the snapshot is re-baselined) |
 | File contract (`:3-9`, `:16-19`) | "Until R6 the legacy path decides" | the MIR decides; the shadow and the event with their removal units |
 
@@ -94,7 +95,7 @@ fact table and the cause resolver; `MirRecords` reads the class rows):
 | R4-M28 twins, `CompilerFunctionEffect.Formatting` | twins inside `EffectSummary` (`ArrayClear`/`Replace` destruction `:744-762`, formatting `:765-776`); `Formatting` member `KimiLibraryKinds.cs:197, 262` | the member goes; A4 reads the rows (`Formats`, `Target`, `Replace`); a vocabulary removal, no owner item (no entry added) |
 | `OwnershipBody.CleanupEffects.cs` | yes | whole, 95 |
 | `SummarizePublishedOperation` | yes | gone with H4 before H5 (§4) |
-| Old `ReportDiagnostics` (H0b-7) | not in the plan row | `OwnershipAnalysis.cs:140, 220-456` (≈ 238, incl. the derived `Unresolved` fallback `:337-341`), `ControlFlowAnalysis.cs:114-127`; `Binding.FallthroughKey` (`Binding.Lints.cs:134-150`) |
+| Old `ReportDiagnostics` (H0b-7, ruling R4) | not in the plan row | `OwnershipAnalysis.cs:140, 220-456` (≈ 238, incl. the derived `Unresolved` fallback `:337-341`), `ControlFlowAnalysis.cs:114-127`; `Binding.FallthroughKey` (`Binding.Lints.cs:134-150`) |
 | PD12's refusal | yes | §2.1 |
 | `VerifiedSpecExampleTest` MIR-only | — | `:73-78` asserts the published rows against `Mir ?? Expected`; 34 `Old` sides (`spec-cases.json`) and 1 (`pair-cases.json`) deleted; `Landed` names every family |
 | OldRule | 25 traits, 13 files | traits and old-side assertions deleted; `MirTargetSide`'s ledger-key half (`tests/xUnitTest/MirTargetSide.cs:24-40` keys, `:44`) deleted, its MIR check is the test's assertion; ratchet row `ArchitectureRulesTest.cs:74-80` deleted |
@@ -131,7 +132,8 @@ obligation kind must already be judged by Binding or A5: an old-rejects/MIR-acce
 The group merges as one merge commit. While the old Analysis exists and nothing depends on the flip, the rollback is `git revert -m 1`
 of that merge (restoring old acceptance, Binding's effect checks and the old TransferRequired sites together, PD29). H10a, H8a–c and
 H10b build on H5, so H10a starts only after the post-merge sweep on dev passes (`'*.ll'` O0/O2, 40 milestones, CLI harnesses,
-snapshot), as G4 waited for G3's. After H10a a rollback also reverts H10a; after H10b fixes go forward.
+snapshot), as G4 waited for G3's. After H10a a rollback also reverts H10a; after H10b fixes go forward. H6 lands between them (ruling
+R3): after the same sweep, and a rollback after H6 also reverts H6 (integration).
 
 ## 3. H1: TransferRequired judged in Binding (BU; G:R6-check-flip)
 
@@ -291,18 +293,19 @@ Known rows, named in advance (H where unverified):
 | H3b round 1 | R5 (R4, BU rows) | branch `claude/r6-flip`; table Doc | 0 | R | H3, H4, H1, Q8-3, H5 drafts |
 | H1 | BU | `C/Binding/Binding.Transfers.cs` (new: `CheckTransfers`), `Binding.Closures.cs`, `Binding.Diagnostics.cs`, the 10 old sites, `DiagnosticRequirement.cs`; DIAGNOSTICS `:107, :152, :166` | +110/−75, t +150 | G:R6-check-flip | H1a, Q8-6, Q14, OQ11 |
 | Q8-3 | R4 reviews, BU implements (H) | `C/Mir/MirValidator*.cs` | +30, t +40 | G:R6-check-flip | H1 |
-| H5 | R5 (Core, tests), BU (Binding hunk), R4 (Backend gate, `Incomplete`) | §2 | ≈ −2,350/+70 src | FP (H0) + G:R6-check-flip + H15 | H1, Q8-3, H3b (no open 2/5 row), H4, Q9–Q12, Q20/A-4, A-7, Q18 or H2 |
-| H6 | R5 | `HoverBuilder.Virtual.cs:75`; HOVER | ±20 | R | H5 |
+| H5 | R5 (Core, Backend gate, tests; integration: the Backend files are R5's, H0a-13), BU (Binding hunk), R4 (`Incomplete`, R4-1) | §2 | ≈ −2,350/+70 src | FP (H0) + G:R6-check-flip + H15 | H1, Q8-3, H3b (no open 2/5 row), H4, Q9–Q12, Q20/A-4, A-7, Q18 or H2 |
+| H6 | R5 | `HoverBuilder.Virtual.cs:75`; HOVER | ±20 | R | H5 (right after it, ruling R3) |
 
 ## 9. Where this part departs from H0a and H0c
 
 - **H0a-2's `LintErrors` term**: dropped from H5 on (§2.1, H0b-4); under mir between H3 and H5 it is also redundant for `Accepts`
-  (same reason), so H0a may drop it too.
+  (same reason), so H0a may drop it too. (Ruling R1: dropped in H0a as well.)
 - **H0c's `Compilation.Pipeline.cs:84` (old CFA report) at H10b**: it goes at H5, as H0a's table already says (A3 publishes its twin
-  from H5; two producers otherwise).
-- **H0c's H6 position** (after H9): right after H5 (H0b-11).
+  from H5; two producers otherwise). (Ruling R2: the report stops at H5; its code goes when its last caller goes.)
+- **H0c's H6 position** (after H9): right after H5 (H0b-11). (Ruling R3.)
 - **H0c's `FallthroughKey` at H10b**: at H5, with its only reader (H0b-7). `LintErrors` and `LintErrorRecords` stay to H10b as H0c says.
-- **Q8-6's "the old Analysis calls it until H11"**: until H5, which deletes the caller.
+  (Ruling R4.)
+- **Q8-6's "the old Analysis calls it until H11"**: until H5, which deletes the caller (follows from ruling R4).
 - Agreed: D-c1 (the shadow), with the partition invalidation moved to Core so the shadow touches no diagnostics; D-c2 (H10a right
   after H5, after the post-merge sweep); `IsEffectRecord` with its ledger reader; the OldRule traits with ratchet row `:80` and
   `MirTargetSide`'s ledger half; the successors of §2.3.
@@ -327,7 +330,7 @@ the version exists and its published rows hold no Error; `Problems` and `ReportA
 unpublished in `Analyze` until H10b; generation's gate is `Accepts`. Deleted: Binding's and the old analysis's effect checks, both old
 `ReportDiagnostics`, PD12's refusal, `IsEffectRecord`, `FallthroughKey`, `AnalysisResult.BodyCount`, the OldRule traits and Old sides.
 Supersedes R5-M156's 'the old path decides', R4-M1 for the default pipeline, PD12's refusal (R5-M96), Q8's 'until H11' for the
-renderer's old caller and H0a's `LintErrors` term. Rejected: an analysis verdict reading `LintErrors` (a second copy of Binding's
+renderer's old caller. Rejected: an analysis verdict reading `LintErrors` (a second copy of Binding's
 decision); a throwaway rehearsal; a production check of the library's rows."
 
 ## 12. Not done

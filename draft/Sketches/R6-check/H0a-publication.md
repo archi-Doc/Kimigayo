@@ -1,7 +1,7 @@
 # R6-check H0a: unit a, the publication of MIR problems (H3)
 
 Status: H0's design part a (plan §4.10 rows H0 and H3; PD29, PD30), design only, for H0's design review and the owner's one look under
-OQ11 (R5-M1). Working record, not authority: what it decides becomes authority only as the DECISIONS entries H3 writes (§10).
+OQ11 (R5-M1); integrated by [H0-design](H0-design.md) (the planning session's rulings R1–R4 applied in place, each marked). Working record, not authority: what it decides becomes authority only as the DECISIONS entries H3 writes (§10).
 
 Working time (DECISIONS Q12): 17:40–18:02 on 2026-11-02, about 22 minutes, one session, within the one-hour limit.
 
@@ -15,7 +15,7 @@ test or probe was run. (H) marks an unchecked inference. Standing request: the o
 | # | Decision | § |
 | --- | --- | --- |
 | H0a-1 | One **publication table** decides what each pipeline publishes, by classes the published columns identify (requirement partition, `Body`, code). Default: unchanged until H5 (H3 is behavior-preserving there). mir from H3: every MIR problem except A4's, plus the old analysis's effect issues only; no other old Ownership issue and no old `RequireFallthrough_Kd`. From H5: every MIR problem on every pipeline | 2 |
-| H0a-2 | Acceptance under mir is computed from the same rows the table publishes (`Analysis` and `Problems`), so a rejection without a record cannot arise; `Binding.LintErrors` stays a term | 2, 4.3 |
+| H0a-2 | Acceptance under mir is computed from the same rows the table publishes (`Analysis` and `Problems`), so a rejection without a record cannot arise; no `Binding.LintErrors` term: a lint Error rejects through `Accepts` (ruling R1, H0b-4) | 2, 4.3 |
 | H0a-3 | **H3-1 (bp)** folds the construction records and the collector records into `MirReport` as `MirProblem(code, ControlFlow, subject, NoBody, all views)`; `MirReport` resets with the version in `MirProgram.Clear`, not in `MirAnalysis.Run`; the two `reported` sets and both `Records` lists go. Validator findings stay `MirProgram.Findings` (the driver reads them) and publish through a table row | 3.1 |
 | H0a-4 | The merge across bodies by (code, subject, Reason) is a **record view owned by `MirReport`** (`MirReport.Records`), so R4-M132's derived merge has one copy; Core only maps records to the diagnostics adapter | 3.2 |
 | H0a-5 | A record's requirement is its problems' own (R4-M67, R5-M23), never derived from the code; a cross-body disagreement is the `InternalInvariant_Kd` that `Add` already gives. Partition = the requirement's (DIAGNOSTICS rule 1). Binding.* → Ownership.* renames stay at H5 (R5-M23) | 3.3 |
@@ -61,15 +61,15 @@ Rows are identified by published columns only; the table lives in Core's publish
 | --- | --- | --- | --- | --- |
 | Construction and collector records | requirement `ControlFlow`, `NoBody` | publish (today's) | publish | publish |
 | Validator findings | `MirProgram.Findings` | publish (today's) | publish | publish |
-| A3 (`RequireFallthrough_Kd`) | `ControlFlow`, a body | hold (old CFA's twin publishes) | publish; old CFA's not | publish |
+| A3 (`RequireFallthrough_Kd`) | `ControlFlow`, a body | hold (old CFA's twin publishes) | publish; old CFA's not | publish; the old CFA's report stops (ruling R2) |
 | A1, A2, A5 problems, `MirReport`'s disagreement record | Ownership partition, a body | hold | publish | publish |
 | A4's problems | Ownership partition, `NoBody`, not `InternalInvariant_Kd` | hold | **hold** (PD29) | publish (H5, with H4's records) |
 | C1-F4 findings | `InternalInvariant_Kd`, `NoBody` | hold | publish | publish |
-| Old analysis issues | `Ownership.Issues` | publish | effect tail only (§5.1) | deleted (H5, H10) |
+| Old analysis issues | `Ownership.Issues` | publish | effect tail only (§5.1) | unpublished shadow from H5 (D-c1), code deleted at H10b (ruling R2) |
 
 - Default stays exactly as today from H3-1 to H5, so H3's default Session and diagnostic snapshot must be equal (bp).
-- Under mir, `Analysis.IsVerified` is "no Error among the published rows, no old effect issue, `Binding.LintErrors == 0`" (lint records fail no
-  node, PD31, so dropping that term would accept a lint error). `Problems` lists the same rows. `ReportAnalysis` under mir skips the old
+- Under mir, `Analysis.IsVerified` is "no Error among the published rows, no old effect issue" (ruling R1: no `Binding.LintErrors` term;
+  a lint Error rejects through `Accepts`' Binding-partition error state, SPEC 23.2.2, H0b-4). `Problems` lists the same rows. `ReportAnalysis` under mir skips the old
   CFA (its one code is A3's twin) and publishes the Ownership partition once (§5.1).
 - At H5 every row reads "publish" and the table collapses to "every record" (its removal condition), and `KIMI_PIPELINE` again changes no
   record (until H12). H3 supersedes R5-M156's "`KIMI_PIPELINE=mir` now changes no published record" under mir only.
@@ -226,7 +226,7 @@ judged at H5. A dependent record removed by rule W in an R4 unit is counted by c
 | H3-2 publication under mir | R4: `C/Mir/Analysis/MirReport.Records.cs` (new, §3.2). R5: `C/Core/Compilation.Publication.cs` (new partial with its entry contract: the table §2, keys §3.4, fact table §4.1, cause resolver §4.2), `Compilation.Pipeline.cs` (`Analysis`, `Problems`, `ReportAnalysis` through the table), `Compilation.Switch.cs` contract; old analysis effect tail (`C/Analysis/OwnershipAnalysis.cs`, `.EffectBounds.cs`, Transitional H5). Docs: DECISIONS (§10), ARCH "Analysis records" row (`:99`) and R6 row, DIAGNOSTICS `:293`, `:299` ("unpublished until H3"), CODEMAP, VERIFICATION `:94`, PLAN (§5.1's gap, §5.2's count) | MirReport +70; Core +170/−15; old +10; t+300 |
 
 Total about +280/−60 source, above the plan's ±200 (the fact table and keys were not in the row). Prerequisites: R4's exit with A6
-(2g-D–2g-7; R4-M35), G11 (done, R5-M167), Q17 (landed), Q8-6's renderer (H1's first commit, bp, BU), OQ11's approval of H0. Review: H3-1
+(2g-D–2g-7; R4-M35), G11 (done, R5-M167), Q17 (landed), Q8-6's renderer (H1's first commit, bp, BU, landing early on dev as Q8 allows, before H3-2: integration, H0b §3), OQ11's approval of H0. Review: H3-1
 one R review (bp); H3-2 D+R under H0 (plan row H3), one review (Q13); R4 reviews the Core hunk's use of `MirReport.Records`, R5 the
 `MirReport.Records` contract. Holds: none after R4's exit (plan §3.5); `Compilation.Pipeline.cs` is R5's from H3 to H5.
 
@@ -244,7 +244,7 @@ one R review (bp); H3-2 D+R under H0 (plan row H3), one review (Q13); R4 reviews
   one location-only problem (`PipelineSwitchTest.MirRecordsAtOneLocationAreOneProblem` `:317` stays as the default's row).
 - `T/PipelineSwitchTest.cs`: under mir a `MovedPlace_Kd` program publishes MIR's record and the old one not; an old-only rejection
   (a ledger (b)/(d) row, H) is accepted under mir; an effect violation publishes once under mir (the old tail), A4's held; a lint error
-  still rejects under mir; default publishes the same rows as before (`EveryPipelinePublishesTheMirRecords` `:269` re-pointed).
+  still rejects under mir (through `Accepts`, ruling R1); default publishes the same rows as before (`EveryPipelinePublishesTheMirRecords` `:269` re-pointed).
 - Snapshot: default Session with `-DiagnosticSnapshot` equal (bp, both commits); one mir run with the snapshot as a recorded census
   (not a gate, §2), which H3b classifies. Ledger unchanged (no ledger edit).
 
