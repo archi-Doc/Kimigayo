@@ -13270,6 +13270,14 @@ structure is recorded here by the unit that first implements it.
     a finish that reads the buffer from the adapter: a declared legacy `.ll` change, two mechanisms until R6-gen), a Kimigayo `writeLiteral`
     (Utf8Writer's Fields are `let`; R8's form), splicing the runtime's bounds from the C# table (a new marker in the checked splice; the test
     ties them).
+  - Amended (PLAN G157 (37), 2026-11-02; closes the open point): MirValidator checks the contract (`MirValidator.Calls`). Each step's
+    values' Types are a TypeToken constant of a Tuple (`Tokens`, a Type finding), which code generation reads element by element. Each
+    FormatFinish's estimate operands are the FormatBuffer's whose buffer its adapter is over (`Finishes`, an Arity finding): the adapter it
+    moves is a Call's result whose first operand a Ref of the buffer that FormatBuffer writes lends; one pass over a body with a
+    FormatFinish links each whole local to the Call writing it and the local a Ref into it lends (kept scratch). Code generation trusts
+    both. `MirValidatorTest.AnInterpolationsStepsCarryItsEstimate` (fail-before: no finding); `MirCensusTest` finds none in the library,
+    milestones, goldens and SPEC cases. Rejected: pairing by block order or nesting (the builder's numbering, not a MIR fact); a token
+    check in code generation (consumers trust validated IR).
 - **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27, to the R5 planning session directly;
   the consequences are the planning session's)
   - **The departure** (on the planning session's explanation after C9c's design; verbatim 「C9c の逸脱（リテラル高速経路を独立した Full

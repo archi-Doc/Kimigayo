@@ -547,6 +547,53 @@ public sealed class MirValidatorTest
         Assert.Equal(broken ? [(MirViolation.StaticSlot, "Registry.total")] : [], program.Findings.Select(x => (x.Rule, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's steps carry their values' Types as a token of a Tuple,
+    // which code generation reads element by element, and its FormatFinish the estimate operands of the FormatBuffer whose buffer its
+    // adapter is over, since code generation places the buffer by the one and ends it by the other: the built bodies are valid, a nested
+    // interpolation's included; a step's token of i32 is a Type finding at the step, and a FormatFinish whose estimate differs from its
+    // FormatBuffer's an Arity finding at it (fail-before: no finding).
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("segment", false)]
+    [InlineData("buffer", false)]
+    [InlineData("bytes", false)]
+    public void AnInterpolationsStepsCarryItsEstimate(string? broken, bool nested)
+    {
+        var c = MirBuildTest.Compile(nested ? "func f(n: i32) -> string => \"a\\(\"b\\(n)\")c\"\n" : "func f(n: i32) -> string => \"n=\\(n)!\"\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var (id, at) = broken switch
+        {
+            "segment" => (IntrinsicId.FormatSegment, 3),
+            "bytes" => (IntrinsicId.FormatFinish, 1),
+            _ => (IntrinsicId.FormatBuffer, 1),
+        };
+        MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
+            .Where(x => x.Callee is { Kind: MirCalleeKind.Intrinsic } callee && callee.Arg == (int)step)];
+        var (steps, finishes) = (Steps(id), Steps(IntrinsicId.FormatFinish));
+        Assert.Equal(nested ? 2 : 1, finishes.Length);
+        Assert.Equal(id == IntrinsicId.FormatSegment ? 3 : finishes.Length, steps.Length);
+        var (step, finish) = (body.Subject(steps[0].Source), body.Subject(finishes[0].Source));
+        if (broken is not null)
+        {
+            var constant = broken == "bytes" ? new MirConst(MirConstKind.Integer, BoundType.ISize, 99) : new MirConst(MirConstKind.TypeToken, BoundType.I32);
+            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = MirOperand.Const(body.Const(constant));
+        }
+
+        (MirViolation, SourceRef)[] expected = broken switch
+        {
+            "segment" => [(MirViolation.Type, step)],
+            "buffer" => [(MirViolation.Type, step), (MirViolation.Arity, finish)],
+            "bytes" => [(MirViolation.Arity, finish)],
+            _ => [],
+        };
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(expected, findings.Select(static x => (x.Rule, x.Subject)));
+    }
+
     // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body
     // of an if, a match or try and a do builds its value for an input that reserves (MirCases.Reserves) in a temp of its own, moved into
     // the input temp, as an exit's secured value is: the golden's program is valid (a match, an if and a destroying replace; a do of exits
