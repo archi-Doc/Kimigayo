@@ -6,14 +6,65 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // F1's pooled storage: one Contribution per argument of each candidate a call evaluates (CallEvaluation.Contributions).
+    private readonly ScratchBuffers<Contribution> contributionScratch = new();
+
+    // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
+    // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises).
+    private enum Contribution : byte
+    {
+        // An independently typable part, well formed where it was formed (SPEC 15.6.1): judged only where the fit replaced an Origin.
+        Evidence,
+
+        // A position whose Type the callee's instantiated parameter Type gives, such as a default: every position is judged.
+        Signature,
+
+        // A position whose Type comes through a slot the call's expected result solves: its contributor proves it, not this call.
+        Result,
+    }
+
+    // The contribution of a whole argument by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed
+    // part is Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate or
+    // join argument is judged by its parts' fits until its child positions contribute (G216 (a) U2.2 U2), so it stays Evidence. A
+    // receiver is Evidence; a default is a Signature position.
+    private Contribution PartContribution(Koto part)
+        => this.RecordedPart(KotoHelper.UnwrapParentheses(part)).Kind switch
+        {
+            PartKind.Typed or PartKind.Aggregate or PartKind.Join => Contribution.Evidence,
+            _ => Contribution.Signature,
+        };
+
     // SPEC 10.8, 10.5.1: the evidence walk of a candidate's solution, by each argument part's kind at its position. A typed part is
     // evidence through the common adaptation (SPEC 10.2) and, at a Function pattern, its known call signature; a Never-typed part is
     // none. A Literal part is evidence only through the default applied to the selected candidate (SPEC 10.2.1). A waiting part is none,
     // except the parameter and result Types an anonymous function's header writes (SPEC 10.5.4). A Tuple or array literal is evidence by
     // its parts at their positions, and at a bare slot only when every part is; a mixed range by its range typing (SPEC 4.6.2). The early
-    // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing.
+    // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing. Each
+    // argument's contribution to the call (Contribution) is this walk's fact, written once the expected result has solved its slots
+    // (Contribute).
     private ref partial struct SlotSolution
     {
+        // F1 (R4-M164): each argument's contribution by its part's kind (PartContribution), once the expected result has filled the
+        // slots no evidence bound (`unbound`, which keeps those it solved); a Signature position whose parameter Type names such a slot
+        // is a Result position, which the contributor of the expected result proves (SPEC 10.3).
+        internal readonly void Contribute(int[] mapping, ref SlotSet unbound)
+        {
+            for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
+            {
+                if (unbound.Contains(g) && this.Types[g] is null)
+                {
+                    unbound.Remove(g);
+                }
+            }
+
+            for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
+            {
+                var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
+                this.Contributions[i] = contribution == Contribution.Signature && this.Function.Parameters[mapping[i]].Type.BoundType is { } pattern &&
+                    MentionsSlots(pattern, this.SlotOwner, unbound) ? Contribution.Result : contribution;
+            }
+        }
+
         // The Type of a parameter as this candidate reads it: the declaring Type's slots substituted and Self replaced; null when it fails.
         internal readonly BoundType? Pattern(BoundType pattern)
             => this.Binding.CallMemberPattern(pattern, this.Binder, this.DeclaringType) is { } member

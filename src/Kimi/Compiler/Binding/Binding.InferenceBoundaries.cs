@@ -78,6 +78,21 @@ public sealed partial class Binding
         return slots;
     }
 
+    // The callee's Type slots that are still unbound (F1, R4-M164: the slots the expected result may solve, Contribute).
+    private static SlotSet UnboundTypeSlots(FunctionKoto function, BoundType?[] arguments, ref SlotSet slots)
+    {
+        slots.Clear();
+        for (var g = 0; g < CallOwnSlots(function).Count; g++)
+        {
+            if (CallOwnSlots(function)[g] is GenericParameterKoto && arguments[g] is null)
+            {
+                slots.Add(g);
+            }
+        }
+
+        return slots;
+    }
+
     private static void ReportUnboundSlots(Koto node, UnboundSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         (string Role, Koto At, string? Label)[] related = fact.Argument is { } argument
