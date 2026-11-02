@@ -19,7 +19,8 @@ internal enum MonoKind : byte
     Body, // A body instance.
     ClosureErasure, // A Closure Type's value of a common Function Type (SPEC 7.7.4): its erased Closure Type and erased Function Type.
     ItemAdapter, // A function item Type's value of a common Function Type (SPEC 7.7.4): its erased Item Type and erased Function Type.
-    DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type, or an owning handle's release (InstanceCollector.GlueKey).
+    DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type, a Function value's or an owning handle's release
+    // (InstanceCollector.GlueKey).
     Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.3): the function (its kind its CompilerFunction), the erased Self;
     // a comparison's also its ComparisonMode, its node's erased Type at the template and the requesting instance when that has a parameter.
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
@@ -37,8 +38,8 @@ internal enum MonoKind : byte
 /// <param name="Body">A body item's instance; a comparison Builtin item's requesting instance (its erased substitution, no definition)
 /// when its Type has a parameter (DECISIONS R5-M166).</param>
 /// <param name="Type">A type-driven item's erased Type (<see cref="TyCtxt.Erase(BoundType)"/>): a comparison Builtin item's is its node's,
-/// at the template when it has a parameter (DECISIONS R5-M166); the handle over Unit for a DropGlue item of an owning handle's release
-/// that destroys no payload glue (DECISIONS R5-M60, amended by U11).</param>
+/// at the template when it has a parameter (DECISIONS R5-M166); () -> () for a DropGlue item of a Function value, and the handle over
+/// Unit for one of an owning handle's release that destroys no payload glue (DECISIONS R5-M60, amended by U11 and G372).</param>
 /// <param name="Symbol">A Builtin's compiler function or a property witness's Field.</param>
 /// <param name="Variant">A property witness's operation; a comparison Builtin item's <see cref="ComparisonMode"/>; 1 for such a DropGlue
 /// item whose release runs the descriptor's finalizer.</param>

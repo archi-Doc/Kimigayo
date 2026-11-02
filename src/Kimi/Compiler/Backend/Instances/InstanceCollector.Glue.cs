@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
@@ -17,15 +18,23 @@ internal sealed partial class InstanceCollector
     private int GlueOf(int item, SourceRef subject, BoundType closed)
         => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, this.GlueKey(closed), closed, null) : -1;
 
-    // DECISIONS R5-M60 (amended by U11): the key of a glue item, what its function reads: its erased Type (AdmitType), except for an owning
-    // handle whose release destroys no payload glue (FunctionCodegen.Objects' Release then reads its counting alone): a Sealed payload
-    // (DropGlue.Parts gives it) that needs no drop, or a payload the descriptor's finalizer destroys (none given, Variant 1), keyed by the
-    // handle over Unit, so each such release has one glue per counting. A Sealed payload that may need a drop keeps its Type's. Each handle
-    // Type is classified once per run (glueKeys): MayNeedDrop walks the payload's destruction to its bound.
+    // DECISIONS R5-M60 (amended by U11 and G372): the key of a glue item, what its function reads: its erased Type (AdmitType), except for a
+    // Function value, whose glue (FunctionCodegen.Erasures' DestroyErased) reads only the one layout row of every Function Type, keyed by
+    // the Function Type () -> (), one glue in all; and for an owning handle whose release destroys no payload glue (FunctionCodegen.Objects'
+    // Release then reads its counting alone): a Sealed payload (DropGlue.Parts gives it) that needs no drop, or a payload the descriptor's
+    // finalizer destroys (none given, Variant 1), keyed by the handle over Unit, so each such release has one glue per counting. A Sealed
+    // payload that may need a drop keeps its Type's. Each handle Type is classified once per run (glueKeys): MayNeedDrop walks the
+    // payload's destruction to its bound.
     private MonoKey GlueKey(BoundType closed)
     {
         MonoKey key = new(MonoKind.DropGlue, default, null, null, 0, null);
-        if (DropGlue.Row(closed) != DropGlueRow.Handle)
+        var row = DropGlue.Row(closed);
+        if (row == DropGlueRow.Function)
+        {
+            return key with { Type = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.Unit, BoundType.Unit]) };
+        }
+
+        if (row != DropGlueRow.Handle)
         {
             return key;
         }

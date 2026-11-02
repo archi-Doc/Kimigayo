@@ -1680,6 +1680,20 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "DropGlue () -> i32"));
     }
 
+    // DECISIONS R5-M60 (amended by G372): a Function value's glue calls its table's drop entry and reads only the Function value layout,
+    // one row for every Function Type, so one glue serves every signature; a Closure environment's glue, of its captures, stays its own.
+    [Fact]
+    public void FunctionValueGluesShareOneGlue()
+    {
+        var (program, set) = Collect("func one(x: i32) -> i32 => x\nfunc two(x: i64) -> i32 => 2\nfunc use(text: string) -> i32\n" +
+            "    let a: (i32) -> i32 = one\n    let b: (i64) -> i32 = two\n    let c = func [text@move] () -> i32 => 1\n" +
+            "    let d: () -> i32 = c@move\n    return a(1) + b(2) + d()\n");
+        var functions = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.DropGlue && x.RepresentativeType!.Kind == BoundTypeKind.Function);
+        Assert.Equal(["DropGlue () -> i32"], functions.Select(x => Label(program, x))); // Requested last local first: its first requester.
+        Assert.Empty(Targets(program, set, "DropGlue () -> i32"));
+        Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue closure () -> i32"));
+    }
+
     // SPEC 8.10 (DECISIONS R5-M102): an owner Callable call whose callee borrows its environment destroys the operand after the call, so the
     // operand Type's glue is the call's second target, after the body; a common Function value, whose entries borrow, has the glue as its one
     // target; a Consuming body destroys it itself, and a call through a borrow transfers nothing, so neither has one.
