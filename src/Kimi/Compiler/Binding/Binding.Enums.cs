@@ -470,7 +470,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+            var actual = this.ArgumentType(source, completed); // An erased payload adapts as its erasure (AdaptInput, rule E; BU-83).
             var failure = default(ComparisonFailure);
 
             // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
@@ -550,7 +550,7 @@ public sealed partial class Binding
                     // SPEC 6.5.2, 3.5, 8.14: a payload Place is acquired by its bare acquisition, by case for a pair layer; one without a
                     // plan never Moves into a payload; write value@move.
                     plan.IsValid = false;
-                    this.FailAcquisition(payloadSource, BindingFailure.TransferRequired, payloadSource);
+                    this.FailAcquisition(entry.Key, BindingFailure.TransferRequired, payloadSource);
                 }
 
                 plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);

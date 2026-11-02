@@ -954,7 +954,9 @@ public sealed partial class OwnershipAnalysis
                 return -1;
             }
 
-            var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);
+            // SPEC 7.7.4 (DECISIONS BU-83): erasure acquires its source ordinarily, by its bare acquisition; a committed acquisition is
+            // the erased value's, which Argument checks against the temporary below. Removed with the old Analysis at H10b.
+            var source = this.ExpressionCore(node, PlaceUseKind.Consume, null);
             if (source < 0)
             {
                 return -1;

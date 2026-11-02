@@ -10020,6 +10020,40 @@ resumed by R4-M86 (2026-10-20).
     Bind-only callers (tests, hover without analysis) pay one publication per Final pass.
   - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
     and counts each such Use once, as it does the prologue's.
+- **BU-83 Rule E: an erasure is its node's only implicit adaptation** (2026-11-03; PLAN G341, scheduled by the owner after G216 (a)'s
+  joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; the BU planning session's design `bu\g341\design.md`
+  and its revision 2, `design-r2.md`, after review REVISE B1, B2)
+  - The defect: a value call (U1) or a Case payload (U2) that received a stored Copy Closure at a Function parameter was
+    `TransferRequired_Kd`, while the named call was valid. Two consumers judged the source's acquisition again on the erased Function
+    Type, which is Non-Copy (SPEC 7.7.4), where SPEC 3.5 and 7.7.4 judge it on the source's own Type.
+  - The rule (SPEC 7.7.4, 3.5, 10.2, 12.5.2): when Binding has erased a source at its position (`ErasedFunctionType`), `AdaptInput`
+    (Binding.ArgumentOperations), the one function value-call arguments and payloads pass through, reports the erased Type with quality
+    Erasure. An erased payload involves two acquisitions (SPEC 7.7.4: erasure acquires its source ordinarily and is an owning
+    conversion, distinct from a Copy or Move of the source):
+    - (i) the source's: `AdaptInput`'s rule-E row judges its bare acquisition once, on its own Type, through `AcquiresBare`, the
+      by-value row's predicate (one rule for both rows); a Move fails with `TransferRequired_Kd` at the source (`RequireAcquisition`,
+      `FailAcquisition`), at value calls and payloads alike. It is published once, as the source's Adjust (`ChildAdjust`, `BareOf`;
+      R4-M142), which MIR reads, as at a named call;
+    - (ii) the erased value's: a fresh temporary, so a payload slot takes it by Move (`plan.SetAcquisition`), unchanged.
+  - One representation: `ArgumentType` presents an erased source's own Type, as it does a referent read, so an Erasure operation's
+    `SourceType` is the source's own Type at both sites. The structural fit stays on the erased Type (rejected (b)).
+  - A payload (U2): `Binding.Enums` adapts the source's completed Type, without its own copy of the erasure; `CompleteEnumAcquisitions`'
+    bare row reads `SourceType` and never sees a Move of an erased source, which `AdaptInput` failed first. It fails the construction
+    at the source, as `AdaptInput`'s acquisition failure does, so no resolved construction keeps an invalid plan (that was a broken HIR
+    contract, `InternalInvariant_Kd`).
+  - A Non-Copy erased source keeps its record, Binding's `TransferRequired_Kd` at the source, at both sites, beside any independent
+    record and once per use (round 2; review B1 and N1: the value call's record had been the old Analysis's alone, lost beside another
+    Binding error). H1 regression rows (review N2): ev_ok and ec_ok with no S1 subject; ev_nc and ec_nc are Binding's records, not S1
+    subjects.
+  - The old Analysis (U4; R5's consent with conditions, 2026-11-03): its erased branch (`OwnershipAnalysis.Expression`) forwarded a
+    payload's committed acquisition, (ii), to the source as well, so a payload Moved a stored Copy Closure (review B2,
+    `MovedPlace_Kd`). It now passes none: the source is acquired by its bare acquisition, and `Argument` checks the committed
+    acquisition against the erasure's temporary. The line goes with the old Analysis at H10b (R5-M182's amendment). Acceptance
+    moves (Q13, named): p_useafter_ok, p_useafter2_ok, p_twice_ok, p_then_v_ok and p_gen_useafter_ok become valid; p_twice_nc stays
+    rejected on both pipelines.
+  - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) fitting
+    the source's own Type structurally, which the check refuses (Closure against Function: `NoApplicableOverload_Kd`); (c) waiting for
+    H1, which never sees a call Binding failed; (d) leaving the value call's Non-Copy record to the old Analysis (review B1).
 
 - **BU-82 The Semantics-case renderer is one Binding component** (2026-11-03; R6-check Q8-6, behavior-preserving; the owner's Q8
   approval 「Q8を承認」 with proposal Q8-6, R5-M23; H0's division, R5-M182)
