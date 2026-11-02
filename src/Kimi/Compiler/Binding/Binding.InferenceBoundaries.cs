@@ -90,7 +90,10 @@ public sealed partial class Binding
         var waiting = new WaitingSlots(ref unsolved, CallSlotOwner(function));
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
-            this.TakeWaiting(call.ArgumentNodes[a], function.Parameters[mapping[a]].Type.BoundType!, CallSlotOwner(function), waiting);
+            if (function.Parameters[mapping[a]].Type.BoundType is { } pattern)
+            {
+                this.TakeWaiting(call.ArgumentNodes[a], pattern, CallSlotOwner(function), waiting);
+            }
         }
     }
 
