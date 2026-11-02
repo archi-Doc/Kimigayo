@@ -311,7 +311,8 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 16.4 (above): a Function value's destruction at its address, written first in its glue's entry block: the word's slot, then its
     // table's drop entry called when present, at the site, on the word moved to the slot (the value is dead after its drop, and an
-    // adapter entry already passes an inline word so, Environment).
+    // adapter entry already passes an inline word so, Environment). It reads only the layout row every Function Type shares, so the item
+    // may stand for every Function Type (InstanceCollector.GlueKey).
     private void DestroyErased(BoundType type, Value address, Site site)
     {
         if (this.Laid(type) is not { } handle)
