@@ -147,7 +147,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
             if (relatedInformation)
             {
                 var location = Assert.Single(sent.RelatedInformation!).Location;
-                Assert.Equal(library.ToUri(), location.Uri);
+                Assert.Equal(library, location.Document); // Placed by identity; the session spells it.
                 Assert.Equal(2, location.Range.Start.Line);
             }
             else

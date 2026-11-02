@@ -111,7 +111,7 @@ internal sealed partial class LspSession
                                 adopted[i] = new(unit.Key, unit.Result!.Id, unit.Result.Output.Hover!.Documents[document.Identity]);
                             }
 
-                            document.Hover = new(adopted, this.hoverMarkdown);
+                            document.Hover = new(adopted, this.hoverMarkdown, this.UriOf);
                         }
 
                         continue;
