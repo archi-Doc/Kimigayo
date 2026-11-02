@@ -274,6 +274,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G363 (R5; batch 89; DECISIONS R5-M174's amendment):** `IrTarget` publishes the pointer width only: the unread LLVM data-layout port and the `TargetTriple` parts only it read are gone (about 1,000 lines); the eight architectures without an LLVM backend keep their rejection as width 0, and the 64-bit architectures are listed (no silent default). A differential probe over 2.1 M triple strings kept every accepted triple, width and diagnostic.
 <a id="g370"></a>
 - **G370 (R5; batch 89; DECISIONS R5-M178):** the built-in Conditions `os` and `arch` follow IMPL 20.2.1's table (`TargetTriple.OsFamily` and `ArchFamily`; darwin and macosx give `macos`, any other OS or architecture `unknown`); before, they were the triple's enum names. Windows values are unchanged; `ParseOs` and `OsType` are gone.
+<a id="g359"></a>
+- **G359 (R5; closed by the owner, 2026-11-02: 「(a) この結果を記録して閉じる。」):** the allocation-context phantom cannot fail a cold scaling series alone: every `MeasureSeries` row uses d2 ≤ 3·d1, the test host's allocation context is 8,200 B (one phantom at most about 8,176 B), and the tightest size-0 headroom is `MirInitTest.InitializationScalesLinearly` row 1's 8,226 B (two coinciding phantoms would be needed); 41 runs gave no failure. Its cause is the background GC (`DOTNET_gcConcurrent=0` made 330 sequential windows exact; the remaining parallel offsets ±344, ±1,232, ±1,576 B are run-level). The test host was not changed; figures in `artifacts/verify/r5-units/g359/state.md`.
 
 ## Retired audit records
 
