@@ -33,6 +33,21 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
+    // PLAN G157 (47) (DECISIONS R5-M149): a need past a pair layer is laid out only where the item's case makes the layer leave its root's
+    // storage (InstanceCollector.LeavesStorage). `e@follow.1` reads Field 1 past e's layer, `(e@b0).1`: f's ref instance needs (S, i32),
+    // whose S has no C layout, at the read; in the owner instance the layer is e's own storage, whose records are at e and g's y, and the
+    // read adds none (the owner side).
+    [Theory]
+    [InlineData("x: i32, y: (S, i32)", "y@move", "InvalidCLayout_Kd (S, i32)|InvalidCLayout_Kd y@move|InvalidCLayout_Kd s/(S, i32)")]
+    [InlineData("x: ref/i32, y: ref/(S, i32)", "y", "InvalidCLayout_Kd e@follow.1")]
+    public void APairLayerNeedIsLaidOutWhereItsCaseLeavesStorage(string parameters, string argument, string records)
+    {
+        var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct S\n    public var n: i32\n    public var u: ()\nfunc f<s/T>(a: s/T, e: s/(S, i32)) -> i32\n" +
+            $"    s is value or valueborrow\n    return e@follow.1\nfunc g({parameters}) -> i32 => f(x, {argument})\nlet zz = 1\n");
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+    }
+
     // R5-M149: the layout-need rows (the owner's list) and LayoutNeeds.TypeOf, the one function naming each need's Type in its body: a Field
     // step through a raw pointer its prefix, a raw pointer's displacement its pointee; a call's row its Type arguments.
     [Fact]
