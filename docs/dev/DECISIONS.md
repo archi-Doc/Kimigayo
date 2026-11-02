@@ -192,6 +192,7 @@ rules that result from them.
 
 - **Q11 Full changes by shared acceptance tests and two candidates; a unit that does not converge goes to the owner**
   (2026-10-27, owner; [WORKFLOW](WORKFLOW.md) "Full changes", "Repeated reviews" and "Owner decisions").
+  Amended by Q13: a unit that does not converge on record selection is the planning session's.
   - Adopted (the owner, verbatim: 「そのように、WORKFLOW.mdを修正してください。いずれの場合も収束しない場合は、一時作業を停止して、
     オーナーに対応を質問するようにしてください。」, after 「G216 (a) の作り直しで試す」 and the owner's proposal of a design-first and
     an implementation-first lane): a Full change is a problem statement; shared acceptance tests written first by an author of
@@ -293,6 +294,43 @@ rules that result from them.
   - Rejected:
     - elapsed time: other sessions' builds and heavy runs load the machine;
     - resetting the clock per fix round: it lets repeated rounds escape the limit.
+
+- **Q13 Done-when: acceptance and soundness exact, record selection best effort** (2026-11-02, owner; [WORKFLOW](WORKFLOW.md)
+  "Review", "Repeated reviews" and "Owner decisions"; AGENTS Diagnostics).
+  - The owner's instruction (verbatim): 「ここ数日の作業を見ると、あまりに細かいところにこだわりすぎて、また、無謬にこだわりすぎて、
+    袋小路に入っていると感じる。また、SPEC自体に問題があり、そのため実装作業が難渋している印象もある。ここ数日の作業を精査し、
+    上記理由で実装が過度に複雑になっていないか、簡素化できる箇所はないか、チェックしてください。また、100%の設計・実装でなくて
+    良いです。90%で良いので、作業を進められないか、検討してください。」
+  - The owner adopted BU's report (PLAN 927b8de32) with 「了解しました。5件とも推奨どおり進めてください。」 (PLAN 4c7d13a9c).
+  - Rule: as WORKFLOW "Review" states.
+    - Of record differences, only three are regressions: an unnamed acceptance move; a new `InternalInvariant_Kd` on any
+      program, or a new Language error on a valid program; and a lost independent record. The other blocking findings
+      stand.
+    - Rule W decides dependence in code. A failed part fits every candidate and gives no evidence, and a record is
+      suppressed only where its check reads a failed or resting input directly and that input's record, or the record it
+      rests on, is still reported. Existing derived-use rows are this form: BU-75's FailDerived, an Owned conversion resting
+      on a failed part, and bu97's settle; they arrive on dev with G216 (a)'s joint landing. Removals by rule W, and other
+      records added on a program the base already rejects (other than `InternalInvariant_Kd`), are counted by diagnostic code.
+    - Expectations that pin a dependent record's presence or absence move under rule W. Each such commit cites Q13 and
+      counts them. No expectation of acceptance or of an independent record moves under Q13.
+    - A form outside a unit's rows is an open issue. A heuristic broken twice is not refined. A unit has one review.
+    - About diagnostics, the owner is asked only acceptance, soundness and SPEC questions. The planning session decides
+      record selection.
+  - Amends Q11: a unit that does not converge on record selection is the planning session's. Q12 stands.
+  - Removal stage: the record-selection machinery that the AGENTS bullet now forbids stays until two units remove it. D1
+    (rule W on G216 (a) Part 1) removes FailedFit and PublishJudged before the joint landing. D2 (a re-entry as a limit)
+    removes bu97's hop chain after it.
+  - Reason:
+    - Since 2026-11-01, G216 (a) Part 1 and bu97 spent most of their effort keeping dependent records out: C16, B5, B7, B8 and
+      the lengths; the depth test, hops and mx2. SPEC 23.1.2 does not require that, and it cannot be decided exactly, so
+      each review found a new form.
+    - The owner gave 13 answers in about 36 hours, and about 480 source lines served record selection alone. The evidence
+      is BU's audits, `impl-audit.md` and `spec-audit.md` in the BU notes' `simplify` folder, and R4's
+      `simplification-view-20261102.md`.
+  - Rejected:
+    - revising SPEC 23.1.2 now, to define dependence by a check's inputs: rule W needs no SPEC change, and the revision
+      stays an optional later SPEC unit;
+    - keeping exact suppression, with an `Unsupported_Kd` at each new form: it keeps the open family.
 
 ## Code rules (2026-10-12)
 
