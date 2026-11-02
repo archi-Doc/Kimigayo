@@ -292,10 +292,7 @@ public sealed partial class Binding
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
-                    type = binding.SignatureAtFunction(pattern, type); // As a typed argument's evidence (InferAdapted; U1.6g (c)).
-                    binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
-                    pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-                    return binding.Infer(pattern, type, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
+                    return this.InferAdapted(pattern, type, binding.FirstTyped(start, end)); // As a typed argument's evidence (U1.6g (c)).
                 default:
                     return true;
             }

@@ -186,6 +186,21 @@ public sealed partial class Binding
             literal ? PartKind.Literal : PartKind.Typed;
     }
 
+    // The first typed part of [start, end), as which a Typed position's common Type is evidence, a typed argument's (InferParts).
+    private Koto FirstTyped(int start, int end)
+    {
+        for (var i = start; i < end; i++)
+        {
+            var part = this.positionParts[i];
+            if (!IsUnfittedLiteral(part) && !this.IsAggregatePart(part) && this.SuppliedType(part) is not null)
+            {
+                return part;
+            }
+        }
+
+        throw new InvalidOperationException("A Typed position with a Type holds a typed part.");
+    }
+
     // The first literal part of [start, end), whose default a Literal position takes (SPEC 10.5.1, 10.2.1).
     private Koto FirstLiteral(int start, int end)
     {

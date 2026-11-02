@@ -83,6 +83,12 @@ public partial class OriginRelationDiagnosticTest
 
     private const string RefLocals = "func k(c: bool) -> i32\n    var x: i32 = 1\n    var y: i32 = 2\n";
 
+    private const string RefI64 = "func k(c: bool, r: ref/i64) -> i32\n";
+
+    private const string OneI64 = "func one(v: i64) -> i32 => 0\n";
+
+    private const string HaT = "func ha<T>(x: [2 of T]) -> i32 => 0\n";
+
     // D1 (BU's design review): a join whose sources are typed values decides its own Type (SPEC 10.5.1 independently typable, 14.9.2
     // step 2) at a named call and at a value call alike, so it gets the record a typed argument gets there, the same on both call kinds
     // (`h(a)` and a value call `h(a)` give NoApplicableOverload_Kd at the call); its twins pass sources of the parameter Type.
@@ -238,6 +244,35 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("B2b", "q1_join", IdentityT + RefLocals + "    let r = identity(if c => x@ref else => y)\n    return 0\n", "")]
     public void AnArgumentSourceIsFittedPerCandidate(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // SPEC 10.5.1, 14.9.2 step 2 (revision B's fix round, BU-80; the group review's B1 and B4): the result sources of one control-flow
+    // expression that differ only in safe reference layers over one Type, or are literals of it, agree on that Type and are value-read:
+    // at the root argument (p41, its mirror q1a, `match` q1k), in a `let` (q1d) and nested (q1h) alike, at a fixed parameter (q1f), beside
+    // an overload (q1e), at `ref/T` (q1i), beside a waiting call (t01) and between two references (r_one), where the position's Type is
+    // evidence as a typed argument's is. They agree as 14.9.2 step 2 forms a `let` join's Type, part by part: Tuple sources by element
+    // (p46 as its `let` twin; the literal clause in each part, r18 and its argument twins s07, s08), while an array literal source is typed
+    // whole, so the elements of one literal (q2d, as alone r01) and of different array sources (q2f, r09) are conflicting evidence.
+    [Theory]
+    [InlineData("p41", IdentityT + RefLocals + "    let r = identity(if c => x@ref else => 1)\n    return 0\n", "")]
+    [InlineData("q1a", IdentityT + RefLocals + "    let r = identity(if c => 1 else => x@ref)\n    return 0\n", "")]
+    [InlineData("q1k", IdentityT + RefLocals + "    let r = identity(match c\n        true => x@ref\n        false => 1\n    )\n    return 0\n", "")]
+    [InlineData("q1d", RefLocals + "    let j = if c => x@ref else => 1\n    return 0\n", "")]
+    [InlineData("q1h", IdentityT + RefLocals + "    let r = identity(if c => (if c => x@ref else => 1) else => y)\n    return 0\n", "")]
+    [InlineData("q1f", OneI64 + RefI64 + "    return one(if c => r else => 1)\n", "")]
+    [InlineData("q1e", FScalars + RefI64 + "    return f(if c => r else => 1)\n", "")]
+    [InlineData("q1i", "func inspect<T>(value: ref/T) -> i32 => 0\n" + RefLocals + "    return inspect(if c => x@ref else => 1)\n", "")]
+    [InlineData("t01", IdentityT + OneI64 + RefI64 + "    return one(if c => r else => identity(r))\n", "")]
+    [InlineData("r_one", OneI64 + RefI64 + "    return one(if c => r else => r)\n", "")]
+    [InlineData("p46", IdentityT + RefLocals + "    let r = identity(if c => (x@ref, 1) else => (y, 2))\n    return 0\n", "")]
+    [InlineData("r18", RefLocals + "    let j = if c => (x@ref, 1) else => (1, y)\n    return 0\n", "")]
+    [InlineData("s07", IdentityT + RefLocals + "    let r = identity(if c => (x@ref, 1) else => (1, y))\n    return 0\n", "")]
+    [InlineData("s08", "func ft(x: (i64, i32)) -> i32 => 0\nfunc ft(x: (bool, i32)) -> i32 => 1\n" + RefI64 + "    return ft(if c => (r, 1) else => (1, 2))\n", "")]
+    [InlineData("q2d", HaT + RefLocals + "    return ha(if c => [x@ref, y] else => [y, x])\n", "NoApplicableOverload_Kd ha(if c => [x@ref, y] else => [y, x])")]
+    [InlineData("r01", HaT + RefLocals + "    return ha([x@ref, y])\n", "NoApplicableOverload_Kd ha([x@ref, y])")]
+    [InlineData("q2f", "func ga<T>(x: Array<T>) -> i32 => 0\n" + RefLocals + "    return ga(if c => [x@ref] else => [y])\n", "NoApplicableOverload_Kd ga(if c => [x@ref] else => [y])")]
+    [InlineData("r09", HaT + RefLocals + "    return ha(if c => [x@ref, x@ref] else => [y, y])\n", "NoApplicableOverload_Kd ha(if c => [x@ref, x@ref] else => [y, y])")]
+    public void OneJoinsResultSourcesAgreeByAValueRead(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
 
     // SPEC revision B (BU-80; supersedes U1.6g (a) and (b) at call arguments): typed sources in conflict at a call argument are argument
     // sources fitted per candidate (SPEC 10.5.1), as typed array elements are, so no candidate admits both: with two candidates (sc_ov,

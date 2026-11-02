@@ -64,6 +64,32 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 14.9.2 step 2 (revision B, Q1 (b)): the root of the part-by-part formation `source` is a part of: the outermost control-flow
+    // expression it is a result source of (ResultTarget), through nested ones and the Tuple literals it is an element of (formed by
+    // element), or `source` itself. An array or Dictionary literal is typed whole, so its elements are parts of no outer formation.
+    private static Koto FormationRoot(Koto source)
+    {
+        while (true)
+        {
+            if (ResultSourceForm(source).Parent is TupleLiteralKoto tuple)
+            {
+                source = tuple;
+            }
+            else if (ResultTarget(source) is { } target && ControlFlowExpression(target) is not null)
+            {
+                source = target.Parent is LabeledKoto label ? label : target;
+            }
+            else
+            {
+                return source;
+            }
+        }
+    }
+
+    // SPEC 3.5.3, 14.9.2 step 2 (Q1 (b)): the Type one join's sources agree on when literals sit beside typed sources of common Type
+    // `common`: a reference's terminal read Type, which the reference sources supply by a value read; `common` otherwise.
+    private BoundType BesideLiterals(BoundType common, BindingScope scope) => this.ReadTypeReferent(common, scope) ?? common;
+
     // SPEC 14.9.1, 10.5.1: the survey of a control-flow expression's result sources without binding them, for its argument or operand
     // kind; with `fit`, whether every literal source fits it (SPEC 12.3). Its context is released unless a nested result took the next.
     private ResultSurvey SurveyResult(Koto target, BindingScope scope, BoundType? fit = null)
@@ -144,11 +170,9 @@ public sealed partial class Binding
             context.Expected = null;
         }
 
-        if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
+        if (context.HasLiteral && context.Expected is { } common)
         {
-            // SPEC 3.5.3, 14.9.2: an unfitted literal is fitted to the terminal read Type of the reference sources,
-            // which then supply that Type by a value read.
-            context.Expected = terminal;
+            context.Expected = this.BesideLiterals(common, scope); // An unfitted literal is fitted to it, the references value-read.
         }
 
         if (conflict)

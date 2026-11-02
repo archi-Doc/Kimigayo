@@ -301,25 +301,48 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 14.9.2 step 2: the common Type of the typed parts of [start, end), literals of it and safe reference layers over it
-    // included; `typed` tells whether there is one; null when there is none or they conflict.
+    // SPEC 14.9.2 step 2, 10.5.1 (revision B, Q1 (b)): the common Type of the typed parts of [start, end); `typed` tells whether there
+    // is one; null when there is none or they conflict. Parts of one formation (OneFormation) that differ only in safe reference layers
+    // over one Type, or a reference beside literals of its Type (BesideLiterals), have that Type and are value-read, as in a `let` and as
+    // an argument alike; any other parts (the elements of one array literal, those of different array sources) agree by no value read.
     private BoundType? PositionType(int start, int end, BindingScope scope, out bool typed)
     {
         var types = this.partTypes;
         types.Clear();
+        var literal = false;
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
-            if (!IsUnfittedLiteral(part) && !this.IsAggregatePart(part) && this.SuppliedType(part) is { } type)
+            if (IsUnfittedLiteral(part))
+            {
+                literal = true;
+            }
+            else if (!this.IsAggregatePart(part) && this.SuppliedType(part) is { } type)
             {
                 types.Add(type);
             }
         }
 
         typed = types.Count > 0;
-        var common = typed ? this.SelectCommonType(types, scope, out _) : null;
+        var formation = typed && this.OneFormation(start, end);
+        var common = !typed || (!formation && this.ReadTypeUnification(types, scope) is not null) ? null : this.SelectCommonType(types, scope, out _);
         types.Clear();
-        return common;
+        return formation && literal && common is not null ? this.BesideLiterals(common, scope) : common;
+    }
+
+    // SPEC 14.9.2 step 2 (revision B, Q1 (b)): whether the parts of [start, end) are parts of one formation: they share one FormationRoot.
+    private bool OneFormation(int start, int end)
+    {
+        var root = FormationRoot(this.positionParts[start]);
+        for (var i = start + 1; i < end; i++)
+        {
+            if (!ReferenceEquals(FormationRoot(this.positionParts[i]), root))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate

@@ -9968,6 +9968,15 @@ resumed by R4-M86 (2026-10-20).
     approved draft's text and examples; STATUS's inference row names the support.
   - Staged removal: ClassifiedByCall, ConflictWaits, the argument-side survey rows and the waited-join argument path stay reached
     after revision B (counter in `spec-b\impl-stop-B3.md`); PLAN G383 (B3a–B3c; B3c with G335 U1) schedules their removal.
+  - **Fix-A** (the group review's B1 and B4; main's decisions, 2026-11-03: "one join's result sources agree exactly as 14.9.2 step 2
+    forms their common Type in a `let`", Q1 (b)'s P1). PositionType is the one rule at every position: parts of one formation
+    (OneFormation: one FormationRoot, through control-flow results and Tuple elements; an array or Dictionary literal is typed whole)
+    that differ only in safe reference layers, or a reference beside literals of its Type (BesideLiterals, shared with the survey), have
+    that Type and are value-read; other parts agree by no value read. A Typed position's Type is evidence as a typed argument's
+    (InferAdapted at its first typed part). Moves: B1 valid again as on dev (p41, q1a, q1b, q1c, q1e, q1f, q1i, q1k, r11, s09, t01,
+    t04; head's other rejection `one(if c => r else => r)` and its identity variants); B4 conflicting evidence again (q2d, q2e, q2f,
+    r09, r15); r18 (the `let` Tuple gap) and its argument twins s07, r19 rejected → valid by the literal clause per part; s08 valid by
+    per-candidate leaf fitting, class (1). p46 and its `let` twin q2b stay valid.
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
