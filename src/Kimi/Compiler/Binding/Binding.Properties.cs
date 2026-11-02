@@ -137,9 +137,15 @@ public sealed partial class Binding
     // keeps its Type. The owner accepted the support reduction (2026-10-31). Removal: imaging a container's atoms (PLAN, after R6-check).
     private FunctionKoto? UnimagedClosure(BoundProperty property)
     {
+        if (property.Type is not { ContainsClosure: true } inferred)
+        {
+            return null;
+        }
+
         var count = 0;
-        if (property.Type is not { ContainsClosure: true } inferred || this.FixedAtoms(
-            inferred, property.Declaration, BinderClass.EnclosingContainer, null, ref count, this.visitedParts.Begin(this.storageVersion)) is not { Symbol.Declaration: FunctionKoto literal })
+        var query = this.visitedParts.Begin(this.storageVersion);
+        var reached = this.FixedAtoms(inferred, property.Declaration, BinderClass.EnclosingContainer, null, ref count, query);
+        if (reached is not { Symbol.Declaration: FunctionKoto literal })
         {
             return null;
         }

@@ -9674,6 +9674,23 @@ resumed by R4-M86 (2026-10-20).
     storage substitution, and `TypeOrigins.AccumulateRequirements` reads a Closure's arguments through `OriginArgumentVariance`, so
     `ClosureArgumentVariance` publishes the Field Closure's occurrences; then `UnimagedClosure`, `BoundProperty.Refusal` and its read
     go. Tests: `PropertyBindingTest.AFieldClosureNamingItsContainersOriginIsTheLocatedLimit` (31 rows, guards O1a, O1c, O3, O4, x1).
+  - The Closure row (U2b): `CallSignature`'s Closure row is `ClosureSignature` under its definition, and a Closure's Owned verdict
+    combines its captures with `SignatureCapability`, a part published as member `Components.Count` (outside −1 and 0..n−1; the
+    erasure, judging `ErasureSubject`, never reads it). New rejections, correct under SPEC 15.2.3, each `UnprovenConstraint_Kd` at the
+    use on both pipelines: the j group (j, a, e, p3b, p4-p7: a Closure naming an enclosing function's Origin, written, through a maker,
+    a generic pass, an Option or the result; e's only record is now Binding's, before the old Analysis' R4-M159 stop), p10 (a generic
+    maker's `func (x: T) => ()`, SPEC 8.15) and q1, q2 (a nested or aggregate parameter's Origin, SPEC 15.3.4); the twins b, h, k, p8,
+    p10b, q1s, q2s stay accepted. K5 does not grow; no library or milestone program is newly rejected. Closes G353 and G273's
+    named-function item.
+  - The BU-60 gap row: where BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300),
+    `CallSignature` gives no signature and the part answers BU-22's limit with a site whose Use is the literal (`CapabilityWork.Site`,
+    kept across passes); at the outermost scope it is Error and the prologue publishes the one located `Unsupported_Kd`, with no
+    `UnprovenConstraint_Kd` added. N4 and N4b's record moves from the collector's at the whole literal (7:21) to Binding's at its
+    signature (7:26): the program now stops before collection.
+  - Cost: one closed signature per Closure proven Owned, one Tuple per erased Closure; warm Bind 0 B; cold Bind +4.3 KB (+0.09%) on
+    Milestone 1 and 26 and +7.9 KB on a G353 program, timing within noise (pinned A/B against dev 87388b1a9,
+    `artifacts/benchmarks/20261102-g353-bind`). Tests: `ConcreteClosureTest.AClosureIsOwnedWhenItsFixedSignatureOriginsAreStatic` (20
+    rows), `ErasureOwnedDiagnosticTest.AnErasureJudgesTheEnvironmentNotTheSignature` (p1, p11, p12, p2) and the N4 rows.
   - Rejected: imaging a container's atoms in the Closure Type now (option (B): K5 grows until R6-check); a second walk for the record's
     location (BU's n1, R4's N3-1); an open `Func` filter, which reads as a mode (BU's n2).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
