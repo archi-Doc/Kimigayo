@@ -57,6 +57,12 @@ public sealed partial class Binding
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
 
+    // SPEC 10.1, 10.3, 10.4 step 2: before selection a candidate's result is filtered by the structural part alone, every Origin binding
+    // equal inside Function Types too, so no Origin relation and no implementation well-formedness (FailedSignatureWellFormedness) drops
+    // a candidate for another to win; the selected candidate's own fit judges them (DECISIONS R4-M155, landing review B1).
+    internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
+        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
+
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
 

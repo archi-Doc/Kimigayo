@@ -98,6 +98,16 @@ public partial class CallableOriginForwardingTest
 
     private const string CBA = CB + "    origin b outlives a\n";
 
+    private const string MkParameters = "(x: i32, a: ref/i32, b: ref/i32, c: ref/i32) -> Option<";
+
+    private const string MkC = "func mk" + MkParameters + FnC + ">\n" + CB + "    return .None\n";
+
+    private const string MkT = "func mk<T>(x: T, a: ref/i32, b: ref/i32, c: ref/i32) -> Option<" + FnB + ">\n    return .None\n";
+
+    private const string KHead = "func k(a: ref/i32, b: ref/i32, c: ref/i32) -> i32\n";
+
+    private const string CallMk = KHead + CB + "    let r: Option<" + FnB + "> = mk(1, a, b, c)\n    return 0\n";
+
     private const string CallableApply = "func apply<F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> Option<ref/(ref/i32)>>\n    return 0\nfunc k(s: ref/i32) -> i32\n";
 
     private const string FlatApply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\n";
@@ -227,7 +237,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("U2.1", "o1asg_c", ABCHead + "o: Option<" + FnC + ">, p: Option<" + FnB + ">) -> i32\n" + CBA + "    var g = p@move\n    g = o@move\n    return 0\n", "", null)]
     [InlineData("U2.1", "vo1", ABCHead + "o: Option<" + FnC + ">, h: (Option<" + FnB + ">) -> i32) -> i32\n" + CB + "    return h(o@move)\n", "UnprovenOriginContract_Kd o@move", null)]
     [InlineData("U2.1", "vo1_c", ABCHead + "o: Option<" + FnC + ">, h: (Option<" + FnB + ">) -> i32) -> i32\n" + CBA + "    return h(o@move)\n", "", null)]
-    [InlineData("U2.1", "pg1", "struct S {a, b, c}\n" + CB + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "NoApplicableOverload_Kd self.mk()", null)] // the candidate's comparison fact (UnprovenOriginContract_Kd) should be the record; open issue (PLAN, R4's), the T2 branch keeps that expectation
+    [InlineData("U2.1", "pg1", "struct S {a, b, c}\n" + CB + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "UnprovenOriginContract_Kd self.mk()", null)] // the selected candidate's comparison record (landing review B1; closes PLAN G376)
     [InlineData("U2.1", "pg1_c", "struct S {a, b, c}\n" + CBA + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "", null)]
     [InlineData("U2.1", "cal2", CallableApply + "    let c = " + ErasedClosure + "\n    return apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
     [InlineData("U2.1", "cal2_c", CallableApply + "    let c = func [] (x: ref/i32) -> Option<ref/(ref/i32 during static) during x> => .None\n    return apply(c@ref)\n", "", null)]
@@ -238,6 +248,22 @@ public partial class CallableOriginForwardingTest
     [InlineData("U2.1", "two_c", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    origin r outlives q\n    origin q outlives r\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "", null)]
     public void EveryCallableComparisonJudgesTheImplementationsWellFormedness(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
+
+    // Landing review B1 (SPEC 10.1, 10.3, 10.4 step 2; DECISIONS R4-M155): before selection a candidate's result is filtered by its
+    // structural part alone, so neither the implementation's own well-formedness nor an Origin inside a Function Type drops a candidate
+    // for another to win. sel2 (and its method form sel1) stays ambiguous, as its controls sel2ctl and sel2cba; the lone candidate
+    // (sel2one) and the strictly best i32 candidate (sel4run, as dev selects it) are selected and their comparison is the record; pre1b,
+    // a Function Type's member Origin, is ambiguous (dev accepted it).
+    [Theory]
+    [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
+    [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
+    [InlineData("sel2ctl", "func mk" + MkParameters + FnB + ">\n" + CB + "    return .None\n" + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
+    [InlineData("sel2cba", MkC + MkT + KHead + CBA + "    let r: Option<" + FnB + "> = mk(1, a, b, c)\n    return 0\n", "AmbiguousBinding_Kd mk(1, a, b, c)")]
+    [InlineData("sel2one", MkC + CallMk, "UnprovenOriginContract_Kd mk(1, a, b, c)")]
+    [InlineData("sel4run", MkC + MkT + KHead + CB + "    let v: i32 = 1\n    let r: Option<" + FnB + "> = mk(v, a, b, c)\n    return 0\n", "UnprovenOriginContract_Kd mk(v, a, b, c)")]
+    [InlineData("pre1b", "func mk(x: i32, b: ref/i32, c: ref/i32) -> Option<(ref/i32 during b) -> i32>\n    return .None\nfunc mk<T>(x: T, b: ref/i32, c: ref/i32) -> Option<(ref/i32 during c) -> i32>\n    return .None\nfunc k(b: ref/i32, c: ref/i32) -> i32\n    origin c outlives b\n    let r2: Option<(ref/i32 during b) -> i32> = mk(1, b, c)\n    return 0\n", "AmbiguousBinding_Kd mk(1, b, c)")]
+    public void TheExpectedResultFilterJudgesOnlyTheStructuralPart(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // G216 (a) T2b, U2.1, under DECISIONS R4-M162 (the strict form, superseding the owner's (A) result half): a nested signature's result
     // relating a per-call Origin to `static` beyond its inputs is recorded where it is written, never at a value call (SPEC 15.3.4,

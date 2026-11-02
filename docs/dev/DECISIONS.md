@@ -5777,8 +5777,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`RequireNestedResult`); an anonymous function's body assumes its own result's well-formedness. Superseded by R4-M162
     (2026-11-02, U2.1 d-revert): the result half is judged where it is written; `RequireNestedResult`, the anonymous result premise
     and TypeOrigins' Result exemption are deleted. The input half (R4-M137) stays.
+  - The implementation's own well-formedness (`FailedSignatureWellFormedness`, the owner's (a)) is judged after selection by the
+    selected candidate's fit, never in the expected-result filter, which reads the structural part alone (`FitsStructuralPartAt`:
+    every Origin binding equal, inside Function Types too, which also takes dev's member-Origin drop, pre1b, out of the filter)
+    (SPEC 10.1, 10.3; landing review B1, 2026-11-02).
   - Staged: PLAN G351 (a reference's Refuted, fact-less and pending constraint outcomes still record through `referenceConstraints`;
-    removal: they route through RequireConstraint, then that record path is deleted).
+    removal: they route through RequireConstraint, then that record path is deleted). `OriginFitSearch`'s early return for a
+    Function component (removal: G216 (a) U2.2 removes the search).
   - Rejected: a second walk to explain a record; the explainer as an interim; per-form clauses.
   - Amendment (G351a, U2.1 r2-4, 2026-10-31; BU's census check): the proof channel also carries a clause fact, `ClauseFact` (the
     clause, its Constraint as proven, its outcome, whether it rests on a limit). Each clause list (`CheckConstraints`,

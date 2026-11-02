@@ -519,7 +519,7 @@ public sealed partial class Binding
                 return result is null && solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
             }
 
-            if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call) &&
+            if (expected is not null && result is not null && !this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
                 this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)
             {
                 return CandidateApplicability.Inapplicable;
