@@ -246,7 +246,7 @@ public sealed partial class Binding
             return CandidateApplicability.Pending;
         }
 
-        if (this.AwaitsPosition(node) && this.LateTypeOf(node, type) is { } late && this.FitsStructurallyAt(late, type, use))
+        if (this.AwaitsPosition(node) && this.LateTypeOf(node, type) is { } late && this.FitsStructuralPartAt(late, type, use))
         {
             operation = new(part, late, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact); // SPEC 14.9.2 step 3: it takes the Type.
             return CandidateApplicability.Applicable;
@@ -262,7 +262,7 @@ public sealed partial class Binding
 
         if (!this.AdaptInput(
                 node, type, actual, scope, null, null, out var adapted, out var quality, out var kind, recordPair: false, deferAcquisition: true) ||
-            !this.FitsStructurallyAt(adapted, type, use))
+            !this.FitsStructuralPartAt(adapted, type, use))
         {
             return CandidateApplicability.Inapplicable;
         }

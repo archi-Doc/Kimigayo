@@ -45,16 +45,18 @@ public partial class CallableOriginForwardingTest
         ScalarEmissionTest.EmitFixture("CallableOriginForwardExclusive", Source, string.Empty);
     }
 
+    // A mode or a parameter shape misfits structurally, so no candidate applies; a fixed Origin is the selected candidate's whole-contract
+    // comparison, recorded at the argument after selection (SPEC 10.1, 15.6.1; DECISIONS R4-M155, landing review B1).
     [Theory]
-    [InlineData("ref/i32 during static")]
-    [InlineData("uniq/i32")]
-    [InlineData("ref/bool")]
-    [InlineData("ref/i32, ref/i32")]
-    public void ForwardingCannotEraseFixedOriginsModesOrParameterShapes(string input)
+    [InlineData("ref/i32 during static", DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData("uniq/i32", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("ref/bool", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("ref/i32, ref/i32", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void ForwardingCannotEraseFixedOriginsModesOrParameterShapes(string input, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze("func accept(f: (ref/i32) -> i32) => ()\nfunc forward(f: (" + input + ") -> i32) => accept(f@move)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, static x => x.Failure == BindingFailure.NoApplicableCandidate);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.False(c.Generate(TextWriter.Null));
     }
 

@@ -203,8 +203,8 @@ public sealed partial class Binding
                 first ??= layer;
             }
 
-            // Transitional until G216 (a) U2.2 removes this search (DECISIONS R4-M155, Staged): a Function component is one comparison, which the fit's walk judged and
-            // records as its contract fact (RecordComparisonFacts), so its members are no plain positions here.
+            // Transitional until G216 (a) U2.2 removes this search (DECISIONS R4-M155, Staged): a Function component is one comparison,
+            // which the fit's walk judged and records as its contract fact (RecordComparisonFacts), so its members are no plain positions.
             if (mode != OriginFitMode.Verified && actual.Kind == BoundTypeKind.Function)
             {
                 return first;

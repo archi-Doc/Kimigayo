@@ -167,7 +167,7 @@ public sealed partial class Binding
             {
                 // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
                 // against it at the ordinary result fit; without such evidence the slot remains unsolved.
-                return arguments[slot] is not { } establishedArray || IsStructuralSubtype(establishedArray, actual);
+                return arguments[slot] is not { } establishedArray || FitsStructuralPart(establishedArray, actual);
             }
 
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
@@ -202,7 +202,7 @@ public sealed partial class Binding
                 }
 
                 if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    IsStructuralSubtype(actual, previous) && IsStructuralSubtype(previous, actual))
+                    FitsStructuralPart(actual, previous) && FitsStructuralPart(previous, actual))
                 {
                     // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
                     // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is

@@ -16,7 +16,7 @@ namespace Kimi.Compiler;
 //   holds.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type).
-// - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsStructuralSubtype, IsSubtypeAt), not these.
+// - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsSubtypeAt, FitsStructuralPart), not these.
 public sealed partial class Binding
 {
     /// <summary>Proves the implemented structural subtype rules without performing a value operation.</summary>
@@ -57,9 +57,10 @@ public sealed partial class Binding
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
 
-    // SPEC 10.1, 10.3, 10.4 step 2: before selection a candidate's result is filtered by the structural part alone, every Origin binding
-    // equal inside Function Types too, so no Origin relation and no implementation well-formedness (FailedSignatureWellFormedness) drops
-    // a candidate for another to win; the selected candidate's own fit judges them (DECISIONS R4-M155, landing review B1).
+    // SPEC 10.1, 10.3, 10.4 step 2, 15.6.1: the one entry of every pre-selection fit (a candidate's result, argument, receiver, its
+    // acquisition and adaptation): the structural part alone, every Origin binding equal inside Function Types too, so no Origin relation
+    // and no implementation well-formedness (FailedSignatureWellFormedness) drops a candidate for another to win; the selected candidate's
+    // own fit judges them (DECISIONS R4-M155, landing review B1).
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
 

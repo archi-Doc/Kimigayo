@@ -149,7 +149,7 @@ public sealed partial class Binding
 
     private bool RequireAcquisition(Koto source, BoundType actual, BoundType expected, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
     {
-        if (fixedExpectation || (!deferAcquisition && !this.FitsStructurallyAt(actual, expected, source)))
+        if (fixedExpectation || (!deferAcquisition && !this.FitsStructuralPartAt(actual, expected, source)))
         {
             return false;
         }
@@ -170,7 +170,7 @@ public sealed partial class Binding
         }
 
         if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
-            !this.FitsStructurallyAt(adapted, expected, node))
+            !this.FitsStructuralPartAt(adapted, expected, node))
         {
             return null;
         }

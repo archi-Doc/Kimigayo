@@ -315,7 +315,19 @@ public sealed partial class Binding
                 }
 
                 // SPEC 15.6.1: applicability uses the structural part of each fit; its Origin relations are judged after selection.
-                if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true, deferAcquisition: true) || !this.FitsStructurallyAt(adaptedReceiver, requiredReceiver, call))
+                if (!this.AdaptInput(
+                        receiver!,
+                        requiredReceiver,
+                        receiver!.BoundType!,
+                        scope,
+                        receiverPath,
+                        declaringType,
+                        out var adaptedReceiver,
+                        out var quality,
+                        out var kind,
+                        receiver: true,
+                        deferAcquisition: true) ||
+                    !this.FitsStructuralPartAt(adaptedReceiver, requiredReceiver, call))
                 {
                     if (SharedObjectAuthorityMismatch(receiver.BoundType!, requiredReceiver))
                     {

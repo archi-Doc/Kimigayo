@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The Type relation (SPEC 3.8, 15.3.5, 15.6.1; DECISIONS BU-4): subtyping, identity up to Origin variance, read by Type-to-Type
-// comparisons (identity tests, slot unification, ranking, contract and layer matching) through IsSubtype, IsStructuralSubtype,
-// IsSubtypeAt and FitsStructuralPart, and by the value fits (Binding.ValueFits.cs) below their root. Never relates only to itself: a
+// comparisons (identity tests, slot unification, ranking, contract and layer matching) through IsSubtype, IsSubtypeAt and
+// FitsStructuralPart, and by the value fits (Binding.ValueFits.cs) below their root. Never relates only to itself: a
 // Type holding Never is an ordinary Type, and Never fitting is a value judgment (SPEC 3.8), as 10.7's result compatibility is a
 // callable one (CallableSignatureFits). Each entry is one query of the relation's one walk (RelationWalk, Binding.TypeRelations.Walk.cs).
 public sealed partial class Binding
@@ -20,10 +20,6 @@ public sealed partial class Binding
     // SPEC 3.8: whether `actual` is a subtype of `expected`; `own` is the declaration whose per-call inputs `actual` names.
     internal static bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
         => new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected, own: own);
-
-    // SPEC 15.6.1: the structural part of the relation, every Origin binding outside Function Types treated as equal.
-    internal static bool IsStructuralSubtype(BoundType actual, BoundType expected)
-        => new RelationWalk(null, null, OriginPart.Structural).Fits(actual, expected);
 
     // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
     // bindings never rank candidates.

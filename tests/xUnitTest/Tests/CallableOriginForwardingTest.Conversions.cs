@@ -108,6 +108,18 @@ public partial class CallableOriginForwardingTest
 
     private const string CallMk = KHead + CB + "    let r: Option<" + FnB + "> = mk(1, a, b, c)\n    return 0\n";
 
+    private const string HB = "func h(a: ref/i32, b: ref/i32, c: ref/i32, x: " + FnB + ", n: i32) -> i32\n" + CB + "    return 0\n";
+
+    private const string HC = "func h(a: ref/i32, b: ref/i32, c: ref/i32, x: " + FnC + ", n: i64) -> i32\n    return 1\n";
+
+    private const string KF = "func identity<T>(v: T) -> T => v@move\nfunc k(a: ref/i32, b: ref/i32, c: ref/i32, f: " + FnC + ") -> i32\n" + CB;
+
+    private const string PairFG = "func pair<T>(x: T, y: T) -> i32 => 0\nfunc k(a: ref/i32, b: ref/i32, c: ref/i32, f: " + FnB + ", g: " + FnC + ") -> i32\n";
+
+    private const string HPre = "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\n";
+
+    private const string KPre = "func k(b: ref/i32, c: ref/i32, f: (ref/i32 during c) -> i32) -> i32\n    origin c outlives b\n    return h(f@move, 1, b)\n";
+
     private const string CallableApply = "func apply<F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> Option<ref/(ref/i32)>>\n    return 0\nfunc k(s: ref/i32) -> i32\n";
 
     private const string FlatApply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\n";
@@ -144,16 +156,17 @@ public partial class CallableOriginForwardingTest
     // recorded where it is written, and a Closure body never assumes it (SPEC 15.3.4, 15.6.1; DECISIONS R4-M162). The invalid twins drop the use premise, take a target that does not
     // give the relation (t1j_n, t1p_n, cz11, cz12, cz14_n; a header that differs from the target only in its Origins is judged by its
     // erasure, SPEC 7.7.4, design-r2 Amendment 3: cz14) or convert under `origin r outlives q` alone (c2b, c2d, c2e, c2f; inside a tuple or array
-    // literal the conversion's own record at the converted value, c2, c4). A conversion at a call argument is the call's
-    // NoApplicableOverload_Kd as dev reports t1d_n. A head whose result relates Origins no clause relates (WeakerHead, LoneInputs) is
-    // also its declaration's record (R4-M162); its well-formed form is the valid twin (c2b_c, t1j).
+    // literal the conversion's own record at the converted value, c2, c4). A conversion at a call argument is the selected
+    // candidate's comparison record at the argument after selection (t1d_n; dev: NoApplicableOverload_Kd; landing review B1). A head
+    // whose result relates Origins no clause relates (WeakerHead, LoneInputs) is also its declaration's record (R4-M162); its
+    // well-formed form is the valid twin (c2b_c, t1j).
     [Theory]
     [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("t1c", ChainHead + "i32\n    origin b outlives c\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "")]
     [InlineData("t1c_n", ChainHead + "i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1d", ChainHead + "i32\n    origin b outlives c\n    func use(g: " + ChainTarget + ") -> i32 => 0\n    return use(f@move)\n", "")]
-    [InlineData("t1d_n", ChainHead + "i32\n    func use(g: " + ChainTarget + ") -> i32 => 0\n    return use(f@move)\n", "NoApplicableOverload_Kd use(f@move)")]
+    [InlineData("t1d_n", ChainHead + "i32\n    func use(g: " + ChainTarget + ") -> i32 => 0\n    return use(f@move)\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1o", ChainHead + ChainTarget + "\n    origin b outlives c\n    return f@move\n", "")]
     [InlineData("t1o_n", ChainHead + ChainTarget + "\n    return f@move\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1j", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (" + MeetInputs + ") -> Option<ref/(ref/i32 during a) during c>) -> i32\n    let g: (" + MeetInputs + ") -> Option<ref/(ref/i32 during a) during (c and b)> = f@move\n    return 0\n", "")]
@@ -178,11 +191,11 @@ public partial class CallableOriginForwardingTest
     [InlineData("cz14_n", "func k(x: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/i32 during static> = func [] (q: ref/i32) -> Option<ref/i32 during x> => .None\n    return 0\n", "UnprovenOriginContract_Kd func [] (q: ref/i32) -> Option<ref/i32 during x> => .None")]
     [InlineData("c2b", WeakerHead + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2b_c", StrongerHead + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "")]
-    [InlineData("c2d", UseWeaker + WeakerHead + "    return use1(q, f@move)\n", "NoApplicableOverload_Kd use1(q, f@move); UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("c2d", UseWeaker + WeakerHead + "    return use1(q, f@move)\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2d_c", UseWeaker + StrongerHead + "    return use1(q, f@move)\n", "")]
     [InlineData("c2e", WeakerReturn + "    return f@move\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2e_c", WeakerReturn + "    origin q outlives r\n    return f@move\n", "")]
-    [InlineData("c2f", WeakerField + WeakerHead + "    let h = H.init(g: f@move)\n    return 0\n", "NoApplicableOverload_Kd H.init(g: f@move); UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("c2f", WeakerField + WeakerHead + "    let h = H.init(g: f@move)\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2f_c", WeakerField + StrongerHead + "    let h = H.init(g: f@move)\n    return 0\n", "")]
     [InlineData("c2", WeakerHead + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2_c", StrongerHead + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "")]
@@ -249,11 +262,14 @@ public partial class CallableOriginForwardingTest
     public void EveryCallableComparisonJudgesTheImplementationsWellFormedness(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
 
-    // Landing review B1 (SPEC 10.1, 10.3, 10.4 step 2; DECISIONS R4-M155): before selection a candidate's result is filtered by its
-    // structural part alone, so neither the implementation's own well-formedness nor an Origin inside a Function Type drops a candidate
-    // for another to win. sel2 (and its method form sel1) stays ambiguous, as its controls sel2ctl and sel2cba; the lone candidate
-    // (sel2one) and the strictly best i32 candidate (sel4run, as dev selects it) are selected and their comparison is the record; pre1b,
-    // a Function Type's member Origin, is ambiguous (dev accepted it).
+    // Landing review B1 and its re-check (SPEC 10.1, 10.3, 10.4 step 2, 15.6.1; DECISIONS R4-M155): every fit before selection, of a
+    // candidate's result, argument (also a waiting part's late Type) or slot, judges the structural part alone, so neither the
+    // implementation's own well-formedness nor an Origin inside a Function Type drops a candidate for another to win; after selection the
+    // whole contract is the record at the result or the argument. sel2 (its method form sel1) and asel (its waiting form aselw) stay
+    // ambiguous, as their controls sel2ctl, sel2cba and aselcba; a lone candidate (sel2one, asel1, aselw1, apre1) and the strictly best
+    // i32 candidate (sel4run, as dev selects it) are selected and their comparison is the record; pre1b and apre, a Function Type's member
+    // Origin, are ambiguous (dev accepted them); two Function values at one slot (slot1) differ only in Origins, so T takes the first and
+    // the second's comparison is the record, and with `b outlives a` it holds (slot1cba; dev rejected it).
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -262,7 +278,16 @@ public partial class CallableOriginForwardingTest
     [InlineData("sel2one", MkC + CallMk, "UnprovenOriginContract_Kd mk(1, a, b, c)")]
     [InlineData("sel4run", MkC + MkT + KHead + CB + "    let v: i32 = 1\n    let r: Option<" + FnB + "> = mk(v, a, b, c)\n    return 0\n", "UnprovenOriginContract_Kd mk(v, a, b, c)")]
     [InlineData("pre1b", "func mk(x: i32, b: ref/i32, c: ref/i32) -> Option<(ref/i32 during b) -> i32>\n    return .None\nfunc mk<T>(x: T, b: ref/i32, c: ref/i32) -> Option<(ref/i32 during c) -> i32>\n    return .None\nfunc k(b: ref/i32, c: ref/i32) -> i32\n    origin c outlives b\n    let r2: Option<(ref/i32 during b) -> i32> = mk(1, b, c)\n    return 0\n", "AmbiguousBinding_Kd mk(1, b, c)")]
-    public void TheExpectedResultFilterJudgesOnlyTheStructuralPart(string form, string body, string records)
+    [InlineData("asel", HB + HC + KF + "    return h(a, b, c, f@move, 1)\n", "AmbiguousBinding_Kd h(a, b, c, f@move, 1)")]
+    [InlineData("aselcba", HB + HC + KF + "    origin b outlives a\n    return h(a, b, c, f@move, 1)\n", "AmbiguousBinding_Kd h(a, b, c, f@move, 1)")]
+    [InlineData("asel1", HB + KF + "    return h(a, b, c, f@move, 1)\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData("aselw", HB + HC + KF + "    return h(a, b, c, identity(f@move), 1)\n", "AmbiguousBinding_Kd h(a, b, c, identity(f@move), 1)")]
+    [InlineData("aselw1", HB + KF + "    return h(a, b, c, identity(f@move), 1)\n", "UnprovenOriginContract_Kd identity(f@move)")]
+    [InlineData("apre", HPre + "func h(x: (ref/i32 during static) -> i32, n: i64, b: ref/i32) -> i32 => 1\n" + KPre, "AmbiguousBinding_Kd h(f@move, 1, b)")]
+    [InlineData("apre1", HPre + KPre, "UnprovenOriginContract_Kd f@move")]
+    [InlineData("slot1", PairFG + CB + "    return pair(f@move, g@move)\n", "UnprovenOriginContract_Kd g@move")]
+    [InlineData("slot1cba", PairFG + CBA + "    return pair(f@move, g@move)\n", "")]
+    public void ApplicabilityJudgesOnlyTheStructuralPart(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // G216 (a) T2b, U2.1, under DECISIONS R4-M162 (the strict form, superseding the owner's (A) result half): a nested signature's result
@@ -344,7 +369,7 @@ public partial class CallableOriginForwardingTest
     [Theory]
     [InlineData("c2bg", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2bg_c", StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData("c2dg", UseWeaker + WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    return use1(q, f@move)\n", "NoApplicableOverload_Kd use1(q, f@move); UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("c2dg", UseWeaker + WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    return use1(q, f@move)\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2dg_c", UseWeaker + StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    return use1(q, f@move)\n", "ComparisonLoanConflict_Kd x = 2")]
     [InlineData("c2_fnvalue_converted_weaker", WeakerHead + "    let g: " + WeakerTarget + " = f\n    let o = g()\n    return 0\n", "UnprovenOriginContract_Kd f; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c2_fnvalue_converted_weaker_c", StrongerHead + "    let g: " + WeakerTarget + " = f\n    let o = g()\n    return 0\n", "TransferRequired_Kd f")]
