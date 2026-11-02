@@ -77,11 +77,17 @@ public class CompilationSpecificationTest
         Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar text = \"unterminated")));
     }
 
+    // IMPL 20.2.1's table: the OS component without its version suffix and the architecture component, any other spelling unknown.
     [Theory]
     [InlineData("amd64-pc-win32-msvc", "windows", "x86_64", 64)]
     [InlineData("x86_64-pc-windows-msvc", "windows", "x86_64", 64)]
     [InlineData("arm64-apple-macosx13.0", "macos", "aarch64", 64)]
+    [InlineData("x86_64-apple-darwin23.1.0", "macos", "x86_64", 64)]
     [InlineData("i686-unknown-linux-gnu", "linux", "x86", 32)]
+    [InlineData("armv7-unknown-linux-gnueabihf", "linux", "unknown", 32)]
+    [InlineData("x86_64h-apple-macosx", "macos", "unknown", 64)]
+    [InlineData("x86_64-unknown-freebsd13.2", "unknown", "x86_64", 64)]
+    [InlineData("x86_64-unknown-linuxfoo", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-unrecognized", "unknown", "x86_64", 64)]
     public void PreparedTargetValuesAreCanonicalAndConsistent(string target, string os, string arch, int width)
     {
