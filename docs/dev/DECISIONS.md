@@ -6201,6 +6201,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     .None`). Payload operations keep no AdaptedType (HIR and MIR read it): the walk reads the adapted Types from a scratch buffer.
     Kept: CompletePayloads' fit and `CompleteEnumAcquisitions`' Type-formation check. Open: SolveLate's and the value call's loops
     (outside U4's files) are not yet one walk with the construction's.
+  - U4b (U4's review B1; R4 planning's decision, its first option, 2026-11-03): every Case or Function payload is recorded through
+    P1's record (`RecordsWaitingForm`, which `PrepareArgument` and `SolveConstruction`'s settled branch share) on every pass, so a
+    payload whose Type the qualifier or expected Type already fixes reads its own kind, never the absent record's Typed. A slot the
+    expected Type fixes counts as the expected result's only where no evidence binds it, as in a call: since the expected Type fixes
+    the slots before the payloads' evidence (SPEC 10.8.1), `ContributePayloads` takes an Evidence payload as binding each slot its
+    Type names. This is derived from the payloads' F1 and Types, not read from a published fact: a construction's solve has none
+    after an evidence pass (the planning session's to confirm). Rows: c3q, c3a (UnprovenOriginRelation_Kd .None), cx2q, cx2e, cx2c
+    (UnprovenOriginRelation_Kd .None: the written Type's omitted Origin fixes T; a named call's T, bound by `short@ref`, is
+    refuted), their valid twins, c3m unchanged. Open: an aggregate payload's typed children bind no slot here (the call's do, through
+    InferComposite), so such a payload's sibling stays a Result position and unjudged.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection

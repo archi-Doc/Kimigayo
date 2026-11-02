@@ -72,9 +72,33 @@ public sealed partial class Binding
             }
         }
 
-        // F1 of a Case construction (R4-M164 U4): each payload's contribution, `solved` holding the slots its expected Type fixed.
+        // F1 of a Case construction (R4-M164 U4): the call's rule over its payloads. `solved` holds the slots its expected Type fixed; as
+        // in a call, only those that no evidence binds count as the expected result's (Contribute), and an Evidence payload binds each
+        // slot its Type names (SPEC 10.8), settled or not, since the expected Type fixes the slots before the payloads' evidence (c3a).
         internal readonly void ContributePayloads(ReadOnlySpan<Koto> payload, SlotSet solved)
         {
+            var slot = this.Binding.RentSlotSet(CallSlotCount(this.Binder));
+            try
+            {
+                for (var g = 0; g < CallSlotCount(this.Binder); g++)
+                {
+                    slot.Clear();
+                    slot.Add(g);
+                    for (var i = 0; solved.Contains(g) && i < payload.Length; i++)
+                    {
+                        if (this.Binding.PartContribution(this.Call.ArgumentNodes[i]) == Contribution.Evidence &&
+                            MentionsSlots(payload[i].BoundType!, this.SlotOwner, slot))
+                        {
+                            solved.Remove(g);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(slot);
+            }
+
             for (var i = 0; i < payload.Length; i++)
             {
                 this.Contributions[i] = this.ContributionAt(i, payload[i].BoundType, solved);

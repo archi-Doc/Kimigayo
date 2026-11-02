@@ -203,6 +203,9 @@ public partial class OriginRelationDiagnosticTest
     // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4);
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
+    // cx2's and c3n's family with a written qualifier (c3q, cx2q) or an expected Type (c3a, cx2e, cx2c) errs at `.None` as the named
+    // call c3m does: a payload's evidence binds T, so `.None` is a Signature position (U4's review B1). cx2q/cx2e/cx2c's T holds the
+    // omitted Origin the written Type fixes before the payloads' evidence (SPEC 10.8.1), so their relation is unproven, not refuted.
     [Theory]
     [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [InlineData("j02_ok", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + LongBody + "    put8(p, v, E.init())\n    return 0\n", "", null)]
@@ -214,6 +217,17 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cxc2", "func mk(t: ref/i32 during a, x: ref/i32 during s, w: Option<ref/(ref/i32 during a) during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
     [InlineData("cx2", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W.Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("c3q", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w = W<ref/i32 during q>.Make(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("c3q_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w = W<ref/i32 during q>.Make(q, .None)\n    return 0\n", "", null)]
+    [InlineData("c3a", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: W<ref/i32 during q> = W.Make(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("c3a_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: W<ref/i32 during q> = W.Make(q, .None)\n    return 0\n", "", null)]
+    [InlineData("c3m", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc mkw<T>(t: T, w: Option<ref/T during static>) -> W<T>\n    return W.Make(t@move, w@move)\nfunc bad(q: ref/i32) -> i32\n    let w: W<ref/i32 during q> = mkw(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2q", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W<ref/i32>.Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2q_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W<ref/i32>.Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("cx2e", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = W.Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2e_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = W.Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("cx2c", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = .Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2c_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = .Make(p, .None)\n    return 0\n", "", null)]
     [InlineData("fn0", "func f(w: Option<ref/(ref/i32 during c) during d>) -> i32\n    return 0\nfunc g() -> i32\n    return f(.None)\n", "", null)]
     [InlineData("dl1_ok", ImpliedStore + "func good(p: uniq/(ref/i32 during q), v: ref/i32 during q, ys: ref/(ref/i32 during q) during q) -> i32\n    put2(p, v, .Some(ys))\n    return 0\n", "", null)]
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
