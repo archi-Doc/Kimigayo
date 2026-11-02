@@ -71,6 +71,11 @@ public class PathCapabilityDiagnosticTest
     // an i32, a struct Holder's, an object handle's, an Array's, obj and rc handles of one, var and let Arrays of an Exclusive Closure), a
     // var whose setter is private, one whose setter is custom and computed Fields of a scalar and a struct; Point's computed Field cx and
     // exclusive and retaining shared methods; the group's glook borrows its argument, and its function bump has its body appended.
+    private const string ElementStatics =
+        "struct Pt\n    public var x: i32 = 0\n    public init() => ()\ngroup Store\n    public var pt: Pt = Pt.init()\n    public var pair: (i32, i32) = (1, 2)\n" +
+        "    public var fa: [2 of i32] = [1, 2]\n    public var values: Array<i32> = [1, 2]\n    public let lpair: (i32, i32) = (1, 2)\n" +
+        "    public let lfa: [2 of i32] = [1, 2]\n";
+
     private const string Statics =
         "struct Point\n    public var x: i32 = 0\n    public computed cx: i32\n        get() -> i32 => self.x\n        set(value: i32) -> () => self.x = value\n" +
         "    public init() => ()\n    public func grow(self: uniq/Self) => self.x = self.x + 1\n" +
@@ -349,6 +354,27 @@ public class PathCapabilityDiagnosticTest
     {
         var c = MinimalEmissionTest.Analyze(Statics + body + "\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // PLAN G203 (SPEC 3.4.3, 4.7, 4.7.1, 15.1.5): an element of a mutable static's Tuple, fixed array or Array is an inline part of its
+    // path and writable as its Field is (`Store.pt.x = 3`), so Binding accepts the write, assigned or updated. The old analysis, which
+    // models no static storage (P42), gives its located Unsupported_Kd there, as at the Field's write. A `let` static's element keeps
+    // InvalidAssignment_Kd.
+    [Theory]
+    [InlineData("    Store.pt.x = 3", "Store.pt.x = 3", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("    Store.pair.0 = 3", "Store.pair.0 = 3", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("    Store.pair.0 += 1", "Store.pair.0 += 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("    Store.fa[1] = 3", "Store.fa[1] = 3", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("    Store.fa[0] += 1", "Store.fa[0] += 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("    Store.values[0] = 3", "Store.values[0] = 3", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("    Store.lpair.0 = 3", "Store.lpair.0", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("    Store.lfa[1] = 3", "Store.lfa[1]", DiagnosticCode.InvalidAssignment_Kd)]
+    public void AStaticsElementIsWritableAsItsField(string body, string at, DiagnosticCode code)
+    {
+        var source = ElementStatics + "func f()\n" + body + "\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length))
+            .Where(static x => x.Start >= ElementStatics.Length);
+        Assert.Equal([(code.ToString(), source.IndexOf(at, ElementStatics.Length, StringComparison.Ordinal), at.Length)], records);
     }
 
     [Fact]

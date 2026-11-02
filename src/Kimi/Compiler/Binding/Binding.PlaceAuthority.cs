@@ -302,6 +302,16 @@ public sealed partial class Binding
             return true;
         }
 
+        // SPEC 3.4.3, 4.7, 4.7.1, 15.1.5 (PLAN G203): an element of an owned Tuple, fixed array or Array (ElementAccess.TryType) is an
+        // inline part of its owner's path (PathAuthority) and offers Write when its owner does, as a Field does below: a mutable
+        // static's `State.pair.0` as its `State.point.x`.
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && ElementAccess.IsSyntax(inline) &&
+            inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array &&
+            ElementAccess.TryType(inline, out _, out _))
+        {
+            return Writable(inline.Left) || ElementAccess.WritableRoot(inline.Left) is not null;
+        }
+
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
