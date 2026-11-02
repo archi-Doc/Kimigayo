@@ -297,7 +297,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
     }
 
-    // PLAN G157 (7), DECISIONS R5-M180: code generation never reads the native configuration, so a publication-time configuration
+    // PLAN G157 (7), DECISIONS R5-M181: code generation never reads the native configuration, so a publication-time configuration
     // failure (an unused native input that is not a .lib) and a generation failure (a runtime Drop without a verdict, InternalInvariant_Kd
     // at the Drop) are independent, and both are reported.
     [Fact]

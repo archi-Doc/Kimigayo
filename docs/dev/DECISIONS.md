@@ -14485,7 +14485,7 @@ structure is recorded here by the unit that first implements it.
     R5-M162 (`ReportPublicationFailure`).
   - Superseded in part by R5-M169 (G330): the mapping of code generation's argument, data and support exceptions to
     `InternalInvariant_Kd` is gone; an exception publication does not classify is the Emission result's fault (`CheckFaulted_Kd`).
-  - Amended by R5-M180 (PLAN G157 (7)): a publication failure no longer replaces the partition's records; it is recorded beside
+  - Amended by R5-M181 (PLAN G157 (7)): a publication failure no longer replaces the partition's records; it is recorded beside
     generation's, which runs at every publication.
 - **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
   Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
@@ -15100,7 +15100,7 @@ structure is recorded here by the unit that first implements it.
   - Rejected: keying the table on `OsType` and `Architecture` (LLVM's prefix and alias matches would give `linuxfoo`, `x86_64h` or
     `arm64e` a family IMPL does not list, and keep a 320-line OS parse for one Condition); a switch per form in Compilation (a
     consumer deciding what the triple's owner publishes).
-- **R5-M180 A publication failure leaves code generation's records (PLAN G157 (7))** (2026-11-02, R5; under R5-M165, R5-M169 and
+- **R5-M181 A publication failure leaves code generation's records (PLAN G157 (7))** (2026-11-02, R5; under R5-M165, R5-M169 and
   Q13; amends R5-M165 with its amendment line) Minor.
   - Cause: `EmissionArtifacts.Publish` checks its inputs (the embedded backend record, paths, native configuration and supplies,
     `LlvmBin`, the output) before code generation and returned at a failure, its record replacing the partition's, so generation never

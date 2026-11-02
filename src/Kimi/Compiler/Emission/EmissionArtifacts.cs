@@ -16,7 +16,7 @@ public static class EmissionArtifacts
     /// project when the compiler's embedded backend record is missing. Any other exception, such as a broken contract code generation
     /// throws, is not classified here: it leaves for the command's fault path (DECISIONS R5-M169). The publication inputs are checked
     /// first, since the generation entry writes into the temporary IR file (R5 C0a); code generation never reads them, so it runs once
-    /// whatever they found, into no output when they failed (DECISIONS R5-M180); preparation has validated the native configuration
+    /// whatever they found, into no output when they failed (DECISIONS R5-M181); preparation has validated the native configuration
     /// (DependencyConfiguration).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
@@ -141,11 +141,11 @@ public static class EmissionArtifacts
     private static bool IsPublicationFailure(Exception ex)
         => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
 
-    // A publication failure, at the project, beside the generation's records (R5-M180).
+    // A publication failure, at the project, beside the generation's records (R5-M181).
     private static void Fail(Compilation compilation, DiagnosticCode code, string? cause)
         => compilation.Diagnostics.Report(DiagnosticPartition.Emission, code, compilation.Project.FilePath, note: cause);
 
-    // A publication failure before generation (DECISIONS R5-M180): code generation never reads publication's inputs, so it still runs, into
+    // A publication failure before generation (DECISIONS R5-M181): code generation never reads publication's inputs, so it still runs, into
     // no output, for its own records, and the failure is recorded after it, since it clears the partition first, also when it throws.
     private static bool FailBeforeGeneration(Compilation compilation, DiagnosticCode code, string? cause)
     {
