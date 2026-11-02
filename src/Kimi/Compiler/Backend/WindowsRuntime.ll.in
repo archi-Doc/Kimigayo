@@ -204,8 +204,8 @@ done:
   ret ptr %memory
 }
 
-; SPEC 5.6: a negative count (as for Array capacity) or an unrepresentable byte size Aborts; zero bytes return the nonnull substitute {{zero_sized_buffer}}, which
-; is aligned for every supported element and which __kimi_free ignores.
+; SPEC 5.6: a negative count (as for Array capacity) or an unrepresentable byte size Aborts; zero bytes return the nonnull substitute
+; {{zero_sized_buffer}}, which is aligned for every supported element and which __kimi_free ignores.
 define internal ptr @__kimi_raw_allocate(i64 %count, i64 %stride, ptr %location, i64 %location_length) #0 {
 entry:
   %negative = icmp slt i64 %count, 0
