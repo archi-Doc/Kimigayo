@@ -327,11 +327,7 @@ public sealed partial class FunctionCodegenTest
     public void ARuntimeDropWithoutAVerdictIsABrokenContract()
     {
         var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
-        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
-        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
+        RemoveTheDropVerdict(c);
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
     }
@@ -445,6 +441,17 @@ public sealed partial class FunctionCodegenTest
         Assert.True(c.Accepts);
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("MovedPlace_Kd", (string?)"a.indices"), ("MovedPlace_Kd", "b.indices")], Records(c));
+    }
+
+    // Moves the one drop row of a program's top-level body past its blocks, so its runtime Drop has no verdict group: a broken contract
+    // code generation records (PD12).
+    internal static void RemoveTheDropVerdict(Compilation c)
+    {
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
+        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
+        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
+        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }
 
     // The glue a Library function's body calls on its parameter (its one DropGlue call).
