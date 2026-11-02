@@ -123,8 +123,9 @@ internal sealed partial class InstanceCollector
     }
 
     // A Place's steps root first: one leaves its root's storage where its prefix is laid out without its component (Layout.Indirect) or is
-    // a pair layer, whose case decides it per item (a pattern selects one, SPEC 14.8.1); the next step with a need (LayoutNeeds) is past
-    // that storage, a use, after which the Type it read is the storage again.
+    // a pair layer, whose case decides it per item (a pattern selects one, SPEC 14.8.1) when it is the first such step since the last need,
+    // and every case after another (`((*r)@b0).1`; PLAN G157 (47)); the next step with a need (LayoutNeeds) is past that storage, a use,
+    // after which the Type it read is the storage again.
     private void ListNeeds(MirBody body, MirLocation at, MirPlace place)
     {
         var projections = body.Projections;
@@ -147,7 +148,7 @@ internal sealed partial class InstanceCollector
             var row = projections[step.Projection];
             if (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!))
             {
-                (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer ? step.Projection : 0);
+                (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer && !past ? step.Projection : 0);
             }
 
             if (past && LayoutNeeds.Of(row.Kind) != LayoutNeed.None)

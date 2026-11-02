@@ -13,6 +13,9 @@ public sealed partial class InstanceCollectorTest
 {
     private const string BigStruct = "struct Big\n    public var a: [300000000 of i64]\n    public var n: i32\n";
 
+    // APairLayerNeedIsLaidOutWhereItsCaseLeavesStorage's owner-instance storage records (S has no C layout): at g's y, its argument and e.
+    private const string OwnerStorage = "InvalidCLayout_Kd (S, i32)|InvalidCLayout_Kd y@move|InvalidCLayout_Kd s/(S, i32)";
+
     // K 4.8 (DECISIONS R5-M149): a layout need past a root's storage takes its Type's verdict at its form: a part of an oversized Tuple read
     // twice through a raw pointer is OversizedLayout_Kd at each read, a Field of a struct over the size limit read twice its erased Type's one
     // GenerationResourceLimit_Kd, at the first; an element of a fixed array over the limit read through a reference needs only its element's
@@ -36,14 +39,18 @@ public sealed partial class InstanceCollectorTest
     // PLAN G157 (47) (DECISIONS R5-M149): a need past a pair layer is laid out only where the item's case makes the layer leave its root's
     // storage (InstanceCollector.LeavesStorage). `e@follow.1` reads Field 1 past e's layer, `(e@b0).1`: f's ref instance needs (S, i32),
     // whose S has no C layout, at the read; in the owner instance the layer is e's own storage, whose records are at e and g's y, and the
-    // read adds none (the owner side).
+    // read adds none (the owner side). A read past a Deref and then the layer, `((*r)@b0).1` through `let r = e@ref`, leaves storage at the
+    // Deref in every case, as `match e`'s `(*_4).1` does: the owner instance's record at `let k` too (G157 (47)'s finding, which lost it).
     [Theory]
-    [InlineData("x: i32, y: (S, i32)", "y@move", "InvalidCLayout_Kd (S, i32)|InvalidCLayout_Kd y@move|InvalidCLayout_Kd s/(S, i32)")]
-    [InlineData("x: ref/i32, y: ref/(S, i32)", "y", "InvalidCLayout_Kd e@follow.1")]
-    public void APairLayerNeedIsLaidOutWhereItsCaseLeavesStorage(string parameters, string argument, string records)
+    [InlineData("return e@follow.1", true, OwnerStorage)]
+    [InlineData("return e@follow.1", false, "InvalidCLayout_Kd e@follow.1")]
+    [InlineData("let r = e@ref\n    match r\n        (_, let k) => return k", true, OwnerStorage + "|InvalidCLayout_Kd let k")]
+    [InlineData("match e\n        (_, let k) => return k", true, OwnerStorage + "|InvalidCLayout_Kd let k")]
+    public void APairLayerNeedIsLaidOutWhereItsCaseLeavesStorage(string read, bool owner, string records)
     {
+        var g = owner ? "x: i32, y: (S, i32)) -> i32 => f(x, y@move)" : "x: ref/i32, y: ref/(S, i32)) -> i32 => f(x, y)";
         var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct S\n    public var n: i32\n    public var u: ()\nfunc f<s/T>(a: s/T, e: s/(S, i32)) -> i32\n" +
-            $"    s is value or valueborrow\n    return e@follow.1\nfunc g({parameters}) -> i32 => f(x, {argument})\nlet zz = 1\n");
+            $"    s is value or valueborrow\n    {read}\nfunc g({g}\nlet zz = 1\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }

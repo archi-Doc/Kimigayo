@@ -13879,6 +13879,11 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M166 (provisional, G308): the comparison shim's past-storage walk (`Leaves`' bit, `LayoutNeeds.TypeOf(ComparisonNode)`,
     `FunctionCodegen.Needed(node)`) is replaced by each comparison item's layout at its admission and a comparison call's per-site walk
     (`InstanceCollector.Uses`) over its node with the instance Type; `LayoutNeeds.Of(ComparisonNode)` stays the row.
+  - Amended by PLAN G157 (47) (2026-11-02): a PairLayer makes the next need case-dependent (`LeavesStorage` by the item's view) only
+    as the first boundary since the last need; after a Deref or another boundary the need holds in every case. The pair column took the
+    later layer, so `((*r)@b0).1` (through `let r = e@ref`) lost its owner instance's use, which `match e`'s `(*_4).1` keeps: a lost
+    per-use record and a layout code generation read unchecked (a valid program generated and ran correctly at O0 and O2: the
+    referent's storage lays the Type out where it is declared). Two consecutive layers make the need hold in every case (no form found).
 - **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import
   signatures (unit G288)** (2026-10-29, R5; PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim
   「みなす (推奨)」, PLAN `63f54877e`; extends BU-48; Major, design accepted by the R5 planning session; BU reviews the Binding part and
