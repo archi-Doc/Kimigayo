@@ -15,6 +15,9 @@ namespace XunitTest;
 [Collection(nameof(MirValidatorTest))] // Its fixture's TyCtxt, which MirDumpTest shares, is not thread-safe.
 public sealed class MirValidatorTest
 {
+    // An owning interpolation of a literal, a value and a literal (FormatBuffer, three FormatSegments, a write, FormatFinish).
+    private const string Interpolation = "func f(n: i32) -> string => \"n=\\(n)!\"\n";
+
     private static readonly SourceInfo At = default;
 
     // The source of what a rule's body changes.
@@ -547,6 +550,70 @@ public sealed class MirValidatorTest
         Assert.Equal(broken ? [(MirViolation.StaticSlot, "Registry.total")] : [], program.Findings.Select(x => (x.Rule, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's steps carry their constants, which code generation
+    // reads unchecked, each of its position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, the direct mark a
+    // Bool, a segment's text a string), and its FormatFinish the estimate operands of the FormatBuffer whose buffer its adapter is over,
+    // since code generation places the buffer by the one and ends it by the other: the built bodies are valid, a nested interpolation's
+    // included; a step's constant of another kind or an i32 token is a Type finding at the step (fail-before: none for another kind), and a
+    // FormatFinish whose estimate differs from its FormatBuffer's, or whose adapter (here the argument) is over no FormatBuffer's buffer, an
+    // Arity finding at it.
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("text", false)]
+    [InlineData("later", false)]
+    [InlineData("segment", false)]
+    [InlineData("buffer", false)]
+    [InlineData("direct", false)]
+    [InlineData("bytes", false)]
+    [InlineData("lineage", false)]
+    public void AnInterpolationsStepsCarryItsEstimate(string? broken, bool nested)
+    {
+        var c = MirBuildTest.Compile(nested ? "func f(n: i32) -> string => \"a\\(\"b\\(n)\")c\"\n" : Interpolation);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var (id, at) = broken switch
+        {
+            "text" => (IntrinsicId.FormatSegment, 1),
+            "later" => (IntrinsicId.FormatSegment, 2),
+            "segment" => (IntrinsicId.FormatSegment, 3),
+            "direct" => (IntrinsicId.FormatFinish, 3),
+            "bytes" => (IntrinsicId.FormatFinish, 1),
+            "lineage" => (IntrinsicId.FormatFinish, 0),
+            _ => (IntrinsicId.FormatBuffer, 1),
+        };
+        MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
+            .Where(x => x.Callee is { Kind: MirCalleeKind.Intrinsic } callee && callee.Arg == (int)step)];
+        var (steps, finishes) = (Steps(id), Steps(IntrinsicId.FormatFinish));
+        Assert.Equal(nested ? 2 : 1, finishes.Length);
+        Assert.Equal(id == IntrinsicId.FormatSegment ? 3 : finishes.Length, steps.Length);
+        var (step, finish) = (body.Subject(steps[0].Source), body.Subject(finishes[0].Source));
+        if (broken is not null)
+        {
+            MirConst? constant = broken switch
+            {
+                "text" or "direct" or "bytes" => new(MirConstKind.Integer, BoundType.ISize, broken == "bytes" ? 99 : 0),
+                "later" => new(MirConstKind.Bool, BoundType.Boolean, 1),
+                "lineage" => null,
+                _ => new(MirConstKind.TypeToken, BoundType.I32),
+            };
+            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = constant is { } value ? MirOperand.Const(body.Const(value)) : MirOperand.Move(new(1));
+        }
+
+        (MirViolation, SourceRef)[] expected = broken switch
+        {
+            "text" or "later" or "segment" => [(MirViolation.Type, step)],
+            "buffer" => [(MirViolation.Type, step), (MirViolation.Arity, finish)],
+            "direct" => [(MirViolation.Type, finish), (MirViolation.Arity, finish)],
+            "bytes" or "lineage" => [(MirViolation.Arity, finish)],
+            _ => [],
+        };
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(expected, findings.Select(static x => (x.Rule, x.Subject)));
+    }
+
     // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body
     // of an if, a match or try and a do builds its value for an input that reserves (MirCases.Reserves) in a temp of its own, moved into
     // the input temp, as an exit's secured value is: the golden's program is valid (a match, an if and a destroying replace; a do of exits
@@ -983,14 +1050,16 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
     }
 
-    // V11: validating a body again, the Type tier's and its Adapt's case views included, and enumerating its uses, of the body and under
-    // each case view, allocates nothing.
+    // V11: validating a body again, the Type tier's and its Adapt's case views included, an owning interpolation's steps and its FormatFinish's
+    // pairing (DECISIONS R5-M131) included, and enumerating its uses, of the body and under each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmValidationAllocatesNothing()
     {
         var (body, typed) = (Build(null), Typed(null));
-        var validator = new MirValidator(Fixture.Value.Compilation.Types);
+        var c = MirBuildTest.Compile(Interpolation);
+        var formatted = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var (validator, formats) = (new MirValidator(Fixture.Value.Compilation.Types), new MirValidator(c.Types));
         var cases = new MirCases(Fixture.Value.Compilation.Types);
         var findings = new List<MirFinding>();
         var counter = default(Counter);
@@ -998,6 +1067,7 @@ public sealed class MirValidatorTest
         {
             validator.Validate(body, findings);
             validator.Validate(typed, findings);
+            formats.Validate(formatted, findings);
             for (var block = 0; block < body.Blocks.Length; block++)
             {
                 for (var i = 0; i <= body.Blocks[block].Count; i++)

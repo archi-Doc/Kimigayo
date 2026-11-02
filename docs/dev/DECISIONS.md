@@ -12300,6 +12300,14 @@ structure is recorded here by the unit that first implements it.
     for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
     writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
     are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
+  - Amended (PLAN G157 (25), 2026-11-02): `ModuleCodegen.Erased` is the one computation of a Function Type's erased signature, kept
+    by the Type with its Origins erased (`TyCtxt.Erase`; Abi reads no Origin), the Type an adapter's key holds; `Adapter` names it (the
+    previous name kept while it names the same parameter list), so an entry and every call of its Type share one parameter list (a
+    value Type stating an Origin included, `FunctionCodegenTest.AFunctionTypesErasedSignatureIsItsErasedTypes`, failing before). An erased call is written under its callee value's Function Type (`TyCtxt.Layer`'s Callable, in the item's
+    instance), the Type the adapter's key erases, not the call's Callable signature: they differ only for a Never-result Function value
+    at another result, which Binding rejects (PLAN G159 (3)), so no program changes (the erasing families' fixtures are byte-identical).
+    `FunctionCodegenTest.AnAdapterEntryIsItsTargetsErasedSignature` pins the shared list (failing before). Deleted: the erased call's
+    signature-token lookup and its `InternalInvariant_Kd` arm. Rejected: a shared decomposition helper (two Abi computations stay).
 - **R5-M109 The owner confirms C5c's departures** (owner, 2026-10-23, on the R5 planning session's explanation after C5c's design review
   and before its behavior commit; verbatim 「C5c の逸脱 3 件（K package 4.3 の MonoKey に変換先の Function 型を加えること、R5-M43 の
   13 行目のキーの書き方、K package 4.8 の by-value 一覧に adapter の変換先の入力と結果を加えること）を承認します。」; the consequences are
@@ -13239,8 +13247,9 @@ structure is recorded here by the unit that first implements it.
     skipped expression's temps Keep or Elide become Flag; a check-only Drop after a Never first expression becomes a runtime Elide); every
     other form builds the same MIR. R4 reviewed the builder hunk (ACCEPT). The fixture row `Utf8TryWriteFailure` leaves the ledger.
   - Records: the collector records nothing new (no target, no layout use, no capability row: an estimate past MaxObjectSize or the limit
-    chooses the heap). Code generation records the interim's `Unsupported_Kd` and broken contracts only (`InternalInvariant_Kd`: a step's
-    constant of another kind, a value Type `TypeOf` cannot make, a stack buffer's destination that is not a whole local).
+    chooses the heap). Code generation records the interim's `Unsupported_Kd` and broken contracts only (`InternalInvariant_Kd`: a value
+    Type `TypeOf` cannot make, a stack buffer's destination that is not a whole local); a step's constants are MirValidator's (G157 (37),
+    below).
   - Deviations (IR only, PD9): the stack adapter's kind 1; regions named `%r<local>` per local (the old `%formatBytes<n>`; `Utf8ConsoleTest`'s
     old spelling, R5-M12 class I, is now generator-neutral, the 33 bytes kept); FormatFinish's buffer read from the adapter (the same
     address); each write's failure tested by its Result where the old calls `__kimi_format_check`; a Region buffer's HeapBuffer glue item
@@ -13275,6 +13284,16 @@ structure is recorded here by the unit that first implements it.
     a finish that reads the buffer from the adapter: a declared legacy `.ll` change, two mechanisms until R6-gen), a Kimigayo `writeLiteral`
     (Utf8Writer's Fields are `let`; R8's form), splicing the runtime's bounds from the C# table (a new marker in the checked splice; the test
     ties them).
+  - Amended (PLAN G157 (37), 2026-11-02; closes the open point): MirValidator checks the contract (`MirValidator.Calls`). Each step's
+    constants are of their positions' kinds (`Constants`, one row over a table of each step's: the literal bytes an Integer, the values'
+    Types a TypeToken of their Tuple, read element by element, the direct mark a Bool, a segment's text a string; a Type finding). Each
+    FormatFinish's estimate operands are the FormatBuffer's whose buffer its adapter is over (`Finishes`, an Arity finding, also for an
+    adapter over no FormatBuffer's buffer): the adapter it moves is a Call's result whose first operand a Ref of the buffer that
+    FormatBuffer writes lends; one pass over a body with a FormatFinish links each whole local to the Call writing it and the local a Ref
+    into it lends (kept scratch, a warm validation 0 B). Code generation reads the constants unchecked (`StepConstant` and its record
+    deleted). `MirValidatorTest.AnInterpolationsStepsCarryItsEstimate` (fail-before: no finding); `MirCensusTest` finds none in the
+    library, milestones, goldens and SPEC cases. Rejected: pairing by block order or nesting (the builder's numbering, not a MIR fact); a
+    check in code generation (consumers trust validated IR).
 - **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27, to the R5 planning session directly;
   the consequences are the planning session's)
   - **The departure** (on the planning session's explanation after C9c's design; verbatim 「C9c の逸脱（リテラル高速経路を独立した Full

@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Backend;
 // (DECISIONS R5-M126), and a PropertyWitness item's, its key's (InstanceCollector.StorageSignature; DECISIONS R5-M141); a StaticInit item's
 // slot's ensure function; the per-index cache they share with the called imports' C signatures
 // (ModuleCodegen.Imports.cs) and the common Function values' entries (ModuleCodegen.Erasures.cs); and the unnamed signatures of the
-// calls that reach their callee through a pointer (Unnamed: a common Function value's entry, a virtual slot's, Slot), keyed by their
+// calls that reach their callee through a pointer (Unnamed: a Function Type's erased one, Erased; a virtual slot's, Slot), keyed by their
 // inputs and kept while a Write uses them: each computed once per Write, or kept, and the previous one reused while it still matches, so
 // a warm module allocates nothing. A request naming an item is for a Generated item (Requested: K11). A slot's and a Builtin
 // item's signature reads TyCtxt.Signature, code generation's input for a virtual slot (package C 3.2), under the call's substitution, an
@@ -250,7 +250,7 @@ internal sealed partial class ModuleCodegen
         return stamps[index] == this.writes ? kept[index] : null;
     }
 
-    // The tail of an item's signature (Signature, Adapter): the item stamped for this Write, the previous Write's signature while it still
+    // The tail of an item's signature (Signature, Shim): the item stamped for this Write, the previous Write's signature while it still
     // matches, else a new one named before the item's index (only then, so a warm module allocates nothing).
     private FunctionAbi Define(int item, string prefix, Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> types)
     {

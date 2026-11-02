@@ -2,12 +2,13 @@
 
 namespace Kimi.Compiler.Mir;
 
-// Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M166).
+// Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M131, R5-M166).
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
 //   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
 //   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
-//   testRecordValue's recorded value a Scalar by Records); and its destination: a diverging Call's write bit for G131, no Never value
-//   written by a returning Call.
+//   testRecordValue's recorded value a Scalar by Records, an owning interpolation's step's constants by Constants); and its destination:
+//   a diverging Call's write bit for G131, no Never value written by a returning Call. Over a walked body, each FormatFinish's adapter
+//   over a FormatBuffer's buffer and its estimate operands that FormatBuffer's (Finishes).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
 //   StaticSlot, Type and NeverWrite findings; a callee with a signature goes to MirValidator.Signatures and the Call's inputs to
 //   MirValidator.Inputs (G136).
@@ -17,6 +18,115 @@ namespace Kimi.Compiler.Mir;
 //   tier's TypeOf and SPEC 3.1's one Scalar predicate (ScalarTypes.Supports, which the builder's records read too).
 internal sealed partial class MirValidator
 {
+    // R3-10 (DECISIONS R5-M131): the constants an estimate carries, its literal bytes, its values' Types and whether it is passed directly to
+    // writeLine (FormatBuffer's from operand 0, FormatFinish's after its adapter); a FormatSegment's, after its adapter, its position's
+    // literal text and the later literal bytes and values' Types (MirBuilder.Format's Estimate and Text).
+    private static readonly MirConstKind[] EstimateConstants = [MirConstKind.Integer, MirConstKind.TypeToken, MirConstKind.Bool];
+    private static readonly MirConstKind[] SegmentConstants = [MirConstKind.String, MirConstKind.Integer, MirConstKind.TypeToken];
+
+    private (int Made, int Lent)[] links = []; // Per local, the block whose Call writes it whole and the local a Ref into it lends (-1: none).
+
+    // A whole local's index, -1 for another Place.
+    private static int Whole(MirPlace place, int locals) => place is { Projection: 0, Root: >= 0 and var root } && root < locals ? root : -1;
+
+    // An owning interpolation's step's first constant operand and the kinds of its constants (above); none for another intrinsic.
+    private static (int First, MirConstKind[] Kinds) Steps(IntrinsicId id) => id switch
+    {
+        IntrinsicId.FormatBuffer => (0, EstimateConstants),
+        IntrinsicId.FormatFinish => (1, EstimateConstants),
+        IntrinsicId.FormatSegment => (1, SegmentConstants),
+        _ => (0, []),
+    };
+
+    // Whether a step's constant is of its position's kind: its values' Types a token of their Tuple, read element by element; its text a
+    // string.
+    private static bool Fits(in MirConst constant, MirConstKind kind) => constant.Kind == kind && kind switch
+    {
+        MirConstKind.TypeToken => constant.Type.Kind == BoundTypeKind.Tuple,
+        MirConstKind.String => constant.Value is string,
+        _ => true,
+    };
+
+    // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): code generation places an owning interpolation's buffer by its FormatBuffer's
+    // estimate and ends it by its FormatFinish's, so a FormatFinish's last three operands are the three of the FormatBuffer whose buffer its
+    // adapter is over: the adapter it moves is a Call's result whose first operand a Ref of the buffer that FormatBuffer writes lends. Else
+    // an Arity finding at the FormatFinish. Over a walked body (each Call's operands, each block's statements in range); the links are kept.
+    private void Finishes(MirBody body, List<MirFinding> findings)
+    {
+        var blocks = body.Blocks;
+        var finishes = false;
+        foreach (ref readonly var block in blocks)
+        {
+            finishes |= block.Terminator.Callee is { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.FormatFinish };
+        }
+
+        if (!finishes)
+        {
+            return;
+        }
+
+        var locals = body.Locals.Length;
+        if (this.links.Length < locals)
+        {
+            this.links = new (int, int)[Math.Max(locals, this.links.Length * 2)];
+        }
+
+        this.links.AsSpan(0, locals).Fill((-1, -1));
+        for (var block = 0; block < blocks.Length; block++)
+        {
+            foreach (ref readonly var statement in body.Statements.Slice(blocks[block].Start, blocks[block].Count))
+            {
+                if (statement is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Ref } rvalue } &&
+                    Whole(statement.Place, locals) is >= 0 and var into && Whole(rvalue.Place, locals) is >= 0 and var lent)
+                {
+                    this.links[into].Lent = lent;
+                }
+            }
+
+            if (blocks[block].Terminator is { Kind: MirTerminatorKind.Call } call && Whole(call.Place, locals) is >= 0 and var made)
+            {
+                this.links[made].Made = block;
+            }
+        }
+
+        foreach (ref readonly var block in blocks)
+        {
+            if (block.Terminator is { Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.FormatFinish }, Count: 4 } finish &&
+                !this.Paired(body, finish))
+            {
+                findings.Add(new(MirViolation.Arity, body.Subject(finish.Source)));
+            }
+        }
+    }
+
+    // Whether a FormatFinish's adapter is over a FormatBuffer's buffer and its estimate operands are that FormatBuffer's (Finishes).
+    private bool Paired(MirBody body, in MirTerminator finish)
+    {
+        var operands = body.Operands;
+        var buffer = this.Lender(body, operands[finish.Start]);
+        return buffer >= 0 &&
+            body.Blocks[buffer].Terminator is { Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.FormatBuffer }, Count: 3 } start &&
+            operands.Slice(start.Start, 3).SequenceEqual(operands.Slice(finish.Start + 1, 3));
+    }
+
+    // The block of the Call writing the local whose Ref the Call writing a moved local takes first (Finishes: the adapter's buffer); -1:
+    // none.
+    private int Lender(MirBody body, in MirOperand adapter)
+    {
+        var locals = body.Locals.Length;
+        var written = adapter.Kind == MirOperandKind.Move ? Whole(adapter.Place, locals) : -1;
+        var made = written >= 0 ? this.links[written].Made : -1;
+        if (made < 0 || body.Blocks[made].Terminator is not { Count: > 0 } acquisition)
+        {
+            return -1;
+        }
+
+        var input = body.Operands[acquisition.Start];
+        var borrow = input.Kind is MirOperandKind.Copy or MirOperandKind.Move ? Whole(input.Place, locals) : -1;
+        var lent = borrow >= 0 ? this.links[borrow].Lent : -1;
+        return lent >= 0 ? this.links[lent].Made : -1;
+    }
+
     private partial struct Checker
     {
         // F10 (plan 5.6.6): a staticEnsure names its static (Slot); a constant id out of range is the walk's Const finding.
@@ -28,6 +138,24 @@ internal sealed partial class MirValidator
         // never sees, or the Never value, which fits any operand (SPEC 3.8) and which the builder never records.
         private readonly bool Records(in MirTerminator call)
             => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || ScalarTypes.Supports(type);
+
+        // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's step's constants (Steps), which code generation
+        // reads without a check, each a constant of its position's kind (Fits); a constant id out of range is the walk's Const finding. True
+        // for another intrinsic; a step's operands are its row's (the Arity row before it).
+        private readonly bool Constants(in MirTerminator call)
+        {
+            var (first, kinds) = Steps((IntrinsicId)call.Callee.Arg);
+            for (var i = 0; i < kinds.Length; i++)
+            {
+                var operand = body.Operands[call.Start + first + i];
+                if (operand.Kind != MirOperandKind.Const || ((uint)operand.Arg < (uint)body.Consts.Length && !Fits(body.Consts[operand.Arg], kinds[i])))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
         // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
@@ -85,6 +213,7 @@ internal sealed partial class MirValidator
                     this.Report(MirViolation.StaticSlot); // DECISIONS R5-M71.
                     break;
                 case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.TestRecordValue && !this.Records(call):
+                case MirCalleeKind.Intrinsic when !this.Constants(call):
                     this.Report(MirViolation.Type);
                     break;
             }
