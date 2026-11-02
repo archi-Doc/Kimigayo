@@ -24,7 +24,7 @@ public sealed class HoverStateTest
     public void MeasuredWorkloadsReuseTheCompleteResponseWithinBounds(string name)
     {
         var participants = HoverWorkloads.Create(name);
-        var state = new HoverState(participants, true);
+        var state = new HoverState(participants, true, HoverPlacement.Unnamed);
         using var text = new TextDocument(HoverWorkloads.Text);
         var first = state.Find(text, new(0, 8));
         Assert.NotNull(first.Body);
@@ -71,7 +71,7 @@ public sealed class HoverStateTest
         const string Text = "//😀\r\nstruct Sample\r\n";
         using var text = new TextDocument(Text);
         var original = new HoverDocument(new("main.kimi", Text), [Entry() with { Span = new(13, 6) }]);
-        var state = new HoverState([new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, "test"), 1, original)], false);
+        var state = new HoverState([new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, "test"), 1, original)], false, HoverPlacement.Unnamed);
         Assert.True(state.Edited(0, 0, 2));
         Assert.True(text.TryApply(new(0, 0), new(0, 0), "X\n"));
         var result = state.Find(text, new(2, 8));
@@ -211,7 +211,8 @@ public sealed class HoverStateTest
         }
 
         using var text = new TextDocument(source.SourceText);
-        var state = new HoverState([new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, "test"), 1, new(source, entries))], false);
+        HoverParticipant[] participants = [new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, "test"), 1, new(source, entries))];
+        var state = new HoverState(participants, false, HoverPlacement.Unnamed);
         for (var i = 0; i < entries.Length; i++)
         {
             Assert.NotNull(state.Find(text, new(0, i * 2)).Body);
@@ -253,6 +254,6 @@ public sealed class HoverStateTest
             participants[i] = new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, i.ToString()), i + 1, new(new("main.kimi", "struct Sample\n"), [entries[i]]));
         }
 
-        return new(participants, false);
+        return new(participants, false, HoverPlacement.Unnamed);
     }
 }

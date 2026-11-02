@@ -28,15 +28,15 @@ internal static class HoverMeasurements
             var participants = values ? HoverWorkloads.CreateValues() : HoverWorkloads.Create(name);
             HoverAnswer answer = default;
             var cold = Stopwatch.GetTimestamp();
-            answer = new HoverState(participants, true).Find(text, position);
+            answer = new HoverState(participants, true, HoverPlacement.Unnamed).Find(text, position);
             if (answer.Body is null)
             {
                 throw new InvalidOperationException("The measured Hover must be available: " + name + ": " + answer.Reason);
             }
 
             results.Add(new { name, operation = "beforeWarmup", milliseconds = Stopwatch.GetElapsedTime(cold).TotalMilliseconds, outputLength = answer.Body?.Length ?? 0, answer.Reason });
-            results.Add(new { name, operation = "initialFourConfigurations", cost = Measure(() => answer = new HoverState(participants, true).Find(text, position), 64) });
-            var cached = new HoverState(participants, true);
+            results.Add(new { name, operation = "initialFourConfigurations", cost = Measure(() => answer = new HoverState(participants, true, HoverPlacement.Unnamed).Find(text, position), 64) });
+            var cached = new HoverState(participants, true, HoverPlacement.Unnamed);
             answer = cached.Find(text, position);
             results.Add(new { name, operation = "repeated", cost = Measure(() => answer = cached.Find(text, position), 10_000) });
             for (var edit = 0; edit < HoverLimits.Edits; edit++)

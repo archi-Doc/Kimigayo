@@ -11,8 +11,9 @@ internal readonly record struct HoverParticipant(UnitKey Key, long Generation, H
 
 internal readonly record struct HoverAnswer(string? Body, SourceRange Range, string? Reason = null);
 
-// One open document's last adopted immutable set, with no reference to a unit result, compilation or another file's index.
-internal sealed class HoverState(HoverParticipant[] participants, bool markdown)
+// One open document's last adopted immutable set, with no reference to a unit result, compilation or another file's index. Links
+// name a document the client opened by the URI it opened it with (named; null for one it never named).
+internal sealed class HoverState(HoverParticipant[] participants, bool markdown, Func<SourceIdentity, string?> named)
 {
     private readonly Dictionary<int, Cached> cache = new();
     private readonly List<Edit> edits = [];
@@ -30,6 +31,12 @@ internal sealed class HoverState(HoverParticipant[] participants, bool markdown)
     {
         this.Current = true;
         this.edits.Clear();
+    }
+
+    internal void ForgetRenderings()
+    {
+        this.cache.Clear();
+        this.characters = 0;
     }
 
     internal bool Edited(int start, int end, int inserted)
@@ -156,7 +163,7 @@ internal sealed class HoverState(HoverParticipant[] participants, bool markdown)
                 }
             }
 
-            return HoverRenderer.Render(entry.Info, markdown);
+            return HoverRenderer.Render(entry.Info, markdown, named);
         }
         catch (HoverLimitException ex)
         {

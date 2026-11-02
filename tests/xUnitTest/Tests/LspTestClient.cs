@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Kimi.Lsp;
@@ -44,9 +45,35 @@ internal sealed class LspTestClient : IAsyncDisposable
 
     public static string Uri(string path) => new Uri(path).AbsoluteUri;
 
+    /// <summary>Gets another URI spelling of an existing file that <c>SourceIdentity</c> resolves to the same document: a <c>..</c>
+    /// segment, which every host resolves, or the directory's 8.3 short name, which only a Windows volume that generates short names
+    /// has (null otherwise).</summary>
+    /// <param name="path">The file, in a directory with a long name.</param>
+    /// <param name="shortName">Whether to spell the directory by its short name.</param>
+    /// <returns>The URI, or null.</returns>
+    public static string? OtherSpelling(string path, bool shortName)
+    {
+        var directory = Path.GetDirectoryName(path)!;
+        if (!shortName)
+        {
+            return Uri(directory) + "/spelling/../" + Path.GetFileName(path);
+        }
+
+        var buffer = new char[1024];
+        var length = OperatingSystem.IsWindows() ? GetShortPathNameW(directory, buffer, buffer.Length) : 0;
+        var shortDirectory = new string(buffer, 0, length < buffer.Length ? length : 0);
+        return shortDirectory.Length == 0 || shortDirectory.Equals(directory, StringComparison.OrdinalIgnoreCase)
+            ? null : Uri(Path.Combine(shortDirectory, Path.GetFileName(path)));
+    }
+
+    /// <summary>Gets a value indicating whether a message publishes diagnostics.</summary>
+    /// <param name="message">The message.</param>
+    /// <returns><see langword="true"/> for <c>textDocument/publishDiagnostics</c>.</returns>
+    public static bool IsPublish(JsonElement message)
+        => message.TryGetProperty("method", out var method) && method.GetString() == "textDocument/publishDiagnostics";
+
     public static bool IsPublish(JsonElement message, string uri)
-        => message.TryGetProperty("method", out var method) && method.GetString() == "textDocument/publishDiagnostics" &&
-            string.Equals(message.GetProperty("params").GetProperty("uri").GetString(), uri, StringComparison.OrdinalIgnoreCase);
+        => IsPublish(message) && string.Equals(message.GetProperty("params").GetProperty("uri").GetString(), uri, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsLog(JsonElement message, string text)
         => message.TryGetProperty("method", out var method) && method.GetString() == "window/logMessage" &&
@@ -129,13 +156,19 @@ internal sealed class LspTestClient : IAsyncDisposable
     }
 
     public Task OpenAsync(string path, string text, int version = 1)
-        => this.NotifyAsync("textDocument/didOpen", $"{{\"textDocument\":{{\"uri\":\"{Uri(path)}\",\"languageId\":\"kimi\",\"version\":{version},\"text\":{JsonSerializer.Serialize(text)}}}}}");
+        => this.OpenUriAsync(Uri(path), text, version);
+
+    public Task OpenUriAsync(string uri, string text, int version = 1)
+        => this.NotifyAsync("textDocument/didOpen", $"{{\"textDocument\":{{\"uri\":\"{uri}\",\"languageId\":\"kimi\",\"version\":{version},\"text\":{JsonSerializer.Serialize(text)}}}}}");
 
     public Task ChangeAsync(string path, int version, params string[] changes)
         => this.NotifyAsync("textDocument/didChange", $"{{\"textDocument\":{{\"uri\":\"{Uri(path)}\",\"version\":{version}}},\"contentChanges\":[{string.Join(',', changes)}]}}");
 
     public Task CloseAsync(string path)
-        => this.NotifyAsync("textDocument/didClose", $"{{\"textDocument\":{{\"uri\":\"{Uri(path)}\"}}}}");
+        => this.CloseUriAsync(Uri(path));
+
+    public Task CloseUriAsync(string uri)
+        => this.NotifyAsync("textDocument/didClose", $"{{\"textDocument\":{{\"uri\":\"{uri}\"}}}}");
 
     /// <summary>Reads frames until one satisfies the predicate.</summary>
     /// <param name="predicate">The condition.</param>
@@ -191,4 +224,8 @@ internal sealed class LspTestClient : IAsyncDisposable
         this.fromServer.Reader.Complete();
         this.timeout.Dispose();
     }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern int GetShortPathNameW(string longPath, char[] shortPath, int length);
 }

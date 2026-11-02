@@ -17,7 +17,7 @@ public sealed class HoverLinkTest
     [InlineData("http://example.test/日本", "http://example.test/%E6%97%A5%E6%9C%AC")]
     [InlineData("mailto:author@example.test", "mailto:author@example.test")]
     public void ExternalLinksUseTheExistingProfile(string value, string expected)
-        => Assert.Equal(expected, DocumentationLinks.ResolveEditor(value, null, null, HoverPlacement.Unsupported.Map));
+        => Assert.Equal(expected, DocumentationLinks.ResolveEditor(value, null, null, Unsupported));
 
     [Theory]
     [InlineData("")]
@@ -56,9 +56,9 @@ public sealed class HoverLinkTest
     {
         var physical = Path.GetFullPath("elsewhere/external.kimi");
         var mapping = new HoverPlacement(null, [new("src/external.kimi", physical)]);
-        Assert.Equal(physical, new Uri(Assert.IsType<string>(DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", mapping.Map))).LocalPath);
-        Assert.Null(DocumentationLinks.ResolveEditor("neighbor.kimi", "src/external.kimi", "P", mapping.Map));
-        Assert.Null(DocumentationLinks.ResolveEditor("peer.kimi", "compiler://Kimi/Core.kimi", "Kimi", HoverPlacement.Unsupported.Map));
+        Assert.Equal(physical, new Uri(Assert.IsType<string>(DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Unnamed)))).LocalPath);
+        Assert.Null(DocumentationLinks.ResolveEditor("neighbor.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Unnamed)));
+        Assert.Null(DocumentationLinks.ResolveEditor("peer.kimi", "compiler://Kimi/Core.kimi", "Kimi", Unsupported));
     }
 
     [Fact]
@@ -110,9 +110,12 @@ public sealed class HoverLinkTest
         Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[0]));
         var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(path)];
         var entry = document.Entries[document.Find(source.IndexOf("Value", StringComparison.Ordinal))];
-        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true).Body);
+        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true, HoverPlacement.Unnamed).Body);
     }
 
+    private static string? Unsupported(DocumentationLinkTarget target)
+        => HoverPlacement.Unsupported.Map(target, HoverPlacement.Unnamed);
+
     private string? Resolve(string destination)
-        => DocumentationLinks.ResolveEditor(destination, "src/main.kimi", "P", new HoverPlacement(this.root, []).Map);
+        => DocumentationLinks.ResolveEditor(destination, "src/main.kimi", "P", x => new HoverPlacement(this.root, []).Map(x, HoverPlacement.Unnamed));
 }

@@ -31,7 +31,7 @@ public sealed class VirtualHoverTest
         Assert.DoesNotContain("Implementation:", dynamic.Use);
         foreach (var info in new[] { direct, dynamic, At(snapshot, Source.IndexOf("operation(value)", StringComparison.Ordinal)) })
         {
-            var rendered = HoverRenderer.Render(info, markdown).Body;
+            var rendered = HoverRenderer.Render(info, markdown, HoverPlacement.Unnamed).Body;
             Assert.Contains("Public slot: A.read", rendered);
             Assert.Contains("Available bound: confined", rendered);
             Assert.Contains("Declared by: A.read", rendered);
@@ -47,7 +47,7 @@ public sealed class VirtualHoverTest
         var info = At(snapshot, Source.IndexOf("override func read", StringComparison.Ordinal) + "override func ".Length);
         Assert.Equal(2, info.Declarations.Length);
         Assert.Contains("Inherited public contract: A.read", info.Declarations[0].Details);
-        var rendered = HoverRenderer.Render(info, false).Body;
+        var rendered = HoverRenderer.Render(info, false, HoverPlacement.Unnamed).Body;
         Assert.Contains("B implementation.", rendered);
         Assert.Contains("Public contract.", rendered);
         Assert.Contains("effect confined", rendered);
@@ -106,7 +106,7 @@ public sealed class VirtualHoverTest
         GC.Collect();
         Assert.False(compilation.TryGetTarget(out _));
         var document = snapshot.Documents[SourceIdentity.FromPath("main.kimi")];
-        var state = new HoverState([new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, "test"), 1, document)], false);
+        var state = new HoverState([new(new(SourceIdentity.FromPath("main.kimi"), UnitKind.Product, "test"), 1, document)], false, HoverPlacement.Unnamed);
         using var text = new TextDocument(Source);
         var position = document.Source.GetSourceRange(new(Source.IndexOf("base.read", StringComparison.Ordinal) + 5, 4)).Start;
         Assert.Contains("Implementation: B.read", state.Find(text, position).Body);

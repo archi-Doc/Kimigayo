@@ -174,8 +174,9 @@ internal sealed class WorkspaceCheck
                 lists.Add(uri, list);
             }
 
-            // A related location in a recorded input with a range is sent as a location when the client accepts one; the text
-            // of every other related location is appended to the message.
+            // A related location in a recorded input with a range is sent as a location when the client accepts one, placed by its
+            // document's identity (the state owner spells it as it is sent); the text of every other related location is appended
+            // to the message.
             List<LspRelatedInformation>? sent = null;
             List<string>? appended = null;
             foreach (var related in diagnostic.Related ?? [])
@@ -183,7 +184,7 @@ internal sealed class WorkspaceCheck
                 var relatedPath = related.Source < 0 ? null : output.Sources[related.Source].Path;
                 if (relatedInformation && related.Source >= 0 && identities[related.Source] is { } relatedInput && related.Range is { } relatedRange)
                 {
-                    (sent ??= []).Add(new(new(relatedInput.ToUri(), relatedRange), related.Describe(null)));
+                    (sent ??= []).Add(new(new(relatedInput, relatedRange), related.Describe(null)));
                 }
                 else
                 {

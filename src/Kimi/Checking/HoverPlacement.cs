@@ -9,7 +9,15 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
 {
     internal static readonly HoverPlacement Unsupported = new(null, []);
 
-    internal string? Map(DocumentationLinkTarget target)
+    /// <summary>Gets the lookup of a host without a client, which names no document.</summary>
+    internal static Func<SourceIdentity, string?> Unnamed { get; } = static _ => null;
+
+    /// <summary>Maps a logical target to the URI of its physical file: the URI a client opened the document with (from
+    /// <paramref name="named"/>; DECISIONS R5-M180), else its file URI.</summary>
+    /// <param name="target">The target.</param>
+    /// <param name="named">The client's URI of a document it opened, or null.</param>
+    /// <returns>The URI, or null without a placement.</returns>
+    internal string? Map(DocumentationLinkTarget target, Func<SourceIdentity, string?> named)
     {
         var low = 0;
         var high = this.Files.Length - 1;
@@ -19,7 +27,7 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
             var order = string.CompareOrdinal(target.LogicalPath, this.Files[middle].Key);
             if (order == 0)
             {
-                return FileUri(this.Files[middle].Value);
+                return Link(this.Files[middle].Value, named);
             }
 
             if (order < 0)
@@ -41,7 +49,8 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
         {
             var path = Path.GetFullPath(target.LogicalPath, root);
             var relative = Path.GetRelativePath(root, path);
-            return relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative) ? null : FileUri(path);
+            var outside = relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative);
+            return outside ? null : Link(path, named);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
@@ -49,7 +58,11 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
         }
     }
 
-    internal static string? FileUri(string? path)
+    private static string? Link(string? path, Func<SourceIdentity, string?> named)
+        => path is not null && SourceIdentity.TryFromPath(path, out var document) && named(document) is { } uri
+            ? uri : FileUri(path);
+
+    private static string? FileUri(string? path)
     {
         if (path is null || !Path.IsPathFullyQualified(path))
         {

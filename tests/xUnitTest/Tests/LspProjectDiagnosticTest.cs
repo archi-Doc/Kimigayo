@@ -39,6 +39,33 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         Assert.Equal(0, publish.GetProperty("params").GetProperty("diagnostics").GetArrayLength());
     }
 
+    // DECISIONS R5-M180: a document opened under another spelling of its file gets its diagnostics and related locations under that
+    // spelling; closed, its list is cleared under that spelling, where the client holds it.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ADocumentOpenedUnderAnotherSpellingGetsItsLocationsUnderThatSpelling(bool shortName)
+    {
+        const string Source = "let x = 1\nlet x = 2\n";
+        var path = Path.Combine(this.directory, "Hello.kimi");
+        File.WriteAllText(path, Source);
+        var spelling = LspTestClient.OtherSpelling(path, shortName);
+        Assert.SkipWhen(spelling is null, "The volume gives the test directory no 8.3 short name.");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}", "{\"textDocument\":{\"publishDiagnostics\":{\"relatedInformation\":true}}}");
+        await client.OpenUriAsync(spelling, Source);
+        var publish = (await client.ReceiveAsync(LspTestClient.IsPublish)).GetProperty("params");
+        Assert.Equal(spelling, publish.GetProperty("uri").GetString());
+        var related = Assert.Single(Assert.Single(publish.GetProperty("diagnostics").EnumerateArray()).GetProperty("relatedInformation").EnumerateArray());
+        Assert.Equal(spelling, related.GetProperty("location").GetProperty("uri").GetString());
+        Assert.Equal(0, related.GetProperty("location").GetProperty("range").GetProperty("start").GetProperty("line").GetInt32());
+
+        await client.CloseUriAsync(spelling);
+        var cleared = (await client.ReceiveAsync(LspTestClient.IsPublish)).GetProperty("params");
+        Assert.Equal(spelling, cleared.GetProperty("uri").GetString());
+        Assert.Equal(0, cleared.GetProperty("diagnostics").GetArrayLength());
+    }
+
     [Fact]
     public async Task IncrementalChangesAreCheckedAgainstTheEditedText()
     {

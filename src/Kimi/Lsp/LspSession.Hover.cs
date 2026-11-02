@@ -19,6 +19,15 @@ internal sealed partial class LspSession
         }
     }
 
+    // A rendered link names its document as the client opened it (UriOf), so an open or a close forgets the renderings.
+    private void RespellHover()
+    {
+        foreach (var document in this.documents.Values)
+        {
+            document.Hover?.ForgetRenderings();
+        }
+    }
+
     // Refresh eligibility only on applied state changes. Requests do no membership scans, validity scans or compiler work.
     private void RefreshHover()
     {
@@ -111,7 +120,7 @@ internal sealed partial class LspSession
                                 adopted[i] = new(unit.Key, unit.Result!.Id, unit.Result.Output.Hover!.Documents[document.Identity]);
                             }
 
-                            document.Hover = new(adopted, this.hoverMarkdown);
+                            document.Hover = new(adopted, this.hoverMarkdown, this.NamedUri);
                         }
 
                         continue;

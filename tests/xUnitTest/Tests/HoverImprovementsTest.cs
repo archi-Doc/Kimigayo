@@ -225,7 +225,7 @@ public sealed class HoverImprovementsTest
         Assert.EndsWith("(z/second.kimi)", body);
         var original = entry.Info.Declarations[0];
         var duplicated = original with { Origins = [original.Origins[0], original.Origins[0], original.Origins[1]] };
-        Assert.Equal(body, HoverRenderer.Render(entry.Info with { Declarations = [duplicated] }, false).Body);
+        Assert.Equal(body, HoverRenderer.Render(entry.Info with { Declarations = [duplicated] }, false, HoverPlacement.Unnamed).Body);
     }
 
     [Fact]
@@ -337,7 +337,7 @@ public sealed class HoverImprovementsTest
         var documentation = new HoverDocumentation(source, new(0, source.SourceText.Length), 0, "Project", "src/A.kimi", null, 0, default, []);
         var declaration = new HoverDeclaration("Type", "Project", "struct A", [new("Project", "physical.kimi", default, "src/A.kimi")], [documentation]);
         var info = new HoverInfo([declaration]);
-        var rendered = HoverRenderer.Render(info, true);
+        var rendered = HoverRenderer.Render(info, true, HoverPlacement.Unnamed);
         Assert.Contains("Documentation truncated:", rendered.Body);
         Assert.EndsWith("(src\\/A\\.kimi)", rendered.Body);
         Assert.True(rendered.Body!.Length <= HoverLimits.Output);
@@ -354,7 +354,8 @@ public sealed class HoverImprovementsTest
         var second = Project(source);
         var identity = SourceIdentity.FromPath("main.kimi");
         using var text = new TextDocument(source);
-        var state = new HoverState([new(new(identity, UnitKind.Product, "one"), 1, first), new(new(identity, UnitKind.Product, "two"), 2, second)], true);
+        HoverParticipant[] participants = [new(new(identity, UnitKind.Product, "one"), 1, first), new(new(identity, UnitKind.Product, "two"), 2, second)];
+        var state = new HoverState(participants, true, HoverPlacement.Unnamed);
         var positions = new[] { new SourcePosition(1, 8), new SourcePosition(2, 8), new SourcePosition(2, 13), new SourcePosition(2, 14) };
         foreach (var position in positions)
         {
@@ -395,5 +396,5 @@ public sealed class HoverImprovementsTest
     }
 
     private static string Render(HoverEntry entry, bool markdown)
-        => Assert.IsType<string>(HoverRenderer.Render(entry.Info, markdown).Body);
+        => Assert.IsType<string>(HoverRenderer.Render(entry.Info, markdown, HoverPlacement.Unnamed).Body);
 }

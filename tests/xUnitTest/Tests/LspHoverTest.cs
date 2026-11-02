@@ -40,6 +40,31 @@ public sealed class LspHoverTest : IDisposable
         Assert.Equal(JsonValueKind.Null, (await client.HoverAsync(path, 0, 6)).ValueKind);
     }
 
+    // DECISIONS R5-M180: a link names a document the client opened as the client spelled it and any other by its file URI; opening
+    // or closing the linked document respells a link already rendered, also when its unit's result is kept.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LinksNameAnOpenDocumentAsTheClientSpelledIt(bool shortName)
+    {
+        const string Text = "/// See [peer](peer.kimi#top).\nstruct Sample\n";
+        const string Peer = "struct Peer\n";
+        var path = this.Write(Text);
+        var peer = Path.Combine(this.directory, "peer.kimi");
+        File.WriteAllText(peer, Peer);
+        var spelling = LspTestClient.OtherSpelling(peer, shortName);
+        Assert.SkipWhen(spelling is null, "The volume gives the test directory no 8.3 short name.");
+        var canonical = $"[peer](<{LspTestClient.Uri(peer)}#top>)";
+        await using var client = new LspTestClient();
+        await client.InitializeAsync(capabilities: "{\"textDocument\":{\"hover\":{\"contentFormat\":[\"markdown\"]}}}");
+        await client.OpenAsync(path, Text);
+        await client.WaitForHoverAsync(path, 1, 7, canonical);
+        await client.OpenUriAsync(spelling, Peer); // The disk text: the unit's result is kept.
+        await client.WaitForHoverAsync(path, 1, 7, $"[peer](<{spelling}#top>)");
+        await client.CloseUriAsync(spelling);
+        await client.WaitForHoverAsync(path, 1, 7, canonical);
+    }
+
     [Fact]
     public async Task HoverUsesTheDiagnosticQuietPeriodAndUpdatesWithUnchangedEmptyDiagnostics()
     {

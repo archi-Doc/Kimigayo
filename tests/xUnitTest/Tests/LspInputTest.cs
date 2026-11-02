@@ -119,7 +119,7 @@ public sealed class LspInputTest
         if (accepted)
         {
             var sent = Assert.Single(diagnostic.RelatedInformation!);
-            Assert.Equal(new LspRelatedInformation(new(main.ToUri(), range), "prerequisite: the Type is formed"), sent);
+            Assert.Equal(new LspRelatedInformation(new(main, range), "prerequisite: the Type is formed"), sent); // The session spells it.
             Assert.Equal("undecided\n" + builtIn, diagnostic.Message);
         }
         else

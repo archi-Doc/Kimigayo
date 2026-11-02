@@ -15098,3 +15098,31 @@ structure is recorded here by the unit that first implements it.
   - Rejected: keying the table on `OsType` and `Architecture` (LLVM's prefix and alias matches would give `linuxfoo`, `x86_64h` or
     `arm64e` a family IMPL does not list, and keep a 320-line OS parse for one Condition); a switch per form in Compilation (a
     consumer deciding what the triple's owner publishes).
+- **R5-M180 One owner of the URI a sent location names: `LspSession.UriOf` (PLAN G237)** (2026-11-02, R5; the owner's request to
+  start G237) Major.
+  - Cause: the server names a document by `SourceIdentity` (`Path.GetFullPath`: 8.3 names expanded, `..` resolved) and published a
+    document's list under the URI the client opened it with, but the worker spelled related locations canonically
+    (`WorkspaceCheck.Place`, `ToUri()`) and hover links by their file URI (`HoverPlacement.Map`), so a related location or a link into
+    a document open under another spelling (an 8.3 name, a `..` segment, another case) opened a second editor; and a document closed
+    after its list was sent under the client's spelling had the list cleared under the canonical URI, so the client kept it.
+  - Rule: `LspSession`, which maps a client URI to its document (`FindOpen`), alone maps a document's identity to the URI it sends,
+    `UriOf`: the URI the client opened the document with (the first while it is open; two spellings stay one document), else the
+    canonical `SourceIdentity.ToUri()` of a document the client never named. Every location is spelled when it is sent: a
+    publication's URI and related locations (`Publish`, `Spell`), a code action's diagnostics, and hover links (`HoverState` and
+    `HoverRenderer` take the session's `NamedUri`, which `HoverPlacement.Map` asks before its file URI).
+  - Representation: `LspLocation` names its document by identity (`Document`, not serialized) and carries the URI the state owner
+    gives it (`Uri`); the worker places identity and range only, so a reused result never carries a stale spelling.
+  - Publication: `sent` keeps the spelled payload and its URI; a respelled payload is resent, and a list sent under another spelling
+    (the document opened or closed since) is cleared there first. An open or a close forgets every HoverState's renderings
+    (`RespellHover`): a result released unchanged keeps its HoverState.
+  - Rejected: spelling in the worker from the base's open URIs (reused results and later opens keep a stale spelling); parsing the
+    canonical URI back to an identity when sending (a second parse path, an allocation per location); a JSON converter (it cannot see
+    the open documents, and repeat suppression would compare unspelled payloads); discarding HoverStates on an open or a close (no
+    Hover until the next adoption).
+  - Open: two canonical file-URI builders remain, `SourceIdentity.ToUri` (`new Uri(path)`) and `HoverPlacement.FileUri` (escaped,
+    round-trip checked); they agree on the tested Windows names, other hosts unchecked.
+  - Tests: `LspProjectDiagnosticTest.ADocumentOpenedUnderAnotherSpellingGetsItsLocationsUnderThatSpelling` (the related location, and
+    the clear after the close, under that spelling; the canonical URI before) and
+    `LspHoverTest.LinksNameAnOpenDocumentAsTheClientSpelledIt` (a link to a document opened under the spelling while its unit's result
+    is kept, the file URI again after the close; the file URI before), each for a `..` spelling (every host) and the directory's 8.3
+    short name (skipped where the volume has none).
