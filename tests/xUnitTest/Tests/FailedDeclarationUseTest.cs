@@ -25,15 +25,26 @@ public sealed class FailedDeclarationUseTest
         Assert.All(records, x => Assert.Equal(code, x.Code));
     }
 
-    // PLAN G206: a defaulted parameter whose Type failed to bind (InvalidOriginBinding_Kd: `during x` names an owned parameter) leaves its
-    // candidate pending at the candidate's start (IncompleteSignature), so the call rests on the declaration's record instead of a fault
-    // in the candidate's parameter checks (it was CheckFaulted_Kd); generic or not, beside an independent record, and a valid twin.
+    // PLAN G206: a candidate whose parameter or result Type failed to bind leaves the call resting on that failure (it was CheckFaulted_Kd
+    // at a failed default), unless a complete input refutes it, an input at the failed Type fitting as a wildcard: then the call selects
+    // another overload and keeps its records. The failed part is a default (generic or not, beside an independent record, a valid twin),
+    // or, at an overload that `x` or the arity refutes, a default, the result, a mapped parameter after or before `x`, a constructor's, a
+    // method's or a generic one's; the last row's failed overload is refuted by nothing.
     [Theory]
     [InlineData("func gref<T>(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    gref(3)\n", "InvalidOriginBinding_Kd")]
     [InlineData("func gref(x: i64, y: ref/i64 during x = x@ref) => ()\npublic func main()\n    gref(3)\n", "InvalidOriginBinding_Kd")]
     [InlineData("func gref<T>(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    gref(3)\n    let z: i32 = true\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
     [InlineData("func gref<T>(x: ref/T during a, y: ref/T during a = x) => ()\npublic func main()\n    let v = 3\n    gref(v@ref)\n", "")]
-    public void ACallOfADeclarationWithAFailedDefaultTypeRestsOnIt(string source, string codes)
+    [InlineData("func f(x: i64, y: ref/i64 during x = x@ref) -> i64 => 1\nfunc f(x: bool) -> bool => x\npublic func main()\n    let z = f(true)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("func f(x: i64) -> Missing => 1\nfunc f(x: bool) -> bool => x\npublic func main()\n    let z = f(true)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i64, y: Missing) -> i64 => 1\nfunc f(x: bool, y: i64) -> bool => x\npublic func main()\n    let z = f(true, 1)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(y: Missing, x: i64) -> i64 => 1\nfunc f(y: i64, x: bool) -> bool => x\npublic func main()\n    let z = f(1, true)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("struct S\n    var v: i64 = 0\n    public init(x: i64, y: ref/i64 during x = x@ref) => ()\n    public init(x: bool) => ()\npublic func main()\n    let s = S.init(true)\n    let q: i64 = s\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("struct S\n    var v: i64 = 0\n    public init() => ()\n    public func m(self: ref/Self, x: i64, y: ref/i64 during x = x@ref) -> i64 => 1\n    public func m(self: ref/Self, x: bool) -> bool => x\npublic func main()\n    let s = S.init()\n    let z = s.m(true)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("func f<T>(x: T, y: ref/T during x = x@ref, w: i64) -> T => x\nfunc f(x: bool) -> bool => x\npublic func main()\n    let z = f(true)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("enum Failure\n    Busy\nfunc f(x: i64) -> Missing => 1\nfunc f(x: bool) -> Result<i32, Failure> => .Ok(1)\npublic func main()\n    f(true)\n", "DiscardedResult_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i64, y: Missing) -> i64 => 1\nfunc f(x: bool, y: i64) -> bool => x\npublic func main()\n    let z = f(1, 1)\n    let q: bool = z\n", "UnresolvedBinding_Kd")]
+    public void ACandidateWithAFailedSignatureRestsTheCallUnlessACompleteInputRefutesIt(string source, string codes)
         => Assert.Equal(codes, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)));
 
     [Fact]

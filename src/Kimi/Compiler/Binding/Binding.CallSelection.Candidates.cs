@@ -146,13 +146,6 @@ public sealed partial class Binding
             Array.Clear(origins, 0, function.Origins.Count);
             Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
 
-            // A parameter or result Type that failed to bind cannot be judged at an argument or a default: the candidate stays pending,
-            // and the selection rests on the failed signature (EvaluateCallCandidate's FailedPendingSignature; PLAN G206).
-            if (IncompleteSignature(function) is not null)
-            {
-                return CandidateApplicability.Pending;
-            }
-
             for (var i = 0; i < CallOwnSlots(function).Count; i++)
             {
                 if (CallOwnSlots(function)[i] is not (GenericParameterKoto or LengthParameterKoto))
@@ -208,12 +201,8 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
 
-                if (function.Parameters[receiverSlot].Type.BoundType is not { } parameterType)
-                {
-                    return CandidateApplicability.Pending;
-                }
-
-                if (!solution.InferInput(parameterType, receiverType, receiver, receiverPath, receiver: true))
+                if (function.Parameters[receiverSlot].Type.BoundType is { } parameterType &&
+                    !solution.InferInput(parameterType, receiverType, receiver, receiverPath, receiver: true))
                 {
                     if (this.CallMemberPattern(parameterType, function, declaringType) is { } memberType && this.ContractType(memberType, scope, self) is { } required && SharedObjectAuthorityMismatch(receiverType, required))
                     {
@@ -233,7 +222,11 @@ public sealed partial class Binding
                 var kind = this.KindOf(part);
                 contextualInputs |= kind is PartKind.Aggregate or PartKind.Join;
                 contextualCallables |= kind is PartKind.Function or PartKind.Reference;
-                var type = function.Parameters[mapping[i]].Type.BoundType!;
+                if (function.Parameters[mapping[i]].Type.BoundType is not { } type)
+                {
+                    continue; // An input at a parameter Type that failed to bind fits as a wildcard; IncompleteSignature decides below.
+                }
+
                 if (this.FormedApplication(type, CallSlotOwner(function), arguments).Kind == BoundTypeKind.SemanticsApplication)
                 {
                     waiting.Add(i); // SPEC 10.2: solved together; s/U is matched once another argument fixes s.
@@ -277,6 +270,15 @@ public sealed partial class Binding
             if (!argumentMap.Valid)
             {
                 return CandidateApplicability.Inapplicable;
+            }
+
+            // SPEC 23.1.2 (PLAN G206): once the receiver, the arguments, their callable signatures and the arity are judged, each input
+            // at a parameter Type that failed to bind as a wildcard, a candidate that no complete input refutes but whose parameter or
+            // result Type failed stays pending, and the selection rests on that failure (EvaluateCallCandidate's FailedPendingSignature).
+            // The expected result, the defaults and the late solve below read the whole signature.
+            if (IncompleteSignature(function) is not null)
+            {
+                return CandidateApplicability.Pending;
             }
 
             // Established input types cannot change; expectations only fill unresolved slots.
