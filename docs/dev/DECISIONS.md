@@ -6089,6 +6089,32 @@ and migration obligations remain in force; no numeric cap changes are authorized
     come from the old path, so the same records are lost. Precedents: BU-45's limit ("lost on both pipelines until R6-check and
     H3") and dev's named result (resmv). Removal condition: H11 and H3. ResultPremiseTest pins z1nmv.
   - Numbering: R4-M162 (dev's highest is R4-M160; `claude/a5-g216a-u21` holds R4-M161).
+  - Superseded in part (R4-M163, 2026-11-03): the local-patch sentence (`calleeDeclaration` is gone) and the Known bullet's b2in item.
+- **R4-M163 A callee's declaration walk enters no Function Type (G375's structural core, G374)** (2026-11-03; R4's planning
+  session, design `r4-notes\perf-u21\g375-design.md` §2 U2; supersedes R4-M162's local-patch sentence) SPEC 15.6.1, 15.3.4.
+  - Rule: a Function Type in a callee's signature is entered at neither side, at any depth: its result is judged where it is written
+    (BindFunctionType, R4-M162) and its inputs are that signature's premises, proven at its value calls (R4-M137).
+  - Code: two walks over one per-part step, in `Binding.ConstraintValidation.Formation.cs` (its contract at its head). The step
+    (`BeginTypeFormation`, `EndTypeFormation`) judges a part's declaration context, its Origin clauses and a constructed part's
+    clauses with every enclosing container's under its arguments, around the walk's components in the former order. The per-use
+    walk `CheckTypeConstraints` over instantiated Types enters every component (n1a's call record); the declaration walk
+    `CheckDeclaredTypeConstraints` (`CheckSignatureTypeConstraints`, whose three callers stay) enters no Function Type's components.
+    Each walk decides a distinct part once per query of its own (`FormedPart`, `DeclaredPart`; BU-19, BU-55): no shared entry.
+  - Removes: `calleeDeclaration` of `CheckTypeConstraints` and `FormedPart` (R4-M162's patch) with its count line; G374's input-side
+    call record (b2in: `UnprovenConstraint_Kd` at the call -1, the Closure's `TypeMismatch_Kd` +1).
+  - Stays: the per-use re-proof of a declared signature at its three uses, G375's remaining item.
+  - nin (`f: (Box<Array<i32>>) -> i32` under `T is Copy`): the declaration's `UnsatisfiedConstraint_Kd` records stay; the call's
+    re-proof `NoApplicableOverload_Kd` goes; the selected call's instantiated input and the Closure's parameter add
+    `UnsatisfiedConstraint_Kd` (+2). All dependent on the declaration's record (Q13).
+  - Acceptance moves (named under Q13; the review's N2): valid nested signatures are accepted at the three uses (call, function
+    reference, contract matching), which the re-proof of a nested Function Type's input rejected with `UnprovenConstraint_Kd`;
+    ResultPremiseTest pins them as b2valid, refvalid and ctrvalid.
+  - Rejected: G375's published-verdict column (a function's signature verdict as SourceStates' row). One publication before the
+    bodies does not cover two kinds of reader: inferred stored Types' initializers, which bind before the first
+    `ValidateConformances`, and nested named functions, whose headers bind with their enclosing body. U1 STOP (held, not landed);
+    the owner's 「受け入れる（推奨）」 (2026-11-02, PLAN a0e3e2a6e).
+  - Rejected: a bool, mode or type parameter steering one walk (R4-M162's patch form); the clauses before the components (a proof
+    scope keeps its first cause, so the order would move records).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
