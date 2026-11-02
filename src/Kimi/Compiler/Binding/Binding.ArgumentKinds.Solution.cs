@@ -179,7 +179,7 @@ public sealed partial class Binding
             var function = this.Function;
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
-            var outer = binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
+            binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var proof = binding.CheckConstraints(
                 function.TypeConstraints,
                 function,
@@ -216,8 +216,8 @@ public sealed partial class Binding
 
             proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
-            var clause = binding.clauseRead is { } kept && kept.Outcome == proof ? kept : (ClauseFact?)null; // G351a: at the trial's verdict.
-            proof = binding.EndProof(outer, proof);
+            var clause = binding.ScopeReads.Clause is { } kept && kept.Outcome == proof ? kept : (ClauseFact?)null; // G351a: at the trial's verdict.
+            proof = binding.EndProof(proof);
             if (fact is not null)
             {
                 fact.Epoch = binding.frameEpoch; // The candidate trial's frame, whose consumer explains it (CallableOriginFailure).

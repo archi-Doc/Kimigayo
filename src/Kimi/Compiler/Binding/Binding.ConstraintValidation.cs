@@ -179,7 +179,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
         proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
         // A Function Type's components are its inputs and its result.
@@ -198,7 +198,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.EndProof(outer, proof);
+        return this.EndProof(proof);
     }
 
     // A component's formation (CheckTypeConstraints), each distinct one with components proven once per query: its proof and the cause it
@@ -211,7 +211,7 @@ public sealed partial class Binding
             return this.CheckTypeConstraints(part, scope, query, calleeDeclaration);
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         if (!this.formedParts.TryGet(part, query, out var known))
         {
             var proof = this.CheckTypeConstraints(part, scope, query, calleeDeclaration);
@@ -219,7 +219,7 @@ public sealed partial class Binding
             this.formedParts.Set(part, query, known);
         }
 
-        return this.EndProof(outer, this.ReadVerdict(known.Proof, known.Cause, known.Fact));
+        return this.EndProof(this.ReadVerdict(known.Proof, known.Cause, known.Fact));
     }
 
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
@@ -643,8 +643,8 @@ public sealed partial class Binding
     // A proof of a proposition, settled where it is no longer combined (EndProof).
     private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope)
     {
-        var outer = this.BeginProof();
-        return this.EndProof(outer, this.ProveProposition(proposition, scope));
+        this.BeginProof();
+        return this.EndProof(this.ProveProposition(proposition, scope));
     }
 
     // SPEC 23.1.1: each conformance limit a failing check rested on, reported once at its location: an inherited conformance limited by

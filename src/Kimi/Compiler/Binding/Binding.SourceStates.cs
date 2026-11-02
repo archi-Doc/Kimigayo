@@ -91,7 +91,7 @@ public sealed partial class Binding
             stateChanged |= closed;
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         var reverse = false;
         var limitChanged = false;
         while (stateChanged || limitChanged)
@@ -116,9 +116,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                this.limitRead = null;
-                this.errorRead = null;
-                this.unknownRead = null;
+                this.ScopeReads = default;
                 this.sourceChecks++;
                 var proof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)symbol.Declaration);
                 var cause = this.ProofCause(proof);
@@ -132,20 +130,27 @@ public sealed partial class Binding
             reverse = !reverse;
         }
 
-        this.EndProof(outer, ConstraintProof.Proven);
+        this.EndProof(ConstraintProof.Proven);
     }
 
-    // A read of a declaration's published state (a bound Contract reference reads its declaration's) in its own proof scope, as the check
-    // it replaces was.
+    // A read of a declaration's published state (a bound Contract reference reads its declaration's): inside a proof scope it joins that
+    // scope directly, which is what a scope of its own would hand on (EndProof); outside every scope it settles in its own, as the check it
+    // replaces did.
     private ConstraintProof ReadSourceState(BindingSymbol symbol)
     {
         var declaration = ((DeclarationContainerKoto)symbol.Declaration).BoundSymbol!;
-        return this.EndProof(this.BeginProof(), this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact));
+        if (this.proofNesting != 0)
+        {
+            return this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact);
+        }
+
+        this.BeginProof();
+        return this.EndProof(this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact));
     }
 
     private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)
     {
-        var outer = this.BeginProof();
+        this.BeginProof();
         var proof = ConstraintProof.Proven;
         for (var i = 0; i < container.ConstraintNodes.Count; i++)
         {
@@ -167,6 +172,6 @@ public sealed partial class Binding
             proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope), true), true);
         }
 
-        return this.EndProof(outer, proof);
+        return this.EndProof(proof);
     }
 }
