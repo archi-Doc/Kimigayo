@@ -12,8 +12,8 @@ is outside timing.
 | Stage | Report name | Included work |
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
-| 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48) |
+| 2 | `BindingAndStartup` | `Compilation.Bind` (with the HIR publication at the end of its Final pass, DECISIONS BU-81) and application `CheckStartup` |
+| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48) |
 | 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; on every pipeline it reuses stage 3's MIR and checked set, memoized, and keeps them for generation |
 | 5 | `EmissionLowering` | empty: the collector lays out every by-value use in stage 3 (the old generator's lowering until R6-gen's G4) |
 | 6 | `LlvmIrWriting` | `Compilation.Generate`, the generation entry (gate, output roots and `ModuleCodegen`) |
