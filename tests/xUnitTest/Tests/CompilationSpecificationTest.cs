@@ -87,6 +87,7 @@ public class CompilationSpecificationTest
     [InlineData("armv7-unknown-linux-gnueabihf", "linux", "unknown", 32)]
     [InlineData("x86_64h-apple-macosx", "macos", "unknown", 64)]
     [InlineData("x86_64-unknown-freebsd13.2", "unknown", "x86_64", 64)]
+    [InlineData("x86_64-unknown-linuxfoo", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-unrecognized", "unknown", "x86_64", 64)]
     public void PreparedTargetValuesAreCanonicalAndConsistent(string target, string os, string arch, int width)
     {
