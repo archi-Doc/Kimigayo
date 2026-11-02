@@ -32,6 +32,21 @@ public sealed class GenericCaseDiagnosticTest
             x => Assert.Equal(("loan", "let local = v"), (x.Role, Text(Conflict, x.Span))));
     }
 
+    // DIAGNOSTICS "Semantics cases": a found set that is no product lists its cases, binders by `, ` and cases by `; ` (Binding's
+    // Semantics-case renderer, DECISIONS BU-82); each binding it names is related.
+    [Fact]
+    public void ACaseSetThatIsNoProductListsItsCases()
+    {
+        var source = "func f<t/U, s/T>(value: s/t/U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n    U is Copy\n    let local = value\n    _ = value\n" +
+            "    _ = local\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        const string Cases = "t = owner, s = uniq; t = uniq, s = owner; t = uniq, s = uniq";
+        Assert.Equal(("case", Cases), (Assert.Single(error.Reason!).Name, error.Reason![0].Value));
+        Assert.Contains($"Found under the Semantics cases {Cases} (SPEC 8.15)", error.Note, StringComparison.Ordinal);
+        Assert.Equal(["the Semantics binding t", "the Semantics binding s"], error.Related!.Where(static x => x.Role == "declaration").Select(static x => x.Label));
+    }
+
     [Fact]
     public void AProblemOfEveryCaseShowsNoCase()
     {

@@ -4799,6 +4799,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `FixAdjust` fixes a child's Adjust (an assignment target's in place, a transfer's Move, a Subject's Reborrow, a loop binding's Copy),
     so it does not take SPEC 3.4's Write (initialize or replace the value); the publisher's member that records it is renamed with it
     (`HirPublisher.FixAdjust`, R4-M109's `HirPublisher.Write`).
+  - A case adaptation's operand (R6-check Q14 (b), 2026-11-03; Q8, R5-M23: a column defect is fixed in the column's owner before H1)
+    is used `InPlace`, as the builder's `Adapt` reads it: a Place in place (Adjust None), a value through a Temporary. It was
+    published as an acquisition (Move, Copy, Reborrow or ByCase), which no builder read and which H1's S1 would have reported (Q14's 12 subjects, 9 in verified
+    programs); the MIR is unchanged.
   - `PublisherUses`, the HIR publisher's record, a struct so that `AdjustChildren` is specialized for it (the publisher passed as a class
     measured about 2% slower on a warm publish); `[Transitional("R7")]` with the publisher's walk, which R7's inline writes replace.
     S2's ClosureEffects finder is the second record (S2's entry, reserved R4-M145).
@@ -6143,17 +6147,43 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (cxc). C2b (the `MatchInputOrigin` meet) is no cause: with the bound the solve already shortens the input Origin (a 2-Origin
     `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged. Evidence: R4's `r4-notes\g216a-u22-impl\state-u1b.md`
     (01:15, 01:26) with `trace-b.txt` and `trace-c.txt` there.
+  - U2 (aggregate arguments; R4 planning's decision, 2026-11-03; C3): an argument whose operation has no adapted Type is walked by
+    its child positions (`RequireChildPremises`, `Binding.CallRelations.cs`, over the position composition's `ChildPositions` and
+    `AddChildPosition`), each child part judged at its own sub-Type by `PartContribution`: a typed part beside its own Type, any
+    other part, and an aggregate whose positions no part fills (`[]`), at every position; a failed part is a wildcard (rule W).
+    Every record stays at the argument (S1; the sites are U3's). An aggregate (by its form, `ClassifyPart`) is a Signature
+    position, so `SolveLate` bounds the solve with its instantiated parameter Type. Rows: b01, b02, b03, b11, q06, r05_n, vc2
+    and d09 (its Loan conflict follows the call's record; C7 not needed). The walk reads no `PositionKind` row and changes no
+    evidence or fit walk. A composite borrowed at `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType`
+    (b01_ref; U2's review B1). A child position whose parameter Type cannot be derived is a located `Unsupported_Kd` at the
+    argument, never a skip.
+  - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
+    B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
+    Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
+  - U2b (i01_n, N2; R4 planning's brief, 2026-11-03): the fact "this position's Type comes through a slot the expected result
+    solved" is F1's Result itself, recorded in the candidate's `Contributions` slice. Its writer is `Contribute` in the
+    candidate's first run, where the expected result solves the slots. `EvaluateCallCandidate` empties the slice before that run,
+    because the pooled buffer is not cleared on return. Its readers are the selected candidate's later runs (`CheckDefaulted`,
+    the re-run after `CompleteWaiting`), which fix those slots from the construction's Type: they keep a recorded Result and
+    never rewrite it as Signature. No slot-set buffer is added. The fixed-construction re-check keeps its own zeroed buffer;
+    the selected call reads the first evaluation's. N2: `InferAdapted` collects input premises for Evidence parts only
+    (`PartContribution`), so a completed Signature part's premises have one path, `SolveLate`'s, over the instantiated
+    parameter Type. i01_n gives only its outer record. Open, for the planning session (U2's review N4): an aggregate argument is
+    a Signature position, so `SolveLate` collects its whole instantiated Type, while its typed children are also collected
+    through `InferComposite` and `InferAdapted`. One path for them needs SolveLate to walk the child positions and collect only
+    the non-Evidence ones: the pooled F1 list of child positions in design §3, a new representation that this unit does not add.
+    The duplicate bounds move no row.
   - Staged rows, each with its unit and condition (U1c; the review's B2):
-    - i01_n, U2: `Contribute` recomputes "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
+    - i01_n, done in U2b: `Contribute` recomputed "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
       re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
       Result position as Signature: one more record at `.None` beside the outer call's, never one fewer. Cure: the solve publishes
       once, per candidate, the slots its expected result solved, and `Contribute` reads them; every `TryCandidate` solution carries
       that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
       its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
-      `FormedApplication`, then `SolveLate`; the review's N2): U2, with i01_n.
+      `FormedApplication`, then `SolveLate`; the review's N2): done in U2b, with i01_n.
     - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
     - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
-    - vc2, U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
+    - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
   - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
     written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
   - U1e: the well-formedness visit (`VisitWellFormedPremises`, `Binding.ResultPremises.cs`) makes each entry call one query of
@@ -10000,6 +10030,22 @@ resumed by R4-M86 (2026-10-20).
   - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
     and counts each such Use once, as it does the prologue's.
 
+- **BU-82 The Semantics-case renderer is one Binding component** (2026-11-03; R6-check Q8-6, behavior-preserving; the owner's Q8
+  approval 「Q8を承認」 with proposal Q8-6, R5-M23; H0's division, R5-M182)
+  - Responsibility: `Binding.Diagnostics.Cases` renders Semantics cases in a record and is their one renderer: a binder's name and
+    found Semantics (`s = ref or uniq`); a case set as the `case` fact (`CaseFact`: per binder when it is a product, a binder found
+    under all its admitted cases omitted, else the list of cases); the `case` evidence; the Note `Found under the Semantics case ...
+    (SPEC 8.15)`; the related declarations of the named bindings; and the explicit-entry Note tail (`FailingCaseNote`).
+  - Inputs: a definition's pair binders and a set of case bits in their enumeration order (the innermost resolved binder advancing
+    fastest, each in `SemanticsMask` order, the numbering of the old Analysis' `BuildCases` and of `MirCases`' views), or a failing
+    mask. Outputs: text, evidence and related declarations. It decides no case and reads no analysis; it runs only for a published
+    record.
+  - Callers: Binding's capture-entry record (`FailingCaseNote`) and the old Analysis' case records, which call it until H10b deletes
+    that Analysis (R5-M182's amendment of Q8's "until H11"). H3-2's MIR views give their `case:Text` through it (H0a §4.1).
+  - BU-44's `OriginDiagnostics.CaseText` names its binders through `BinderName` but keeps its own list: it joins the cases of one
+    class requirement, `, ` where every binder must give the class (a product) and `; ` where one suffices (a union), which is not a
+    found case set.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
@@ -10583,6 +10629,7 @@ structure is recorded here by the unit that first implements it.
     reassignability view and Tuple-element `PlanRow.Folded` rows (Q16); the jump target row's writer; `MirProblem.Requirement`
     (R4's record under A-5). Rejected: restructuring `HirPublisher.Consume`; a judgment at the publisher's visit; node failures
     for lints; a new `BindingFailure`; a code → requirement table (kept only as the fallback if R4 declines A-5).
+  - Q8-6's renderer is BU-82 (R6-check Q8-6); its old caller lives until H10b (R5-M182).
 - **R5-M24 Ownership requirement kinds owned by Diagnostics** (2026-10-18, planning session; plan Q7, package Q8 §3.1, under
   R5-M23; supersedes R4-M3a's naming clause) `OwnershipRequirement` (`Diagnostics/DiagnosticRequirement.cs`) is the kind
   enumeration of the Ownership partition: the 18 members of the former `OwnershipFailure` in the same order, so every Kind,
@@ -15824,3 +15871,5 @@ structure is recorded here by the unit that first implements it.
     R4-M108's H11 list joins H11. R4-12 and R4-13 (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)):
     `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private composition (an owner-approved postponed
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
+  - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
+    deletes the old Analysis.

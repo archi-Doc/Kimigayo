@@ -45,6 +45,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Put3 = "func put3(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\n";
 
+    private const string PutRef = "func putr(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: ref/(Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\n";
+
     private const string Put4 = "func put4(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: [1 of Option<ref/(ref/i32 during b) during a>])\n    slot@follow = v\n";
 
     private const string Put5 = "func put5(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Array<ref/(ref/i32 during b) during a>)\n    slot@follow = v\n";
@@ -89,6 +91,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("d04", WrapFunc + OwnH + LocalUse + "    let x = h(a, b, wrap(Option.None))\n    return 0\n", "")]
     [InlineData("d04_n", ImpliedStore + WrapFunc + ShortBody + "    put2(p, sr, wrap(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd wrap(Option.None)")]
     [InlineData("i01", LayerBox + "func h3(q: ref/i32, r: ref/i32, x: Box<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h3(a, b, Box.init(item: Option.None))\n    return 0\n", "")]
+    [InlineData("i01_n", LayerBox + PutBox + ShortBody + "    putBox(p, sr, Box.init(item: Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd Box.init(item: Option.None)")]
     [InlineData("i02", PassStruct + OwnH + LocalUse + "    let s = S.init()\n    let x = h(a, b, s.pass(Option.None))\n    return 0\n", "")]
     [InlineData("i02_n", PassStruct + ImpliedStore + ShortBody + "    let s = S.init()\n    put2(p, sr, s.pass(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd s.pass(Option.None)")]
     [InlineData("q10b", "func h(q: ref/i32, r: ref/i32, x: (Option<ref/(ref/i32 during q) during r>, i32)) -> ref/i32 during r\n    return q\n" + PairFunc + LocalUse + "    let x = h(a, b, pair(Option.None))\n    return 0\n", "")]
@@ -105,13 +108,21 @@ public partial class OriginRelationDiagnosticTest
     // argument's instantiated well-formedness at that argument. d09's call adds `short`'s Loan to `keep`, read after `short` ends, so its
     // record is the Loan conflict at `short`. Each twin passes a value that outlives `q`, states the relation or reads before the end; the
     // same shape without a contextual part (t03) stays valid inside a Closure, as s04 does (ClosureEnvironmentOriginTest). cs2 is b11 and
-    // q12 is vc2 (not repeated).
+    // q12 is vc2 (not repeated). b01_ref is b01 borrowed by the cross-semantics borrow (SPEC 10.2; U2's review B1).
     [Theory]
+    [InlineData("b01", Put3 + ShortBody + "    put3(p, sr, (Option.None, 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (Option.None, 1)")]
     [InlineData("b01_ok", Put3 + LongBody + "    put3(p, v, (Option.None, 1))\n    return 0\n", "")]
+    [InlineData("b01_ref", PutRef + ShortBody + "    putr(p, sr, (Option.None, 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (Option.None, 1)")]
+    [InlineData("b01_ref_ok", PutRef + LongBody + "    putr(p, v, (Option.None, 1))\n    return 0\n", "")]
+    [InlineData("b02", Put4 + ShortBody + "    put4(p, sr, [Option.None])\n    return 0\n", "UnsatisfiedOriginRelation_Kd [Option.None]")]
     [InlineData("b02_ok", Put4 + LongBody + "    put4(p, v, [Option.None])\n    return 0\n", "")]
+    [InlineData("b03", Put5 + ShortBody + "    put5(p, sr, [])\n    return 0\n", "UnsatisfiedOriginRelation_Kd []")]
     [InlineData("b03_ok", Put5 + LongBody + "    put5(p, v, [])\n    return 0\n", "")]
+    [InlineData("b11", NestedHead + InnerPair + "    return inner((Option.None, 1), q)\n", "UnprovenOriginRelation_Kd (Option.None, 1)")]
     [InlineData("b11_ok", NestedHead + WithPremise + InnerPair + "    return inner((Option.None, 1), q)\n", "")]
+    [InlineData("d09", Put3 + KeepShort + "    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     [InlineData("d09_ok", Put3 + KeepShort + "        let seen = keep@follow\n    return 0\n", "")]
+    [InlineData("q06", Put6 + ShortBody + "    put6(p, sr, ((Option.None, 1), 2))\n    return 0\n", "UnsatisfiedOriginRelation_Kd ((Option.None, 1), 2)")]
     [InlineData("q06_ok", Put6 + LongBody + "    put6(p, v, ((Option.None, 1), 2))\n    return 0\n", "")]
     [InlineData("t03", "func same11<T>(x: [2 of (ref/T during c, i32)]) => ()\n" + TwoCopies + "    let f = func [a, b] () -> ()\n        same11([(a@ref, 1), (b@ref, 1)])\n    f()\n    return 0\n", "")]
     [InlineData("q05", ImpliedStore + ShortBody + "    put2(slot: p, v: sr, w: Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
@@ -128,6 +139,7 @@ public partial class OriginRelationDiagnosticTest
     [Theory]
     [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@uniq", null)]
+    [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
     [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     public void AContextualPartInsideAClosureIsJudged(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
@@ -172,6 +184,7 @@ public partial class OriginRelationDiagnosticTest
     [Theory]
     [InlineData("vc1", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return g(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
     [InlineData("vc1_ok", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n" + WithPremise + "    return g(Option.None)\n", "")]
+    [InlineData("vc2", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n    return g((Option.None, 1))\n", "UnprovenOriginRelation_Kd (Option.None, 1)")]
     [InlineData("vc2_ok", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n" + WithPremise + "    return g((Option.None, 1))\n", "")]
     public void AValueCallProvesItsCalleesNestedInputs(string form, string body, string records)
         => AssertRecords(form, body, records, null);
