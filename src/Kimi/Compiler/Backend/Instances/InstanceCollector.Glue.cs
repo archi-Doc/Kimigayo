@@ -11,11 +11,39 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys (GlueOf). -1 for a Type TyCtxt cannot make there.
     private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed ? this.GlueOf(item, subject, closed) : -1;
 
-    // The DropGlue item of a closed Type, keyed by its erased Type, for a Type whose destruction runs or releases something
+    // The DropGlue item of a closed Type, keyed by what its function reads (GlueKey), for a Type whose destruction runs or releases something
     // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row); A2's
     // verdicts do not narrow the checked set (codegen reads them). -1 for a Type with nothing to destroy or a refused edge.
     private int GlueOf(int item, SourceRef subject, BoundType closed)
-        => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default, null, null, 0, null), closed, null) : -1;
+        => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, this.GlueKey(closed), closed, null) : -1;
+
+    // DECISIONS R5-M60 (amended by U11): the key of a glue item, what its function reads: its erased Type (AdmitType), except for an owning
+    // handle whose release destroys no payload glue (FunctionCodegen.Objects' Release then reads its counting alone): a Sealed payload
+    // (DropGlue.Parts gives it) that needs no drop, or a payload the descriptor's finalizer destroys (none given, Variant 1), keyed by the
+    // handle over Unit, so each such release has one glue per counting. A Sealed payload that may need a drop keeps its Type's. Each handle
+    // Type is classified once per run (glueKeys): MayNeedDrop walks the payload's destruction to its bound.
+    private MonoKey GlueKey(BoundType closed)
+    {
+        MonoKey key = new(MonoKind.DropGlue, default, null, null, 0, null);
+        if (DropGlue.Row(closed) != DropGlueRow.Handle)
+        {
+            return key;
+        }
+
+        if (this.glueKeys.TryGetValue(closed, out var known))
+        {
+            return known;
+        }
+
+        var (parts, start) = (this.parts, this.parts.Count);
+        DropGlue.Parts(this.types, closed, parts);
+        var payload = parts.Count > start ? parts[start].Type : null;
+        parts.RemoveRange(start, parts.Count - start);
+        key = payload is not null && MirTypes.MayNeedDrop(payload, this.seen) ? key
+            : key with { Type = this.types.Rebuild(closed, [BoundType.Unit], null, []), Variant = payload is null ? (byte)1 : (byte)0 };
+        this.glueKeys.Add(closed, key);
+        return key;
+    }
 
     // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10), which the validator checks the program has (G191).
     // A static of a generic container's group, whose storage the MIR keys by its symbol alone (SPEC 22.4.4), has no instance to admit: its

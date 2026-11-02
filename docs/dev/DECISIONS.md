@@ -10861,6 +10861,18 @@ structure is recorded here by the unit that first implements it.
   - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
     `MayNeedDrop` says; Parts derived from `MirTypes.Destruction` (a deep forward walk, and Mir does not read the Backend); a
     collector-side element table (X4).
+  - Amended by U11 (PLAN G157 (28), 2026-11-02): a glue item is keyed by what its function reads, for an owning handle its release
+    alone (`FunctionCodegen.Objects`' Release: the counting and the payload's glue or the descriptor's finalizer; no payload size,
+    alignment or offset: the payload sits at the header's fixed offset and the free takes no size). A handle whose Sealed payload may
+    need a drop keeps its erased Type (its target, the payload's glue, is the payload's erased Type's); one whose Sealed payload needs
+    none, and one whose payload is not Sealed (`MonoKey.Variant` 1), are keyed by the handle over Unit (`TyCtxt.Rebuild`, keeping the
+    counting), so each such release has one glue per counting, represented by its first requester (`InstanceCollector.GlueKey`, through
+    `DropGlue.Parts` and `MirTypes.MayNeedDrop`, the readings Release makes, once per handle Type in a run: a memo the run clears,
+    since MayNeedDrop walks the payload's destruction to its bound); code generation is unchanged. The old generator shared
+    the same classes (by mode and payload drop). The height cap moves before `Find`: it is the requested Type's (R5-M171), so a
+    requester past it is refused whether or not its shared key exists. Not shared: a handle over a shared handle (`rc/rc/A` and
+    `rc/rc/B`, whose key would have to carry the inner release) and struct, Tuple or enum glues of one layout and part glues (outside
+    the item). Tests: `InstanceCollectorTest.HandleGluesShareTheirRelease`, `GrowthStopsAtItsSite("shared")`.
 - **R5-M62 `VTableDef` and `TyCtxt.Applies`, a struct family's dispatch shape** (2026-10-19, planning session; plan F4, package F
   §4.1–§4.3, §5 and §6, S2-S4 X5; under R5-M18 form 1 and R5-M61) A permanent declaration table (`Binding/VTableDef.cs`, R2b-D3's
   deferred view) kept on the struct's `AdtDef` (`VTable`), and a view beside `TyCtxt.Witness` (`TyCtxt.Dispatch.cs`).

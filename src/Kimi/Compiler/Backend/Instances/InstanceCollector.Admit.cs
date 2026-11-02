@@ -119,13 +119,20 @@ internal sealed partial class InstanceCollector
     // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose storage verdict the call's edge read
     // (Made), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. A Type higher than the
     // height cap is, like a Layout limit, a use of its erased Type over a limit in the requesting declaration (Limit, DECISIONS R5-M171),
-    // read again at each request, not a refused key. -1 when refused.
+    // read again at each request, before its key is found (a handle glue's key is shared by Types of any height, GlueKey), not a refused
+    // key. -1 when refused.
     private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type, Subst? representative)
     {
         var set = this.Set;
         if (type.ContainsParameter)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            return -1;
+        }
+
+        if (type.Height > HeightLimit)
+        {
+            this.Limit(this.types.Erase(type), this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
             return -1;
         }
 
@@ -138,12 +145,6 @@ internal sealed partial class InstanceCollector
         if (this.refused.Contains(key))
         {
             return -1; // Refused once, with its one record (DECISIONS R5-M170).
-        }
-
-        if (type.Height > HeightLimit)
-        {
-            this.Limit(this.types.Erase(type), this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
-            return -1;
         }
 
         if (!this.LaysOut(parent, site, type) || (key.Kind == MonoKind.DropGlue && !this.ElementsLayOut(parent, site, type)))

@@ -96,6 +96,7 @@ internal sealed partial class InstanceCollector
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
+    private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per run.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
     private MirProgram? program; // The program of the latest run, whose bodies Declaration reads.
@@ -135,6 +136,7 @@ internal sealed partial class InstanceCollector
         this.counts.Clear();
         this.limits.Clear();
         this.refused.Clear();
+        this.glueKeys.Clear();
         Array.Clear(this.declaring);
         (this.program, this.rootModules, this.Work) = (program, rootModules, 0);
         if (program.Findings.Count > 0)
