@@ -56,8 +56,9 @@ public sealed class HoverLinkTest
     {
         var physical = Path.GetFullPath("elsewhere/external.kimi");
         var mapping = new HoverPlacement(null, [new("src/external.kimi", physical)]);
-        Assert.Equal(physical, new Uri(Assert.IsType<string>(DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Unnamed)))).LocalPath);
-        Assert.Null(DocumentationLinks.ResolveEditor("neighbor.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Unnamed)));
+        var resolved = DocumentationLinks.ResolveEditor("external.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Canonical));
+        Assert.Equal(physical, new Uri(Assert.IsType<string>(resolved)).LocalPath);
+        Assert.Null(DocumentationLinks.ResolveEditor("neighbor.kimi", "src/external.kimi", "P", x => mapping.Map(x, HoverPlacement.Canonical)));
         Assert.Null(DocumentationLinks.ResolveEditor("peer.kimi", "compiler://Kimi/Core.kimi", "Kimi", Unsupported));
     }
 
@@ -110,12 +111,12 @@ public sealed class HoverLinkTest
         Assert.Equal("A.kimi", compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[0]));
         var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(path)];
         var entry = document.Entries[document.Find(source.IndexOf("Value", StringComparison.Ordinal))];
-        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true, HoverPlacement.Unnamed).Body);
+        Assert.Contains($"[peer](<{new Uri(Path.GetFullPath("B.kimi")).AbsoluteUri}>)", HoverRenderer.Render(entry.Info, true, HoverPlacement.Canonical).Body);
     }
 
     private static string? Unsupported(DocumentationLinkTarget target)
-        => HoverPlacement.Unsupported.Map(target, HoverPlacement.Unnamed);
+        => HoverPlacement.Unsupported.Map(target, HoverPlacement.Canonical);
 
     private string? Resolve(string destination)
-        => DocumentationLinks.ResolveEditor(destination, "src/main.kimi", "P", x => new HoverPlacement(this.root, []).Map(x, HoverPlacement.Unnamed));
+        => DocumentationLinks.ResolveEditor(destination, "src/main.kimi", "P", x => new HoverPlacement(this.root, []).Map(x, HoverPlacement.Canonical));
 }

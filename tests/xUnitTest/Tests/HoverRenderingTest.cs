@@ -15,7 +15,7 @@ public sealed class HoverRenderingTest
     public void MarkdownKeepsContractsHierarchyCodeAndCompleteDocumentation()
     {
         var info = Info("Intro **strong** and *emphasis*.\n\n# Section\n\nTail with ``a`b``.\n\n###### Deep\n\n```kimi\n<tag>\n```", copy: ConstraintProof.Unknown);
-        var result = HoverRenderer.Render(info, true, HoverPlacement.Unnamed);
+        var result = HoverRenderer.Render(info, true, HoverPlacement.Canonical);
         Assert.Null(result.Reason);
         var body = Assert.IsType<string>(result.Body);
         Assert.Contains("```kimi\nstruct Sample\n```", body);
@@ -34,7 +34,8 @@ public sealed class HoverRenderingTest
     [Fact]
     public void UnadmittedSyntaxCannotBecomeImagesHtmlOrReferenceLinks()
     {
-        var body = HoverRenderer.Render(Info("<script>alert(1)</script>\n\n![image](https://example.test/image)\n\n[label][id]\n\n[id]: https://example.test/reference\n\n<command:run>"), true, HoverPlacement.Unnamed).Body!;
+        var info = Info("<script>alert(1)</script>\n\n![image](https://example.test/image)\n\n[label][id]\n\n[id]: https://example.test/reference\n\n<command:run>");
+        var body = HoverRenderer.Render(info, true, HoverPlacement.Canonical).Body!;
         var html = Markdig.Markdown.ToHtml(body);
         Assert.DoesNotContain("<script>", html);
         Assert.DoesNotContain("<img", html);
@@ -46,7 +47,8 @@ public sealed class HoverRenderingTest
     [Fact]
     public void PlaintextIncludesLabelsUrlsAndHierarchy()
     {
-        var text = HoverRenderer.Render(Info("# Links\n\n[guide](https://example.test/guide \"A guide\") and <author@example.test>.\n\n- first\n- second"), false, HoverPlacement.Unnamed).Body!;
+        var info = Info("# Links\n\n[guide](https://example.test/guide \"A guide\") and <author@example.test>.\n\n- first\n- second");
+        var text = HoverRenderer.Render(info, false, HoverPlacement.Canonical).Body!;
         Assert.Contains("Heading level 1: Links", text);
         Assert.Contains("guide (https://example.test/guide) — A guide", text);
         Assert.Contains("author@example.test (mailto:author@example.test)", text);
@@ -59,7 +61,7 @@ public sealed class HoverRenderingTest
     {
         var document = Document("Intro.\n\n- T: **The type**.\n\n  ```kimi\n  i32\n  ```\n- value: Other information.", [new("T"), new("value")]);
         var declaration = new HoverDeclaration("Type parameter", "f", "T", [], [document], Parameter: "T");
-        var body = HoverRenderer.Render(new([declaration]), true, HoverPlacement.Unnamed).Body!;
+        var body = HoverRenderer.Render(new([declaration]), true, HoverPlacement.Canonical).Body!;
         var html = Markdig.Markdown.ToHtml(body);
         Assert.Contains("<strong>The type</strong>", html);
         Assert.Contains("i32", html);
@@ -67,31 +69,31 @@ public sealed class HoverRenderingTest
         Assert.DoesNotContain("Intro.", body);
         var duplicate = Document("- T: First.\n- T: Second.", [new("T")]);
         var duplicated = new HoverInfo([declaration with { Documentation = [duplicate] }]);
-        Assert.DoesNotContain("Documentation", HoverRenderer.Render(duplicated, false, HoverPlacement.Unnamed).Body);
+        Assert.DoesNotContain("Documentation", HoverRenderer.Render(duplicated, false, HoverPlacement.Canonical).Body);
     }
 
     [Fact]
     public void EmptyAndDeferredCommentsAreDifferentFromAbsence()
     {
-        Assert.Contains("Documentation: explicitly empty", HoverRenderer.Render(Info(string.Empty), false, HoverPlacement.Unnamed).Body);
+        Assert.Contains("Documentation: explicitly empty", HoverRenderer.Render(Info(string.Empty), false, HoverPlacement.Canonical).Body);
         var absent = new HoverInfo([new("Type", string.Empty, "struct Sample", [], [])]);
-        Assert.DoesNotContain("Documentation", HoverRenderer.Render(absent, false, HoverPlacement.Unnamed).Body);
+        Assert.DoesNotContain("Documentation", HoverRenderer.Render(absent, false, HoverPlacement.Canonical).Body);
         var deferred = absent with { Declarations = [absent.Declarations[0] with { DocumentationNotice = "Documentation deferred: syntax errors" }] };
-        Assert.Contains("Documentation deferred: syntax errors", HoverRenderer.Render(deferred, false, HoverPlacement.Unnamed).Body);
+        Assert.Contains("Documentation deferred: syntax errors", HoverRenderer.Render(deferred, false, HoverPlacement.Canonical).Body);
     }
 
     [Fact]
     public void InputAndDepthLimitsKeepDeclarationsButMandatoryOverflowReturnsNull()
     {
-        var longComment = HoverRenderer.Render(Info(new string('a', HoverLimits.Input + 1)), true, HoverPlacement.Unnamed);
+        var longComment = HoverRenderer.Render(Info(new string('a', HoverLimits.Input + 1)), true, HoverPlacement.Canonical);
         Assert.Contains("struct Sample", longComment.Body);
         Assert.Contains("Documentation stopped: input limit", longComment.Body);
         Assert.True(longComment.Cacheable);
-        var deep = HoverRenderer.Render(Info(new string('>', 80) + " text"), true, HoverPlacement.Unnamed);
+        var deep = HoverRenderer.Render(Info(new string('>', 80) + " text"), true, HoverPlacement.Canonical);
         Assert.Contains("struct Sample", deep.Body);
         Assert.Contains("Documentation stopped: depth limit", deep.Body);
         var large = Info("Unused.") with { Effects = new string('x', HoverLimits.Output) };
-        var rejected = HoverRenderer.Render(large, true, HoverPlacement.Unnamed);
+        var rejected = HoverRenderer.Render(large, true, HoverPlacement.Canonical);
         Assert.Null(rejected.Body);
         Assert.NotNull(rejected.Reason);
     }
@@ -100,7 +102,7 @@ public sealed class HoverRenderingTest
     public void OutputTruncationNeverCutsACompletedBlockOrLink()
     {
         var comment = "Kept paragraph.\n\n" + new string('*', 40_000) + "\n\n[later](https://example.test/later)";
-        var result = HoverRenderer.Render(Info(comment), true, HoverPlacement.Unnamed);
+        var result = HoverRenderer.Render(Info(comment), true, HoverPlacement.Canonical);
         Assert.NotNull(result.Reason);
         Assert.DoesNotContain("https://example.test/later", result.Body);
         Assert.True(result.Body!.Length <= HoverLimits.Output);
@@ -113,7 +115,7 @@ public sealed class HoverRenderingTest
     public void MixedEmphasisAndNestedListsPreserveTheirStructure()
     {
         var info = Info("A **bold _inner_** and *outer __strong__*.\n\n> quoted\n>\n> - first\n>   - nested\n> - last");
-        var result = HoverRenderer.Render(info, true, HoverPlacement.Unnamed);
+        var result = HoverRenderer.Render(info, true, HoverPlacement.Canonical);
         var html = Markdig.Markdown.ToHtml(result.Body!);
         Assert.Contains("<strong>bold <em>inner</em></strong>", html);
         Assert.Contains("<em>outer <strong>strong</strong></em>", html);

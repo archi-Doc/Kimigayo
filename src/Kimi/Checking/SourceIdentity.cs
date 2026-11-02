@@ -72,10 +72,28 @@ public readonly struct SourceIdentity : IEquatable<SourceIdentity>, IComparable<
         return TryFromPath(parsed.LocalPath, out identity);
     }
 
-    /// <summary>Converts a file identity to its <c>file:</c> URI.</summary>
+    /// <summary>Converts the identity to its URI, the one canonical spelling (DECISIONS R5-M180): a built-in identifier's own, a path's
+    /// <c>file:</c> URI with each <c>%</c>, <c>#</c> and <c>?</c> (and a non-Windows <c>\</c>) escaped as path data, so it names this file.</summary>
     /// <returns>The URI text.</returns>
     public string ToUri()
-        => new Uri(this.Value).AbsoluteUri;
+    {
+        if (this.IsBuiltIn)
+        {
+            return new Uri(this.Value).AbsoluteUri;
+        }
+
+        // Uri otherwise reads a literal %41 in a file name as an escape of A, and # or ? as a URI part.
+        var escaped = this.Value.Replace("%", "%25", StringComparison.Ordinal).Replace("#", "%23", StringComparison.Ordinal)
+            .Replace("?", "%3F", StringComparison.Ordinal);
+        escaped = OperatingSystem.IsWindows() ? escaped.Replace('\\', '/') : escaped.Replace("\\", "%5C", StringComparison.Ordinal);
+        var prefix = escaped switch
+        {
+            ['/', '/', ..] => "file:",
+            ['/', ..] => "file://",
+            _ => "file:///",
+        };
+        return new Uri(prefix + escaped).AbsoluteUri;
+    }
 
     /// <inheritdoc/>
     public bool Equals(SourceIdentity other)

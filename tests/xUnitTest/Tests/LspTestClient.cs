@@ -159,7 +159,9 @@ internal sealed class LspTestClient : IAsyncDisposable
         => this.OpenUriAsync(Uri(path), text, version);
 
     public Task OpenUriAsync(string uri, string text, int version = 1)
-        => this.NotifyAsync("textDocument/didOpen", $"{{\"textDocument\":{{\"uri\":\"{uri}\",\"languageId\":\"kimi\",\"version\":{version},\"text\":{JsonSerializer.Serialize(text)}}}}}");
+        => this.NotifyAsync(
+            "textDocument/didOpen",
+            $"{{\"textDocument\":{{\"uri\":\"{uri}\",\"languageId\":\"kimi\",\"version\":{version},\"text\":{JsonSerializer.Serialize(text)}}}}}");
 
     public Task ChangeAsync(string path, int version, params string[] changes)
         => this.NotifyAsync("textDocument/didChange", $"{{\"textDocument\":{{\"uri\":\"{Uri(path)}\",\"version\":{version}}},\"contentChanges\":[{string.Join(',', changes)}]}}");

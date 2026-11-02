@@ -15104,25 +15104,35 @@ structure is recorded here by the unit that first implements it.
     document's list under the URI the client opened it with, but the worker spelled related locations canonically
     (`WorkspaceCheck.Place`, `ToUri()`) and hover links by their file URI (`HoverPlacement.Map`), so a related location or a link into
     a document open under another spelling (an 8.3 name, a `..` segment, another case) opened a second editor; and a document closed
-    after its list was sent under the client's spelling had the list cleared under the canonical URI, so the client kept it.
+    after its list was sent under the client's spelling had the list cleared under the canonical URI, so the client kept it. The two
+    canonical builders also disagreed: `ToUri` (`new Uri(path)`) read a literal `%41` in a file name as `A` and `%2e%2e` as `..`,
+    naming another file, where `HoverPlacement.FileUri` escaped it.
   - Rule: `LspSession`, which maps a client URI to its document (`FindOpen`), alone maps a document's identity to the URI it sends,
     `UriOf`: the URI the client opened the document with (the first while it is open; two spellings stay one document), else the
-    canonical `SourceIdentity.ToUri()` of a document the client never named. Every location is spelled when it is sent: a
-    publication's URI and related locations (`Publish`, `Spell`), a code action's diagnostics, and hover links (`HoverState` and
-    `HoverRenderer` take the session's `NamedUri`, which `HoverPlacement.Map` asks before its file URI).
+    canonical `SourceIdentity.ToUri()`, the one builder: a built-in identifier's own URI, a path's `file:` URI with `%`, `#`, `?` (and a
+    non-Windows `\`) escaped as path data (`FileUri` deleted). Every location is spelled when it is sent: a publication's URI and
+    related locations (`Publish`, `Spell`), a code action's diagnostics, and hover links (`HoverState` and `HoverRenderer` take
+    `UriOf`, which `HoverPlacement.Map` calls with the identity it took for each mapped file where the placement was built, so mapping
+    reads no path).
   - Representation: `LspLocation` names its document by identity (`Document`, not serialized) and carries the URI the state owner
-    gives it (`Uri`); the worker places identity and range only, so a reused result never carries a stale spelling.
-  - Publication: `sent` keeps the spelled payload and its URI; a respelled payload is resent, and a list sent under another spelling
-    (the document opened or closed since) is cleared there first. An open or a close forgets every HoverState's renderings
-    (`RespellHover`): a result released unchanged keeps its HoverState.
+    gives it (`Uri`); the worker places identity and range only, so a reused result never carries a stale spelling. A diagnostic
+    reaching the sender with an unspelled location is a broken contract (`Spelled`, the one check before both sends, throws
+    `UnreachableException`): the JSON context omits a null URI, so it would otherwise be sent silently.
+  - Publication: `sent` keeps the placed payload, the spelled one, the version, the URI and the spelling generation, which an open or a
+    close advances (`Respell`, which also forgets every HoverState's renderings: a result released unchanged keeps its HoverState). An
+    unchanged placed payload under the same generation reuses what was sent without spelling (no allocation); otherwise it is
+    spelled, and sent unless equal to what was sent. A list sent under another spelling (the document opened or closed since) is
+    cleared there first.
   - Rejected: spelling in the worker from the base's open URIs (reused results and later opens keep a stale spelling); parsing the
     canonical URI back to an identity when sending (a second parse path, an allocation per location); a JSON converter (it cannot see
     the open documents, and repeat suppression would compare unspelled payloads); discarding HoverStates on an open or a close (no
-    Hover until the next adoption).
-  - Open: two canonical file-URI builders remain, `SourceIdentity.ToUri` (`new Uri(path)`) and `HoverPlacement.FileUri` (escaped,
-    round-trip checked); they agree on the tested Windows names, other hosts unchecked.
+    Hover until the next adoption); keeping `FileUri` beside `ToUri` (two canonical spellings of one file).
   - Tests: `LspProjectDiagnosticTest.ADocumentOpenedUnderAnotherSpellingGetsItsLocationsUnderThatSpelling` (the related location, and
     the clear after the close, under that spelling; the canonical URI before) and
     `LspHoverTest.LinksNameAnOpenDocumentAsTheClientSpelledIt` (a link to a document opened under the spelling while its unit's result
     is kept, the file URI again after the close; the file URI before), each for a `..` spelling (every host) and the directory's 8.3
-    short name (skipped where the volume has none).
+    short name (skipped where the volume has none); `LspProjectDiagnosticTest.ANeverNamedDocumentIsSentUnderItsPathsUri` (`a%41.kimi`,
+    `a%2e%2e.kimi`: the published URI names the file and the hover link is that URI; `aA.kimi` and `a...kimi` before);
+    `LspCodeActionTest.AQuickFixsDiagnosticSpellsItsRelatedLocationsAsPublished` (the quick fix's related locations equal the
+    published ones; without `Spell` there, they lack their URI).
+  - Unverified: non-Windows hosts (the `\` escape and `ToUri` there).

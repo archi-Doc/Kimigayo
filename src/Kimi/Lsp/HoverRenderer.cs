@@ -12,8 +12,8 @@ namespace Kimi.Lsp;
 
 internal readonly record struct HoverRendering(string? Body, string? Reason = null, bool Cacheable = true);
 
-// Links name a document the client opened by the URI it opened it with (named), any other by its file URI.
-internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string?> named)
+// Links name their documents by the host's URIs (uriOf: LspSession.UriOf).
+internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string> uriOf)
 {
     internal const string PreviousNotice = "Previous analysis: update pending";
     private const int NoticeReserve = 256;
@@ -31,8 +31,8 @@ internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string?>
     private int parameterAt;
     private int parameterStart = -1;
 
-    internal static HoverRendering Render(HoverInfo info, bool markdown, Func<SourceIdentity, string?> named)
-        => new HoverRenderer(markdown, named).Render(info);
+    internal static HoverRendering Render(HoverInfo info, bool markdown, Func<SourceIdentity, string> uriOf)
+        => new HoverRenderer(markdown, uriOf).Render(info);
 
     private HoverRendering Render(HoverInfo info)
     {
@@ -518,7 +518,7 @@ internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string?>
                 var documentation = this.documentation!;
                 var placement = documentation.Placement ?? HoverPlacement.Unsupported;
                 var destination = DocumentationLinks.ResolveEditor(
-                    node.Destination!, documentation.LogicalName, documentation.Project, target => placement.Map(target, named));
+                    node.Destination!, documentation.LogicalName, documentation.Project, target => placement.Map(target, uriOf));
                 var automatic = node.Kind == DocumentationMarkdownKind.AutoLink;
                 if (automatic && destination is null)
                 {

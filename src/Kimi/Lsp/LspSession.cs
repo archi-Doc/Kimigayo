@@ -461,7 +461,7 @@ internal sealed partial class LspSession : IDisposable
         var document = new OpenDocument(item.Uri, identity, role, new(text), item.Version);
         this.documents.Add(identity, document);
         this.documentsByUri.TryAdd(item.Uri, document);
-        this.RespellHover();
+        this.Respell();
         this.OpenCloseEvent(now, false, identity);
     }
 
@@ -532,7 +532,7 @@ internal sealed partial class LspSession : IDisposable
 
         this.documents.Remove(document.Identity);
         this.documentsByUri.Remove(document.Uri);
-        this.RespellHover();
+        this.Respell();
         document.Text.Dispose();
         this.OpenCloseEvent(now, false, document.Identity);
     }
@@ -555,7 +555,7 @@ internal sealed partial class LspSession : IDisposable
                     (actions ??= []).Add(new()
                     {
                         Title = candidate.Title,
-                        Diagnostics = [this.Spell(candidate.Diagnostic)],
+                        Diagnostics = Spelled([this.Spell(candidate.Diagnostic)]),
                         Edit = new() { DocumentChanges = [new() { TextDocument = new() { Uri = document.Uri, Version = document.Version }, Edits = candidate.Edits }] },
                     });
                 }

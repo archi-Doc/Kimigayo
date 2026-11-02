@@ -1,30 +1,56 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Checking;
 
 namespace Kimi.Lsp;
 
 // The locations the server sends: the state owner alone maps a document's identity to the URI it sends for it, the spelling the client
-// opened the document with, or the canonical spelling of a document the client never named (DECISIONS R5-M180). FindOpen is the
-// inverse. Every sent location is spelled when it is sent: a publication's URI, its related locations, a code action's diagnostics and
-// hover links.
+// opened the document with, or the canonical spelling (SourceIdentity.ToUri) of a document the client never named (DECISIONS R5-M180).
+// FindOpen is the inverse. Every sent location is spelled when it is sent: a publication's URI, its related locations, a code action's
+// diagnostics and hover links; one reaching the sender unspelled is a broken contract.
 internal sealed partial class LspSession
 {
-    private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Payload, int? Version, string Uri)> sent = new();
+    private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Placed, LspDiagnostic[] Sent, int? Version, string Uri, long Spelling)> sent = new();
+    private long spelling;
+
+    // The one check before the sender: the JSON context omits a null URI, so an unspelled location would be sent silently.
+    private static LspDiagnostic[] Spelled(LspDiagnostic[] diagnostics)
+    {
+        foreach (var diagnostic in diagnostics)
+        {
+            foreach (var related in diagnostic.RelatedInformation ?? [])
+            {
+                if (related.Location.Uri is null)
+                {
+                    throw new UnreachableException("Internal invariant: a related location reached the sender unspelled (LspSession.Spell).");
+                }
+            }
+        }
+
+        return diagnostics;
+    }
 
     private string UriOf(SourceIdentity document)
-        => this.NamedUri(document) ?? document.ToUri();
+        => this.documents.GetValueOrDefault(document)?.Uri ?? document.ToUri();
 
-    private string? NamedUri(SourceIdentity document)
-        => this.documents.GetValueOrDefault(document)?.Uri;
+    // An open or a close changes UriOf: payloads are spelled again when next reconsidered, and Hover renderings are forgotten.
+    private void Respell()
+    {
+        this.spelling++;
+        foreach (var document in this.documents.Values)
+        {
+            document.Hover?.ForgetRenderings();
+        }
+    }
 
     // SPEC 23.4: a document's payload is sent unless it equals what was last sent for it; a document never sent counts as sent empty.
-    // A list sent under another spelling of the document (opened or closed since) is cleared there first.
+    // A list sent under another spelling of the document (opened or closed since) is cleared there first. An unchanged placed payload
+    // under unchanged spellings keeps what was sent, so only a payload that may be sent is spelled.
     private void Publish(SourceIdentity document, LspDiagnostic[] payload)
     {
         var version = this.documents.GetValueOrDefault(document)?.Version;
         var uri = this.UriOf(document);
-        payload = this.Spell(payload);
         var known = this.sent.Remove(document, out var last);
         if (known && last.Uri != uri)
         {
@@ -32,20 +58,21 @@ internal sealed partial class LspSession
             known = false;
         }
 
+        var spelled = known && last.Spelling == this.spelling && last.Placed.AsSpan().SequenceEqual(payload) ? last.Sent : this.Spell(payload);
         if (payload.Length != 0)
         {
-            this.sent.Add(document, (payload, version, uri));
+            this.sent.Add(document, (payload, spelled, version, uri, this.spelling));
         }
 
-        if (known ? payload.Length == 0 || last.Version != version || !last.Payload.AsSpan().SequenceEqual(payload) : payload.Length != 0)
+        if (known ? payload.Length == 0 || last.Version != version || !last.Sent.AsSpan().SequenceEqual(spelled) : payload.Length != 0)
         {
-            this.Notify(uri, version, payload);
+            this.Notify(uri, version, spelled);
         }
     }
 
     private void Notify(string uri, int? version, LspDiagnostic[] payload)
     {
-        var parameters = new PublishDiagnosticsParams { Uri = uri, Version = version, Diagnostics = payload };
+        var parameters = new PublishDiagnosticsParams { Uri = uri, Version = version, Diagnostics = Spelled(payload) };
         this.sender.Notify(LspMethods.PublishDiagnostics, parameters, LspJsonContext.Default.PublishDiagnosticsParams);
     }
 

@@ -12,6 +12,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
 {
     private const string Valid = "public func one() -> i32 => 1\n";
     private const string Broken = "public func one() -> i32 => 1 +\n";
+    private const string Related = "{\"textDocument\":{\"publishDiagnostics\":{\"relatedInformation\":true},\"hover\":{\"contentFormat\":[\"markdown\"]}}}";
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-lsp-" + Guid.NewGuid().ToString("N"));
 
@@ -52,7 +53,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         var spelling = LspTestClient.OtherSpelling(path, shortName);
         Assert.SkipWhen(spelling is null, "The volume gives the test directory no 8.3 short name.");
         await using var client = new LspTestClient();
-        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}", "{\"textDocument\":{\"publishDiagnostics\":{\"relatedInformation\":true}}}");
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}", Related);
         await client.OpenUriAsync(spelling, Source);
         var publish = (await client.ReceiveAsync(LspTestClient.IsPublish)).GetProperty("params");
         Assert.Equal(spelling, publish.GetProperty("uri").GetString());
@@ -64,6 +65,29 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         var cleared = (await client.ReceiveAsync(LspTestClient.IsPublish)).GetProperty("params");
         Assert.Equal(spelling, cleared.GetProperty("uri").GetString());
         Assert.Equal(0, cleared.GetProperty("diagnostics").GetArrayLength());
+    }
+
+    // DECISIONS R5-M180: a document the client never named is sent under its path's file URI (SourceIdentity.ToUri), the same in a
+    // publication and in a hover link, also when its name holds a percent sign that a URI would read as an escape.
+    [Theory]
+    [InlineData("a%41.kimi", "a%2541.kimi")]
+    [InlineData("a%2e%2e.kimi", "a%252e%252e.kimi")]
+    public async Task ANeverNamedDocumentIsSentUnderItsPathsUri(string name, string link)
+    {
+        var text = $"/// See [it]({link}).\npublic struct Sample\n";
+        this.WriteProject("App", ("main.kimi", text));
+        File.WriteAllText(this.PathOf("App", name), Broken);
+        var main = this.PathOf("App", "main.kimi");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync(capabilities: Related);
+        await client.OpenAsync(main, text);
+        var uri = (await client.ReceiveAsync(Reported)).GetProperty("params").GetProperty("uri").GetString()!;
+        Assert.Equal(this.PathOf("App", name), new Uri(uri).LocalPath);
+        var hover = LspTestClient.HoverText(await client.WaitForHoverAsync(main, 1, 15, "[it](<"));
+        Assert.Contains($"[it](<{uri}>)", hover, StringComparison.Ordinal);
+
+        static bool Reported(JsonElement message)
+            => LspTestClient.IsPublish(message) && message.GetProperty("params").GetProperty("diagnostics").GetArrayLength() != 0;
     }
 
     [Fact]
