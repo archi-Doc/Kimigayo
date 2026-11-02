@@ -14818,6 +14818,20 @@ structure is recorded here by the unit that first implements it.
     Open, different contracts (PLAN): the string release kinds spelled by hand, `i8 0` and `i8 1` in `__kimi_destroy_string`
     (`WindowsRuntime.ll.in`), `zext i1 %heap to i8` in `__kimi_format_take_string` and `store i8 0` in `__kimi_format_stack_finish`
     (`Utf8FormatRuntime.ll.in`); `__kimi_free`'s 65536 reserved-address bound.
+  - Amended by G371 (2026-11-02; closes G366's Open): each fact's owner publishes it and `RuntimeAbi.Expand`'s one table lists it, a
+    marker being its constant's name. `RuntimeAbi`, the string representation's owner, adds `HeapReleaseKind` (1) beside
+    `StaticReleaseKind` (0); `WindowsProfile`, the target profile, `UnmappedBound` (65536: Windows maps no address below 64 KiB, its
+    null-pointer partition), a Windows fact the table reads (one expansion owner). Markers `static_release_kind`, `heap_release_kind`,
+    `unmapped_bound`: `__kimi_destroy_string`'s switch and `__kimi_free`'s bound (`WindowsRuntime.ll.in`), `__kimi_format_stack_finish`'s
+    store and, found by the search, the test runtime's heap string (`TestRuntime.ll`, now a template: `TestRuntime.Text` is
+    `ExpandRuntime(text, [])`). `zext i1 %heap to i8` stays in `__kimi_format_take_string` and, found by the search,
+    `__kimi_buffer_into_string`: the kinds' numbering (Static false's 0, Heap true's 1) is a checked fact,
+    `Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold`, with `ZeroSizedBuffer` below `UnmappedBound` (formerly a doc comment).
+    Every expanded text byte-identical (SHA-256). Kept, other meanings: the UTF-8 and code point bounds 65536 and the writer's failed
+    flag `store i8 1` in the formatting runtime.
+    Rejected: a `select` of the two kind markers (changes the text); a compile-time assertion (C# has none; a constant-overflow trick
+    would be the only one in the code); the bound in `RuntimeAbi` (a Windows fact, not the runtime's representation); a marker table in
+    `WindowsProfile` (a second expansion owner).
 - **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, R5; PLAN
   G157 (17), (25)'s cache clause, (44)'s test; R5's U1, its review; amends R5-M102 and R5-M114) A call through a pointer (a common
   Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;
