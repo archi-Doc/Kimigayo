@@ -31,9 +31,9 @@ public sealed partial class Binding
                     return this.CompleteDependent(source, source.Right); // The key's own failure explains the lookup.
                 }
 
-                if (!this.CheckTypeUse(actual, key, source.Right))
+                if (!this.CheckTypeUse(actual, key, source.Right, out var failure))
                 {
-                    return this.FailMismatch(source, source.Right, actual, key);
+                    return this.FailMismatch(source, source.Right, actual, key, failure);
                 }
 
                 return this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexedDictionary)

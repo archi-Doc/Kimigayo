@@ -135,9 +135,9 @@ public sealed partial class Binding
             {
                 var structural = this.ResultStructure();
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
-                    symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function))
+                    symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function, out var failure))
                 {
-                    this.FailMismatch(expression, expression, result, expected);
+                    this.FailMismatch(expression, expression, result, expected, failure);
                 }
             }
         }

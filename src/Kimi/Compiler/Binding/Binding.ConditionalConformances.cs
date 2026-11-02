@@ -453,7 +453,7 @@ public sealed partial class Binding
         return this.ProveConditionalPremises(path.Premises, path.Type.Declaration, type, scope);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope, Koto? failureUse = null)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope)
     {
         if (premises is null)
         {
@@ -467,19 +467,24 @@ public sealed partial class Binding
 
         var outer = this.BeginProof();
         var result = ConstraintProof.Proven;
+        ClauseFact? conditions = null;
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
+            var limit = this.limitRead;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
-            if (bound is not null && failureUse is not null)
+            if (proof != ConstraintProof.Proven)
             {
-                this.RecordReferenceConstraint(failureUse, condition, bound, proof);
+                var onLimit = proof == ConstraintProof.Unknown && this.limitRead is not null && !ReferenceEquals(this.limitRead, limit);
+                conditions = FirstAtVerdict(conditions, new(condition, bound, proof, onLimit));
             }
 
             result = CombineProof(result, proof, true);
         }
 
-        return this.EndProof(outer, result);
+        var verdict = this.EndProof(outer, result);
+        this.LeaveClause(conditions, result); // The conditions are a clause list (G351a).
+        return verdict;
     }
 }

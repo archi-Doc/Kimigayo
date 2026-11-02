@@ -299,7 +299,7 @@ public sealed partial class Binding
         this.ResetPrerequisites();
         this.objectPayloadCauses?.Clear();
         this.ResetMatches();
-        this.argumentKinds.Clear();
+        this.argumentParts.Clear();
         this.argumentProbe = null;
         this.resultContexts.Clear();
         this.resultLocalEvidence.Clear();
@@ -872,14 +872,9 @@ public sealed partial class Binding
         {
             this.ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
+        else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
-            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.OmittedResultNote(issue.Node));
-            this.ReportMoreCallRelations(issue.Node, requirement);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
-        {
-            ReportOriginContract(issue.Node, contract, requirement, issue.Code);
+            // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
         }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
         {
@@ -914,12 +909,12 @@ public sealed partial class Binding
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
+            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
             issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.referenceConstraints?.TryGetValue(issue.Node, out var reference) == true)
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints?.TryGetValue(issue.Node, out var reference) == true)
         {
-            this.ReportReferenceConstraint(issue.Node, reference, requirement, issue.Code);
+            this.ReportClauseConstraint(issue.Node, reference, requirement, issue.Code);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures?.TryGetValue(issue.Node, out var erasure) == true)
         {
@@ -977,6 +972,8 @@ public sealed partial class Binding
 
             this.SettleSpecificationLinks();
             this.PublishNeededLimits();
+            this.FailNeededSites();
+            this.SettleDerivedUses();
         }
 
         var resolved = 0;

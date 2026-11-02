@@ -98,12 +98,13 @@ public sealed partial class Binding
 
             if (error)
             {
-                return (invalid ?? this.TakeFailedCause()) is { } cause ? this.CompleteDependent(use, cause) : this.Fail(use, BindingFailure.InvalidConstraint);
+                return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
+                    : this.Fail(use, BindingFailure.InvalidConstraint);
             }
 
             if (pendingProof)
             {
-                return pending is { } fact ? this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnprovenConstraint, fact) : this.Fail(use, BindingFailure.UnprovenConstraint);
+                return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.Fail(use, BindingFailure.UnprovenConstraint);
             }
 
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
@@ -111,7 +112,7 @@ public sealed partial class Binding
             {
                 if (count == 1 && evaluated[0].ConstraintFailure is { } failure)
                 {
-                    return this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnsatisfiedConstraint, failure);
+                    return this.FailClauseRecord(use, failure, unresolved: false);
                 }
 
                 if (perCall is { } slot)
@@ -131,10 +132,11 @@ public sealed partial class Binding
                 {
                     // SPEC 10.7, 15.6.1: when the one candidate's signature matches and only its Origin contract fails, the record names
                     // that contract, with the candidate's own inputs instantiated: a member, else a condition of the candidate.
+                    var contract = ComparisonFailure.Shape;
                     return ReferenceTypes.StorageMatches(required, actual) &&
-                        this.ItemContractFailure(candidateItem, actual, required, use, use) is { } contract
-                        ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, contract)
-                        : this.FailMismatch(use, use, actual, required);
+                        !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
+                        ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
+                        : this.FailMismatch(use, use, actual, required, contract);
                 }
 
                 var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];
@@ -198,7 +200,7 @@ public sealed partial class Binding
 
                 if (!this.ErasesToFunction(use, item, required))
                 {
-                    return this.FailMismatch(use, use, item, required);
+                    return this.FailMismatch(use, use, item, required, default);
                 }
 
                 use.ErasedFunctionType = required;
@@ -220,7 +222,7 @@ public sealed partial class Binding
 
         if (!this.ErasesToFunction(use, concrete, required))
         {
-            return this.FailMismatch(use, use, concrete, required);
+            return this.FailMismatch(use, use, concrete, required, default);
         }
 
         use.ErasedFunctionType = required;
@@ -396,7 +398,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!(IsSubtype(written, bound) && IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound) is not null))
+                if (!(IsSubtype(written, bound) && IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound, out _) is not null))
                 {
                     return false;
                 }
@@ -521,16 +523,14 @@ public sealed partial class Binding
     }
 
     // A substitution must be a valid complete Type, and the Constraints hold for it, as for a call (SPEC 8.1.3, 10.1 step 5).
-    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? container, BoundLength?[]? lengths = null, Koto? failureUse = null)
+    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? container, BoundLength?[]? lengths = null)
     {
-        if (failureUse is not null)
-        {
-            this.referenceConstraints?.Remove(failureUse);
-        }
-
         var count = function.GenericArguments.Count;
-        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count), failureUse: failureUse);
-        proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, failureUse), true);
+        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count));
+        var clauses = this.TakeUnknownFact(); // The clause list's U fact, for the reference's record.
+        var held = this.HoldClause(null); // Each clause list's clause fact (G351a), for the reference's record and its trial's (G352).
+        proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope), true);
+        held = this.HoldClause(held);
         proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
         if (container is not null)
         {
@@ -556,6 +556,8 @@ public sealed partial class Binding
             }
         }
 
+        this.LeaveUnknown(clauses, proof);
+        this.LeaveClause(held, proof);
         return proof;
 
         ConstraintProof Formed(BoundType? written)
@@ -612,8 +614,7 @@ public sealed partial class Binding
 
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
             {
-                failure = this.CandidateConstraintFailure(function, arguments ?? [], lengths ?? [], scope, null, container, proof) is { } fact
-                    ? fact with { Declaration = null } : null;
+                failure = ClauseFailure(this.TakeClauseFact(use), null); // The fact ReferenceArgumentProof left at the trial's verdict.
             }
 
             return proof switch

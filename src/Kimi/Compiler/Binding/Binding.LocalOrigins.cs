@@ -123,7 +123,7 @@ public sealed partial class Binding
         visitor.Declaration = null;
         return this.RewriteOrigins(declared, declaration);
 
-        // `polarity` is the variance of the position within the local's Type, composed as FitsTypeCore compares it.
+        // `polarity` is the variance of the position within the local's Type, composed as RelationWalk compares it.
         void Match(BoundType pattern, BoundType value, OriginVariance polarity)
         {
             if (pattern.Kind != value.Kind || pattern.Semantics != value.Semantics || !ReferenceEquals(pattern.Symbol, value.Symbol))

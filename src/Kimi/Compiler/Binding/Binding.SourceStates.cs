@@ -65,6 +65,7 @@ public sealed partial class Binding
             {
                 symbol.SourceState = ConstraintProof.Unknown;
                 symbol.SourceCause = null;
+                symbol.SourceFact = null;
                 this.sourceDeclarations.Add(symbol);
             }
         }
@@ -86,6 +87,7 @@ public sealed partial class Binding
             var closed = this.HasClosedClause((DeclarationContainerKoto)declarations[i].Declaration);
             declarations[i].SourceState = closed ? ConstraintProof.Unknown : ConstraintProof.Proven;
             declarations[i].SourceCause = null;
+            declarations[i].SourceFact = null;
             stateChanged |= closed;
         }
 
@@ -100,6 +102,7 @@ public sealed partial class Binding
                 if (declarations[n].SourceState == ConstraintProof.Unknown)
                 {
                     declarations[n].SourceCause = null;
+                    declarations[n].SourceFact = null;
                 }
             }
 
@@ -115,6 +118,7 @@ public sealed partial class Binding
 
                 this.limitRead = null;
                 this.errorRead = null;
+                this.unknownRead = null;
                 this.sourceChecks++;
                 var proof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)symbol.Declaration);
                 var cause = this.ProofCause(proof);
@@ -122,6 +126,7 @@ public sealed partial class Binding
                 limitChanged |= (cause is null) != (symbol.SourceCause is null);
                 symbol.SourceState = proof;
                 symbol.SourceCause = cause;
+                symbol.SourceFact = this.ProofFact(proof); // Payload, outside the loop's change test.
             }
 
             reverse = !reverse;
@@ -135,7 +140,7 @@ public sealed partial class Binding
     private ConstraintProof ReadSourceState(BindingSymbol symbol)
     {
         var declaration = ((DeclarationContainerKoto)symbol.Declaration).BoundSymbol!;
-        return this.EndProof(this.BeginProof(), this.ReadVerdict(declaration.SourceState, declaration.SourceCause));
+        return this.EndProof(this.BeginProof(), this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact));
     }
 
     private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)

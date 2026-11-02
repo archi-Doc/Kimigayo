@@ -16,6 +16,8 @@ public sealed partial class OriginRowsTest
 
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
 
+    private const string Contract = nameof(DiagnosticCode.UnprovenOriginContract_Kd);
+
     private const string Holder = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n";
 
     private const string Bad = "func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n";
@@ -54,14 +56,17 @@ public sealed partial class OriginRowsTest
         => Assert.Empty(Recorded(source, [$"{Unproven} {at}"], site));
 
     // Pinned until H11 (DECISIONS R4-M108, BU's `fncomp`): CheckTypeUse stops at the first differing Function Type component, so the
-    // positions after it have no row: the recorded body chain `local@ref` over x has a row only when it comes first.
+    // positions after it have no row: the recorded body chain `local@ref` over x has a row only when it comes first. The records are the
+    // same in either order (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1, 23.1.2): the Function component's failed condition
+    // is one UnprovenOriginContract_Kd at the value (it was an UnprovenOriginRelation_Kd per member position), beside the borrow's
+    // UnsatisfiedOriginRelation_Kd.
     [Theory]
     [InlineData("(g, local@ref)", "(ref/((ref/i32 during x) -> i32), ref/i32 during x)", "Fn:f Fit Fixed Fixed")]
     [InlineData("(local@ref, g)", "(ref/i32 during x, ref/((ref/i32 during x) -> i32))", "Fn:f Fit Finite Fixed|Fn:f Fit Fixed Fixed")]
     public void APositionAfterADifferingFunctionComponentHasNoRowUntilH11(string value, string result, string rows)
     {
         var source = $"func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> {result}\n    let local = 1\n    let t = {value}\n    return t\n";
-        Assert.Equal(rows.Split('|'), Recorded(source, [$"{Unsatisfied} t", $"{Unproven} t"], "return t"));
+        Assert.Equal(rows.Split('|'), Recorded(source, [$"{Unsatisfied} t", $"{Contract} t"], "return t"));
     }
 
     // SPEC 5.7 with R4-M108 (DECISIONS BU-24; design-final §13 A2): a raw fit recorded at a body chain has its rows like any fit, their ends

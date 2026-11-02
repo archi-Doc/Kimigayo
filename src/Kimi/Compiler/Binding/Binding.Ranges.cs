@@ -224,7 +224,7 @@ public sealed partial class Binding
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {
-            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange");
+            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange", ComparisonFailure.Shape);
             result = Complete(source, null);
             return true;
         }

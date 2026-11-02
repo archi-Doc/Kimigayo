@@ -8,9 +8,10 @@ namespace Kimi.Compiler;
 // by part over the sources other than Never.
 // - Responsibility: the parts at one position of a join, a range of positionParts (Binding.ArgumentKinds.Positions.cs): its sources
 //   other than Never, through the forms that deliver them and the selections, `do` and `loop` none of whose sources supplies a
-//   candidate (AddResultPart); the child positions of parts that are Tuple, array, fill or Dictionary literals, by element, key and
-//   value (AddPartsAt); the common Type of a position's typed parts (PositionType); the common Type formed part by part
-//   (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its root's judgement of its tree (JudgeNested).
+//   candidate (AddResultPart); the parts a child Type of Tuple, array, fill or Dictionary literals is formed from, by element (an
+//   array's every element at its one element position), key and value (AddPartsAt); the common Type of a position's typed parts
+//   (PositionType); the common Type formed part by part (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its
+//   root's judgement of its tree (JudgeNested).
 // - Inputs: the parts' bound Types, the literals still waiting unbound, the results' recorded sources (ResultContext).
 // - Outputs: the formed Type, or none with the conflict that prevents it (PartsConflict); a judged join's outcome (Conflict, Dependent).
 // - Invariants: a part of Type Never is no part; a failed part is no part either (the join rests on it); the walk binds nothing and
@@ -72,7 +73,9 @@ public sealed partial class Binding
             return;
         }
 
-        if (DeliversResult(part) && !this.PartFailed(part) && (this.AwaitsPosition(part) || this.Deferred(part)))
+        // A join decided Waiting (WaitingResult) holds only deferred sources until it is completed, and a source leaves that state only by
+        // its completion, so Waiting implies AwaitsPosition or BoundSince: asked first, the decided fact spares the subtree walk.
+        if (DeliversResult(part) && !this.PartFailed(part) && (this.WaitingResult(part) is not null || this.AwaitsPosition(part) || this.Deferred(part)))
         {
             this.AddResults(part);
             return;
@@ -96,7 +99,8 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2, 23.1.2 (DECISIONS BU-43): a join's own judgement, by one formation over its own results (CommonTypeByParts),
     // nested joins flattened where they are clean and one failed part each where they are not. A conflict among its typed parts or
-    // shapes is its own, found at any position (Conflict); else a failed part leaves it Dependent on the first (RestOn). A conflict among
+    // shapes is its own, found at any position (Conflict), unless under a call's argument probe it waits for its call (ConflictWaits,
+    // U1.6g); else its first failed part is its cause (RestOn), on which it rests at its verdict (DecideRest). A conflict among
     // literal defaults is reported (`defaults`), not judged: a literal result is not fixed before outer constraints (step 3), so it is
     // the root's (AwaitsWithoutCandidate). Idempotent: called at the join's own decision and again by its root (JudgeNested). Returns
     // the Type formed over the parts that are no conflict and no failure, null when none; `shape` is the first aggregate part.
@@ -110,7 +114,7 @@ public sealed partial class Binding
         shape = this.PartsShape(start, this.positionParts.Count);
         this.ClosePosition(start);
         defaults = (conflict & PartsConflict.Defaults) != 0;
-        if ((conflict & PartsConflict.Typed) != 0)
+        if ((conflict & PartsConflict.Typed) != 0 && !this.ConflictWaits(join))
         {
             context.Conflict();
         }
@@ -133,6 +137,64 @@ public sealed partial class Binding
             if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
             {
                 this.JudgeHeld(source);
+            }
+        }
+    }
+
+    // Rule W (DECISIONS BU-79; SPEC 23.1.2, 14.9.2): an unselected call's waiting join reports what its tree judged on its own. A held
+    // join whose formation judged it Conflict (JudgeOwn) writes its own record, once, as DecideWaiting does; nothing else is written,
+    // rested or bound. The walk is JudgeHeld's: the forms that deliver a source (from the outermost, ResultSourceForm), Tuple, array and
+    // Dictionary literals, and a held join's waited sources.
+    private void ReportHeldConflicts(Koto part)
+    {
+        if (DeliveredOperand(part) is { } operand)
+        {
+            this.ReportHeldConflicts(operand);
+            return;
+        }
+
+        switch (part)
+        {
+            case TupleLiteralKoto tuple:
+                foreach (var element in tuple.Elements)
+                {
+                    this.ReportHeldConflicts(element);
+                }
+
+                return;
+            case ArrayLiteralKoto array:
+                foreach (var element in array.Elements)
+                {
+                    this.ReportHeldConflicts(element);
+                }
+
+                return;
+            case DictionaryLiteralKoto dictionary:
+                foreach (var entry in dictionary.Entries)
+                {
+                    this.ReportHeldConflicts(entry.Key);
+                    this.ReportHeldConflicts(entry.Value);
+                }
+
+                return;
+        }
+
+        if (!DeliversResult(part) || part.BoundType is not null || !this.resultContexts.TryGetValue(part, out var context) ||
+            context.Outcome is not (JoinOutcome.Conflict or JoinOutcome.Waiting))
+        {
+            return;
+        }
+
+        if (context.Outcome == JoinOutcome.Conflict && part.BindingFailure == BindingFailure.None)
+        {
+            this.Fail(part, BindingFailure.TypeMismatch);
+        }
+
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
+            {
+                this.ReportHeldConflicts(ResultSourceForm(source));
             }
         }
     }
@@ -180,15 +242,15 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.5.1 (DECISIONS BU-43): whether a join's results hold an anonymous function that waits for its call.
-    private bool HoldsWaitingFunction(Koto join)
+    // SPEC 10.5.1 (DECISIONS BU-43): whether a join's results hold a part that awaits its call (AwaitsCall).
+    private bool HoldsPartAwaitingCall(Koto join)
     {
         var start = this.positionParts.Count;
         this.AddResults(join);
         var holds = false;
         for (var i = start; !holds && i < this.positionParts.Count; i++)
         {
-            holds = this.positionParts[i] is FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited };
+            holds = this.AwaitsCall(this.positionParts[i]);
         }
 
         this.ClosePosition(start);
@@ -209,30 +271,23 @@ public sealed partial class Binding
         return null;
     }
 
-    // Appends the parts of child position `index` of the aggregate parts in [start, end).
+    // SPEC 14.9.2 step 2, 12.4.1: appends the parts that child `index` of the aggregate parts in [start, end) forms its Type from: each
+    // part's child there (AddIndexedChild), but every element of an array, which has one element Type (ShapeChildren).
     private void AddPartsAt(int start, int end, int index)
     {
         for (var i = start; i < end; i++)
         {
-            switch (this.positionParts[i])
+            var part = KotoHelper.UnwrapParentheses(this.positionParts[i]);
+            if (part is ArrayLiteralKoto array && this.IsAggregatePart(array))
             {
-                case TupleLiteralKoto tuple when this.IsAggregatePart(tuple):
-                    this.AddResultPart(tuple.Elements[index]);
-                    break;
-                case ArrayLiteralKoto array when this.IsAggregatePart(array):
-                    foreach (var element in array.Elements)
-                    {
-                        this.AddResultPart(element);
-                    }
-
-                    break;
-                case DictionaryLiteralKoto dictionary when this.IsAggregatePart(dictionary):
-                    foreach (var entry in dictionary.Entries)
-                    {
-                        this.AddResultPart(index == 0 ? entry.Key : entry.Value);
-                    }
-
-                    break;
+                foreach (var element in array.Elements)
+                {
+                    this.AddResultPart(element);
+                }
+            }
+            else if (this.IsAggregatePart(part))
+            {
+                this.AddIndexedChild(part, index);
             }
         }
     }

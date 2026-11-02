@@ -736,7 +736,7 @@ public sealed partial class Binding
 
         internal Dictionary<BindingSymbol, List<AssociatedEvidence>> Evidence { get; } = new(ReferenceEqualityComparer.Instance);
 
-        internal Dictionary<(BoundType Type, BindingScope Scope, BoundType? Self, bool Normalize, BindingSymbol? Contract), BoundType> Normalized { get; } = new();
+        internal Dictionary<(BoundType Type, BindingScope Scope, BoundType? Self, bool Normalize, BindingSymbol? Contract), (BoundType Image, ResolutionHops? Hops)> Normalized { get; } = new();
 
         internal Dictionary<(BoundConformancePath Path, BoundType Type), bool> Holes { get; } = new();
 

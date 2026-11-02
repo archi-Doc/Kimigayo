@@ -214,7 +214,18 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.SlotProof(slots, i, unbound), true);
             }
 
-            return binding.EndProof(outer, CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true));
+            proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
+            var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
+            var clause = binding.clauseRead is { } kept && kept.Outcome == proof ? kept : (ClauseFact?)null; // G351a: at the trial's verdict.
+            proof = binding.EndProof(outer, proof);
+            if (fact is not null)
+            {
+                fact.Epoch = binding.frameEpoch; // The candidate trial's frame, whose consumer explains it (CallableOriginFailure).
+            }
+
+            binding.trialUnknown = fact;
+            binding.trialClause = clause is { } trial ? trial with { Epoch = binding.frameEpoch } : null;
+            return proof;
         }
 
         // SPEC 10.7, 10.8, 15.3.6: a callable value at a common Function Type that fits only once its per-call input is instantiated at
@@ -224,7 +235,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var node = KotoHelper.UnwrapParentheses(argument);
             operation = default;
-            if (!IsWaitingFunctionReference(node) && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
+            if (binding.KindOf(node) != PartKind.Reference && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -248,7 +259,7 @@ public sealed partial class Binding
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
-                ? this.Binding.ErasureSignatureFits(actual, type, node) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+                ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
 
         // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
         private readonly bool InfersConstruction(out Koto? target)

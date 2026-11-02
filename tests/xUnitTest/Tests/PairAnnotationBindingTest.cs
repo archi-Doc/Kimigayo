@@ -134,13 +134,16 @@ public class PairAnnotationBindingTest
     }
 
     // SPEC 8.1.2, 15.6.1: a difference in Origin presence between pair layers of one binder relates their slots, never a Type mismatch,
-    // and the relation needs a premise like any other (F16); a common element Type keeps no such difference, so the element fits it.
+    // and the relation needs a premise like any other (F16); a common element Type keeps no such difference, so the element fits it, in
+    // either order and nested (the common-Type search's own Position fact, G216 (a) U2.1 e2c-1).
     [Theory]
     [InlineData("func widen<s/T>(x: s/T during b, q: ref/i32 during a) -> s/T during a\n    s is ref\n    origin b outlives a\n    return x@move", null)]
     [InlineData("func widen<s/T>(x: s/T, q: ref/i32 during a) -> s/T during a\n    s is ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func back<s/T>(x: s/T during a) -> s/T\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func fwd<s/T>(x: s/T) -> s/T during a\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func both<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func back2<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [y, x]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
     {
         var c = Parse(source);
