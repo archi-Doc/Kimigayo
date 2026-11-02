@@ -176,12 +176,13 @@ public sealed partial class Binding
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
         => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion), false);
 
-    // `calleeDeclaration`: `type` is a Type of the callee's own signature, re-proven at a call in the callee's own scope
-    // (CheckSignatureTypeConstraints). A nested Function Type's result there is judged once, where it occurs, by that declaration
-    // (BindFunctionType; SPEC 15.3.4, 15.6.4 step 3; DECISIONS R4-M162), so the re-proof does not enter it: re-proving it made every
-    // call of a callee whose nested result fails Unknown and left its arguments unjudged (U2.3s review B2). Local patch; removal
-    // condition: PLAN G375, the call reads the callee declaration's published signature verdict instead of re-proving it
-    // (CheckSignatureTypeConstraints goes), and this parameter goes with it.
+    // `calleeDeclaration`: `type` is a Type of a declaration's own signature, re-proven in that declaration's own scope
+    // (CheckSignatureTypeConstraints) by its three callers: a call's candidate evaluation, contract matching (the requirement's and
+    // the implementation's signatures) and a function reference. A nested Function Type's result there is judged once, where it
+    // occurs, by that declaration (BindFunctionType; SPEC 15.3.4, 15.6.4 step 3; DECISIONS R4-M162), so the re-proof does not enter
+    // it: re-proving it made every call of a callee whose nested result fails Unknown and left its arguments unjudged (U2.3s review
+    // B2). Local patch; removal condition: PLAN G375, each of the three callers reads the declaration's published signature verdict
+    // instead of re-proving it (CheckSignatureTypeConstraints goes), and this parameter goes with it.
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, bool calleeDeclaration)
     {
         if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
