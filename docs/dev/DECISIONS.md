@@ -11247,6 +11247,18 @@ structure is recorded here by the unit that first implements it.
     requester past it is refused whether or not its shared key exists. Not shared: a handle over a shared handle (`rc/rc/A` and
     `rc/rc/B`, whose key would have to carry the inner release) and struct, Tuple or enum glues of one layout and part glues (outside
     the item). Tests: `InstanceCollectorTest.HandleGluesShareTheirRelease`, `GrowthStopsAtItsSite("shared")`.
+  - Amended by G372 (PLAN G372, 2026-11-02): a Function value's glue (`FunctionCodegen.Erasures`' DestroyErased: its table's drop entry,
+    called on its word when present) reads only Layout's one row of every Function Type (FunctionHandle) and has no target, so it is
+    keyed by the Function Type `() -> ()` (`TyCtxt.Intern`, a Type of the row, as U11's handle over Unit): one glue per program. No
+    consumer reads more of the item: an Open row never opens a Function value (InternalInvariant_Kd). The corpus's 50 duplicate glue
+    bodies were 35 of this row (467 Function glues, 432 after), 13 struct, Tuple or Closure environment glues and 2 enum glues. U11's
+    "handle over a shared handle" (`rc/rc/A`) does not exist: an object handle's payload has outer Semantics `owner` (SPEC 3.3
+    Normalization, 8.7.3), so a handle reaches another only through an aggregate payload (`rc/Box<rc/A>`), the aggregate case below.
+    - Rejected: sharing aggregate glues of one shape, the Case ordinals, offsets and part glue keys their bodies spell (a fixed array's
+      also its length and stride, a destructor's its instance). It needs a new variable-length key (MonoKey's fields are fixed) and an
+      Open row's level (`FunctionCodegen.Drops`) reading the dropped value's Type instead of its glue item's representative, which the
+      move-path steps follow; for about 1.8 KB of duplicate bodies in the corpus (about 3 KB with their `define` lines: the 13 aggregate
+      and 2 enum glues), a speculative mechanism (AGENTS "Short"). Test: `InstanceCollectorTest.FunctionValueGluesShareOneGlue`.
 - **R5-M62 `VTableDef` and `TyCtxt.Applies`, a struct family's dispatch shape** (2026-10-19, planning session; plan F4, package F
   §4.1–§4.3, §5 and §6, S2-S4 X5; under R5-M18 form 1 and R5-M61) A permanent declaration table (`Binding/VTableDef.cs`, R2b-D3's
   deferred view) kept on the struct's `AdtDef` (`VTable`), and a view beside `TyCtxt.Witness` (`TyCtxt.Dispatch.cs`).
