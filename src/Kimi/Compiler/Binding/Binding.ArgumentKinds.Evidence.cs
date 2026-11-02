@@ -23,16 +23,20 @@ public sealed partial class Binding
         Result,
     }
 
-    // The contribution of a whole argument by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed
-    // part is Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate or
-    // join argument is judged by its parts' fits until its child positions contribute (G216 (a) U2.2 U2), so it stays Evidence. A
+    // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
+    // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
+    // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2,
+    // RequireChildPremises; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
     // receiver is Evidence; a default is a Signature position.
     private Contribution PartContribution(Koto part)
-        => this.RecordedPart(KotoHelper.UnwrapParentheses(part)).Kind switch
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        return ClassifyPart(core) == PartKind.Aggregate ? Contribution.Signature : this.RecordedPart(core).Kind switch
         {
             PartKind.Typed or PartKind.Aggregate or PartKind.Join => Contribution.Evidence,
             _ => Contribution.Signature,
         };
+    }
 
     // SPEC 10.8, 10.5.1: the evidence walk of a candidate's solution, by each argument part's kind at its position. A typed part is
     // evidence through the common adaptation (SPEC 10.2) and, at a Function pattern, its known call signature; a Never-typed part is
