@@ -14990,7 +14990,8 @@ structure is recorded here by the unit that first implements it.
     found by `ProjectFile.Load`, still hide its TestSources comparison until fixed (the load precedes the comparison, as for a root).
   - Input validators (G367c, the same cause one level higher): `Compilation.Prepare` records the configuration, the unresolved graph,
     the language version, the target and each compile-time setting independently: the settings are checked against the fixed Condition
-    names (`ConditionNames`), so an unsupported target leaves out only its Conditions. `PrepareModules` records each dependency setting and, through
+    names (`Compilation.Conditions`, the one table the Conditions are built from), so an unsupported target leaves out only its
+    Conditions. `PrepareModules` records each dependency setting and, through
     `NativeConfiguration.ValidateGraphSupplies` (replacing `ValidatePackageSupplies` and `ValidateSupplyAgreement`), each requirement a
     supply for a resolved module breaks (a missing ContractId and a different Sha256 independently) and each conflicting merge, at its
     module. `TestSettings.Validate` returns its notes (each deadline, the budgets, each environment entry), and test preparation

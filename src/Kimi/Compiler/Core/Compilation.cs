@@ -26,6 +26,20 @@ public partial class Compilation
     /// <summary>The only language version currently implemented by this compiler.</summary>
     public const string CurrentLanguageVersion = "0.0.2";
 
+    // The built-in Conditions (SPEC 19.2.1; os and arch by the triple's IMPL 20.2.1 families), one row per name: Prepare builds them
+    // from the target and the Debug setting, and checks each compile-time setting against their names, which no target changes.
+    private static readonly (string Name, Func<TargetTriple, IrTarget, bool, BasicValue> Value)[] Conditions =
+    [
+        ("os", static (triple, _, _) => new(triple.OsFamily)),
+        ("arch", static (triple, _, _) => new(triple.ArchFamily)),
+        ("windows", static (triple, _, _) => new(triple.OsFamily == "windows")),
+        ("linux", static (triple, _, _) => new(triple.OsFamily == "linux")),
+        ("macos", static (triple, _, _) => new(triple.OsFamily == "macos")),
+        ("pointerWidth", static (_, target, _) => new(target.PointerWidth)),
+        ("debug", static (_, _, debug) => new(debug)),
+        ("release", static (_, _, debug) => new(!debug)),
+    ];
+
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =
         $"{CompilerRelease.Version} ({typeof(Compilation).Module.ModuleVersionId:D})";
@@ -236,7 +250,7 @@ public partial class Compilation
         foreach (var (name, setting) in this.Project.ProjectFile.CompileTimeSettings)
         {
             if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
-                ConditionNames.Contains(name) || setting is null || !setting.TryGetValue(out var value))
+                IsCondition(name) || setting is null || !setting.TryGetValue(out var value))
             {
                 this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
                 failed = true;
@@ -257,20 +271,14 @@ public partial class Compilation
             return false;
         }
 
-        // Rebuild target-dependent conditional compilation variables (SPEC 19.2.1; os and arch by the triple's IMPL 20.2.1 families).
-        var os = targetTriple.OsFamily;
+        // Rebuild target-dependent conditional compilation variables.
         var debug = this.Project.KimiOptions.Debug;
-        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal)
+        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal);
+        foreach (var (name, value) in Conditions)
         {
-            ["os"] = new(os),
-            ["arch"] = new(targetTriple.ArchFamily),
-            ["windows"] = new(os == "windows"),
-            ["linux"] = new(os == "linux"),
-            ["macos"] = new(os == "macos"),
-            ["pointerWidth"] = new(irTarget.PointerWidth),
-            ["debug"] = new(debug),
-            ["release"] = new(!debug),
-        };
+            variables.Add(name, value(targetTriple, irTarget, debug));
+        }
+
         for (var i = 0; i < (settings?.Count ?? 0); i++)
         {
             variables.Add(settings![i].Name, settings[i].Value);
@@ -368,5 +376,18 @@ public partial class Compilation
     {
         var variables = this.moduleVariables?.GetValueOrDefault(koto.CodeContext.Kotonoha) ?? this.Variables;
         return variables.TryGetValue(koto.IdentifierName, out basicValue);
+    }
+
+    private static bool IsCondition(string name)
+    {
+        foreach (var (condition, _) in Conditions)
+        {
+            if (condition == name)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
