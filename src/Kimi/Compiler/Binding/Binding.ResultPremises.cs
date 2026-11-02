@@ -15,6 +15,11 @@ namespace Kimi.Compiler;
 // Origin. One visitor serves both.
 public sealed partial class Binding
 {
+    // The parts one well-formedness visit met, and those one borrow layer's stored visit met, each beside the substituted and argument
+    // parts it met them with (VisitWellFormedPremises; DECISIONS BU-55, R4-M164 U1e).
+    private readonly TypeMemo<(BoundType Result, BoundType? Actual)> wellFormedParts = new();
+    private readonly TypeMemo<(BoundType Result, BoundType? Actual)> storedParts = new();
+
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
     private FunctionKoto? resultPremiseExcluded;
 
@@ -64,6 +69,9 @@ public sealed partial class Binding
     {
         // For Instance and Prove, the Callable comparison the visit judges under, whose premises its proofs assume.
         internal CallableInstance Comparison { get; init; }
+
+        // The stamp of the walk's query: of wellFormedParts, or of storedParts below a borrow layer.
+        internal uint Query { get; init; }
     }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
@@ -187,6 +195,24 @@ public sealed partial class Binding
 
     private static bool SameLayer(BoundType actual, BoundType result)
         => actual.Kind == result.Kind && actual.Components.Count == result.Components.Count && actual.OriginArguments.Count == result.OriginArguments.Count;
+
+    // Whether a query of VisitWellFormedPremises meets a pattern part beside these parts for the first time; a leaf, or a part that
+    // stores no Origin, is cheaper to visit again than to record.
+    private static bool FirstMet(TypeMemo<(BoundType Result, BoundType? Actual)> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
+    {
+        if (pattern.Components.Count == 0 || !pattern.StoresOrigin)
+        {
+            return true;
+        }
+
+        if (parts.TryGet(pattern, query, out var met) && ReferenceEquals(met.Result, result) && ReferenceEquals(met.Actual, actual))
+        {
+            return false;
+        }
+
+        parts.Set(pattern, query, (result, actual));
+        return true;
+    }
 
     // SPEC 15.6.4 steps 1-4: a call's fresh Origins satisfy its callee's result premises where a solution does, so a result over
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
@@ -380,8 +406,13 @@ public sealed partial class Binding
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
     // at a use; false only when Prove fails. The visit stops at a nested Function Type, as the premise does (AddResultPremises). An
     // input's visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the
-    // argument's own Type, which is well formed, it covers only the positions that the fit replaced.
+    // argument's own Type, which is well formed, it covers only the positions that the fit replaced. Each entry call is one query of
+    // wellFormedParts, each borrow layer's stored visit one of storedParts: a part met again beside the same parts only repeats what its
+    // first visit added (each record, obligation and bound is kept once), and a false ends the query, so each is visited once per query.
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
+        => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+
+    private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
         if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || pattern.Kind != result.Kind || pattern.Components.Count != result.Components.Count)
         {
@@ -409,14 +440,20 @@ public sealed partial class Binding
         }
 
         if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
-            pattern.Components.Count != 0 && !this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, visit))
+            pattern.Components.Count != 0)
         {
-            return false;
+            var stored = visit with { Query = this.storedParts.Begin(this.storageVersion) };
+            if (!this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, stored))
+            {
+                return false;
+            }
         }
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.VisitWellFormedPremises(pattern.Components[i], result.Components[i], actual?.Components[i], visit))
+            var argument = actual?.Components[i];
+            if (FirstMet(this.wellFormedParts, pattern.Components[i], result.Components[i], argument, visit.Query) &&
+                !this.WellFormedPart(pattern.Components[i], result.Components[i], argument, visit))
             {
                 return false;
             }
@@ -481,7 +518,9 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.VisitStoredPremises(pattern.Components[i], result.Components[i], actual?.Components[i], outer, substituted, visit))
+            var argument = actual?.Components[i];
+            if (FirstMet(this.storedParts, pattern.Components[i], result.Components[i], argument, visit.Query) &&
+                !this.VisitStoredPremises(pattern.Components[i], result.Components[i], argument, outer, substituted, visit))
             {
                 return false;
             }
