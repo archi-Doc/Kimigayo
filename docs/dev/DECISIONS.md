@@ -14947,7 +14947,7 @@ structure is recorded here by the unit that first implements it.
     U+1F600 pair (documentation); `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two
     documents given in reverse) and `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory
     source between product sources, a U+FF21 name before a U+1F600 one) fail under `AddSources` without its sort (the parse order).
-- **R5-M177 One owner of the configuration rules, the TestSources rule included; each failure its own record (PLAN G367a)**
+- **R5-M177 One owner of the configuration rules, the TestSources rule included; each failure its own record (PLAN G367)**
   (2026-11-02, R5; the owner's list 「現状出来る作業（G367、G359、G357、G363、G366、U11など）を、順に行ってください。」) SPEC 23.1.2
   reports each independent failed requirement. `DependencyConfiguration.Validate` and `NativeConfiguration.Validate` returned the
   first failure, so a load, a preparation and `Compilation.Prepare` each reported one; the duplicate-TestSources rule (IMPL 20.1:
@@ -14969,8 +14969,16 @@ structure is recorded here by the unit that first implements it.
   - Deleted: the three resolved copies and the ordinal one (a TestSources entry spelled twice now loads and is reported at preparation
     with every other duplicate); `PrepareTests`' own base directory (`Path.GetFullPath(Directory)`, which threw for a project without
     one; the product form, the current directory, now serves both).
-  - Interim (G367b removes it): `DependencyResolver` keeps one failure per partition: the first note of a dependency's configuration
-    (reason `InvalidConfiguration`, which replaces `DuplicateTestSource`) and of the root's TestDependencies.
+  - Resolver (G367b): `DependencyPartition` carries `ResolutionFailure[] Failures` (a `(Code, Message)` record; null when resolved)
+    instead of one `ReasonCode` and `Diagnostic`, and the resolver records each independent failure instead of throwing at the first:
+    each failed reference (UnsupportedPackage, IdentityMismatch, the root Cycle, NotLibrary, ConflictingInput, ReferenceReassignment,
+    each invalid test reference) adds no edge, and a node that fails to load (I/O, each configuration note, a duplicate TestSources)
+    adds no children, so their dependents are left out; TargetMismatch and LanguageMismatch are recorded and the node still resolves;
+    without the root or its target nothing else resolves; acyclicity is checked over the resolved part. A lock records the first
+    failure's code (`reasonCode`, schema unchanged); `DependencyLock.Validate` gives every failure, each a `ProjectPreparationFailed_Kd`
+    through `Project.Fail` (test preparation too, no longer one `InvalidDataException`), and `kimi restore` prints each.
+    `DuplicateTestSource` becomes `InvalidConfiguration` (the configuration's owner reports it). A dependency's directory-free failures,
+    found by `ProjectFile.Load`, still hide its TestSources comparison until fixed (the load precedes the comparison, as for a root).
   - Rejected: validating the configuration only at preparation (the language server's project item reads the maps after the load); a
     mode flag or an optional directory steering one `Validate`; joining the notes into one record's text.
   - Same cause, not in this unit: `NativeConfiguration.ValidatePackageSupplies` and `ValidateSupplyAgreement` (the graph's supplies),
@@ -14978,4 +14986,6 @@ structure is recorded here by the unit that first implements it.
   - Tests: `DependencyConfigurationTest.EachIndependentConfigurationFailureIsReported` (four records; one before),
     `CheckServiceTest.EachDuplicateTestSourceIsReported` and `PreparationReportsEachConfigurationFailure` (product and test; one
     record, or a load failure, before), `CheckJsonOutputTest.EachConfigurationFailureOfAnUnloadedProjectIsReported` (two
-    `ProjectLoadFailed_Kd`; one before); `ANullMapLeavesOutTheChecksThatReadIt` is the dependent counterpart.
+    `ProjectLoadFailed_Kd`; one before); `ANullMapLeavesOutTheChecksThatReadIt` is the dependent counterpart. G367b:
+    `DependencyResolutionTest.EachIndependentGraphFailureIsReported` (five failures, a failed node's reference left out) and
+    `CheckServiceTest.EachIndependentDependencyFailureIsReported` (two records in product and test checks; one before).

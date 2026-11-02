@@ -211,13 +211,13 @@ public partial class Compilation
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
         // SPEC 23.1.2: each configuration failure is its own record.
-        var configurationFailures = DependencyConfiguration.Validate(this.Project.ProjectFile);
-        for (var i = 0; i < configurationFailures.Count; i++)
+        var invalid = DependencyConfiguration.Validate(this.Project.ProjectFile);
+        for (var i = 0; i < invalid.Count; i++)
         {
-            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: configurationFailures[i]);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: invalid[i]);
         }
 
-        if (configurationFailures.Count != 0)
+        if (invalid.Count != 0)
         {
             return false;
         }

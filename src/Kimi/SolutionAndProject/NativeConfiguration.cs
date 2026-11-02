@@ -17,7 +17,7 @@ internal static class NativeConfiguration
     {
         if (file.NativeRequirements is null || file.NativeLibraries is null)
         {
-            DependencyConfiguration.Add(ref failures, "NativeRequirements and NativeLibraries must be target maps.");
+            (failures ??= []).Add("NativeRequirements and NativeLibraries must be target maps.");
             return;
         }
 
@@ -25,7 +25,7 @@ internal static class NativeConfiguration
         {
             if (!ValidName(target) || requirements is null)
             {
-                DependencyConfiguration.Add(ref failures, "NativeRequirements target entries must be mappings.");
+                (failures ??= []).Add("NativeRequirements target entries must be mappings.");
                 continue;
             }
 
@@ -33,7 +33,8 @@ internal static class NativeConfiguration
             {
                 if (!ValidName(name) || requirement is null || requirement.Kind is not ("import" or "static") || !ValidAssertions(requirement.ContractId, requirement.Sha256))
                 {
-                    DependencyConfiguration.Add(ref failures, $"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
+                    (failures ??= []).Add(
+                        $"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
                 }
             }
         }
@@ -42,7 +43,7 @@ internal static class NativeConfiguration
         {
             if (!ValidName(target) || libraries is null)
             {
-                DependencyConfiguration.Add(ref failures, "NativeLibraries target entries must be mappings.");
+                (failures ??= []).Add("NativeLibraries target entries must be mappings.");
                 continue;
             }
 
@@ -51,7 +52,7 @@ internal static class NativeConfiguration
             {
                 if (ValidateSupply(name, library, requirements?.GetValueOrDefault(name)) is { } failure)
                 {
-                    DependencyConfiguration.Add(ref failures, failure);
+                    (failures ??= []).Add(failure);
                 }
             }
 
@@ -61,7 +62,7 @@ internal static class NativeConfiguration
             {
                 if (ValidatePackaged(library) is { } failure)
                 {
-                    DependencyConfiguration.Add(ref failures, failure);
+                    (failures ??= []).Add(failure);
                     packagedValid = false;
                 }
             }
@@ -75,7 +76,8 @@ internal static class NativeConfiguration
                     if (packaged[i].Name == packaged[j].Name && packaged[i].Package == packaged[j].Package &&
                         (!Agree(packaged[i].ContractId, packaged[j].ContractId, StringComparison.Ordinal) || !Agree(packaged[i].Sha256, packaged[j].Sha256, StringComparison.OrdinalIgnoreCase)))
                     {
-                        DependencyConfiguration.Add(ref failures, $"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' assert different ContractId or Sha256 values and cannot merge.");
+                        (failures ??= []).Add(
+                            $"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' assert different ContractId or Sha256 values and cannot merge.");
                         break;
                     }
                 }
@@ -197,7 +199,12 @@ internal static class NativeConfiguration
             return $"NativeLibraries entry '{name}' disagrees with its NativeRequirements Kind, ContractId or Sha256.";
         }
 
-        return (library.Kind ?? requirement?.Kind) is not ("import" or "static") ? $"NativeLibraries entry '{name}' requires Kind \"static\" or \"import\" after requirement expansion." : null;
+        if ((library.Kind ?? requirement?.Kind) is not ("import" or "static"))
+        {
+            return $"NativeLibraries entry '{name}' requires Kind \"static\" or \"import\" after requirement expansion.";
+        }
+
+        return null;
     }
 
     // A supply record for another package's first failure, or null.
@@ -221,7 +228,12 @@ internal static class NativeConfiguration
             return "kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.";
         }
 
-        return library.Kind is not null ? $"NativeLibraries record '{library.Name}' for package '{package.PackageId}' cannot declare Kind; Kind is allowed only in self-targeted records." : null;
+        if (library.Kind is not null)
+        {
+            return $"NativeLibraries record '{library.Name}' for package '{package.PackageId}' cannot declare Kind; Kind is allowed only in self-targeted records.";
+        }
+
+        return null;
     }
 
     // Gets a module's own requirement, declared directly or by a self-targeted combined supply.

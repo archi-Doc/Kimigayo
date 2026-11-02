@@ -24,10 +24,14 @@ internal sealed class DependencyNode(string key, DependencyInput input, int pare
     internal SortedDictionary<string, string> Edges { get; } = new(StringComparer.Ordinal);
 }
 
-internal sealed record DependencyPartition(DependencyNode[] Nodes, string? ReasonCode = null, string? Diagnostic = null)
+/// <summary>One partition: its nodes, or its independent failures (SPEC 23.1.2) when it is unresolved.</summary>
+internal sealed record DependencyPartition(DependencyNode[] Nodes, ResolutionFailure[]? Failures = null)
 {
-    internal bool IsResolved => this.ReasonCode is null;
+    internal bool IsResolved => this.Failures is null;
 }
+
+/// <summary>One failure of a resolution: the reason code a lock records and its note.</summary>
+internal readonly record struct ResolutionFailure(string Code, string Message);
 
 internal sealed record DependencyResolution(DependencyPartition Product, DependencyPartition Test);
 
@@ -60,8 +64,8 @@ internal sealed class DependencyResolver
         }
 
         var product = resolver.ResolvePartition(projectPath, false);
-        var test = !product.IsResolved ? new DependencyPartition([], "ProductUnresolved", "The product dependency partition is unresolved.") :
-            includeTests ? resolver.ResolvePartition(projectPath, true) : new([], "NotRequested", "Only product dependencies were requested.");
+        var test = !product.IsResolved ? new DependencyPartition([], [new("ProductUnresolved", "The product dependency partition is unresolved.")]) :
+            includeTests ? resolver.ResolvePartition(projectPath, true) : new([], [new("NotRequested", "Only product dependencies were requested.")]);
         return new(product, test);
     }
 
@@ -108,7 +112,7 @@ internal sealed class DependencyResolver
         return true;
     }
 
-    private static void ValidateAcyclic(List<DependencyNode> nodes)
+    private static void ValidateAcyclic(List<DependencyNode> nodes, List<ResolutionFailure> failures)
     {
         var indices = new Dictionary<string, int>(nodes.Count, StringComparer.Ordinal);
         var incoming = new int[nodes.Count];
@@ -184,7 +188,7 @@ internal sealed class DependencyResolver
             }
 
             names.Add(names[0]);
-            throw new ResolutionFailure("Cycle", $"Dependency cycle {string.Join(" -> ", names)}; reachable through {DependencyPath(nodes, current)}.");
+            failures.Add(new("Cycle", $"Dependency cycle {string.Join(" -> ", names)}; reachable through {DependencyPath(nodes, current)}."));
         }
     }
 
@@ -207,171 +211,229 @@ internal sealed class DependencyResolver
         return string.Join(" -> ", names);
     }
 
+    private static KeyValuePair<string, DependencyReference>[] Sorted(IEnumerable<KeyValuePair<string, DependencyReference>> references)
+    {
+        var sorted = references.ToArray();
+        Array.Sort(sorted, static (a, b) => string.CompareOrdinal(a.Key, b.Key));
+        return sorted;
+    }
+
+    // The root's test references belong to the test partition, which validates them here; an invalid one is recorded, not resolved.
+    private static List<KeyValuePair<string, DependencyReference>> ValidTestReferences(
+        Dictionary<string, DependencyReference> references, List<ResolutionFailure> failures)
+    {
+        var valid = new List<KeyValuePair<string, DependencyReference>>(references.Count);
+        foreach (var pair in references)
+        {
+            List<string>? invalid = null;
+            DependencyConfiguration.ValidateReference(pair.Key, pair.Value, ref invalid);
+            if (invalid is null)
+            {
+                valid.Add(pair);
+                continue;
+            }
+
+            foreach (var note in invalid)
+            {
+                failures.Add(new("InvalidTestDependencies", note));
+            }
+        }
+
+        return valid;
+    }
+
+    // SPEC 23.1.2: each independent failure of the graph is recorded. A node that fails to load adds no children, a failed reference
+    // adds no edge, and without the root or its target nothing else resolves: those dependents are left out.
     private DependencyPartition ResolvePartition(string projectPath, bool includeTests)
     {
-        var nodes = new List<DependencyNode>();
-        try
+        var failures = new List<ResolutionFailure>();
+        if (this.Load(projectPath, failures) is not { } root)
         {
-            var root = this.Load(projectPath);
-            if (this.target.Length == 0)
-            {
-                if (root.Configuration.Targets.Length != 1)
-                {
-                    throw new ResolutionFailure("TargetSelection", "Dependency resolution requires one configured target or an explicit --Target.");
-                }
+            return new([], [.. failures]);
+        }
 
-                this.target = root.Configuration.Targets[0];
+        if (this.target.Length == 0)
+        {
+            if (root.Configuration.Targets.Length != 1)
+            {
+                return new([], [new("TargetSelection", "Dependency resolution requires one configured target or an explicit --Target.")]);
             }
 
-            var identities = new Dictionary<(string Id, string Version), int>();
-            var paths = new HashSet<string>(this.inputs.Comparer);
-            var pending = new List<(DependencyInput Input, int Index)>();
-            nodes.Add(new("root", root, -1, string.Empty));
-            if (root.Configuration.PackageId is { } rootId)
-            {
-                identities.Add((rootId, root.Configuration.PackageVersion!), 0);
-            }
-
-            pending.Add((root, 0));
-            paths.Add(root.Path);
-            for (var next = 0; next < pending.Count; next++)
-            {
-                this.cancellationToken.ThrowIfCancellationRequested();
-                var (input, index) = pending[next];
-                var file = input.Configuration;
-                this.ValidateEnvironment(input);
-                var references = file.Dependencies.ToArray();
-                Array.Sort(references, static (a, b) => string.CompareOrdinal(a.Key, b.Key));
-                AddReferences(references);
-                if (includeTests && index == 0)
-                {
-                    List<string>? failures = null;
-                    DependencyConfiguration.ValidateReferences(file.TestDependencies, ref failures);
-                    if (failures is [var failure, ..])
-                    {
-                        throw new ResolutionFailure("InvalidTestDependencies", failure);
-                    }
-
-                    var tests = file.TestDependencies.ToArray();
-                    Array.Sort(tests, static (a, b) => string.CompareOrdinal(a.Key, b.Key));
-                    AddReferences(tests);
-                }
-
-                void AddReferences(KeyValuePair<string, DependencyReference>[] references)
-                {
-                    foreach (var (name, reference) in references)
-                    {
-                        this.cancellationToken.ThrowIfCancellationRequested();
-                        if (reference.Project is null)
-                        {
-                            throw new ResolutionFailure("UnsupportedPackage", $"Source Package loading remains unimplemented: {DependencyPath(nodes, index, name)}.");
-                        }
-
-                        var childPath = Path.GetFullPath(reference.Project, Path.GetDirectoryName(input.Path)!);
-                        var child = this.Load(childPath);
-                        if (child.Configuration.PackageId != reference.PackageId || child.Configuration.PackageVersion != reference.PackageVersion)
-                        {
-                            throw new ResolutionFailure("IdentityMismatch", $"Requested {reference.PackageId}@{reference.PackageVersion} at {DependencyPath(nodes, index, name)}; '{childPath}' declares {child.Configuration.PackageId}@{child.Configuration.PackageVersion}.");
-                        }
-
-                        if (this.inputs.Comparer.Equals(child.Path, root.Path))
-                        {
-                            throw new ResolutionFailure("Cycle", $"Dependency cycle returns to the root: {DependencyPath(nodes, index, name)}.");
-                        }
-
-                        if (child.Configuration.OutputKind != OutputKind.Library)
-                        {
-                            throw new ResolutionFailure("NotLibrary", $"Dependency {DependencyPath(nodes, index, name)} must name a Library Project: '{childPath}'.");
-                        }
-
-                        var identity = (reference.PackageId, reference.PackageVersion);
-                        if (!identities.TryGetValue(identity, out var childIndex))
-                        {
-                            childIndex = nodes.Count;
-                            identities.Add(identity, childIndex);
-                            nodes.Add(new(reference.PackageId + "@" + reference.PackageVersion, child, index, name));
-                        }
-                        else if (!SameInput(nodes[childIndex].Input, child, this.languageVersion))
-                        {
-                            throw new ResolutionFailure("ConflictingInput", $"Conflicting inputs for {reference.PackageId}@{reference.PackageVersion}: {DependencyPath(nodes, childIndex)} ('{nodes[childIndex].Input.Path}') and {DependencyPath(nodes, index, name)} ('{childPath}').");
-                        }
-
-                        var key = nodes[childIndex].Key;
-                        if (nodes[index].Edges.TryGetValue(name, out var previous) && previous != key)
-                        {
-                            throw new ResolutionFailure("ReferenceReassignment", $"Test dependencies cannot reassign product reference '{name}'.");
-                        }
-
-                        nodes[index].Edges[name] = key;
-                        if (paths.Add(child.Path))
-                        {
-                            pending.Add((child, childIndex));
-                        }
-                    }
-                }
-            }
-
-            ValidateAcyclic(nodes);
-            return new(nodes.ToArray());
+            this.target = root.Configuration.Targets[0];
         }
-        catch (ResolutionFailure ex)
+
+        var identities = new Dictionary<(string Id, string Version), int>();
+        var paths = new HashSet<string>(this.inputs.Comparer) { root.Path };
+        var pending = new List<(DependencyInput Input, int Index)> { (root, 0) };
+        var nodes = new List<DependencyNode> { new("root", root, -1, string.Empty) };
+        if (root.Configuration.PackageId is { } rootId)
         {
-            return new([], ex.Code, ex.Message);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or TinyhandException or ProjectConfigurationException)
-        {
-            return new([], "InvalidProjectInput", ex.Message);
-        }
-    }
-
-    private DependencyInput Load(string path)
-    {
-        this.cancellationToken.ThrowIfCancellationRequested();
-        path = Path.GetFullPath(path);
-        if (this.inputs.TryGetValue(path, out var input))
-        {
-            return input;
+            identities.Add((rootId, root.Configuration.PackageVersion!), 0);
         }
 
-        var bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath) ? this.rootConfiguration : this.source.ReadAllBytes(path);
-        var file = ProjectFile.Load(bytes) ?? throw new ResolutionFailure("InvalidConfiguration", $"Empty Project configuration: '{path}'.");
-        var directory = Path.GetDirectoryName(path)!;
-        if (DependencyConfiguration.Validate(file, directory, out var tests) is [var failure, ..])
-        {
-            throw new ResolutionFailure("InvalidConfiguration", $"Invalid project configuration '{path}': {failure}");
-        }
-
-        var paths = this.source.GetFiles(directory, "*.kimi");
-        var sources = new List<DependencySource>(paths.Length);
-        foreach (var source in paths)
+        for (var next = 0; next < pending.Count; next++)
         {
             this.cancellationToken.ThrowIfCancellationRequested();
-            if (tests?.Contains(source) != true)
+            var (input, index) = pending[next];
+            this.ValidateEnvironment(input, failures);
+            AddReferences(Sorted(input.Configuration.Dependencies));
+            if (includeTests && index == 0)
             {
-                sources.Add(new(Path.GetFileName(source), this.source.ReadSource(source)));
+                AddReferences(Sorted(ValidTestReferences(input.Configuration.TestDependencies, failures)));
+            }
+
+            void AddReferences(KeyValuePair<string, DependencyReference>[] references)
+            {
+                foreach (var (name, reference) in references)
+                {
+                    this.cancellationToken.ThrowIfCancellationRequested();
+                    if (this.Reference(nodes, input, index, name, reference, failures) is not { } child)
+                    {
+                        continue;
+                    }
+
+                    var identity = (reference.PackageId, reference.PackageVersion);
+                    if (!identities.TryGetValue(identity, out var childIndex))
+                    {
+                        childIndex = nodes.Count;
+                        identities.Add(identity, childIndex);
+                        nodes.Add(new(reference.PackageId + "@" + reference.PackageVersion, child, index, name));
+                    }
+                    else if (!SameInput(nodes[childIndex].Input, child, this.languageVersion))
+                    {
+                        failures.Add(new("ConflictingInput", $"Conflicting inputs for {reference.PackageId}@{reference.PackageVersion}: {DependencyPath(nodes, childIndex)} ('{nodes[childIndex].Input.Path}') and {DependencyPath(nodes, index, name)} ('{child.Path}')."));
+                        continue;
+                    }
+
+                    var key = nodes[childIndex].Key;
+                    if (nodes[index].Edges.TryGetValue(name, out var previous) && previous != key)
+                    {
+                        failures.Add(new("ReferenceReassignment", $"Test dependencies cannot reassign product reference '{name}'."));
+                        continue;
+                    }
+
+                    nodes[index].Edges[name] = key;
+                    if (paths.Add(child.Path))
+                    {
+                        pending.Add((child, childIndex));
+                    }
+                }
             }
         }
 
-        input = new(path, file, bytes, sources.ToArray());
-        this.inputs.Add(path, input);
-        return input;
+        ValidateAcyclic(nodes, failures);
+        return failures.Count == 0 ? new(nodes.ToArray()) : new([], [.. failures]);
     }
 
-    private void ValidateEnvironment(DependencyInput input)
+    // Loads one reference's project; a failure of the reference is recorded and returns null, so no edge is added.
+    private DependencyInput? Reference(
+        List<DependencyNode> nodes, DependencyInput input, int index, string name, DependencyReference reference, List<ResolutionFailure> failures)
+    {
+        if (reference.Project is null)
+        {
+            failures.Add(new("UnsupportedPackage", $"Source Package loading remains unimplemented: {DependencyPath(nodes, index, name)}."));
+            return null;
+        }
+
+        if (this.Load(Path.Combine(Path.GetDirectoryName(input.Path)!, reference.Project), failures) is not { } child)
+        {
+            return null;
+        }
+
+        if (child.Configuration.PackageId != reference.PackageId || child.Configuration.PackageVersion != reference.PackageVersion)
+        {
+            failures.Add(new("IdentityMismatch", $"Requested {reference.PackageId}@{reference.PackageVersion} at {DependencyPath(nodes, index, name)}; '{child.Path}' declares {child.Configuration.PackageId}@{child.Configuration.PackageVersion}."));
+            return null;
+        }
+
+        if (this.inputs.Comparer.Equals(child.Path, nodes[0].Input.Path))
+        {
+            failures.Add(new("Cycle", $"Dependency cycle returns to the root: {DependencyPath(nodes, index, name)}."));
+            return null;
+        }
+
+        if (child.Configuration.OutputKind != OutputKind.Library)
+        {
+            failures.Add(new("NotLibrary", $"Dependency {DependencyPath(nodes, index, name)} must name a Library Project: '{child.Path}'."));
+            return null;
+        }
+
+        return child;
+    }
+
+    // Loads one project; each failure is recorded and the node is not created (its children depend on it).
+    private DependencyInput? Load(string path, List<ResolutionFailure> failures)
+    {
+        this.cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            path = Path.GetFullPath(path);
+            if (this.inputs.TryGetValue(path, out var input))
+            {
+                return input;
+            }
+
+            var bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath)
+                ? this.rootConfiguration : this.source.ReadAllBytes(path);
+            if (ProjectFile.Load(bytes) is not { } file)
+            {
+                failures.Add(new("InvalidConfiguration", $"Empty Project configuration: '{path}'."));
+                return null;
+            }
+
+            var directory = Path.GetDirectoryName(path)!;
+            if (Invalid(path, DependencyConfiguration.Validate(file, directory, out var tests), failures))
+            {
+                return null;
+            }
+
+            var listed = this.source.GetFiles(directory, "*.kimi");
+            var sources = new List<DependencySource>(listed.Length);
+            foreach (var source in listed)
+            {
+                this.cancellationToken.ThrowIfCancellationRequested();
+                if (tests?.Contains(source) != true)
+                {
+                    sources.Add(new(Path.GetFileName(source), this.source.ReadSource(source)));
+                }
+            }
+
+            input = new(path, file, bytes, sources.ToArray());
+            this.inputs.Add(path, input);
+            return input;
+        }
+        catch (ProjectConfigurationException ex)
+        {
+            Invalid(path, ex.Failures, failures);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or TinyhandException)
+        {
+            failures.Add(new("InvalidProjectInput", ex.Message));
+            return null;
+        }
+
+        static bool Invalid(string path, IReadOnlyList<string> notes, List<ResolutionFailure> failures)
+        {
+            foreach (var note in notes)
+            {
+                failures.Add(new("InvalidConfiguration", $"Invalid project configuration '{path}': {note}"));
+            }
+
+            return notes.Count != 0;
+        }
+    }
+
+    private void ValidateEnvironment(DependencyInput input, List<ResolutionFailure> failures)
     {
         if (!input.Configuration.Targets.Contains(this.target, StringComparer.Ordinal))
         {
-            throw new ResolutionFailure("TargetMismatch", $"Project '{input.Path}' does not allow target '{this.target}'.");
+            failures.Add(new("TargetMismatch", $"Project '{input.Path}' does not allow target '{this.target}'."));
         }
 
         if ((input.Configuration.LangVersion ?? this.languageVersion) != this.languageVersion)
         {
-            throw new ResolutionFailure("LanguageMismatch", $"Project '{input.Path}' requires a different language version.");
+            failures.Add(new("LanguageMismatch", $"Project '{input.Path}' requires a different language version."));
         }
-    }
-
-    private sealed class ResolutionFailure(string code, string message) : Exception(message)
-    {
-        internal string Code { get; } = code;
     }
 }

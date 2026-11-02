@@ -97,43 +97,38 @@ internal static class DependencyConfiguration
             {
                 if (!(testSources ??= new(SourceIdentity.PathComparer)).Add(Path.GetFullPath(source, directory)))
                 {
-                    Add(ref failures, $"Duplicate resolved TestSources path: {source}");
+                    (failures ??= []).Add($"Duplicate resolved TestSources path: {source}");
                 }
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                Add(ref failures, $"Invalid TestSources path: {ex.Message}");
+                (failures ??= []).Add($"Invalid TestSources path: {ex.Message}");
             }
         }
 
         return (IReadOnlyList<string>?)failures ?? [];
     }
 
-    internal static void ValidateReferences(Dictionary<string, DependencyReference> references, ref List<string>? failures)
+    // One reference's name, identity and source are independent; a null reference has no source to check.
+    internal static void ValidateReference(string name, DependencyReference? reference, ref List<string>? failures)
     {
-        foreach (var (name, reference) in references)
+        if (!IdentifierHelper.IsValidIdentifier(name) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() || name == "Kimi")
         {
-            if (!IdentifierHelper.IsValidIdentifier(name) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() || name == "Kimi")
-            {
-                Add(ref failures, $"Invalid or reserved dependency reference name: {name}");
-            }
+            (failures ??= []).Add($"Invalid or reserved dependency reference name: {name}");
+        }
 
-            if (reference is null || !ValidPackageId(reference.PackageId) || !ValidPackageVersion(reference.PackageVersion))
-            {
-                Add(ref failures, $"Dependency '{name}' requires a valid PackageId and exact PackageVersion.");
-            }
+        if (reference is null || !ValidPackageId(reference.PackageId) || !ValidPackageVersion(reference.PackageVersion))
+        {
+            (failures ??= []).Add($"Dependency '{name}' requires a valid PackageId and exact PackageVersion.");
+        }
 
-            if (reference is not null && ((reference.Project is not null && reference.Package is not null) ||
-                (reference.Project is { } project && (string.IsNullOrWhiteSpace(project) || !project.EndsWith(".kimiproj", StringComparison.OrdinalIgnoreCase))) ||
-                (reference.Package is { } package && (string.IsNullOrWhiteSpace(package) || !package.EndsWith(".kimipkg", StringComparison.OrdinalIgnoreCase)))))
-            {
-                Add(ref failures, $"Dependency '{name}' must specify at most one Project (.kimiproj) or Package (.kimipkg) path.");
-            }
+        if (reference is not null && ((reference.Project is not null && reference.Package is not null) ||
+            (reference.Project is { } project && (string.IsNullOrWhiteSpace(project) || !project.EndsWith(".kimiproj", StringComparison.OrdinalIgnoreCase))) ||
+            (reference.Package is { } package && (string.IsNullOrWhiteSpace(package) || !package.EndsWith(".kimipkg", StringComparison.OrdinalIgnoreCase)))))
+        {
+            (failures ??= []).Add($"Dependency '{name}' must specify at most one Project (.kimiproj) or Package (.kimipkg) path.");
         }
     }
-
-    internal static void Add(ref List<string>? failures, string failure)
-        => (failures ??= []).Add(failure);
 
     private static bool ValidTestSource(string? path)
         => !string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path) && path.AsSpan().IndexOfAny('\0', '*', '?') < 0;
@@ -143,22 +138,26 @@ internal static class DependencyConfiguration
     {
         if (file.KotonohaArray is { Length: > 0 })
         {
-            Add(ref failures, "KotonohaArray is no longer supported. Replace it with Dependencies using PackageId, PackageVersion and a Project or Package source.");
+            (failures ??= []).Add(
+                "KotonohaArray is no longer supported. Replace it with Dependencies using PackageId, PackageVersion and a Project or Package source.");
         }
 
         if ((file.PackageId is not null || file.PackageVersion is not null) && (!ValidPackageId(file.PackageId) || !ValidPackageVersion(file.PackageVersion)))
         {
-            Add(ref failures, "PackageId and PackageVersion must both be supplied with valid exact identity spellings.");
+            (failures ??= []).Add("PackageId and PackageVersion must both be supplied with valid exact identity spellings.");
         }
 
         if (file.Dependencies is null || file.TestDependencies is null || file.PackageSources is null || file.TestSources is null || file.Alias is null)
         {
-            Add(ref failures, "Dependency maps and source lists must not be null.");
+            (failures ??= []).Add("Dependency maps and source lists must not be null.");
         }
 
-        if (file.Dependencies is not null)
+        if (file.Dependencies is { } dependencies)
         {
-            ValidateReferences(file.Dependencies, ref failures);
+            foreach (var (name, reference) in dependencies)
+            {
+                ValidateReference(name, reference, ref failures);
+            }
         }
 
         NativeConfiguration.Validate(file, ref failures);
@@ -166,7 +165,7 @@ internal static class DependencyConfiguration
         {
             if (string.IsNullOrWhiteSpace(alias))
             {
-                Add(ref failures, "Alias requires nonempty Container paths.");
+                (failures ??= []).Add("Alias requires nonempty Container paths.");
             }
         }
 
@@ -175,7 +174,7 @@ internal static class DependencyConfiguration
             if (source is null || (source.Store is { } store ? string.IsNullOrWhiteSpace(store) || source.PackageId is not null || source.PackageVersion is not null || source.Package is not null :
                 !ValidPackageId(source.PackageId) || !ValidPackageVersion(source.PackageVersion) || string.IsNullOrWhiteSpace(source.Package)))
             {
-                Add(ref failures, "PackageSources entries require either Store or PackageId, PackageVersion and Package.");
+                (failures ??= []).Add("PackageSources entries require either Store or PackageId, PackageVersion and Package.");
             }
         }
 
@@ -184,7 +183,7 @@ internal static class DependencyConfiguration
         {
             if (!ValidTestSource(path))
             {
-                Add(ref failures, "TestSources requires explicit project-relative paths without globs.");
+                (failures ??= []).Add("TestSources requires explicit project-relative paths without globs.");
             }
         }
     }

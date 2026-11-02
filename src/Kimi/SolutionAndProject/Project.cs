@@ -44,7 +44,13 @@ public partial class Project
     /// <param name="project">The loaded project.</param>
     /// <param name="failures">The reasons the project did not load, one per independent failure (SPEC 23.1.2); empty when loaded.</param>
     /// <returns><see langword="true"/> when the project was loaded.</returns>
-    internal static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, CheckInputSource inputs, [MaybeNullWhen(false)] out Project project, out IReadOnlyList<string> failures)
+    internal static bool TryCreate(
+        Kimigayo kimigayo,
+        ILogger? logger,
+        string path,
+        CheckInputSource inputs,
+        [MaybeNullWhen(false)] out Project project,
+        out IReadOnlyList<string> failures)
     {
         project = default;
         failures = [];
@@ -345,10 +351,8 @@ public partial class Project
             // Nonempty graphs still require the forthcoming semantic integration.
             var root = new DependencyNode("root", new(projectPath, this.ProjectFile, [], []), -1, string.Empty);
             var empty = new DependencyPartition([root]);
-            var failure = DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs);
-            if (failure is not null)
+            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs)))
             {
-                this.Fail(diagnostics, failure);
                 return false;
             }
         }
@@ -386,10 +390,8 @@ public partial class Project
             if (rootConfiguration is not null)
             {
                 var resolution = DependencyResolver.Resolve(this.FilePath!, x, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, rootConfiguration, false, inputs);
-                var failure = DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs);
-                if (failure is not null)
+                if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs)))
                 {
-                    this.Fail(diagnostics, failure);
                     success = false;
                     continue;
                 }
@@ -621,18 +623,23 @@ public partial class Project
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
 
-    // SPEC 23.1.2: each configuration failure, the TestSources compared at the project directory included (IMPL 20.1), is its own
-    // record; a project without a directory is the current directory's.
-    private bool ValidateConfiguration(DiagnosticOwner diagnostics, out HashSet<string>? testSources)
+    // SPEC 23.1.2: each failure is its own record; true when there is one.
+    private bool Reported(DiagnosticOwner diagnostics, IReadOnlyList<string> failures)
     {
-        var directory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
-        var failures = DependencyConfiguration.Validate(this.ProjectFile, directory, out testSources);
         for (var i = 0; i < failures.Count; i++)
         {
             this.Fail(diagnostics, failures[i]);
         }
 
-        return failures.Count == 0;
+        return failures.Count != 0;
+    }
+
+    // IMPL 20.1: the configuration with its TestSources compared at the project directory; a project without one is the current
+    // directory's.
+    private bool ValidateConfiguration(DiagnosticOwner diagnostics, out HashSet<string>? testSources)
+    {
+        var directory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
+        return !this.Reported(diagnostics, DependencyConfiguration.Validate(this.ProjectFile, directory, out testSources));
     }
 
     // SPEC 23.2.2: input preparation that ends without an Error reports its fallback, in the command and the check entry alike.

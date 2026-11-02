@@ -145,6 +145,21 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Equal(["Duplicate resolved TestSources path: a.kimi", "Duplicate resolved TestSources path: b.kimi"], output.Diagnostics.Select(static x => x.Note));
     }
 
+    // SPEC 23.1.2: each independent failure of the dependency graph is its own record, in a product and a test check alike.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void EachIndependentDependencyFailureIsReported(CheckMode mode)
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), dependencies: "A={PackageId=\"a\" PackageVersion=\"1\" Project=\"../A/A.kimiproj\"} B={PackageId=\"b\" PackageVersion=\"1\" Project=\"../B/B.kimiproj\"}");
+        var output = this.Run(project, mode);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(2, output.Diagnostics.Length);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("A.kimiproj", StringComparison.Ordinal));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("B.kimiproj", StringComparison.Ordinal));
+    }
+
     // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
     // the path syntax depends on that failure and is left out.
     [Theory]

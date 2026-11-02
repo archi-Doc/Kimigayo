@@ -31,13 +31,16 @@ public sealed class RestoreCommand : ISimpleCommand<KimiOptions>
             var resolution = DependencyResolver.Resolve(path, options.Target, Compilation.CurrentLanguageVersion, cancellationToken);
             var lockPath = DependencyLock.PathForProject(path);
             var changed = DependencyLock.Update(lockPath, resolution, cancellationToken);
-            if (!resolution.Product.IsResolved)
+
+            // IMPL 20.5: a product failure fails restore; a test-only failure is reported. Each failure is its own line (SPEC 23.1.2).
+            foreach (var failure in resolution.Product.Failures ?? [])
             {
-                this.kimigayo.WriteLine(DiagnosticSeverity.Error, resolution.Product.Diagnostic ?? resolution.Product.ReasonCode!);
+                this.kimigayo.WriteLine(DiagnosticSeverity.Error, failure.Message);
             }
-            else if (!resolution.Test.IsResolved)
+
+            foreach (var failure in resolution.Product.IsResolved ? resolution.Test.Failures ?? [] : [])
             {
-                this.kimigayo.WriteLine(DiagnosticSeverity.Warning, $"Test dependency resolution failed: {resolution.Test.Diagnostic ?? resolution.Test.ReasonCode}");
+                this.kimigayo.WriteLine(DiagnosticSeverity.Warning, $"Test dependency resolution failed: {failure.Message}");
             }
 
             this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Dependency lock {(changed ? "updated" : "unchanged")}: {lockPath}");

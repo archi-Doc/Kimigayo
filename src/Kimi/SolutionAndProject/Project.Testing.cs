@@ -15,13 +15,13 @@ public partial class Project
     /// <param name="cancellationToken">Cancels dependency resolution.</param>
     /// <param name="context">The check context, or null for the command, which reads the disk.</param>
     /// <returns>The accepted test compilation, or null.</returns>
-    /// <exception cref="InvalidDataException">The test settings, identity, target or lock is invalid.</exception>
+    /// <exception cref="InvalidDataException">The test settings, identity or target is invalid.</exception>
     internal Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context)
     {
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
         cancellationToken.ThrowIfCancellationRequested();
 
-        // As for a product build, each configuration failure is its own record (SPEC 23.1.2); a command renders them here.
+        // As for a product build, each configuration and resolution failure is its own record (SPEC 23.1.2); a command renders them.
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
         if (!this.ValidateConfiguration(diagnostics, out var sources))
         {
@@ -51,9 +51,10 @@ public partial class Project
         if (this.FilePath is { } path)
         {
             var resolution = DependencyResolver.Resolve(path, target, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, TinyhandSerializer.SerializeToUtf8(this.ProjectFile), true, inputs);
-            if (DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true, inputs) is { } failure)
+            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true, inputs)))
             {
-                throw new InvalidDataException(failure);
+                this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+                return null;
             }
 
             graph = resolution.Test;

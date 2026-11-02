@@ -65,11 +65,12 @@ internal static class DependencyLock
         }
     }
 
-    internal static string? Validate(string path, DependencyResolution resolution, bool includeTests, Checking.CheckInputSource? source = null)
+    // An unresolved partition gives each of its failures (SPEC 23.1.2); a failure of the lock itself is one.
+    internal static IReadOnlyList<string> Validate(string path, DependencyResolution resolution, bool includeTests, Checking.CheckInputSource? source = null)
     {
         if (!resolution.Product.IsResolved || (includeTests && !resolution.Test.IsResolved))
         {
-            return resolution.Product.Diagnostic ?? resolution.Test.Diagnostic ?? "Required dependency resolution is incomplete.";
+            return Array.ConvertAll((resolution.Product.Failures ?? resolution.Test.Failures)!, static x => x.Message);
         }
 
         try
@@ -78,22 +79,22 @@ internal static class DependencyLock
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object || HasDuplicateProperties(root) || !root.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version != 1)
             {
-                return "Invalid dependency lock schema; run restore.";
+                return ["Invalid dependency lock schema; run restore."];
             }
 
-            return Matches(root, "product", resolution.Product) && (!includeTests || Matches(root, "test", resolution.Test)) ? null : "Dependency lock is stale or unresolved; run restore.";
+            return Matches(root, "product", resolution.Product) && (!includeTests || Matches(root, "test", resolution.Test)) ? [] : ["Dependency lock is stale or unresolved; run restore."];
         }
         catch (JsonException)
         {
-            return "Dependency lock contains invalid JSON; run restore.";
+            return ["Dependency lock contains invalid JSON; run restore."];
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
-            return Empty(resolution.Product) && (!includeTests || Empty(resolution.Test)) ? null : "Dependency lock is missing; run restore.";
+            return Empty(resolution.Product) && (!includeTests || Empty(resolution.Test)) ? [] : ["Dependency lock is missing; run restore."];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return $"Cannot read dependency lock: {ex.Message}";
+            return [$"Cannot read dependency lock: {ex.Message}"];
         }
     }
 
@@ -104,7 +105,7 @@ internal static class DependencyLock
     {
         writer.WriteStartObject(name);
         writer.WriteString("status", partition.IsResolved ? "resolved" : "unresolved");
-        writer.WriteString("reasonCode", partition.ReasonCode);
+        writer.WriteString("reasonCode", partition.Failures is [var first, ..] ? first.Code : null);
         writer.WriteStartArray("nodes");
         var nodes = partition.Nodes.ToArray();
         Array.Sort(nodes, static (a, b) => string.CompareOrdinal(a.Key, b.Key));

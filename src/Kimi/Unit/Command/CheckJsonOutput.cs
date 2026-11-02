@@ -61,9 +61,9 @@ internal static class CheckJsonOutput
 
             target = project.ProjectFile.Targets[0];
         }
-        else if (!Project.TryCreate(kimigayo, null, input, inputs, out project!, out var loadFailures))
+        else if (!Project.TryCreate(kimigayo, null, input, inputs, out project!, out var failures))
         {
-            return CheckDocument.Create(CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, SourceIdentity.FromPath(input), loadFailures), input, target, CheckMode.Product, options.Debug, inputs.Hashes);
+            return CheckDocument.Create(CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, SourceIdentity.FromPath(input), failures), input, target, CheckMode.Product, options.Debug, inputs.Hashes);
         }
         else if (target.Length == 0)
         {
