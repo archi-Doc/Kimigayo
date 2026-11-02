@@ -47,13 +47,11 @@ public sealed partial class Binding
     }
 
     // Whose well-formedness a visit reads: an input's, which no other premise of the definition replaces (its Types' own clauses
-    // included), a named function's result, which its definition may prove without the premise, or a nested signature's result (the
-    // owner's (A)), which no definition proves.
+    // included), or a named function's result, which its definition may prove without the premise.
     private enum WellFormedSubject : byte
     {
         Input,
         NamedResult,
-        NestedResult,
     }
 
     // The subject, with the named function for NamedResult; the use; and for Bound and Unbound the call's inference and, for a result,
@@ -238,17 +236,6 @@ public sealed partial class Binding
         if (pattern.StoresOrigin)
         {
             this.VisitWellFormedPremises(pattern, pattern, null, new(WellFormedSubject.Input, null, use, WellFormedAction.Bound, inference));
-        }
-    }
-
-    // SPEC 15.6.4 step 3 (the owner's (A)): a value call of a nested signature (a Function Type's or an anonymous function's) proves its
-    // instantiated result well formed at the call, as a named call proves its callee's result premises (RequireResultPremises). The
-    // result Types' own clauses are not judged here (a value call's Type constraints: PLAN G216 (a) U2.3).
-    private void RequireNestedResult(BoundType declared, BoundType result, Koto use)
-    {
-        if (declared.StoresOrigin)
-        {
-            this.VisitWellFormedPremises(declared, result, null, new(WellFormedSubject.NestedResult, null, use, WellFormedAction.Require));
         }
     }
 

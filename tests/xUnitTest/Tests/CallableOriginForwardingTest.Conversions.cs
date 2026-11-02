@@ -116,20 +116,29 @@ public partial class CallableOriginForwardingTest
 
     private const string ResultClosure = "    let c = func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, i32)\n        return (.None, 1)\n    let pair = c(s)\n    return pair.1\n";
 
+    private const string StaticResultClosure = "    let c = func [] (x: ref/i32 during static) -> (Option<ref/(ref/i32 during x) during static>, i32)\n        return (.None, 1)\n    let pair = c(s)\n    return pair.1\n";
+
+    private const string FixedLeakTarget = "(ref/i32 during static) -> (Option<ref/(ref/i32 during static) during static>, ref/i32 during static)";
+
+    private const string FixedLeakClosure = "    let c = func [] (x: ref/i32 during static) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static)\n        return (.None, x)\n";
+
+    private const string FixedUseOk = "func use(g: " + FixedLeakTarget + ", s: ref/i32 during static) -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\n";
+
     private const string LocalNone = "    let local: i32 = 5\n    let o = g(local@ref)\n    return 0\n";
 
     private const string NestedLabel = "the 1st parameter's 1st parameter's well-formedness requires b outlives a, which is not proven";
 
     // Conversions of Function values and Items: a relation the converted signature needs follows from the target's own well-formedness by
-    // transitivity (t1c, t1d, t1o, t1j), by a meet (t1p) or combined with a premise of the use (e1, e1a, e1f, e1r); a Closure body assumes
-    // its own result's well-formedness (rv1), which each call proves. The invalid twins drop the use premise, take a target that does not
+    // transitivity (t1c, t1d, t1o, t1j) or by a meet (t1p). A written result relating a per-call Origin beyond its inputs (UseTarget,
+    // StaticTarget: e1, e1a, e1f, e1r, cz5, cz6, cz7, cz13) or an enclosing Origin without a clause (ClosureR3: rv1, rv1_call) is
+    // recorded where it is written, and a Closure body never assumes it (SPEC 15.3.4, 15.6.1; DECISIONS R4-M162). The invalid twins drop the use premise, take a target that does not
     // give the relation (t1j_n, t1p_n, cz11, cz12, cz14_n; a header that differs from the target only in its Origins is judged by its
     // erasure, SPEC 7.7.4, design-r2 Amendment 3: cz14) or convert under `origin r outlives q` alone (c2b, c2d, c2e, c2f; inside a tuple or array
     // literal the conversion's own record at the converted value, c2, c4). A conversion at a call argument is the call's
     // NoApplicableOverload_Kd as dev reports t1d_n.
     [Theory]
-    [InlineData("rv1", ClosureR3 + "    return 0\n", "")]
-    [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd c()")]
+    [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("t1c", ChainHead + "i32\n    origin b outlives c\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "")]
     [InlineData("t1c_n", ChainHead + "i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1d", ChainHead + "i32\n    origin b outlives c\n    func use(g: " + ChainTarget + ") -> i32 => 0\n    return use(f@move)\n", "")]
@@ -140,18 +149,18 @@ public partial class CallableOriginForwardingTest
     [InlineData("t1j_n", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (" + LoneInputs + ") -> Option<ref/(ref/i32 during a) during c>) -> i32\n    let g: (" + LoneInputs + ") -> Option<ref/(ref/i32 during a) during (c and b)> = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1p", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (Option<ref/(ref/i32 during a) during (b and c)>) -> i32) -> i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "")]
     [InlineData("t1p_n", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (Option<ref/(ref/i32 during (a and c)) during b>) -> i32) -> i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
-    [InlineData("e1", LeakX + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: " + UseTarget + " = leak1\n    return 0\n", "")]
+    [InlineData("e1", LeakX + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
     [InlineData("e1n", LeakX + "func k(q: ref/i32) -> i32\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1")]
-    [InlineData("e1a", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    origin q outlives static\n    return use(q, leak1)\n", "")]
-    [InlineData("e1a_n", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    return use(q, leak1)\n", "NoApplicableOverload_Kd use(q, leak1)")]
-    [InlineData("e1f", StaticValue + "i32\n    origin q outlives static\n    let g: " + UseTarget + " = f@move\n    return 0\n", "")]
-    [InlineData("e1fn", StaticValue + "i32\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
-    [InlineData("e1r", StaticValue + UseTarget + "\n    origin q outlives static\n    return f@move\n", "")]
-    [InlineData("e1r_n", StaticValue + UseTarget + "\n    return f@move\n", "UnprovenOriginContract_Kd f@move")]
-    [InlineData("cz5", LeakQ + "func mk(b: ref/i32) -> i32\n    let g: " + StaticTarget + " = leak1\n    return 0\n", "")]
-    [InlineData("cz6", LeakQ + "func mk() -> i32\n    let fr = leak1\n    let g: " + StaticTarget + " = fr\n    return 0\n", "")]
-    [InlineData("cz7", LeakQ + "func use(g: " + StaticTarget + ") -> i32 => 0\nfunc mk() -> i32\n    return use(leak1)\n", "")]
-    [InlineData("cz13", LeakQ + "func mk() -> " + StaticTarget + "\n    return leak1\n", "")]
+    [InlineData("e1a", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    origin q outlives static\n    return use(q, leak1)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
+    [InlineData("e1a_n", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    return use(q, leak1)\n", "NoApplicableOverload_Kd use(q, leak1); UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
+    [InlineData("e1f", StaticValue + "i32\n    origin q outlives static\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("e1fn", StaticValue + "i32\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("e1r", StaticValue + UseTarget + "\n    origin q outlives static\n    return f@move\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("e1r_n", StaticValue + UseTarget + "\n    return f@move\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("cz5", LeakQ + "func mk(b: ref/i32) -> i32\n    let g: " + StaticTarget + " = leak1\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("cz6", LeakQ + "func mk() -> i32\n    let fr = leak1\n    let g: " + StaticTarget + " = fr\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("cz7", LeakQ + "func use(g: " + StaticTarget + ") -> i32 => 0\nfunc mk() -> i32\n    return use(leak1)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("cz13", LeakQ + "func mk() -> " + StaticTarget + "\n    return leak1\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("cz11", LeakQ + "func mk() -> i32\n    let g: " + StaticWeaker + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1")]
     [InlineData("cz12", "func mk() -> i32\n    let g: " + StaticWeaker + " = func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None\n    return 0\n", "UnprovenOriginContract_Kd func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None")]
     [InlineData("cz14", "func k(x: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/i32 during x> = func [] (q: ref/i32) -> Option<ref/i32 during static> => .None\n    return 0\n", "")]
@@ -175,8 +184,9 @@ public partial class CallableOriginForwardingTest
     // 10.7 and the owner's (a): every Callable comparison judges the implementation's own well-formedness from the target's own
     // well-formedness and the use's premises, a Closure's at its erasure after selection: an initialization (e1x), a return (e1ret), a
     // named call's argument (e1arg2) and a value call's argument (v1, R2-N1: at its argument, as e1arg2), each an UnprovenOriginContract_Kd
-    // at the Closure, whose body assumes its own result's well-formedness (dev records the body's `(.None, x)`, twins included); e1c (PLAN G277 (2), "same cause": its header fit and its conversion record are two judgments of one comparison) is
-    // valid by the target's own well-formedness and the premise, as e1x_c. A comparison nested in another assumes the enclosing required
+    // at the Closure. Under DECISIONS R4-M162 the Closure's body records `(.None, x)` and a written target relating a per-call Origin
+    // beyond its inputs is recorded where it is written, so the twins e1x_c, e1ret_c, e1arg2_c, v1_c and e1c (PLAN G277 (2)) are invalid,
+    // and nest1 needs its head's clause. A comparison nested in another assumes the enclosing required
     // signature's well-formedness (nest1); without it the conversion's one record is Proof class (SPEC 15.6.1: a whole-contract
     // comparison's Origin part is Proven or Unknown, never a Type mismatch) naming the member inside the nested Function Type (nest1_n,
     // R2-B1), a nested member Origin (nest2) and depth 2 (nest2_n). Each twin takes a target or premise that gives the relation.
@@ -188,17 +198,17 @@ public partial class CallableOriginForwardingTest
     // Origin part is Unknown at the argument (q3_flat, q6_flat: the owner's G326 answer, 2026-10-31, 「すべて推奨の内容でお願いします」);
     // a conversion failing in several conditions is one record naming the first (two).
     [Theory]
-    [InlineData("U2.1", "e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: " + LeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c", LeakLabel)]
-    [InlineData("U2.1", "e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
-    [InlineData("U2.1", "e1ret", "func mk(s: ref/i32) -> " + LeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginContract_Kd c", LeakLabel)]
-    [InlineData("U2.1", "e1ret_c", "func mk(s: ref/i32) -> " + StaticLeakTarget + "\n" + LeakClosure + "    return c\n", "", null)]
-    [InlineData("U2.1", "e1arg2", LeakApply + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginContract_Kd c@move", LeakLabel)]
-    [InlineData("U2.1", "e1arg2_c", "func apply(s: ref/i32 during static, g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\nfunc k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return apply(s, c@move)\n", "", null)]
-    [InlineData("U2.1", "v1", "func k(s: ref/i32, h: (ref/i32, " + LeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginContract_Kd c@move", LeakLabel)]
-    [InlineData("U2.1", "v1_c", "func k(s: ref/i32 during static, h: (ref/i32, " + StaticLeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "", null)]
-    [InlineData("U2.1", "e1c", "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "", null)]
+    [InlineData("U2.1", "e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: " + LeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c; UnprovenOriginRelation_Kd (.None, x)", LeakLabel)]
+    [InlineData("U2.1", "e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd (.None, x)", null)]
+    [InlineData("U2.1", "e1ret", "func mk(s: ref/i32) -> " + LeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginContract_Kd c; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "e1ret_c", "func mk(s: ref/i32) -> " + StaticLeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "e1arg2", LeakApply + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "e1arg2_c", "func apply(s: ref/i32 during static, g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\nfunc k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "v1", "func k(s: ref/i32, h: (ref/i32, " + LeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "v1_c", "func k(s: ref/i32 during static, h: (ref/i32, " + StaticLeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "e1c", "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during q", null)]
     [InlineData("U2.1", "e1c_n", "func k(q: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginContract_Kd " + ErasedClosure, null)]
-    [InlineData("U2.1", "nest1", NestedHead + "Option<ref/(ref/i32 during b) during a>) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "Option<ref/(ref/i32 during b) during a> = f@move\n    return 0\n", "", null)]
+    [InlineData("U2.1", "nest1", NestedHead + "Option<ref/(ref/i32 during b) during a>) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "Option<ref/(ref/i32 during b) during a> = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during b) during a", null)]
     [InlineData("U2.1", "nest1_n", NestedHead + "i32) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "i32 = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's well-formedness requires b outlives a, which is not proven")]
     [InlineData("U2.1", "nest2", MemberHead + MemberTarget, "UnprovenOriginContract_Kd f@move", null)]
     [InlineData("U2.1", "nest2_ok", MemberHead + "    origin c outlives b\n" + MemberTarget, "", null)]
@@ -223,34 +233,37 @@ public partial class CallableOriginForwardingTest
     [InlineData("U2.1", "q3_flat", FlatApply + "func use()\n    var local: i32 = 1\n    let p = local@ref\n    let c = func [p] () => p\n    let r = apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
     [InlineData("U2.1", "q6_flat", FlatApply + "func use()\n    let n: i32 = 1\n    let c = func [n@ref] () => n\n    let r = apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
     [InlineData("U2.1", "q3_flat_c", FlatApply + "func use(p: ref/i32 during static)\n    let c = func [p] () => p\n    let r = apply(c@ref)\n", "", null)]
-    [InlineData("U2.1", "two", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter requires r outlives q, which is not proven")]
+    [InlineData("U2.1", "two", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", "the 1st parameter requires r outlives q, which is not proven")]
     [InlineData("U2.1", "two_c", "func k(q: ref/i32, r: ref/i32, f: (ref/i32 during q) -> Option<ref/(ref/i32 during q) during r>) -> i32\n    origin r outlives q\n    origin q outlives r\n    let g: (ref/i32 during r) -> Option<ref/(ref/i32 during q) during q> = f@move\n    return 0\n", "", null)]
     public void EveryCallableComparisonJudgesTheImplementationsWellFormedness(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
 
-    // G216 (a) T2b, U2.1 (design-r2 §4: the owner's (A), use side, for the nested-signature class): an anonymous function's body
-    // assumes its own result's well-formedness and every value call whose callee is not a named declaration proves the instantiated
-    // result well-formed at the call (SPEC 15.6.1, 15.6.4 step 3): d1 (a Closure's own call), lp and lpn (a Function value parameter,
-    // from a Closure or a named function), lc and ln (a converted local), ann and ann2 (an annotated local); a Borrow of `local` cannot
-    // outlive `static` (Refuted). Each conversion holds by the target's own well-formedness, so each twin, which passes a `static` value or
-    // makes no call, is valid (lp, lc, ln, ann and ann2 are BU's u21-review probes; ann takes `f@move`, where BU's bare `f` adds an
-    // independent TransferRequired_Kd).
+    // G216 (a) T2b, U2.1, under DECISIONS R4-M162 (the strict form, superseding the owner's (A) result half): a nested signature's result
+    // relating a per-call Origin to `static` beyond its inputs is recorded where it is written, never at a value call (SPEC 15.3.4,
+    // 15.6.1): d1 (a Closure's own call), lp and lpn (a Function value parameter, from a Closure or a named function), lc and ln (a
+    // converted local), ann and ann2 (an annotated local); a Closure's body records `(.None, x)`. A twin that passes a `static` value
+    // keeps its meaning with the input fixed at `static` (d1_c, lp_ok, lc_ok, ln_ok; lpn_ok's valid form is ResultPremiseTest's lpfix),
+    // and its wide form is invalid (d1_cw, lp_okw, lc_okw, ln_okw).
     [Theory]
-    [InlineData("U2.1", "d1", "func k(s: ref/i32) -> i32\n" + ResultClosure, "UnprovenOriginRelation_Kd c(s)", null)]
-    [InlineData("U2.1", "d1_c", "func k(s: ref/i32 during static) -> i32\n" + ResultClosure, "", null)]
-    [InlineData("U2.1", "lp", LeakUse + LeakFrom + LeakClosure + "    return use(c)\n", "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
-    [InlineData("U2.1", "lp_ok", LeakUseOk + LeakFromStatic + LeakClosure + "    return use(c, s)\n", "", null)]
-    [InlineData("U2.1", "lpn", LeakMk + LeakUse + LeakFrom + "    return use(mk)\n", "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
-    [InlineData("U2.1", "lpn_ok", LeakMk + LeakUseOk + LeakFromStatic + "    return use(mk, s)\n", "", null)]
-    [InlineData("U2.1", "lc", LeakFrom + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n" + LocalCall, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
-    [InlineData("U2.1", "lc_ok", LeakFromStatic + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
-    [InlineData("U2.1", "ln", LeakMk + LeakFrom + "    let g: " + StaticLeakTarget + " = mk\n" + LocalCall, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
-    [InlineData("U2.1", "ln_ok", LeakMk + LeakFromStatic + "    let g: " + StaticLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "", null)]
-    [InlineData("U2.1", "ann", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n    return 0\n", "", null)]
-    [InlineData("U2.1", "ann_n", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n" + LocalNone, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
-    [InlineData("U2.1", "ann2", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n    return 0\n", "", null)]
-    [InlineData("U2.1", "ann2_n", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n" + LocalNone, "UnsatisfiedOriginRelation_Kd g(local@ref)", null)]
-    public void AValueCallOfANestedSignatureProvesItsResult(string unit, string form, string body, string records, string? label)
+    [InlineData("U2.1", "d1", "func k(s: ref/i32) -> i32\n" + ResultClosure, "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static", null)]
+    [InlineData("U2.1", "d1_c", "func k(s: ref/i32 during static) -> i32\n" + StaticResultClosure, "", null)]
+    [InlineData("U2.1", "d1_cw", "func k(s: ref/i32 during static) -> i32\n" + ResultClosure, "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static", null)]
+    [InlineData("U2.1", "lp", LeakUse + LeakFrom + LeakClosure + "    return use(c)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "lp_ok", FixedUseOk + LeakFromStatic + FixedLeakClosure + "    return use(c, s)\n", "", null)]
+    [InlineData("U2.1", "lp_okw", LeakUseOk + LeakFromStatic + LeakClosure + "    return use(c, s)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "lpn", LeakMk + LeakUse + LeakFrom + "    return use(mk)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "lpn_ok", LeakMk + LeakUseOk + LeakFromStatic + "    return use(mk, s)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "lc", LeakFrom + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n" + LocalCall, "UnprovenOriginRelation_Kd (.None, x)", null)]
+    [InlineData("U2.1", "lc_ok", LeakFromStatic + FixedLeakClosure + "    let g: " + FixedLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
+    [InlineData("U2.1", "lc_okw", LeakFromStatic + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd (.None, x)", null)]
+    [InlineData("U2.1", "ln", LeakMk + LeakFrom + "    let g: " + StaticLeakTarget + " = mk\n" + LocalCall, "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ln_ok", LeakMk + LeakFromStatic + "    let g: " + FixedLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "", null)]
+    [InlineData("U2.1", "ln_okw", LeakMk + LeakFromStatic + "    let g: " + StaticLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann_n", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n" + LocalNone, "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann2", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann2_n", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n" + LocalNone, "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    public void ANestedSignaturesPerCallRelationIsRecordedWhereItIsWritten(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
 
     // G216 (a) U2.1 r2-2 (DECISIONS BU-43 amendment): SPEC 14.9.2, 23.1.2: a join's source that failed with its own record and kept its
@@ -262,12 +275,12 @@ public partial class CallableOriginForwardingTest
     [InlineData("j9", JoinHead + "if c => " + LeakArm + " else => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j9b", JoinHead + "if c => " + StaticArm + " else => " + LeakArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j11", "func k(x: ref/i32, c: bool) -> Option<ref/i32 during static>\n    let g: " + StaticArmType + " = if c => " + LeakArm + " else => " + StaticArm + "\n    return g()\n", "UnprovenOriginContract_Kd " + LeakArm)]
-    [InlineData("j6", PairHead + "if c => " + PairArm + " else => " + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginContract_Kd " + PairArm)]
+    [InlineData("j6", PairHead + "if c => " + PairArm + " else => " + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd (.None, x)")]
     [InlineData("j12", "func k(x: ref/i32, c: bool, f: () -> Option<ref/i32 during x>, g: " + StaticArmType + ") -> i32\n    let h: " + StaticArmType + " = if c => f@move else => g@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("j4", "func k(x: ref/i32, y: ref/i32, c: bool) -> i32\n    let g: (ref/i32) -> ref/i32 during y = if c => func [] (p: ref/i32) -> ref/i32 during x => x else => func [] (p: ref/i32) -> ref/i32 during y => y\n    return 0\n", "InvalidCaptureBinding_Kd x; InvalidCaptureBinding_Kd y; UnprovenOriginContract_Kd func [] (p: ref/i32) -> ref/i32 during x => x")]
     [InlineData("j9m", "func k(x: ref/i32, n: i32) -> i32\n    let g: " + StaticArmType + " = match n\n        0 => " + LeakArm + "\n        1 => " + StaticArm + "\n        _ => 1\n    return 0\n", "TypeMismatch_Kd 1; UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j10", JoinHead + "match c\n        true => " + LeakArm + "\n        false => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
-    [InlineData("j6s", PairHead + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm)]
+    [InlineData("j6s", PairHead + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginRelation_Kd (.None, x)")]
     public void AJoinRestsOnASourceWhoseConversionFailed(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

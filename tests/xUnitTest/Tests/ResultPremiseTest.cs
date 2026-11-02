@@ -283,9 +283,12 @@ public partial class ResultPremiseTest
 
         var premise = "func f(q: ref/i32) -> (Option<ref/(ref/i32 during q) during static>, ref/i32 during static)\n    return (.None, q)\n\n" +
             "func use() -> i32\n    let g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static) = f\n    return 0\n" + Main;
-        // The owner's (a) (2026-10-27, 「(a) 無名関数と同じ規則 (推奨)」; G216 (a), DECISIONS R4-M155): the conversion assumes the target's
-        // own well-formedness, here that its per-call Origin outlives static, so f's result premise holds (it was UnprovenOriginContract_Kd).
-        Assert.True(DiagnosticCorpus.Check(premise).Accepted);
+        // The owner's (a) (2026-10-27): the conversion assumes the target's own well-formedness and adds no record (it was
+        // UnprovenOriginContract_Kd at f); the target relates its per-call Origin to static beyond its input, which is the annotation's
+        // record where it is written (SPEC 15.3.4, DECISIONS R4-M162).
+        var result = Assert.Single(DiagnosticCorpus.Check(premise).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during static"), (result.Code, Text(premise, result.Span)));
+        Assert.Equal("requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
         // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
@@ -441,22 +444,23 @@ public partial class ResultPremiseTest
         Assert.True(DiagnosticCorpus.Check(valid).Accepted);
     }
 
-    // SPEC 15.3.4, 15.3.7 and the owner's (A) (2026-10-26, 「(A) 入れ子自身のもの (推奨)」; G216 (a), DECISIONS R4-M155): a nested Function
-    // Type's well-formedness is its own, a premise of that signature that each of its calls proves for its per-call Origins, never the
-    // enclosing definition's obligation at its Type occurrence (it was, before (A)): get is valid, and the value call over a local Borrow
-    // fails at the call.
+    // SPEC 15.3.4, 15.3.7: a nested Function Type's per-call Origins cannot leave their binder, so the result premise stops at it. The
+    // well-formedness inside it stays the definition's obligation at its Type occurrence, as before the premise existed, never a call
+    // obligation no caller can prove or a bound that leaks the per-call Origin into the caller's Types.
     [Fact]
-    public void ANestedFunctionTypesWellFormednessIsProvenAtEachCall()
+    public void ANestedFunctionTypeKeepsItsWellFormednessAtTheDefinition()
     {
         var getter = "func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\n\n" +
             "func get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n\n" +
             "func make() -> i32\n    let local: i32 = 41\n    let g = get()\n    match g(local@ref)\n        .Some(let r) => return r@follow@follow\n        .None => return 0\n" + Main;
-        var call = Assert.Single(DiagnosticCorpus.Check(getter).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "g(local@ref)"), (call.Code, Text(getter, call.Span)));
-        Assert.Equal("requires the borrow local@ref outlives static, which is false", call.Label);
-        Assert.Equal(["outlives", "local@ref", "static", "wellFormed"], call.Reason!.Select(static x => x.Value));
-        var borrow = Assert.Single(call.Related!);
-        Assert.Equal(("origin", "local@ref"), (borrow.Role, Text(getter, borrow.Span)));
+        var definition = Assert.Single(DiagnosticCorpus.Check(getter).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during static"), (definition.Code, Text(getter, definition.Span)));
+        Assert.Equal(getter.IndexOf("Option<ref/(ref/i32) during static>", StringComparison.Ordinal) + 7, definition.Span!.Value.Start); // In get's result, never at the call.
+        Assert.Equal("requires the omitted Origin of ref/i32 outlives static, which is not proven", definition.Label);
+        Assert.Equal(["outlives", "ref/i32", "static", "wellFormed"], definition.Reason!.Select(static x => x.Value));
+        var input = Assert.Single(definition.Related!);
+        Assert.Equal("origin", input.Role);
+        Assert.Equal(getter.IndexOf("-> (ref/i32) ->", StringComparison.Ordinal) + 4, input.Span!.Value.Start);
 
         // Two signatures with the same Function Type part each keep their own record; the forwarding call adds none.
         var forward = ActionBox + "func forward(bx: ref/Box) -> ref/((ref/i32) -> ref/i32) during bx\n    return pick(bx)\n\n" +
@@ -473,11 +477,12 @@ public partial class ResultPremiseTest
             [("ref/((ref/i32) -> ref/i32) during b", "wellFormed")],
             DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (Text(annotated, x.Span), x.Reason![3].Value)));
 
-        // The owner's (a) (2026-10-27, 「(a) 無名関数と同じ規則 (推奨)」) with (A): a Function Item converted to a nested Function Type
-        // assumes that Type's own well-formedness (its per-call input outlives `b`), which proves leak's premise, and mk's result Type is
-        // no record of mk (both were records before them).
+        // A Function Item converted to a nested Function Type assumes that Type's own well-formedness (the owner's (a)), so leak's
+        // premise adds no conversion record; mk's result Type relates a per-call input to `b`, which is mk's record where it is written
+        // (SPEC 15.3.4, DECISIONS R4-M162). Writing the input over `b` converts.
         var converted = LeakItem + "func mk(b: ref/i32) -> (ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during b>, ref/i32 during b)\n    return leak\n" + Main;
-        Assert.True(DiagnosticCorpus.Check(converted).Accepted);
+        var record = Assert.Single(DiagnosticCorpus.Check(converted).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during b"), (record.Code, Text(converted, record.Span)));
         Assert.True(DiagnosticCorpus.Check(converted.Replace("(ref/i32 during b, ref/i32) ->", "(ref/i32 during b, ref/i32 during b) ->", StringComparison.Ordinal)).Accepted);
     }
 

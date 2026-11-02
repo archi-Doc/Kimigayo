@@ -5774,7 +5774,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     only its own frame's fact (a foreign one is `InternalInvariant_Kd`). `RequireConstraint` (`FailUnprovenConstraint`) is the one
     recording owner of the Constraint record after a Callable clause's proof; selection's explanation reads its trial's fact.
   - (A)'s use side by rule: a value call of a nested signature proves its instantiated result well formed at the call
-    (`RequireNestedResult`); an anonymous function's body assumes its own result's well-formedness.
+    (`RequireNestedResult`); an anonymous function's body assumes its own result's well-formedness. Superseded by R4-M162
+    (2026-11-02, U2.1 d-revert): the result half is judged where it is written; `RequireNestedResult`, the anonymous result premise
+    and TypeOrigins' Result exemption are deleted. The input half (R4-M137) stays.
   - Staged: PLAN G351 (a reference's Refuted, fact-less and pending constraint outcomes still record through `referenceConstraints`;
     removal: they route through RequireConstraint, then that record path is deleted).
   - Rejected: a second walk to explain a record; the explainer as an interim; per-form clauses.
