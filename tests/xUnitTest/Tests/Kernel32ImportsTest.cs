@@ -56,37 +56,59 @@ public sealed class Kernel32ImportsTest
     public void BrokenRuntimeTemplateFails(string template)
         => Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
-    // A definition's marker line ends in `\n` or `\r\n`; `\r\n` becomes `\n` and a lone `\r` stays; adjacent markers each expand.
+    // A definition's marker line ends in `\n` or `\r\n`; `\r\n` becomes `\n` and a lone `\r` stays; adjacent markers each expand; an
+    // ABI constant's marker takes the constant (G366).
     [Theory]
     [InlineData("{{__kimi_exit}}\r\n  unreachable\n}\n", "  unreachable\n}\n")]
     [InlineData("{{__kimi_exit}}\n  ret\r void\r\r\n}\r", "  ret\r void\r\n}\r")]
     [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1812\n")]
+    [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
-    // PLAN G358: the one ordered scan writes what replacing each marker of the real Windows runtime template (the definitions, the
-    // reason indices, the reason table and its count) by its text throughout the whole text wrote.
-    [Fact]
-    public void RuntimeTemplateExpandsAsEachMarkersReplacement()
+    // PLAN G358, G366: the one ordered scan writes what replacing each marker of a real runtime template, the Windows runtime's or the
+    // Array runtime's (the definitions, the reason indices, the reason table and its count, the ABI constants), by its text throughout
+    // the whole text wrote.
+    [Theory]
+    [InlineData("WindowsRuntime")]
+    [InlineData("ArrayRuntime")]
+    public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var template = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
+        var windows = runtime == "WindowsRuntime";
+        var template = windows
+            ? File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"))
+            : LegacyRuntimeHelpers.ArrayRuntimeTemplate;
+        var definitions = windows ? RuntimeAbi.RuntimeDefinitions : LegacyRuntimeHelpers.ArrayRuntimeDefinitions;
         var expected = template;
         foreach (Match marker in Regex.Matches(template, @"\{\{(\w+)\}\}"))
         {
             var name = marker.Groups[1].Value;
-            if (Array.Find(RuntimeAbi.RuntimeDefinitions, x => x.Name == name) is { } abi)
+            if (Array.Find(definitions, x => x.Name == name) is { } abi)
             {
                 expected = expected.Replace(marker.Value + "\n", abi.GetDefinition(exported: false), StringComparison.Ordinal);
                 continue;
             }
 
             var text = new StringBuilder();
-            Assert.True(AbortReasons.Expand(name, text));
+            Assert.True(AbortReasons.Expand(name, text) || RuntimeAbi.Expand(name, text));
             expected = expected.Replace(marker.Value, text.ToString(), StringComparison.Ordinal);
         }
 
-        Assert.Equal(expected, LlvmModuleText.ExpandRuntime(template, RuntimeAbi.RuntimeDefinitions));
+        Assert.Equal(expected, LlvmModuleText.ExpandRuntime(template, definitions));
+    }
+
+    // PLAN G366: the Array runtime is a template, so a definition marker line it lacks or repeats fails it.
+    [Theory]
+    [InlineData("{{__kimi_array_grow}}\n", "")]
+    [InlineData("{{__kimi_array_shrink}}\n", "")]
+    [InlineData("{{__kimi_array_reserve}}\n", "{{__kimi_array_reserve}}\n{{__kimi_array_reserve}}\n")]
+    public void BrokenArrayRuntimeTemplateFails(string marker, string replacement)
+    {
+        var template = LegacyRuntimeHelpers.ArrayRuntimeTemplate;
+        Assert.Contains(marker, template, StringComparison.Ordinal);
+        Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(
+            template.Replace(marker, replacement, StringComparison.Ordinal), LegacyRuntimeHelpers.ArrayRuntimeDefinitions));
     }
 
     // PLAN G358: a process's first code generation builds its runtime texts once, each read, expanded in one scan and kept: about

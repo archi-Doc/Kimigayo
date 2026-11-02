@@ -59,7 +59,7 @@ done:
   call void @__kimi_text_fixed(ptr %ret, ptr %data, i64 %capacity)
   ret void
 invalid:
-  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
@@ -309,10 +309,10 @@ full:
   store i32 1, ptr %ret, align 4
   ret void
 invalid:
-  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 size_failure:
-  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
@@ -413,7 +413,7 @@ success:
   store i64 %limited, ptr %outrest, align 8
   ret void
 failure:
-  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
