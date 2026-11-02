@@ -85,13 +85,13 @@ public sealed partial class Binding
         {
             if (operation is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
             {
-                this.RequireInputPremises(at, parameter, adapted);
+                this.RequireInputPremises(at, parameter, adapted, InputContribution(parameter, adapted));
             }
         }
 
         foreach (var argument in defaults)
         {
-            this.RequireInputPremises(call, argument.ParameterType, null);
+            this.RequireInputPremises(call, argument.ParameterType, null, Contribution.Signature);
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);

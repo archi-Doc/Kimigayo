@@ -9,8 +9,10 @@ namespace Kimi.Compiler;
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
-// is carried: each call shortens its solution with them and judges them at each input whose instantiation replaced an Origin, and a
-// whole-contract comparison proves them where its solve replaced a required Origin. One visitor serves both.
+// is carried: each call shortens its solution with them and judges them at each filled slot by what its position contributes
+// (Contribution, the evidence walk's fact: Evidence where its instantiation replaced an Origin, a Signature position at every
+// position, a Result position at its contributor), and a whole-contract comparison proves them where its solve replaced a required
+// Origin. One visitor serves both.
 public sealed partial class Binding
 {
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
@@ -240,16 +242,19 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for the instantiated parameter Type of a slot it fills (SPEC 10.1 step 2),
-    // judged at `at`. A written argument's or the receiver's own Type, `supplied`, is well formed, so only a position that the fit replaced,
-    // such as an Origin shared with another input, can fail. As for the fit, an argument that carries no Origin, such as one that transfers
-    // control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness would only
-    // restate that failure. A default supplies no Type (SPEC 10.1.1), so every position of its Type is judged, at the call (SPEC 7.2.3).
-    private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied)
+    // judged at `at` by what the slot's position contributes (Contribution). Evidence, a written argument's or the receiver's own Type
+    // `supplied`, is well formed, so only a position that the fit replaced, such as an Origin shared with another input, can fail. A
+    // Signature position has every position of its Type judged: a default supplies no Type (SPEC 10.1.1) and is judged at the call (SPEC
+    // 7.2.3). A Result position is proven by its contributor. As for the fit, an argument that carries no Origin, such as one that
+    // transfers control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness
+    // would only restate that failure.
+    private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied, Contribution contribution)
     {
-        if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && !ReferenceEquals(supplied, parameter) &&
-            this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
+        if (contribution != Contribution.Result && parameter.StoresOrigin &&
+            (supplied is null || (supplied.StoresOrigin && this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
         {
-            this.VisitWellFormedPremises(parameter, parameter, supplied, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
+            var actual = contribution == Contribution.Evidence ? supplied : null;
+            this.VisitWellFormedPremises(parameter, parameter, actual, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
         }
     }
 

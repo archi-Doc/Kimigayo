@@ -6089,6 +6089,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     come from the old path, so the same records are lost. Precedents: BU-45's limit ("lost on both pipelines until R6-check and
     H3") and dev's named result (resmv). Removal condition: H11 and H3. ResultPremiseTest pins z1nmv.
   - Numbering: R4-M162 (dev's highest is R4-M160; `claude/a5-g216a-u21` holds R4-M161).
+- **R4-M164 Contributions at composed positions (G216 (a) U2.2)** (2026-11-03; the owner, verbatim 「候補 1 つで進める」, 2026-11-02:
+  R4 implements BU's design bu96, `bu\g216a-u22\design.md`, with one fresh review; extends BU-51's one input-premise rule) SPEC
+  10.5.1, 10.3, 15.6.4 step 3. Later units extend this entry.
+  - F1: what a filled slot's position contributes to its selected call is one closed kind, `Contribution` (Evidence, Signature,
+    Result), the evidence walk's fact (`Binding.ArgumentKinds.Evidence.cs`). `RequireInputPremises(at, parameter, supplied,
+    contribution)` reads it: Evidence is judged beside its own Type, only where the fit replaced an Origin; a Signature position at
+    every position; a Result position by its contributor, not at this call. The fit-failed guard and an Origin-free argument's
+    exemption stay. F1 reads the rules that decide `PositionKind` and replaces none of them.
+  - U0 (behaviour unchanged): one helper, `InputContribution`, computes it from today's identity test: a supplied Type that is the
+    instantiated parameter itself is Result, any other written input or receiver Evidence; a default is Signature. Removal
+    condition: U1, where the walk publishes the kind from `PositionKind` and the helper goes; a Signature position whose Type is
+    the instantiated parameter is then proven (cause C1). The per-layer test beside the supplied Type (`SameOriginArguments`)
+    stays in the visitor, which a whole-contract comparison's Prove visit shares (`ProvesInputPremises`); U1 settles its part.
+  - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
