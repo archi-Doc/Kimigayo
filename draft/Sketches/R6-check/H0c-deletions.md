@@ -2,7 +2,7 @@
 
 Status: H0's part c (plan §4.10 row H0: the deletion order, the benchmark successors, the check-only pass, OQ12–OQ15; units
 H6–H15), revision 0, design only, not reviewed; integrated by [H0-design](H0-design.md) (the planning session's rulings R1–R4 and the design review's
-findings applied in place, each marked "(ruling Rn)" or "(review Bn/Nn)"). Working record, not authority: what it decides becomes authority only through H0's
+findings applied in place, each marked "(ruling Rn)" or "(review Bn/Nn)"); revision 2 (after R5-M182) folds the peers' answers, marked "(answer X)". Working record, not authority: what it decides becomes authority only through H0's
 DEC entry after OQ11's approval (DECISIONS R5-M1), and its owner items only by the owner's answers.
 
 Standing request: the owner approved R6-check's division of work on 2026-11-02 (R5 leads: H0, H3b, H5's Core side, H8–H10, H12,
@@ -62,13 +62,14 @@ OwnershipStorage|InterpretationContext|ControlFlowAnalysis` occur 133 times in 5
 | `SelectSpecialization` (CallPlan overload) | `Binding.EffectBounds.cs:880` (H5) | dead (H) |
 | `InstantiateForwardedCall` | `Binding.EffectBounds.cs:679` (H5); tests `TyCtxtTest.cs:1390, 1518, 1824, 2009`, `VirtualCallSelectionTest.cs:87, 91` | retarget tests to F5b's twin, then delete |
 | `ComparisonPlan(CallPlan)`, `DictionaryComparison` | `Binding.EffectBounds.cs:782`, `:243` (H5); `T/ComparisonCompositionTest.cs:575` | D-c8 |
-| `RequirementImplementation` (`Binding.Formatting.cs:58`, tagged R6 for H11) | `Binding.Formatting.cs:36` (dead after H5) **and** `Binding.ComparisonPlans.cs:68`, the R7-tagged private composition read by A4's Witnesses until A-12 | stays unless A-12 lands first (Q-c2) |
+| `RequirementImplementation` (`Binding.Formatting.cs:58`, tagged R6 for H11) | `Binding.Formatting.cs:36` (dead after H5) **and** `Binding.ComparisonPlans.cs:68`, the R7-tagged private composition read by A4's Witnesses until A-12 | retag to R7 (A-12 does not land before H11; answer R4-12); owner approval pending in R4's dialog |
 | `ContainsOrigin(BoundType, …)` (BU-63) | `OwnershipBody.Borrows.cs:615, 2568`, `OwnershipBody.Updates.cs:176`; Binding's own calls use the `BoundOrigin` overload | dead |
 | R4-M152 gate: `receiverDependentCalls`, `receiverDependentPass`, `ReceiverDependentCalls`, `RecordReceiverDependence`, `CallPlan.receiverDependence`, `ReceiverDependentResult`, `ReceiverDependentListed` | `OwnershipAnalysis.cs:176, 178` | dead |
 | `LintErrors`, `LintErrorRecords`, `FallthroughKey` (`Binding.Lints.cs:81-139`, tags: "H10 deletes it") | old Analysis; `LegacyRecords.cs:29`, `MirDifferenceLedger.cs:79`; tests (14 reads in 7 files) | delete at H10b after H8b/H10a; `FallthroughKey` (one reader, the old `ReportDiagnostics`, `OwnershipAnalysis.cs:314`) at H5 (ruling R4) |
 | A3's gates | `Binding.OriginFits.cs:96-100`, `Binding.TypeOrigins.cs:187-198` | acceptance consequence: name in H11's snapshot classification |
 | `Binding.WithoutRawOrigins` (BU-24's exception) | old Analysis 4 sites; **also** AdtDef's view (`Binding.Storage.cs:71, 81`, BU-41) | stays; only the comment's "removed with it at R6-check" changes |
 | `Binding.RequirementAt` (BU-44's exception) | `OwnershipBody.Borrows.cs:1044` and 8 Binding sites | stays; `OwnershipBody.SlotLoanRequirement` goes at H10b |
+| R4-M108's H11 list (AR-4, with R5; answer R4-4; R4 reviews this part) | the twins (at a fit, every relation record of a node with a recorded body chain; at a clause, its body-chain record); `RecordOriginFitFailure`'s `Fail(node, Unsupported)` gate; non-call fits' rows independent of Binding's verdict, as `JudgeCallPosition`'s (the first differing Function Type component and every position after it in `CheckTypeUse`'s order, BU's `fncomp`); the Closure result with `CallLocalOrigin` | they change A5's input: each moves A5's rows to Binding-independent ones; until H11 the twins are class 4, counted (H0b §5.4) |
 
 ## 2. Units H6–H15 in order
 
@@ -81,15 +82,15 @@ reader an earlier unit (or itself) removed.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | in H5 (review B3; supersedes ruling R3) | H6 | R5 | `HoverBuilder.Virtual.cs:75` reads "completed" when the function's MIR body has no problem in `MirReport`, else "pending" (R4's `MirReport` API from H3); `T/VirtualHoverTest.cs:54`; HOVER row | H5, H3 | Comp: Hover tests | ±20 | R |
 | 1 | H10a | R5 | Delete `tests/xUnitTest/MirDifferenceLedger{,.Aggregation,.ComparedSet}.cs` (474), `LegacyRecords.cs` (56), `T/MirDifferenceTest{,.ComparedSet}.cs` (342), `Compilation.Analyzed` (`Compilation.Pipeline.cs:31-32`, its invocation), `KIMI_MIR_DIFF` (`FreshProcess.cs`, `FreshProcessTest`), `Binding.IsTwinRecord` (its last reader goes; the twins stay to H11). The MIR half of `Sides`, `Entry`, `MirAnalysisOf` moves into `CompilationTestHelper` for its 13 reader files (`ClosureEnvironmentOriginTest` 5, `ClosureResultOriginTest{,.Makers}` 7, `MirCensusTest` 3, `NeverContinuationTest` 4, `SemanticSnapshotTest` 8, `VerifiedSpecExampleTest` 3, `AbstractCallReachTest`, `MinimalEmissionTest`, `MirOriginsTest.Proofs`, `OriginRelationDiagnosticTest`, `PairFollowTest`); `T/PipelineSwitchTest.cs:337-370`'s `Analyzed` test goes; `MirTargetSide` keeps its MIR assertion only if an OldRule test survived H5, else goes; `SemanticSnapshotTest` prints the published MIR records in place of `LegacyRecords.Of` (snapshot re-baselined, reason: the flip, H5) | H5's post-merge sweep (review N1) | Comp: the 13 classes, `SemanticSnapshotTest`, `VerifiedSpecExampleTest`; snapshot classified | ≈ −1,000 t, +80 t | G:check-tests |
-| 2 | H8a | R5 (R4 reviews MIR-dump successors) | `Bodies` and `Issues` residue: 30 `.Ownership.Bodies` reads in 16 files and the 3 `Body(c)` helpers (`T/EnumOwnershipTest.cs:306`, `T/MatchOwnershipTest.cs:368`, `T/OwnershipAnalysisTest.cs:311`; 29 calls); 16 `.Ownership.Issues` reads in 10 files (incl. `TempProbeTest.cs`, the tracked KIMI_PROBE dumper), read through `Compilation.AnalyzeLegacyOwnership()` from H5 (review B3) → MIR dump goldens, MIR problems or deletion; the `Bodies` and `Issues` rows tightened to their counts as reads leave | H5, H10a, Q18 or H2 | Comp: the touched classes | ≈ −900 t | G:check-tests |
+| 2 | H8a | R5 (R4 reviews MIR-dump successors) | `Bodies` and `Issues` residue: 30 `.Ownership.Bodies` reads in 16 files and the 3 `Body(c)` helpers (`T/EnumOwnershipTest.cs:306`, `T/MatchOwnershipTest.cs:368`, `T/OwnershipAnalysisTest.cs:311`; 29 calls); 16 `.Ownership.Issues` reads in 10 files (incl. `TempProbeTest.cs`, the tracked KIMI_PROBE dumper), read through `Compilation.AnalyzeLegacyOwnership()` from H5 (review B3) → MIR dump goldens, MIR problems or deletion; the `Bodies` and `Issues` rows tightened to their counts as reads leave | H5, H10a; Q18's test readers (A-5 met, H2 void: R4 review N5) | Comp: the touched classes | ≈ −900 t | G:check-tests |
 | 3 | H8b | R5 (BU reviews Binding/Parsing classes) | 55 `AnalyzeControlFlow()`/`ControlFlowAnalysis.Analyze(` calls in 15 files (ratchet 64) and 14 `LintErrors`/`LintErrorRecords` reads in 7 test files → lint observations; ratchet → 0 | H8a (D-c3's order), H5's sweep (review N1), Q9–Q12 | Comp; ratchet 0 | ≈ −700 t | G:check-tests |
 | 4 | H8c | R5 (R4 reviews MIR rewrites) | The 16 Analysis-declared enums (`OwnershipOperationKind` 48, `CleanupAction` 31, `OwnershipPlaceKind` 23, `PlaceState` 20, …) in 10 test files, and the 22 old-type names in 9 test files (`OwnershipStorageLimitTest` 5, `SharedEngineTotalityTest` 5, `MirInitTest` 1, …): rewrite as MIR assertions or delete with their classes (`OwnershipAnalysisTest`, `EnumOwnershipTest`, `MatchOwnershipTest`, `BorrowDependencyStorageTest`, `CallableRegionScalingTest` → a MIR scaling check) | H8b (D-c3's order), H5's sweep (review N1) | Comp | ≈ −1,100 t | G:check-tests |
 | 5 | H9 | R5 | §3 | H5's sweep; after H8c (D-c3) | Bench: slnx build, `--compiler-pipeline-check` | ≈ −350, +30 | G:check-del |
 | 7 | H10b | R5 | Delete `C/Analysis/` (50 files, 16,180), `Compilation.Ownership` (private from H5, re-review 3)/`AnalyzeControlFlow`, the transitional entry `Compilation.AnalyzeLegacyOwnership()` (review B3; `:73`'s call and `:84` left `Analyze`/`ReportAnalysis` at H5, ruling R2), `ElementAccess.cs:102, 142`, `Binding.Lints.cs:81-139`'s `LintErrors` and `LintErrorRecords` (`FallthroughKey` went at H5, ruling R4), `DeferredExpansionLimit_Kd`; the `.Ownership.*` and control-flow rows of `ArchitectureRulesTest` → zero-reference rows (D-c4); the ARCH structure-limit exemption of the old Analysis ends | H8a–c, H9, H10a | Comp: Session with milestones | ≈ −16,300 | G:check-del |
-| 8 | H11 | BU | §1's H11 table; the `src/Kimi` zero-reference row (D-c4) | H10b, Q-c2 | Comp; snapshot (A3's gates) | ≈ −700 | G:check-del |
+| 8 | H11 | BU (R4 reviews R4-M108's list) | §1's H11 table, R4-M108's H11 list included (answer R4-4); the `src/Kimi` zero-reference row (D-c4) | H10b, Q-c2 (owner answer pending, R4-12) | Comp; snapshot (A3's gates) | ≈ −700 | G:check-del |
 | 9 | H12 | R5 | §4.2 | H10a, H10b | Tool + Comp | ≈ −600 | G:check-del |
 | 10 | H14 | R5 (BU reviews) | §4.4 | H10b, H11 | Comp; snapshots equal | ≈ −150 | G:check-del |
-| any, after H5's sweep (review N1) | H7 | BU | Delete Binding's wide-division gate `Binding.Operators.cs:331-334` (A3b's `Capability.WideDivision` owns it) | H5's sweep, K9a, Q-c1 | Comp: i128 tests, A3b tests; snapshot | −4 | G:check-del |
+| any, after H5's sweep (review N1) | H7 | BU | Delete Binding's wide-division gate `Binding.Operators.cs:331-334` (A3b's `Capability.WideDivision` owns it) | H5's sweep, K9a, G157 (1)'s fix (R5's collector; answer BU-4: the gate stays until then; if G157 (1) slips past R6-check's exit, H7 is retagged with the owner's approval) | Comp: i128 tests, A3b tests; snapshot | −4 | G:check-del |
 | any | H13 | R5 | §4.3 (documentation only) | none | Doc | 0 | R |
 | last | H15 | R5 | §8 | H7–H14, OQ15 | Doc + Session | docs | final review |
 
@@ -171,7 +172,7 @@ zero-reference row; the 37 forwarding declarations (`Koto.cs` 10, `BinaryKoto.cs
 | `Binding.IsTwinRecord` | 1 R6 | H10a (D-c2; tag says H11) |
 | `Binding.Lints` `LintErrors`, `LintErrorRecords`, `FallthroughKey` | 3 R6 | H10b; `FallthroughKey` at H5 (ruling R4) |
 | `Binding.ComparisonPlan(CallPlan)`, `DictionaryComparison` | 2 R6 | H11 (D-c8) |
-| `Binding.RequirementImplementation` | 1 R6 | H11 only if A-12 lands first; else retag R7 with owner approval (Q-c2) |
+| `Binding.RequirementImplementation` | 1 R6 | retag R7 with its one reader, the R7-tagged private composition; owner approval pending in R4's dialog (answer R4-12) |
 | `OwnershipAnalysis` stops and gate (`:27, 173, 192, 207`; R4-M152, R4-M159) | 4 R6-check | H10b |
 | R4-M152 gate in Binding (`ValueCallGate.cs:29, 33, 37, 65`, `CallPlan.cs:58, 358, 366`) | 7 R6-check | H11 |
 | `Binding.ContainsOrigin(BoundType, …)` (BU-63) | 1 R6-check | H11 |
@@ -200,7 +201,7 @@ ends with deleted code and no verdict change of its own.
 | --- | --- |
 | H5, not H3 (review B1: H3 changes no published record) | G164, G203 (their "acceptance at H3" moves to H5), G213, G218, G268, G291 |
 | H5 (MIR decides) | G124, G165 (verdict), G177 (owner 「R6-checkを待ちます」), G186's old walk (D-c7), G211, G217, G228, G299, G313, G160's default verdicts; G121's 2x-P10 regression: a lost fallthrough record in a failed `do` (Q13 (3)) must be fixed before H5 or classified (Q-c4) |
-| H7 | G157 (1) (precondition, Q-c1) |
+| H7 | G157 (1) (precondition; R5's collector fix, answer BU-4) |
 | H10b ("closes with the old path") | G47 (old-Ownership candidates), G65, G75, G100 (old Analysis part), G159 (4), G162 (2), G205, G231, G232, G269 (A), G315 (after its SPEC reading) |
 | H11 | G56 (the Binding-level relation stop) |
 | Before H15 (preconditions, not deletions) | G215 (rule or ruling), G220, G222 (R4), G318 (R4 with BU), G335, G351 (BU; R4 with BU), G258 (A5's cost at R6-check, measured with §3's record), G289 (5) |
@@ -246,10 +247,10 @@ review" (R5-M11).
 
 | ID | Addressee | Question (one line) |
 | --- | --- | --- |
-| Q-c1 | BU | Deleting the wide-division gate lets `InstanceCollector.Run`'s "no records once the program has findings" (G157 (1)) hide A3b's records: fix G157 (1) before H7, or keep the gate until it is fixed? |
-| Q-c2 | R4 | Does A-12 (A4's Witnesses reading `TyCtxt.Comparison`) land before H11, so the private composition and `RequirementImplementation` go then? If not, the owner approves `RequirementImplementation`'s retag to R7. |
-| Q-c3 | the owner | Add R4-M159's G273 stop to ARCH's D5 exception list now (it is recorded in PLAN and the code, not ARCH)? Recommended: yes, in the next ARCH edit. |
-| Q-c4 | R4 | G121's lost `do` fallthrough record (2x-P10): fixed before H5, or a classified row at H5? |
+| Q-c1 | BU | Answered (answer BU-4): keep the gate until G157 (1) is fixed; G157 (1) is H7's prerequisite, owned by R5. |
+| Q-c2 | R4 | Answered (answer R4-12): A-12 does not land before H11; R4 recommends retagging `RequirementImplementation` to R7 with its one reader, the R7-tagged private composition (`Binding.ComparisonPlans.cs:68`); the owner's approval is pending in R4's dialog. |
+| Q-c3 | the owner | Answered 「はい」 (R5-M182): recorded in ARCH's D5 list. R4's optional precision for the next ARCH edit: the stop is "where `SupportsType` refuses a Type for Origin arguments its symbol does not declare". |
+| Q-c4 | R4 | Answered (answer R4-13): not fixed before H5; a named class-5 row; the owner's decision is pending in R4's dialog (R4 recommends accepting it until G121's construct design). |
 
 ## 10. Not done
 
