@@ -99,6 +99,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("j01", EmptyStruct + "func h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h4(a, b, E.init())\n    return 0\n", "")]
     [InlineData("j01n", EmptyStruct + NestedHead + InnerE + "    return inner(E.init(), q)\n", "UnprovenOriginRelation_Kd E.init()")]
     [InlineData("j01n_ok", EmptyStruct + NestedHead + WithPremise + InnerE + "    return inner(E.init(), q)\n", "")]
+    [InlineData("ea1", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
     [InlineData("ea2", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "")]
     public void EachCallProvesItsInputsThroughANestedGenericCall(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -172,6 +173,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
+    [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
     [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
     [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]

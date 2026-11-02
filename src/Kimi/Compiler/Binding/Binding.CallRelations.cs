@@ -106,8 +106,8 @@ public sealed partial class Binding
     // is the parts of its child positions (ChildPositions, AddChildPosition), each judged at its own sub-Type by what it contributes
     // (PartContribution): a typed part only where its fit replaced an Origin; any other part, and an aggregate whose positions no part
     // fills (`[]`), at every position. Every record is at the argument `at` (S1; the sites are U3's). A failed part is a wildcard (rule
-    // W, SPEC 23.1.2). A child position whose parameter Type the composition cannot derive is never skipped: it is the located
-    // Unsupported_Kd at the argument (U2's review B1).
+    // W, SPEC 23.1.2). The fit (FitComposite) checked the literal's shape against `type`, so every child position's parameter Type is
+    // derivable; one that is not is a broken contract, InternalInvariant_Kd at the argument (U2's review N6, R4-M164 U1d).
     private void RequireChildPremises(Koto at, Koto part, BoundType type)
     {
         var node = KotoHelper.UnwrapParentheses(part);
@@ -124,7 +124,7 @@ public sealed partial class Binding
             if (this.AddChildPosition(start, start + 1, i, type) is not { } element)
             {
                 this.ClosePosition(start);
-                this.Fail(at, BindingFailure.Unsupported);
+                this.Fail(at, BindingFailure.Internal);
                 return;
             }
 
