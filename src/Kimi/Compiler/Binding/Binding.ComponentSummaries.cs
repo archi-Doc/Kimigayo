@@ -86,33 +86,15 @@ public sealed partial class Binding
             ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0], null) : result;
     }
 
-    // SPEC 23.1.1 (DECISIONS BU-76): in Binding.Check's Final prologue, each site a settled proof needed so far fails its stored Type,
-    // where a derived use held on it is settled; the loop publishes and counts that Use once, as PublishNeededLimits' limits.
+    // SPEC 23.1.1 (DECISIONS BU-76, BU-81): each site a settled proof needed fails its stored Type: in Binding.Check's Final prologue,
+    // where a derived use held on it is settled, and again after the producers' loop for the sites its checks needed. The counting
+    // records and counts that Use once, as PublishNeededLimits' limits.
     private void FailNeededSites()
     {
         for (var i = 0; this.capabilityMode == BindingMode.Final && i < this.neededSites.Count; i++)
         {
             this.Fail(this.neededSites[i].Use, BindingFailure.Unsupported);
         }
-    }
-
-    // SPEC 23.1.1: each site the checks of Binding.Check's loop needed, recorded once at its stored Type after the loop (one needed before
-    // it failed in the prologue, FailNeededSites, and the loop published it); a stored Type that failed by itself has its own record.
-    // Returns the number of records.
-    private int PublishSites()
-    {
-        var count = 0;
-        foreach (var site in this.neededSites)
-        {
-            if (this.capabilityMode == BindingMode.Final && site.Use.BindingFailure == BindingFailure.None)
-            {
-                this.Fail(site.Use, BindingFailure.Unsupported);
-                this.issues.Add(new(site.Use, DiagnosticCode.Unsupported_Kd) { Failure = BindingFailure.Unsupported });
-                count++;
-            }
-        }
-
-        return count;
     }
 
     private void ClearNeededSites()

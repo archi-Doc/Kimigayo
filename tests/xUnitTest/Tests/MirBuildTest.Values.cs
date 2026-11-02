@@ -351,7 +351,7 @@ public sealed partial class MirBuildTest
         var loop = nodes.OfType<ForKoto>().Single();
         var text = nodes.OfType<InterpolatedStringKoto>().Single();
         Assert.Equal((2, 2), (calls.Length, indexes.Length));
-        HirTables.PlanFor(call, written: false).Plan = null; // After Binding and before the first publish, the facts go missing.
+        HirTables.PlanFor(call, written: false).Plan = null; // After Binding the facts go missing; CheckBound publishes them as they are.
         HirTables.PlanFor(calls[1], written: false).Plan = null;
         HirTables.Of(calls[1]).Failures[calls[1].SyntaxId] = BindingFailure.TypeMismatch; // Rejected by Binding as well.
         HirTables.PlanFor(c.Binding.IndexerCall(indexes[0], exclusive: false)!, written: false).Plan = null;
@@ -367,6 +367,7 @@ public sealed partial class MirBuildTest
         var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
         tuple.Set(tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
         tuple.TupleOperator = true; // Its conforming Type is gone.
+        c.Binding.CheckBound(); // A Final pass publishes in its Check (DECISIONS BU-81), so the end of the pass runs again over the gaps.
         var program = c.BuildMir();
         Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order];
         Assert.Empty(program.Findings);
