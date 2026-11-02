@@ -627,7 +627,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.
-- **R2b-D2** The HIR publisher runs lazily, at most once per Binding pass. R7 writes the columns inline and deletes it.
+- **R2b-D2** The HIR publisher runs lazily, at most once per Binding pass. R7 writes the columns inline and deletes it. Refined by BU-81: eager at the end of each Final pass.
 - **R2b-D3** The declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`,
   `AvailableBounds`) are built by their first reader (R4, R5).
 - **R2b-D5** `BoundMatch` and `BoundClosure` keep their names (the plan's PatternPlan and ClosureDef) until R6.
