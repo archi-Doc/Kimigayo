@@ -280,6 +280,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G366 (R5; batch 90; R5-M172's amendment):** runtime templates take their ABI constants through `LlvmModuleText.ExpandRuntime` only: `RuntimeAbi.Expand` supplies `{{zero_sized_buffer}}` and `{{no_os_error}}` (19 template sites, 4 writers through `WriteNumber`), and `Texts.ArrayRuntime` is a template with its definitions spliced exactly once; every expanded text byte-identical. Follow-up: PLAN G371.
 <a id="g157-28"></a>
 - **G157 (28) (R5; batch 90, unit U11; R5-M60's amendment):** handle glues are keyed by their release (counting, and the payload's glue or the finalizer), decided once by the collector (`InstanceCollector.GlueKey`, memoized per run): 21 fixtures lost duplicate glues (112 -> 89 in ten families), the height cap is checked before the shared lookup. Follow-up: PLAN G372.
+<a id="g359"></a>
+- **G359 (R5; closed by the owner, 2026-11-02: 「(a) この結果を記録して閉じる。」):** the allocation-context phantom cannot fail a cold scaling series alone: every `MeasureSeries` row uses d2 ≤ 3·d1, the test host's allocation context is 8,200 B (one phantom at most about 8,176 B), and the tightest size-0 headroom is `MirInitTest.InitializationScalesLinearly` row 1's 8,226 B (two coinciding phantoms would be needed); 41 runs gave no failure. Its cause is the background GC (`DOTNET_gcConcurrent=0` made 330 sequential windows exact; the remaining parallel offsets ±344, ±1,232, ±1,576 B are run-level). The test host was not changed; figures in `artifacts/verify/r5-units/g359/state.md`.
 
 ## Retired audit records
 
