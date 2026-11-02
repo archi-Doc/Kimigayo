@@ -320,6 +320,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G264's landed parts (R4 with BU):** U0 (bu51, BU-47: a `drop`'s receiver retained at input 0, `TyCtxt.RetainsErasedDestruction`); S1: the owner chose 「(A) SPEC 15.6 を部品単位の到達に改訂し、U2 の後に U1 を行う」, then, after the draft's review found (A)'s premise false (R4 notes `g264\spec-review-1.md`), 「(B)」 (2026-10-30): the whole-holder text stays, 15.6.4's `reset()` example corrected (landed in R4's window of 2026-10-31), BU-52's interim re-recorded as correct errors (BU-67), G303 and U2 closed; U0′ (BU's design-first candidate, BU-70: `PublishedRow.Calls`, truncate and removeAll rows; it closed lane B's unsound A4 acceptance); SPEC 4.9.6's destruction lines for removeAll, `sort(by:)` and `firstIndexWhere` (a48ba8ddb; the owner's 「すべて推奨の内容でお願いします」).
 <a id="g372"></a>
 - **G372 (R5; batch 93; R5-M60's amendment):** every Function value's drop glue is one item (the collector keys Function Types by `() -> ()`: the body reads only the FunctionHandle row; a closure environment keeps its own glue): 35 duplicates gone from 31 fixtures. An outer handle over a shared one does not exist (SPEC 3.3, 8.7.3); sharing aggregate glues of one shape was rejected (a new key representation for about 3 KB of duplicates).
+<a id="g157-25-37"></a>
+- **G157 (25) and (37) (R5; batch 94; R5-M108's and R5-M131's amendments):** one erased signature per Origin-erased Function Type, read by the adapter entry and every erased call (written under the callee value's Function Type); the validator checks each format step's constants by position and kind from one table and a FormatFinish's estimate against its buffer, and code generation reads them unchecked; output byte-identical.
 
 ## Retired audit records
 
