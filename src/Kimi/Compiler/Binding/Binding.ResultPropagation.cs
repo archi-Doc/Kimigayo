@@ -273,42 +273,19 @@ public sealed partial class Binding
         => DeliversResult(node) && node.BindingState == BindingState.Unresolved && this.resultContexts.TryGetValue(node, out var context) &&
             context.Outcome is JoinOutcome.Waiting or JoinOutcome.Conflict or JoinOutcome.Dependent ? context : null;
 
-    // Whether a waited source holds a join that waited (WaitedResult), through the forms that deliver it and the parts of Tuple, array
-    // and Dictionary literals: binding the source binds that join at its outcome.
+    // Whether a waited source holds a join that waited (WaitedResult), through the held-part walk (AddHeldParts): binding the source
+    // binds that join at its outcome.
     private bool HoldsWaitedResult(Koto part)
     {
-        if (DeliveredOperand(part) is { } operand)
-        {
-            return this.HoldsWaitedResult(operand);
-        }
-
+        var start = this.AddHeldParts(part);
         var holds = false;
-        switch (part)
+        for (var i = start; i < this.heldParts.Count; i++)
         {
-            case TupleLiteralKoto tuple:
-                foreach (var element in tuple.Elements)
-                {
-                    holds |= this.HoldsWaitedResult(element);
-                }
-
-                return holds;
-            case ArrayLiteralKoto array:
-                foreach (var element in array.Elements)
-                {
-                    holds |= this.HoldsWaitedResult(element);
-                }
-
-                return holds;
-            case DictionaryLiteralKoto dictionary:
-                foreach (var entry in dictionary.Entries)
-                {
-                    holds |= this.HoldsWaitedResult(entry.Key) | this.HoldsWaitedResult(entry.Value);
-                }
-
-                return holds;
-            default:
-                return this.WaitedResult(part) is not null;
+            holds |= this.WaitedResult(this.heldParts[i]) is not null;
         }
+
+        this.CloseHeldParts(start);
+        return holds;
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form's operand; a
