@@ -14954,6 +14954,67 @@ structure is recorded here by the unit that first implements it.
     U+1F600 pair (documentation); `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two
     documents given in reverse) and `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory
     source between product sources, a U+FF21 name before a U+1F600 one) fail under `AddSources` without its sort (the parse order).
+- **R5-M177 One owner of the configuration rules, the TestSources rule included; each failure its own record (PLAN G367)**
+  (2026-11-02, R5; the owner's list 「現状出来る作業（G367、G359、G357、G363、G366、U11など）を、順に行ってください。」) SPEC 23.1.2
+  reports each independent failed requirement. `DependencyConfiguration.Validate` and `NativeConfiguration.Validate` returned the
+  first failure, so a load, a preparation and `Compilation.Prepare` each reported one; the duplicate-TestSources rule (IMPL 20.1:
+  entries compared as resolved paths) had three copies stopping at the first duplicate (`Project.BuildTargets`, `PrepareTests`,
+  `DependencyResolver.Load`) and a fourth, ordinal one in `Validate`.
+  - Rule: `DependencyConfiguration` owns every configuration rule. `Validate(ProjectFile)` (directory-free: the load and
+    `Compilation.Prepare`) and `Validate(ProjectFile, directory, out testSources)` (the same plus the TestSources compared as resolved
+    paths, and the resolved set: product and test preparation, the resolver) return one note per independent failure, empty and
+    allocation-free when valid. Independent: KotonohaArray, the identity, each reference's name, identity and source, each native
+    target, entry and requirement, each Alias and PackageSources entry, each TestSources entry's syntax and each duplicate. Left out
+    as dependent: the checks that read a null map, a null native target's entries, the other checks of a null native entry or of a
+    packaged record without a valid Name, a merge pair with an invalid packaged record, a null reference's source, and comparing an
+    entry that breaks the path syntax (one predicate, `ValidTestSource`).
+  - Shape: a list of notes, as `Kotonoha.CheckNames` (R5-M175), each its own record of the existing code: `ProjectPreparationFailed_Kd`
+    through `Project.Fail` (test preparation now reports its configuration failures through its owner and publishes them for the
+    command, as the product does, instead of throwing one `InvalidDataException`), `InvalidDependencyConfiguration_Kd`
+    (`Compilation.Prepare`), `ProjectLoadFailed_Kd` (`ProjectFile.Load` throws `ProjectConfigurationException` carrying the notes;
+    `Project.TryCreate`'s `failures`, `LoadedProject.Failures`, `CheckOutput.Blocked(notes)`, one solution-load line each). Equal notes
+    merge in `DiagnosticOwner`, a grouping SPEC 23.1.2 leaves to the implementation. No code is added and no note text changes.
+  - Deleted: the three resolved copies and the ordinal one (a TestSources entry spelled twice now loads and is reported at preparation
+    with every other duplicate); `PrepareTests`' own base directory (`Path.GetFullPath(Directory)`, which threw for a project without
+    one; the product form, the current directory, now serves both).
+  - Resolver (G367b): `DependencyPartition` carries `ResolutionFailure[] Failures` (a `(Code, Message)` record; null when resolved)
+    instead of one `ReasonCode` and `Diagnostic`, and the resolver records each independent failure instead of throwing at the first:
+    each failed reference (UnsupportedPackage, IdentityMismatch, the root Cycle, NotLibrary, ConflictingInput, ReferenceReassignment,
+    each invalid test reference) adds no edge, and a node that fails to load (I/O, each configuration note, a duplicate TestSources)
+    adds no children, so their dependents are left out (a failed load is remembered, so a project several references reach fails
+    once); TargetMismatch and LanguageMismatch are recorded and the node still resolves; without the root or its target nothing else
+    resolves; acyclicity is checked over the resolved part. A lock records the first
+    failure's code (`reasonCode`, schema unchanged); `DependencyLock.Validate` gives every failure, each a `ProjectPreparationFailed_Kd`
+    through `Project.Fail` (test preparation too, no longer one `InvalidDataException`), and `kimi restore` prints each.
+    `DuplicateTestSource` becomes `InvalidConfiguration` (the configuration's owner reports it). A dependency's directory-free failures,
+    found by `ProjectFile.Load`, still hide its TestSources comparison until fixed (the load precedes the comparison, as for a root).
+  - Input validators (G367c, the same cause one level higher): `Compilation.Prepare` records the configuration, the unresolved graph,
+    the language version, the target and each compile-time setting independently: the settings are checked against the fixed Condition
+    names (`Compilation.Conditions`, the one table the Conditions are built from), so an unsupported target leaves out only its
+    Conditions. `PrepareModules` records each dependency setting and, through
+    `NativeConfiguration.ValidateGraphSupplies` (replacing `ValidatePackageSupplies` and `ValidateSupplyAgreement`), each requirement a
+    supply for a resolved module breaks (a missing ContractId and a different Sha256 independently) and each conflicting merge, at its
+    module. `TestSettings.Validate` returns its notes (each deadline, the budgets, each environment entry), and test preparation
+    records them with the test identity (`TestCatalog.TryProjectIdOf`) instead of throwing; the command's merged options still throw
+    their first (a command option error, not an Input record). `ProjectFile.Load` collects each repeated or invalid setting
+    (`ValidateMapNames`) into its `ProjectConfigurationException`; a rule that reads a repeated or ambiguous map (Dependencies,
+    NativeRequirements, NativeLibraries) reads it as empty, and every other configuration rule still reports. The packaged-record merge
+    compares a pair only when both are valid, without a per-target array, so validation stays allocation-free when valid.
+    Kept: a Tinyhand syntax failure stays one `TinyhandException`; a test target that cannot be selected stays a throw.
+  - Rejected: validating the configuration only at preparation (the language server's project item reads the maps after the load); a
+    mode flag or an optional directory steering one `Validate`; joining the notes into one record's text.
+  - Tests: `DependencyConfigurationTest.EachIndependentConfigurationFailureIsReported` (four records; one before),
+    `CheckServiceTest.EachDuplicateTestSourceIsReported` and `PreparationReportsEachConfigurationFailure` (product and test; one
+    record, or a load failure, before), `CheckJsonOutputTest.EachConfigurationFailureOfAnUnloadedProjectIsReported` (two
+    `ProjectLoadFailed_Kd`; one before); `ANullMapLeavesOutTheChecksThatReadIt` is the dependent counterpart. G367b:
+    `DependencyResolutionTest.EachIndependentGraphFailureIsReported` (five failures, a failed node's reference left out) and
+    `CheckServiceTest.EachIndependentDependencyFailureIsReported` (two records in product and test checks; one before). Review:
+    `AnInvalidPackagedSupplyLeavesTheOtherMergesChecked` (two records; one before), `EachRequirementOfAPackagedSupplyIsReported`
+    (three; two before), `AFailedProjectReachedTwiceIsReportedOnce` (one failure; two before). G367c:
+    `CompilationSpecificationTest.EachIndependentPreparationFailureIsReported` (three records, four with an unsupported target; one
+    before), `EachRepeatedSettingIsALoadFailure` (five notes, the invalid PackageId included; one `TinyhandException` before), `DependencyConfigurationTest.
+    EachGraphFailureIsReported` (two settings and three supply records; one before), `CheckServiceTest.EachTestSettingFailureIsReported`
+    (three records; one before).
 - **R5-M178 The built-in Conditions `os` and `arch` by IMPL 20.2.1's table: `TargetTriple.OsFamily` and `ArchFamily` (PLAN G370)**
   (2026-11-02, R5; G363's review) Major.
   - Cause: `Compilation.Prepare` derived `os` from LLVM's OS classification (`OsType`: two switch arms, any other OS its enum name)

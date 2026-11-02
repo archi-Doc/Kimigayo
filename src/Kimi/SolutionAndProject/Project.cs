@@ -42,19 +42,25 @@ public partial class Project
     /// <param name="path">The project-file path.</param>
     /// <param name="inputs">The input source; the language server supplies open documents.</param>
     /// <param name="project">The loaded project.</param>
-    /// <param name="failure">The reason the project did not load.</param>
+    /// <param name="failures">The reasons the project did not load, one per independent failure (SPEC 23.1.2); empty when loaded.</param>
     /// <returns><see langword="true"/> when the project was loaded.</returns>
-    internal static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, CheckInputSource inputs, [MaybeNullWhen(false)] out Project project, out string? failure)
+    internal static bool TryCreate(
+        Kimigayo kimigayo,
+        ILogger? logger,
+        string path,
+        CheckInputSource inputs,
+        [MaybeNullWhen(false)] out Project project,
+        out IReadOnlyList<string> failures)
     {
         project = default;
-        failure = null;
+        failures = [];
         try
         {
             var fullPath = Path.GetFullPath(path);
             var file = ProjectFile.Load(inputs.ReadAllBytes(fullPath));
             if (file is null)
             {
-                failure = $"Empty project configuration '{path}'.";
+                failures = [$"Empty project configuration '{path}'."];
                 logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
                 return false;
             }
@@ -68,16 +74,23 @@ public partial class Project
                 project.AddKimiFile(source);
             }
         }
-        catch (TinyhandException ex)
+        catch (Exception ex) when (ex is TinyhandException or ProjectConfigurationException)
         {
-            failure = $"Invalid project configuration '{path}': {ex.Message}";
-            kimigayo.WriteLine(DiagnosticSeverity.Error, failure);
+            var notes = (ex as ProjectConfigurationException)?.Failures ?? [ex.Message];
+            var reasons = new string[notes.Count];
+            for (var i = 0; i < reasons.Length; i++)
+            {
+                reasons[i] = $"Invalid project configuration '{path}': {notes[i]}";
+                kimigayo.WriteLine(DiagnosticSeverity.Error, reasons[i]);
+            }
+
+            failures = reasons;
             project = default;
             return false;
         }
         catch (Exception ex) when (ex is not PendingInputException)
         {
-            failure = $"The project '{path}' could not be loaded: {ex.Message}";
+            failures = [$"The project '{path}' could not be loaded: {ex.Message}"];
             logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
             project = default;
             return false;
@@ -327,9 +340,8 @@ public partial class Project
         this.buildMetadata.Clear();
         cancellationToken.ThrowIfCancellationRequested();
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
-        if (DependencyConfiguration.Validate(this.ProjectFile) is { } configurationFailure)
+        if (!this.ValidateConfiguration(diagnostics, out var testSources))
         {
-            this.Fail(diagnostics, configurationFailure);
             return false;
         }
 
@@ -339,33 +351,8 @@ public partial class Project
             // Nonempty graphs still require the forthcoming semantic integration.
             var root = new DependencyNode("root", new(projectPath, this.ProjectFile, [], []), -1, string.Empty);
             var empty = new DependencyPartition([root]);
-            var failure = DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs);
-            if (failure is not null)
+            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs)))
             {
-                this.Fail(diagnostics, failure);
-                return false;
-            }
-        }
-
-        HashSet<string>? testSources = null;
-        if (this.ProjectFile.TestSources.Length != 0)
-        {
-            testSources = new(SourceIdentity.PathComparer);
-            try
-            {
-                var baseDirectory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
-                foreach (var source in this.ProjectFile.TestSources)
-                {
-                    if (!testSources.Add(Path.GetFullPath(source, baseDirectory)))
-                    {
-                        this.Fail(diagnostics, $"Duplicate resolved TestSources path: {source}");
-                        return false;
-                    }
-                }
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                this.Fail(diagnostics, $"Invalid TestSources path: {ex.Message}");
                 return false;
             }
         }
@@ -403,10 +390,8 @@ public partial class Project
             if (rootConfiguration is not null)
             {
                 var resolution = DependencyResolver.Resolve(this.FilePath!, x, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, rootConfiguration, false, inputs);
-                var failure = DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs);
-                if (failure is not null)
+                if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs)))
                 {
-                    this.Fail(diagnostics, failure);
                     success = false;
                     continue;
                 }
@@ -637,6 +622,25 @@ public partial class Project
 
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
+
+    // SPEC 23.1.2: each failure is its own record; true when there is one.
+    private bool Reported(DiagnosticOwner diagnostics, IReadOnlyList<string> failures)
+    {
+        for (var i = 0; i < failures.Count; i++)
+        {
+            this.Fail(diagnostics, failures[i]);
+        }
+
+        return failures.Count != 0;
+    }
+
+    // IMPL 20.1: the configuration with its TestSources compared at the project directory; a project without one is the current
+    // directory's.
+    private bool ValidateConfiguration(DiagnosticOwner diagnostics, out HashSet<string>? testSources)
+    {
+        var directory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
+        return !this.Reported(diagnostics, DependencyConfiguration.Validate(this.ProjectFile, directory, out testSources));
+    }
 
     // SPEC 23.2.2: input preparation that ends without an Error reports its fallback, in the command and the check entry alike.
     private bool PreparationFailed(DiagnosticOwner diagnostics)

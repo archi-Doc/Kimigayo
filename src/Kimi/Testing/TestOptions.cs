@@ -92,7 +92,7 @@ internal sealed class TestOptions
             DiagnosticBytes = this.Number("--case-diagnostic-bytes", defaults.DiagnosticBytes),
             LogBytes = this.Number("--case-log-bytes", defaults.LogBytes),
         };
-        settings.Validate();
-        return settings;
+        // A command option error, not an Input record: the command reports its first (TestCommand's error list).
+        return settings.Validate() is [var failure, ..] ? throw new InvalidDataException(failure) : settings;
     }
 }

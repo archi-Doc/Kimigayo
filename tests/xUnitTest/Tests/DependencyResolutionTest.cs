@@ -22,8 +22,8 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("Right", "right", Edge("Other", "Leaf", "leaf"));
         var root = this.Write("Root", "root", Edge("Left", "Left", "left") + Edge("Right", "Right", "right") + Edge("Again", "Left", "left"));
         var result = Resolve(root);
-        Assert.True(result.Product.IsResolved, result.Product.Diagnostic);
-        Assert.True(result.Test.IsResolved, result.Test.Diagnostic);
+        Assert.True(result.Product.IsResolved, Describe(result.Product));
+        Assert.True(result.Test.IsResolved, Describe(result.Test));
         Assert.Equal(4, result.Product.Nodes.Length);
         var rootNode = result.Product.Nodes[0];
         Assert.Equal(rootNode.Edges["Left"], rootNode.Edges["Again"]);
@@ -43,8 +43,8 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("Leaf", "leaf");
         var root = this.Write("Root", "root", Edge("Use", folder, id, version));
         var result = Resolve(root);
-        Assert.Equal(reason, result.Product.ReasonCode);
-        Assert.Equal("ProductUnresolved", result.Test.ReasonCode);
+        Assert.Equal(reason, Failure(result.Product).Code);
+        Assert.Equal("ProductUnresolved", Failure(result.Test).Code);
     }
 
     [Theory]
@@ -56,7 +56,7 @@ public sealed class DependencyResolutionTest : IDisposable
     {
         this.Write("Leaf", "leaf", settings: settings);
         var root = this.Write("Root", "root", Edge("Use", "Leaf", "leaf"));
-        Assert.Equal(reason, Resolve(root).Product.ReasonCode);
+        Assert.Equal(reason, Failure(Resolve(root).Product).Code);
     }
 
     [Theory]
@@ -68,9 +68,9 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("B", "b", Edge("Back", "A", "a"));
         var root = this.Write("Root", "root", Edge("Start", "A", "a"));
         var result = Resolve(root);
-        Assert.Equal("Cycle", result.Product.ReasonCode);
-        Assert.Contains("root -> Start", result.Product.Diagnostic);
-        Assert.Contains(self ? "a@1 -> a@1" : "b@1 -> a@1 -> b@1", result.Product.Diagnostic);
+        Assert.Equal("Cycle", Failure(result.Product).Code);
+        Assert.Contains("root -> Start", Failure(result.Product).Message);
+        Assert.Contains(self ? "a@1 -> a@1" : "b@1 -> a@1 -> b@1", Failure(result.Product).Message);
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public sealed class DependencyResolutionTest : IDisposable
     {
         var root = this.Write("Root", "root", Edge("Again", "Root", "root"));
         var result = Resolve(root);
-        Assert.Equal("Cycle", result.Product.ReasonCode);
-        Assert.Contains("root -> Again", result.Product.Diagnostic);
+        Assert.Equal("Cycle", Failure(result.Product).Code);
+        Assert.Contains("root -> Again", Failure(result.Product).Message);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("V2", "library", version: "2");
         var root = this.Write("Root", "root", Edge("Old", "V1", "library") + Edge("New", "V2", "library", "2"));
         var result = Resolve(root);
-        Assert.True(result.Product.IsResolved, result.Product.Diagnostic);
+        Assert.True(result.Product.IsResolved, Describe(result.Product));
         Assert.Equal(3, result.Product.Nodes.Length);
         Assert.NotEqual(result.Product.Nodes[0].Edges["Old"], result.Product.Nodes[0].Edges["New"]);
     }
@@ -104,9 +104,9 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("B", "library", dependencies: change == "edge" ? Edge("Extra", "Leaf", "leaf") : string.Empty, settings: change == "setting" ? "CompileTimeSettings={Feature={Bool=true}}" : string.Empty, source: change == "source" ? "second" : "first");
         var root = this.Write("Root", "root", Edge("First", "A", "library") + Edge("Second", "B", "library"));
         var result = Resolve(root);
-        Assert.Equal("ConflictingInput", result.Product.ReasonCode);
-        Assert.Contains("root -> First", result.Product.Diagnostic);
-        Assert.Contains("root -> Second", result.Product.Diagnostic);
+        Assert.Equal("ConflictingInput", Failure(result.Product).Code);
+        Assert.Contains("root -> First", Failure(result.Product).Message);
+        Assert.Contains("root -> Second", Failure(result.Product).Message);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var root = this.Write("Root", "root", Edge("First", "A", "library") + Edge("Second", "B", "library"));
         Assert.True(Resolve(root).Product.IsResolved);
         File.WriteAllText(Path.Combine(this.directory, "Leaf2", "main.kimi"), "changed");
-        Assert.Equal("ConflictingInput", Resolve(root).Product.ReasonCode);
+        Assert.Equal("ConflictingInput", Failure(Resolve(root).Product).Code);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var root = this.Write("Root", "root", settings: "TestDependencies={Missing={PackageId=\"missing\" PackageVersion=\"1\" Project=\"missing.kimiproj\"}}");
         var result = Resolve(root);
         Assert.True(result.Product.IsResolved);
-        Assert.Equal("InvalidProjectInput", result.Test.ReasonCode);
+        Assert.Equal("InvalidProjectInput", Failure(result.Test).Code);
     }
 
     [Fact]
@@ -137,8 +137,8 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("Leaf", "leaf", settings: "TestDependencies={Missing={PackageId=\"missing\" PackageVersion=\"1\" Project=\"missing.kimiproj\"}}");
         var root = this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"));
         var result = Resolve(root);
-        Assert.True(result.Product.IsResolved, result.Product.Diagnostic);
-        Assert.True(result.Test.IsResolved, result.Test.Diagnostic);
+        Assert.True(result.Product.IsResolved, Describe(result.Product));
+        Assert.True(result.Test.IsResolved, Describe(result.Test));
     }
 
     [Fact]
@@ -149,14 +149,14 @@ public sealed class DependencyResolutionTest : IDisposable
         var root = this.Write("Root", "root", Edge("Use", "A", "a"), settings: "TestDependencies={" + Edge("Use", "B", "b") + "}");
         var result = Resolve(root);
         Assert.True(result.Product.IsResolved);
-        Assert.Equal("ReferenceReassignment", result.Test.ReasonCode);
+        Assert.Equal("ReferenceReassignment", Failure(result.Test).Code);
     }
 
     [Fact]
     public void PackageInputsStayExplicitlyUnsupported()
     {
         var root = this.Write("Root", "root", "Use={PackageId=\"library\" PackageVersion=\"1\" Package=\"library.kimipkg\"}");
-        Assert.Equal("UnsupportedPackage", Resolve(root).Product.ReasonCode);
+        Assert.Equal("UnsupportedPackage", Failure(Resolve(root).Product).Code);
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var root = this.Write("Root", "root", settings: "TestSources={\"test.kimi\"}", source: "original");
         File.WriteAllBytes(Path.Combine(this.directory, "Root", "test.kimi"), [0xff]);
         var result = Resolve(root);
-        Assert.True(result.Product.IsResolved, result.Product.Diagnostic);
+        Assert.True(result.Product.IsResolved, Describe(result.Product));
         var source = Assert.Single(result.Product.Nodes[0].Input.Sources);
         File.WriteAllText(Path.Combine(this.directory, "Root", "main.kimi"), "changed");
         Assert.Equal("original", System.Text.Encoding.UTF8.GetString(source.Content.GetBytes()));
@@ -182,7 +182,7 @@ public sealed class DependencyResolutionTest : IDisposable
         }
 
         var result = Resolve(Path.Combine(this.directory, "N0", "N0.kimiproj"));
-        Assert.True(result.Product.IsResolved, result.Product.Diagnostic);
+        Assert.True(result.Product.IsResolved, Describe(result.Product));
         Assert.Equal(Count, result.Product.Nodes.Length);
     }
 
@@ -194,8 +194,40 @@ public sealed class DependencyResolutionTest : IDisposable
         using var exclusive = new FileStream(tests, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         var result = DependencyResolver.Resolve(root, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken, includeTests: false);
         Assert.True(result.Product.IsResolved);
-        Assert.Equal("NotRequested", result.Test.ReasonCode);
+        Assert.Equal("NotRequested", Failure(result.Test).Code);
     }
+
+    // SPEC 23.1.2: each independent failure of a graph is reported, each of a dependency's configuration failures included; the
+    // references of a dependency that failed depend on it and are left out.
+    [Fact]
+    public void EachIndependentGraphFailureIsReported()
+    {
+        this.Write("Leaf", "leaf");
+        this.Write("App", "app", Edge("Gone", "Missing", "missing"), settings: "OutputKind=\"Application\"");
+        this.Write("Bad", "bad", settings: "Alias={\" \"} PackageSources={{PackageId=\"a\"}}");
+        var edges = Edge("App", "App", "app") + Edge("Bad", "Bad", "bad") + Edge("Missing", "Missing", "missing") + Edge("Wrong", "Leaf", "other");
+        var root = this.Write("Root", "root", edges);
+        var result = Resolve(root);
+        Assert.Equal(
+            ["IdentityMismatch", "InvalidConfiguration", "InvalidConfiguration", "InvalidProjectInput", "NotLibrary"],
+            result.Product.Failures!.Select(static x => x.Code).Order(StringComparer.Ordinal));
+        Assert.Equal("ProductUnresolved", Failure(result.Test).Code);
+    }
+
+    // SPEC 23.1.2: a project that fails to load is one failure, however many references reach it.
+    [Fact]
+    public void AFailedProjectReachedTwiceIsReportedOnce()
+    {
+        this.Write("Bad", "bad", settings: "Alias={\" \"}");
+        var root = this.Write("Root", "root", Edge("One", "Bad", "bad") + Edge("Two", "Bad", "bad"));
+        Assert.Equal("InvalidConfiguration", Failure(Resolve(root).Product).Code);
+    }
+
+    private static ResolutionFailure Failure(DependencyPartition partition)
+        => Assert.Single(partition.Failures ?? []);
+
+    private static string Describe(DependencyPartition partition)
+        => string.Join("; ", (partition.Failures ?? []).Select(static x => x.Message));
 
     private static DependencyResolution Resolve(string path)
         => DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);

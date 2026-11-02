@@ -76,6 +76,7 @@ public partial class Compilation
         this.moduleVariables = new(modules.Length);
         this.moduleAliases = new(modules.Length);
         this.moduleConfigurations = new(modules.Length);
+        var failed = false;
         for (var i = 0; i < modules.Length; i++)
         {
             var node = graph.Nodes[i];
@@ -102,7 +103,8 @@ public partial class Compilation
                     variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
                 {
                     this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, node.Input.Path, name);
-                    return false;
+                    failed = true;
+                    continue;
                 }
 
                 variables.Add(name, value);
@@ -111,18 +113,18 @@ public partial class Compilation
             this.moduleVariables.Add(module, variables);
         }
 
-        for (var i = 0; i < modules.Length; i++)
+        // SPEC 23.1.2: each dependency setting and each supply failure of the graph is its own record, at its module's project file.
+        List<(int Module, string Note)>? supplies = null;
+        NativeConfiguration.ValidateGraphSupplies(graph.Nodes, ref supplies);
+        for (var i = 0; i < (supplies?.Count ?? 0); i++)
         {
-            if (NativeConfiguration.ValidatePackageSupplies(graph.Nodes[i].Input.Configuration, graph.Nodes) is { } failure)
-            {
-                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[i].Input.Path, note: failure);
-                return false;
-            }
+            var (module, note) = supplies![i];
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[module].Input.Path, note: note);
+            failed = true;
         }
 
-        if (NativeConfiguration.ValidateSupplyAgreement(graph.Nodes, out var conflicting) is { } conflict)
+        if (failed)
         {
-            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[conflicting].Input.Path, note: conflict);
             return false;
         }
 
