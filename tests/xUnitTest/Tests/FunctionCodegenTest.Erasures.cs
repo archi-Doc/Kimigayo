@@ -2,6 +2,7 @@
 
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -114,6 +115,34 @@ public sealed partial class FunctionCodegenTest
         var add = Assert.Single(CallsOf(item));
         Assert.Same(Assert.Single(FunctionsOf(ir, c, "add")), add.Callee);
         Assert.Equal([item.Parameters[1], item.Parameters[2]], add.Operands);
+    }
+
+    // IMPL 21.3.1 (DECISIONS R5-M108 as G157 (25) amends it): an adapter's entry is its target Function Type's erased signature named, the
+    // one computation every call of a value of that Type writes, so they share one parameter list (fail-before: two equal lists). A value
+    // called at a Callable signature other than its Type (a Never-result Function value at another result) is rejected by Binding (PLAN
+    // G159 (3)), so no program shows the call's half: the call reads its value's Type (FunctionCodegen.Closures' Erased).
+    [Fact]
+    public void AnAdapterEntryIsItsTargetsErasedSignature()
+    {
+        var (_, collector, module, _) = WrittenModule(Analyze(Erasures, OutputKind.Library));
+        var set = collector.Set;
+        var adapters = Enumerable.Range(0, set.Items.Length)
+            .Where(x => set.IsGenerated(x) && set.Items[x].Key.Kind is MonoKind.ClosureErasure or MonoKind.ItemAdapter).ToArray();
+        Assert.True(adapters.Length > 4, $"{adapters.Length}");
+        Assert.All(adapters, x => Assert.Same(module.Erased(set.Items[x].Key.Function!).Parameters, module.Adapter(x).Parameters));
+    }
+
+    // IMPL 21.3.1 (DECISIONS R5-M108 as G157 (25) amends it): a Function Type's erased signature is its Origin-erased Type's (Abi reads no
+    // Origin), the Type an adapter's key holds, so a call of a value whose Type states an Origin shares that entry's parameter list
+    // (fail-before: a list of its own).
+    [Fact]
+    public void AFunctionTypesErasedSignatureIsItsErasedTypes()
+    {
+        var c = Analyze("func apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 => f(x)\n", OutputKind.Library);
+        var (program, _, module, _) = WrittenModule(c);
+        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "apply").Locals[1].Type;
+        Assert.NotSame(c.Types.Erase(function), function);
+        Assert.Same(module.Erased(c.Types.Erase(function)), module.Erased(function));
     }
 
     // SPEC 22.5.1 (DECISIONS R5-M104): an erased Item whose function is a caller-location body (FromEnd.resolve) gives it the location its

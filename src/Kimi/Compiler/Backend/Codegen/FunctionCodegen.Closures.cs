@@ -18,7 +18,7 @@ namespace Kimi.Compiler.Backend;
 // collector's BodylessWitness gap at check; DECISIONS R5-M146). The slot only makes the callee
 // value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
 // is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
-// with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's operands are its
+// with its environment word and its table's context under its Type's erased signature (ModuleCodegen.Erased). A Value call's operands are its
 // Callable signature's inputs in order, so its own key places them (MirCallee.Position without a function, the builder's rule). After an
 // owner call whose callee borrows its environment, the call site's next target, the operand Type's glue, destroys the
 // operand (SPEC 8.10: "destroys the rest after the call") at the call's location; the collector decides which calls have it. A Closure
@@ -56,7 +56,7 @@ internal sealed partial class FunctionCodegen
                 this.FunctionItem(call, callable);
                 return;
             case BoundTypeKind.Function:
-                this.Erased(call, owned);
+                this.Erased(call, callable, owned);
                 return;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // Binding admits only these as callable values (SPEC 3.2.1).
@@ -150,27 +150,22 @@ internal sealed partial class FunctionCodegen
     }
 
     // IMPL 21.1.3: a common Function value's call, through its table's entry with its environment word and its table's context, under the
-    // erased signature of the call's Callable signature in the item's instance; an owned (by-value) value is destroyed after the call by
-    // the call's target (Rest).
-    private void Erased(in MirTerminator call, bool owned)
+    // erased signature of the value's Function Type in the item's instance, the one the entry it reaches is defined by
+    // (ModuleCodegen.Adapter; DECISIONS R5-M108 as G157 (25) amends it); an owned (by-value) value is destroyed after the call by the
+    // call's target (Rest).
+    private void Erased(in MirTerminator call, BoundType function, bool owned)
     {
-        if (this.collector.TypeOf(this.item, this.body.Consts[call.Callee.Arg].Type) is not { } declared)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
-            return;
-        }
-
         if (!this.Argument(call.Operand, -1, owned ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, out var value))
         {
             return; // A broken contract, recorded.
         }
 
-        var handle = Layout.Row(declared).Layout.FieldOffsets.Span; // A Function Type's row: its environment word, then its table.
+        var handle = Layout.Row(function).Layout.FieldOffsets.Span; // A Function Type's row: its environment word, then its table.
         var environment = this.LoadAt(this.Offset(value, handle[0]), WordLayout);
         var table = this.LoadAt(this.Offset(value, handle[1]), PointerLayout);
         var entry = this.LoadAt(this.Offset(table, TableEntry), PointerLayout);
         var context = this.LoadAt(this.Offset(table, TableContext), PointerLayout);
-        var signature = this.module.Erased(declared);
+        var signature = this.module.Erased(function);
         if (this.Pass(call, signature, new(call.Callee.Symbol, MirBodyKind.Fn), [environment, context]))
         {
             var result = this.WriteCall(signature, this.arguments.AsSpan(0, signature.Parameters.Length), entry);
