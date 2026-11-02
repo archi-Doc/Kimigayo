@@ -12288,6 +12288,13 @@ structure is recorded here by the unit that first implements it.
     for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
     writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
     are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
+  - Amended (PLAN G157 (25), 2026-11-02): `ModuleCodegen.Erased` is the one computation of a Function Type's erased signature;
+    `Adapter` names it (the previous name kept while it names the same parameter list), so an entry and the calls of its Type share one
+    parameter list. An erased call is written under its callee value's Function Type (`TyCtxt.Layer`'s Callable, in the item's
+    instance), the Type the adapter's key erases, not the call's Callable signature: they differ only for a Never-result Function value
+    at another result, which Binding rejects (PLAN G159 (3)), so no program changes (the erasing families' fixtures are byte-identical).
+    `FunctionCodegenTest.AnAdapterEntryIsItsTargetsErasedSignature` pins the shared list (failing before). Deleted: the erased call's
+    signature-token lookup and its `InternalInvariant_Kd` arm. Rejected: a shared decomposition helper (two Abi computations stay).
 - **R5-M109 The owner confirms C5c's departures** (owner, 2026-10-23, on the R5 planning session's explanation after C5c's design review
   and before its behavior commit; verbatim 「C5c の逸脱 3 件（K package 4.3 の MonoKey に変換先の Function 型を加えること、R5-M43 の
   13 行目のキーの書き方、K package 4.8 の by-value 一覧に adapter の変換先の入力と結果を加えること）を承認します。」; the consequences are
