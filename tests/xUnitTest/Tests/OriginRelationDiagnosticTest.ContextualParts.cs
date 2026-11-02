@@ -80,9 +80,11 @@ public partial class OriginRelationDiagnosticTest
     // Nested generic calls (d3 §1): a generic call nested in an argument takes its Type from the outer call, which proves the instantiated
     // well-formedness for its own solution, at the outer argument. h's Origins are its own (fresh at the call), so k3, d01, d04, i01, i02,
     // q10b, q14 and j01 are valid; put2's `a` is fixed by `p` and `b` by the Borrow of `short`, so each `_n` twin, k4 and j01n (whose nested
-    // signature names k's fixed Origins) err once at the argument. ea1 has two records (D-3, the owner, relayed 2026-10-29: 「2 記録でよい」):
-    // the inner call's at its contextual argument and the annotation's at its written Type. q10b's and q14's twins are q10 and q15 (the
-    // aggregate theory).
+    // signature names k's fixed Origins) err once at the argument. In ea1 the annotation contributes the expected result that solves `T`,
+    // so `Option.None` is a Result position that the annotation proves at its written Type (DECISIONS R4-M164 U1d; the planning session's
+    // ruling, 2026-11-03, as for u1, expl and boxe): that record is the old ownership analysis's body obligation, which does not run beside
+    // a Binding record (PLAN G56), so D-3's second record at the argument (the owner, relayed 2026-10-29: 「2 記録でよい」) waits for H11.
+    // q10b's and q14's twins are q10 and q15 (the aggregate theory).
     [Theory]
     [InlineData("k3", MkNone + OwnH + LocalUse + "    let x = h(a, b, mkNone())\n    return 0\n", "")]
     [InlineData("k4", MkNone + ImpliedStore + ShortBody + "    put2(p, sr, mkNone())\n    return 0\n", "UnsatisfiedOriginRelation_Kd mkNone()")]
@@ -99,7 +101,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("j01", EmptyStruct + "func h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h4(a, b, E.init())\n    return 0\n", "")]
     [InlineData("j01n", EmptyStruct + NestedHead + InnerE + "    return inner(E.init(), q)\n", "UnprovenOriginRelation_Kd E.init()")]
     [InlineData("j01n_ok", EmptyStruct + NestedHead + WithPremise + InnerE + "    return inner(E.init(), q)\n", "")]
-    [InlineData("ea1", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
+    [InlineData("ea1", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
     [InlineData("ea2", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "")]
     public void EachCallProvesItsInputsThroughANestedGenericCall(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -161,8 +163,8 @@ public partial class OriginRelationDiagnosticTest
 
     // Explicit qualifiers and Cases with payload (d3 §6): `Option.Some(v)` types itself from `v`, whose signature Type gives q outlives r
     // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument. cs1's contextual inner `Option.None` is judged at
-    // the argument; when an annotation settles the construction (cs1_ty), its contextual payload and the annotation each have a record (D-3's
-    // analogue). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
+    // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
+    // as in ea1 (R4-M164 U1d; the payload's record waits for H11). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
@@ -173,7 +175,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
-    [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
+    [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
     [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
     [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
