@@ -5962,7 +5962,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Type argument, Closure parameter, local annotation or Field at any depth; inputs add none. A call does not re-prove a nested
     signature's result: the callee's signature formation at a call (`CheckSignatureTypeConstraints`) does not enter it, since the
     clauses the call proves make the instantiated result well-formed (SPEC 15.6.4 step 3); one owner, the declaration (review 2's
-    B2: n1a, n1s kept their Closure argument's `TypeMismatch_Kd`).
+    B2: n1a, n1s kept their Closure argument's `TypeMismatch_Kd`). That skip is a local patch, a parameter of the formation walk
+    (`calleeDeclaration`), since the call's own check of the instantiated Types must still enter results (n1a's call record);
+    removal condition: PLAN G375, the call reads the callee declaration's published signature verdict instead of re-proving it
+    (CheckSignatureTypeConstraints goes), and the parameter goes with it.
   - Evidence: the study's z1, z1n, r3, lpok and arr gain the declaration record, z1d is refuted at its call, z1t, cap, inwf and lpfix
     stay valid, ann2 and loc are unchanged; 49 classes passed 3,603/3,603 on both pipelines with the premise stop; 0 programs change in
     the library, SPEC/IMPL examples, milestones, `tests/mir`, the Benchmark corpus and `docs/examples`.

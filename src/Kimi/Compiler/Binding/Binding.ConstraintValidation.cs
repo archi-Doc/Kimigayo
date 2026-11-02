@@ -176,9 +176,13 @@ public sealed partial class Binding
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
         => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion), false);
 
-    // `signature`: `type` is a Type of the scope's own declaration signature. A nested Function Type's result there is judged once,
-    // where it occurs, by that declaration (BindFunctionType; SPEC 15.3.4, 15.6.4 step 3; DECISIONS R4-M162), so it is not entered.
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, bool signature)
+    // `calleeDeclaration`: `type` is a Type of the callee's own signature, re-proven at a call in the callee's own scope
+    // (CheckSignatureTypeConstraints). A nested Function Type's result there is judged once, where it occurs, by that declaration
+    // (BindFunctionType; SPEC 15.3.4, 15.6.4 step 3; DECISIONS R4-M162), so the re-proof does not enter it: re-proving it made every
+    // call of a callee whose nested result fails Unknown and left its arguments unjudged (U2.3s review B2). Local patch; removal
+    // condition: PLAN G375, the call reads the callee declaration's published signature verdict instead of re-proving it
+    // (CheckSignatureTypeConstraints goes), and this parameter goes with it.
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, bool calleeDeclaration)
     {
         if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
@@ -189,10 +193,10 @@ public sealed partial class Binding
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
         proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
         // A Function Type's components are its inputs and its result.
-        var count = signature && type.Kind == BoundTypeKind.Function ? 1 : type.Components.Count;
+        var count = calleeDeclaration && type.Kind == BoundTypeKind.Function ? 1 : type.Components.Count;
         for (var i = 0; i < count; i++)
         {
-            proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query, signature), true);
+            proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query, calleeDeclaration), true);
         }
 
         if (type is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } &&
@@ -210,17 +214,17 @@ public sealed partial class Binding
     // A component's formation (CheckTypeConstraints), each distinct one with components proven once per query: its proof and the cause it
     // rests on are read again into its own proof scope (ReadVerdict) where it recurs, as EndProof reads a recomputation; a leaf is cheaper
     // to prove again than to record.
-    private ConstraintProof FormedPart(BoundType part, BindingScope scope, uint query, bool signature)
+    private ConstraintProof FormedPart(BoundType part, BindingScope scope, uint query, bool calleeDeclaration)
     {
         if (part.Components.Count == 0)
         {
-            return this.CheckTypeConstraints(part, scope, query, signature);
+            return this.CheckTypeConstraints(part, scope, query, calleeDeclaration);
         }
 
         var outer = this.BeginProof();
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var proof = this.CheckTypeConstraints(part, scope, query, signature);
+            var proof = this.CheckTypeConstraints(part, scope, query, calleeDeclaration);
             known = (proof, this.ProofCause(proof));
             this.formedParts.Set(part, query, known);
         }
