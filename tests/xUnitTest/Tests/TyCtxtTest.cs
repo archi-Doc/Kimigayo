@@ -998,10 +998,11 @@ public sealed class TyCtxtTest
         _ = declared.Types.StoredParts(wrap, out _);
         var members = new List<RawMember>();
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        int[] zero = [0], one = [1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
-                types.RawStep(p[19], 0, [0]) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
+            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, one) != RawStep.Own ||
+                types.RawStep(p[19], 0, zero) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
                 !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.RawStep(nested, 0, []) != RawStep.Exclusive ||
                 TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || types.RawMembers(nested, 0, [], members) ||
                 TyCtxt.RawStated(types.StoredParts(p[3], out _)[0]!))
@@ -1015,7 +1016,7 @@ public sealed class TyCtxtTest
                 throw new InvalidOperationException("A declared raw layer's reads changed.");
             }
 
-            if (TyCtxt.WrittenAt(p[8], 1, [1]) is null || TyCtxt.WrittenAt(p[8], 0, [1]) is not null || !TyCtxt.StatesUnstated(wrap, seen) ||
+            if (TyCtxt.WrittenAt(p[8], 1, one) is null || TyCtxt.WrittenAt(p[8], 0, one) is not null || !TyCtxt.StatesUnstated(wrap, seen) ||
                 TyCtxt.StatesUnstated(types.StoredParts(p[8], out _)[0]!, seen))
             {
                 throw new InvalidOperationException("The written and Unstated views changed.");
