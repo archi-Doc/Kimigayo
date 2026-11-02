@@ -4800,8 +4800,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     so it does not take SPEC 3.4's Write (initialize or replace the value); the publisher's member that records it is renamed with it
     (`HirPublisher.FixAdjust`, R4-M109's `HirPublisher.Write`).
   - A case adaptation's operand (R6-check Q14 (b), 2026-11-03; Q8, R5-M23: a column defect is fixed in the column's owner before H1)
-    is used `InPlace`, as the builder's `Adapt` reads it: a Place in place (Adjust None), a value through a Temporary. It was an
-    acquisition published Move, which no builder read and which H1's S1 would have reported (Q14's 12 subjects, 9 in verified
+    is used `InPlace`, as the builder's `Adapt` reads it: a Place in place (Adjust None), a value through a Temporary. It was
+    published as an acquisition (Move, Copy, Reborrow or ByCase), which no builder read and which H1's S1 would have reported (Q14's 12 subjects, 9 in verified
     programs); the MIR is unchanged.
   - `PublisherUses`, the HIR publisher's record, a struct so that `AdjustChildren` is specialized for it (the publisher passed as a class
     measured about 2% slower on a warm publish); `[Transitional("R7")]` with the publisher's walk, which R7's inline writes replace.
