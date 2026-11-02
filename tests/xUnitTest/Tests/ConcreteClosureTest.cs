@@ -109,4 +109,36 @@ public class ConcreteClosureTest
     [InlineData("let x = 0\nlet f = func [] () => x")]
     public void RejectsInvalidConcreteBinding(string source)
         => Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);
+
+    // SPEC 15.2.3 (DECISIONS BU-73, PLAN G353): a concrete Closure is Owned when its captures are and its fixed signature Origins are
+    // proven to outlive `static`. Per-call are only its direct borrowed parameters' omitted Origins, its receiver and its call result;
+    // an enclosing function's Origin (written, through a maker's call, a generic pass, an Option or the result), a Type argument's and a
+    // nested or aggregate parameter's Origin are fixed. Each such Closure is UnprovenConstraint_Kd at the use, on every pipeline (e's
+    // only record is Binding's); the twins (per-call, static, `T is Owned`) and the capture controls (g, i) keep dev's verdicts.
+    [Theory]
+    [InlineData("j", "func f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    return need(inner)", "UnprovenConstraint_Kd: need(inner)")]
+    [InlineData("a", "func host() -> ()\n    let outer = func (r: ref/i32) -> i32\n        let inner = func (y: ref/i32 during r) => ()\n        return need(inner)\n    return", "UnprovenConstraint_Kd: need(inner)")]
+    [InlineData("b", "func host() -> ()\n    let outer = func (r: ref/i32) -> i32\n        let inner = func (y: ref/i32) => ()\n        return need(inner)\n    return", null)]
+    [InlineData("k", "func f(r: ref/i32 during static) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    return need(inner)", null)]
+    [InlineData("e", "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> i32 => 0\n    let c = outer(p)\n    return need(c@move)", "UnprovenConstraint_Kd: need(c@move)")]
+    [InlineData("h", "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func (y: ref/i32) -> i32 => 0\n    let c = outer(p)\n    return need(c@move)", null)]
+    [InlineData("g", "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func [x] () -> i32 => 0\n    let c = outer(p)\n    return need(c@move)", "UnprovenConstraint_Kd: need(c@move)")]
+    [InlineData("i", "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func [x] (y: ref/i32 during x) -> i32 => 0\n    let c = outer(p)\n    return need(c@move)", "UnprovenConstraint_Kd: need(c@move)")]
+    [InlineData("p3b", "struct View {source}\n    let data: ref/i32 during source\n\nfunc g(v: ref/View) -> i32\n    let inner = func (y: ref/i32 during v.source) => ()\n    return need(inner)", "UnprovenConstraint_Kd: need(inner)")]
+    [InlineData("p4", "func f(r: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func (y: ref/i32 during r) -> i32 => 0\n    let c = outer(r)\n    return need(c@move)", "UnprovenConstraint_Kd: need(c@move)")]
+    [InlineData("p5", "func pass<T>(value: T) -> T\n    return value@move\n\nfunc f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    return need(pass(inner))", "UnprovenConstraint_Kd: need(pass(inner))")]
+    [InlineData("p6", "func f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    return need(Option.Some(inner))", "UnprovenConstraint_Kd: need(Option.Some(inner))")]
+    [InlineData("p7", "func f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) -> ref/i32 during r => y\n    return need(inner)", "UnprovenConstraint_Kd: need(inner)")]
+    [InlineData("p8", "func f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    inner(r)\n    return 1", null)]
+    [InlineData("p10", "func g<T>(v: T) -> i32\n    let c = func (x: T) => ()\n    return need(c)", "UnprovenConstraint_Kd: need(c)")]
+    [InlineData("p10b", "func g<T>(v: T) -> i32\n    T is Owned\n    let c = func (x: T) => ()\n    return need(c)", null)]
+    [InlineData("q1", "func f() -> i32\n    let c = func (y: ref/(ref/i32)) => ()\n    return need(c)", "UnprovenConstraint_Kd: need(c)")]
+    [InlineData("q1s", "func f() -> i32\n    let c = func (y: ref/(ref/i32 during static)) => ()\n    return need(c)", null)]
+    [InlineData("q2", "struct S {s}\n    public let data: ref/i32 during s\n\nfunc f() -> i32\n    let c = func (v: ref/S) => ()\n    return need(c)", "UnprovenConstraint_Kd: need(c)")]
+    [InlineData("q2s", "struct S {s}\n    public let data: ref/i32 during s\n\nfunc f() -> i32\n    let c = func (v: ref/(S during static)) => ()\n    return need(c)", null)]
+    public void AClosureIsOwnedWhenItsFixedSignatureOriginsAreStatic(string id, string declarations, string? record)
+        => Assert.Equal(record is null ? [id] : [id, record], [id, .. RawPointerSyntaxTest.Records(NeedOwned + declarations)]);
+
+    // A function requiring Owned of its argument (SPEC 15.2.3), the subject of the Owned rows here and in PropertyBindingTest.
+    internal const string NeedOwned = "func need<T>(value: T) -> i32\n    T is Owned\n    return 1\n\n";
 }
