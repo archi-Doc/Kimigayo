@@ -6119,6 +6119,54 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the owner's 「受け入れる（推奨）」 (2026-11-02, PLAN a0e3e2a6e).
   - Rejected: a bool, mode or type parameter steering one walk (R4-M162's patch form); the clauses before the components (a proof
     scope keeps its first cause, so the order would move records).
+- **R4-M164 Contributions at composed positions (G216 (a) U2.2)** (2026-11-03; the owner, verbatim 「候補 1 つで進める」, 2026-11-02:
+  R4 implements BU's design bu96, `bu\g216a-u22\design.md`, with one fresh review; extends BU-51's one input-premise rule) SPEC
+  10.5.1, 10.3, 15.6.4 step 3. Later units extend this entry.
+  - F1: what a filled slot's position contributes to its selected call is one closed kind, `Contribution` (Evidence, Signature,
+    Result), the evidence walk's fact (`Binding.ArgumentKinds.Evidence.cs`). `RequireInputPremises(at, parameter, supplied,
+    contribution)` reads it: Evidence is judged beside its own Type, only where the fit replaced an Origin; a Signature position at
+    every position; a Result position by its contributor, not at this call. The fit-failed guard and an Origin-free argument's
+    exemption stay. F1 reads the rules that decide `PositionKind` and replaces none of them.
+  - U0 (behaviour unchanged): one helper, `InputContribution`, computes it from today's identity test: a supplied Type that is the
+    instantiated parameter itself is Result, any other written input or receiver Evidence; a default is Signature. Removal
+    condition: U1, where the walk publishes the kind from `PositionKind` and the helper goes; a Signature position whose Type is
+    the instantiated parameter is then proven (cause C1). The per-layer test beside the supplied Type (`SameOriginArguments`)
+    stays in the visitor, which a whole-contract comparison's Prove visit shares (`ProvesInputPremises`); U1 settles its part.
+  - U1a+U1b (one group; R4 planning's decisions (b) and "GO", 2026-11-03): F1's source is the walk. `TryCandidateCore` writes it
+    once the expected result has solved its slots (`SlotSolution.Contribute`): a part its producer recorded as Case, Call, Function,
+    Reference or Literal (`RecordedPart`, which completion keeps; `KindOf` turns Typed) is Signature, or Result where its parameter
+    Type names a slot no evidence bound and the expected result solved; any other part is Evidence; aggregates and joins stay
+    Evidence until U2. F1 is a pooled list on the selected candidate's solution: `CallEvaluation.Contributions` (one per argument of
+    each candidate, rented and returned with the operations, so it lives through `JudgeSelectedCall`), sliced into
+    `SlotSolution.Contributions` by `Solution(evaluation, candidate, …)`. `JudgeSelectedCall` takes the selected solution (its
+    Origins, declaring Type and F1); a property call's solution holds Evidence; a value call reads `PartContribution`; a fixed
+    construction's re-check passes its own buffer. `InputContribution` is gone (C1). `SameOriginArguments` stays: it is Evidence's
+    per-layer "where the fit replaced an Origin" and the Prove visit's.
+  - C2: `SolveLate` collects each Signature position's premises (a default's among them) over the instantiated parameter Type
+    (`SubstituteType`, Rule C), not `FormedApplication`, which kept `T` unsubstituted so that `T`'s stored Origin bounded nothing
+    (cxc). C2b (the `MatchInputOrigin` meet) is no cause: with the bound the solve already shortens the input Origin (a 2-Origin
+    `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged. Evidence: R4's `r4-notes\g216a-u22-impl\state-u1b.md`
+    (01:15, 01:26) with `trace-b.txt` and `trace-c.txt` there.
+  - Staged rows, each with its unit and condition (U1c; the review's B2):
+    - i01_n, U2: `Contribute` recomputes "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
+      re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
+      Result position as Signature: one more record at `.None` beside the outer call's, never one fewer. Cure: the solve publishes
+      once, per candidate, the slots its expected result solved, and `Contribute` reads them; every `TryCandidate` solution carries
+      that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
+      its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
+      `FormedApplication`, then `SolveLate`; the review's N2): U2, with i01_n.
+    - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
+    - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
+    - vc2, U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
+  - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
+    written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
+  - U1e: the well-formedness visit (`VisitWellFormedPremises`, `Binding.ResultPremises.cs`) makes each entry call one query of
+    `wellFormedParts` and each borrow layer's stored visit one of `storedParts` (BU-55's TypeMemo), a pattern part skipped only when
+    met again beside the same substituted and argument parts, so each pattern part is visited at most once per distinct (substituted
+    part, argument part) beside which it is met consecutively: the pattern-identical forms are linear (an Evidence input whose argument
+    Type is its instantiated parameter, TypeDagScalingTest's `ref` row: unfinished after 60 s on 15405315f, 0.15 s after), while
+    argument parts that diverge and alternate beside a shared pattern part can still cost 2^n, as before U1e (an open issue).
+  - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

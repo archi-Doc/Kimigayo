@@ -94,6 +94,7 @@ public sealed partial class Binding
         var argumentCount = call.ArgumentNodes.Count;
         var checkedCandidates = this.candidateScratch.Rent(count);
         var checkedOperations = this.argumentOperationScratch.Rent(count * stride);
+        Span<Contribution> contributions = stackalloc Contribution[argumentCount];
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -150,6 +151,7 @@ public sealed partial class Binding
                         Origins = origins,
                         Inputs = inputs,
                         FixedConstruction = true,
+                        Contributions = contributions, // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                     },
                     [],
                     mapping,

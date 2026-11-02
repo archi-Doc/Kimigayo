@@ -170,6 +170,7 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
+        var contributions = this.contributionScratch.Rent(candidateCount * argumentCount);
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -235,6 +236,7 @@ public sealed partial class Binding
                 Inputs = inputs,
                 Evaluated = evaluated,
                 Operations = operations,
+                Contributions = contributions,
                 OperationStride = operationStride,
                 SavedCandidates = savedCandidates,
                 AllTypes = allTypes,
@@ -378,7 +380,7 @@ public sealed partial class Binding
                 }
 
                 var state = this.TryCandidate(
-                    this.Solution(evaluation, selected, selectedType),
+                    this.Solution(evaluation, winnerIndex, selected, selectedType),
                     explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,
@@ -478,9 +480,9 @@ public sealed partial class Binding
             // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            var solution = this.Solution(evaluation, selected, selectedType);
+            var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
             var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
-            this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType, defaults.AsSpan(0, formed ? defaultCount : 0));
+            this.JudgeSelectedCall(call, solution, selectedOperations, defaults.AsSpan(0, formed ? defaultCount : 0));
             if (!formed)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -537,6 +539,7 @@ public sealed partial class Binding
             }
 
             this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.contributionScratch.Return(contributions);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);

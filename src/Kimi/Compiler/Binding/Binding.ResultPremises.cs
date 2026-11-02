@@ -9,10 +9,17 @@ namespace Kimi.Compiler;
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
-// is carried: each call shortens its solution with them and judges them at each input whose instantiation replaced an Origin, and a
-// whole-contract comparison proves them where its solve replaced a required Origin. One visitor serves both.
+// is carried: each call shortens its solution with them and judges them at each filled slot by what its position contributes
+// (Contribution, the evidence walk's fact: Evidence where its instantiation replaced an Origin, a Signature position at every
+// position, a Result position at its contributor), and a whole-contract comparison proves them where its solve replaced a required
+// Origin. One visitor serves both.
 public sealed partial class Binding
 {
+    // The parts one well-formedness visit met, and those one borrow layer's stored visit met, each with the substituted and argument
+    // parts it last met them beside (VisitWellFormedPremises; DECISIONS BU-55, R4-M164 U1e).
+    private readonly TypeMemo<(BoundType Result, BoundType? Actual)> wellFormedParts = new();
+    private readonly TypeMemo<(BoundType Result, BoundType? Actual)> storedParts = new();
+
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
     private FunctionKoto? resultPremiseExcluded;
 
@@ -62,6 +69,9 @@ public sealed partial class Binding
     {
         // For Instance and Prove, the Callable comparison the visit judges under, whose premises its proofs assume.
         internal CallableInstance Comparison { get; init; }
+
+        // The stamp of the walk's query: of wellFormedParts, or of storedParts below a borrow layer.
+        internal uint Query { get; init; }
     }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
@@ -186,6 +196,24 @@ public sealed partial class Binding
     private static bool SameLayer(BoundType actual, BoundType result)
         => actual.Kind == result.Kind && actual.Components.Count == result.Components.Count && actual.OriginArguments.Count == result.OriginArguments.Count;
 
+    // Whether a query of VisitWellFormedPremises meets a pattern part beside these parts for the first time; a leaf, or a part that
+    // stores no Origin, is cheaper to visit again than to record.
+    private static bool FirstMet(TypeMemo<(BoundType Result, BoundType? Actual)> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
+    {
+        if (pattern.Components.Count == 0 || !pattern.StoresOrigin)
+        {
+            return true;
+        }
+
+        if (parts.TryGet(pattern, query, out var met) && ReferenceEquals(met.Result, result) && ReferenceEquals(met.Actual, actual))
+        {
+            return false;
+        }
+
+        parts.Set(pattern, query, (result, actual));
+        return true;
+    }
+
     // SPEC 15.6.4 steps 1-4: a call's fresh Origins satisfy its callee's result premises where a solution does, so a result over
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
@@ -240,16 +268,19 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for the instantiated parameter Type of a slot it fills (SPEC 10.1 step 2),
-    // judged at `at`. A written argument's or the receiver's own Type, `supplied`, is well formed, so only a position that the fit replaced,
-    // such as an Origin shared with another input, can fail. As for the fit, an argument that carries no Origin, such as one that transfers
-    // control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness would only
-    // restate that failure. A default supplies no Type (SPEC 10.1.1), so every position of its Type is judged, at the call (SPEC 7.2.3).
-    private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied)
+    // judged at `at` by what the slot's position contributes (Contribution). Evidence, a written argument's or the receiver's own Type
+    // `supplied`, is well formed, so only a position that the fit replaced, such as an Origin shared with another input, can fail. A
+    // Signature position has every position of its Type judged: a default supplies no Type (SPEC 10.1.1) and is judged at the call (SPEC
+    // 7.2.3). A Result position is proven by its contributor. As for the fit, an argument that carries no Origin, such as one that
+    // transfers control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness
+    // would only restate that failure.
+    private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied, Contribution contribution)
     {
-        if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && !ReferenceEquals(supplied, parameter) &&
-            this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
+        if (contribution != Contribution.Result && parameter.StoresOrigin &&
+            (supplied is null || (supplied.StoresOrigin && this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
         {
-            this.VisitWellFormedPremises(parameter, parameter, supplied, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
+            var actual = contribution == Contribution.Evidence ? supplied : null;
+            this.VisitWellFormedPremises(parameter, parameter, actual, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
         }
     }
 
@@ -375,8 +406,16 @@ public sealed partial class Binding
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
     // at a use; false only when Prove fails. The visit stops at a nested Function Type, as the premise does (AddResultPremises). An
     // input's visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the
-    // argument's own Type, which is well formed, it covers only the positions that the fit replaced.
+    // argument's own Type, which is well formed, it covers only the positions that the fit replaced. Each entry call is one query of
+    // wellFormedParts, each borrow layer's stored visit one of storedParts: a part met again beside the same parts only repeats what its
+    // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
+    // once per distinct (substituted, argument) pair beside which it is met consecutively: linear where the pair follows from the part
+    // (no argument, or an argument Type that is the instantiated parameter itself), but argument parts that diverge and alternate beside
+    // a shared pattern part can still cost 2^n, as before U1e (an open issue).
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
+        => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+
+    private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
         if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || pattern.Kind != result.Kind || pattern.Components.Count != result.Components.Count)
         {
@@ -404,14 +443,20 @@ public sealed partial class Binding
         }
 
         if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
-            pattern.Components.Count != 0 && !this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, visit))
+            pattern.Components.Count != 0)
         {
-            return false;
+            var stored = visit with { Query = this.storedParts.Begin(this.storageVersion) };
+            if (!this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, stored))
+            {
+                return false;
+            }
         }
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.VisitWellFormedPremises(pattern.Components[i], result.Components[i], actual?.Components[i], visit))
+            var argument = actual?.Components[i];
+            if (FirstMet(this.wellFormedParts, pattern.Components[i], result.Components[i], argument, visit.Query) &&
+                !this.WellFormedPart(pattern.Components[i], result.Components[i], argument, visit))
             {
                 return false;
             }
@@ -476,7 +521,9 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.VisitStoredPremises(pattern.Components[i], result.Components[i], actual?.Components[i], outer, substituted, visit))
+            var argument = actual?.Components[i];
+            if (FirstMet(this.storedParts, pattern.Components[i], result.Components[i], argument, visit.Query) &&
+                !this.VisitStoredPremises(pattern.Components[i], result.Components[i], argument, outer, substituted, visit))
             {
                 return false;
             }
