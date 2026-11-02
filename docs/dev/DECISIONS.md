@@ -9943,6 +9943,22 @@ resumed by R4-M86 (2026-10-20).
   - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
     and counts each such Use once, as it does the prologue's.
 
+- **BU-82 The Semantics-case renderer is one Binding component** (2026-11-03; R6-check Q8-6, behavior-preserving; the owner's Q8
+  approval 「Q8を承認」 with proposal Q8-6, R5-M23; H0's division, R5-M182)
+  - Responsibility: `Binding.Diagnostics.Cases` renders Semantics cases in a record and is their one renderer: a binder's name and
+    found Semantics (`s = ref or uniq`); a case set as the `case` fact (`CaseFact`: per binder when it is a product, a binder found
+    under all its admitted cases omitted, else the list of cases); the `case` evidence; the Note `Found under the Semantics case ...
+    (SPEC 8.15)`; the related declarations of the named bindings; and the explicit-entry Note tail (`FailingCaseNote`).
+  - Inputs: a definition's pair binders and a set of case bits in their enumeration order (the innermost resolved binder advancing
+    fastest, each in `SemanticsMask` order, the numbering of the old Analysis' `BuildCases` and of `MirCases`' views), or a failing
+    mask. Outputs: text, evidence and related declarations. It decides no case and reads no analysis; it runs only for a published
+    record.
+  - Callers: Binding's capture-entry record (`FailingCaseNote`) and the old Analysis' case records, which call it until H10b deletes
+    that Analysis (R5-M182's amendment of Q8's "until H11"). H3-2's MIR views give their `case:Text` through it (H0a §4.1).
+  - BU-44's `OriginDiagnostics.CaseText` names its binders through `BinderName` but keeps its own list: it joins the cases of one
+    class requirement, `, ` where every binder must give the class (a product) and `; ` where one suffices (a union), which is not a
+    found case set.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
@@ -10526,6 +10542,7 @@ structure is recorded here by the unit that first implements it.
     reassignability view and Tuple-element `PlanRow.Folded` rows (Q16); the jump target row's writer; `MirProblem.Requirement`
     (R4's record under A-5). Rejected: restructuring `HirPublisher.Consume`; a judgment at the publisher's visit; node failures
     for lints; a new `BindingFailure`; a code → requirement table (kept only as the fallback if R4 declines A-5).
+  - Q8-6's renderer is BU-82 (R6-check Q8-6); its old caller lives until H10b (R5-M182).
 - **R5-M24 Ownership requirement kinds owned by Diagnostics** (2026-10-18, planning session; plan Q7, package Q8 §3.1, under
   R5-M23; supersedes R4-M3a's naming clause) `OwnershipRequirement` (`Diagnostics/DiagnosticRequirement.cs`) is the kind
   enumeration of the Ownership partition: the 18 members of the former `OwnershipFailure` in the same order, so every Kind,
@@ -15767,3 +15784,5 @@ structure is recorded here by the unit that first implements it.
     R4-M108's H11 list joins H11. R4-12 and R4-13 (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)):
     `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private composition (an owner-approved postponed
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
+  - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
+    deletes the old Analysis.
