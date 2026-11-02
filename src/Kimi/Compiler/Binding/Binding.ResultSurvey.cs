@@ -285,6 +285,22 @@ public sealed partial class Binding
                 }
 
                 return selected is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 }, Type: { } result } ? this.CallResultEvidence(this.MemberType(result, declaring), scope, readConversions) : null;
+            case ArrayLiteralKoto { FillLength: null, Elements.Count: > 0 } array when !this.UnderArgumentProbe(array):
+                // SPEC 4.3.1, 14.9.2 step 2 (revision B, BU-80): without an expected Type an array literal whose elements all supply one
+                // Type constructs Array<T>, the candidate it supplies; one with a literal or unknown element supplies none. An argument
+                // source supplies none: its call fits it per candidate (10.5.1).
+                BoundType? element = null;
+                foreach (var item in array.Elements)
+                {
+                    if (this.ResultEvidence(item, scope) is not { } part || ReferenceEquals(part, BoundType.Never) || (element is not null && !ReferenceEquals(part, element)))
+                    {
+                        return null;
+                    }
+
+                    element = part;
+                }
+
+                return this.types.Intern(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element!]);
             case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
                 // SPEC 4.6.2, 14.9.2: a written `^x` or range with a typed operand has an independent Type, which a
                 // literal-only source such as `0..3` beside `0..n` then fits.

@@ -9936,6 +9936,10 @@ resumed by R4-M86 (2026-10-20).
     conflict, records only (sc_ov, sc_tov, e4, sc_fi, sc_elem, sc_h, sc_tfi; g020, g020g, g020n, g040, g040fix at a generic callee;
     ACRT's takeT and first); the N3 group and the typed array sources (n3, n3_v, t_j2lit64_*, m_j3_lit64, z6n_lit64) and lengths
     at joins (z6_join_n, m_jN_fill, lp_one, len_cnt).
+  - **Outside arguments and the text** (B2b-3). The survey's array literal row (ResultEvidence): without an expected Type, an array
+    literal whose elements all supply one Type supplies `Array<T>`, so `zeros()` beside `[1@i64, 2@i64]` in a `let` misfits
+    (z8_lit64); under an argument probe it supplies none. SPEC §4.3.1, §4.4.1, §10.2.1, §10.5.1, §10.8 and §14.9.2 step 2 take the
+    approved draft's text and examples; STATUS's inference row names the support. B3 deletes what the rule leaves unused.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

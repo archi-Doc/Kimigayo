@@ -45,7 +45,7 @@ func fill()
 
 ### 4.3.1. Array literals and annotation holes
 
-With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). Otherwise an independent array literal constructs `Array<T>`, and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). An empty literal needs a known element Type.
+With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). An array literal that is an argument source ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)) is fitted per candidate, and its element count is length evidence there ([§4.4.1](#441-declaration-and-inference)). Any other array literal without an expected Type constructs `Array<T>`. An empty literal needs an expected element Type.
 
 An initialized local `let` or `var` may write `_` for the length, the element Type or both in a fixed-array annotation, at any depth of written fixed-array structure. The initializer alone must determine every hole: a length hole takes the literal's element count or the initializer's fixed-array length; an element hole follows ordinary element evidence and numeric defaults, and an inner literal without a written fixed-array expectation constructs `Array<T>`. All elements must agree; a mismatch is an error, never a fallback to `Array<T>`. A written part of the annotation is an expectation for the initializer, also for inference through a callee's signature. Holes are forbidden in uninitialized declarations, signatures, Fields, static storage and explicit generic arguments.
 
@@ -61,6 +61,15 @@ let matrix: [_ of [_ of f32]] = [[1.0, 2.0], [3.0, 4.0]] // [2 of [2 of f32]]
 let unknown: [_ of _] = []                  // Error: no element Type.
 let ragged: [_ of [_ of _]] = [[1], [2, 3]] // Error: conflicting inner lengths.
 let wrong: [3 of i32] = [1, 2]              // Error: element count.
+```
+
+```kimi
+func zeros<length N>() -> [N of i64] => [N of 0]
+func takeN<length M>(x: [M of i64]) => ()
+
+func choose(ready: bool)
+    takeN(if ready => zeros() else => [1@i64, 2@i64]) // M = 2: an argument source's count is evidence.
+    let j = if ready => zeros() else => [1@i64, 2@i64] // Error: no expected Type, so the literal is Array<i64>; zeros() misfits.
 ```
 
 ### 4.3.2. Initial construction
@@ -112,7 +121,7 @@ func f(x: i32 = noinit) => x // Error: noinit is only for a local var.
 
 A length slot is declared `<length N>`; a plain `<N>` is a Type slot. A length slot is a nonnegative `isize` constant in the Value namespace and counts once in GenericArity. Only functions have length slots; Type declarations have no value parameters.
 
-An explicit generic argument list supplies every slot in order: a length expression, without `length`, or a Type. Otherwise, within each candidate, lengths and element Types are inferred from known fixed-array Types and from literals fitted to that candidate; all evidence must agree, and an established Array is never retyped. Expected Types fill only unresolved parts. Length equations are not solved backward: `[(N * 2) of T]` is checked once `N` is known. Lengths are never inferred from a body, later uses or candidate order ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Fixed and dynamic literals get no preference in candidate comparison.
+An explicit generic argument list supplies every slot in order: a length expression, without `length`, or a Type. Otherwise, within each candidate, lengths and element Types are inferred from known fixed-array Types and from argument sources ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). At a fixed-array position, an array literal source's element count and a fill source's length are length evidence, whatever its elements' kinds; at an `Array<E>` position a count is no evidence. All evidence must agree ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)), and an established Array is never retyped. Expected Types fill only unresolved parts. Length equations are not solved backward: `[(N * 2) of T]` is checked once `N` is known. Lengths are never inferred from a body, later uses or candidate order ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Fixed and dynamic literals get no preference in candidate comparison.
 
 ```kimi
 func process<length N>(values: [N of i32]) => ()
@@ -124,6 +133,7 @@ let a: [4 of i32] = [1, 2, 3, 4]
 process([1, 2, 3]) // N = 3
 process<3>(a)      // Error: length mismatch.
 work<4>()          // A body-only length must be supplied.
+process(if ready => [1, 2] else => [3, 4, 5]) // Error: conflicting lengths.
 
 func consume<T>(x: Array<T>) => ()
 func consume<length N, T>(x: [N of T]) => ()
