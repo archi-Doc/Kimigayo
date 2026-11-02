@@ -6168,7 +6168,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     never rewrite it as Signature. No slot-set buffer is added. The fixed-construction re-check keeps its own zeroed buffer;
     the selected call reads the first evaluation's. N2: `InferAdapted` collects input premises for Evidence parts only
     (`PartContribution`), so a completed Signature part's premises have one path, `SolveLate`'s, over the instantiated
-    parameter Type. i01_n gives only its outer record.
+    parameter Type. i01_n gives only its outer record. Open, for the planning session (U2's review N4): an aggregate argument is
+    a Signature position, so `SolveLate` collects its whole instantiated Type, while its typed children are also collected
+    through `InferComposite` and `InferAdapted`. One path for them needs SolveLate to walk the child positions and collect only
+    the non-Evidence ones: the pooled F1 list of child positions in design §3, a new representation that this unit does not add.
+    The duplicate bounds move no row.
   - Staged rows, each with its unit and condition (U1c; the review's B2):
     - i01_n, done in U2b: `Contribute` recomputed "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
       re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
