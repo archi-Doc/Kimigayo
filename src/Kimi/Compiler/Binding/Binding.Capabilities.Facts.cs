@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 //   part that is not Proven with its member and Origin (CapabilityPart); the judgment of one OwnedOrigins Origin against `static`
 //   (StaticOrigin); the payload's one reader, an Owned query's rest (ProveOwned with OwnedRest, read by the erasure).
 // - Inputs: the engine's evaluations (Binding.Capabilities: RequestCapability's dequeue loop writes a work's verdict and payload; the
-//   proof scopes' originRead, Binding.ConstraintValidation.Proofs).
+//   Origin slot of the proof scope in progress, ProofReads.Origin of the channel-owned stack through ScopeReads,
+//   Binding.ConstraintValidation.Proofs).
 // - Outputs: a work's Result and Cause, which the fixpoint compares, and its payload, which no decision reads (the selection of a record
 //   reads it). A part's Origin is kept only when the part is not Proven, so premises that prove a part leave none.
 // - Determinism: a dependent is queued again whenever a part's Result or Cause changes, so the final evaluation sees each part's final
@@ -31,7 +32,7 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        this.originRead ??= origin;
+        this.ScopeReads.Origin ??= origin;
         return ConstraintProof.Unknown;
     }
 
@@ -77,6 +78,10 @@ public sealed partial class Binding
 
         internal List<CapabilityPart>? Parts { get; private set; }
 
+        // The limit site its own judgment answers where a Closure's signature is unreadable (CallSignature), its Use the literal (DECISIONS
+        // BU-73); kept across passes, so a warm rebind allocates nothing.
+        internal ComponentSite? Site { get; set; }
+
         internal List<CapabilityWork> Dependents { get; } = new();
 
         internal void Reset()
@@ -109,7 +114,8 @@ public sealed partial class Binding
                 : ConstraintProof.Unknown;
     }
 
-    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1) and Origin.
+    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; a Closure's
+    // call signature is member Components.Count, which the erasure, judging the environment alone, never reads) and Origin.
     private readonly record struct CapabilityPart(int Member, BoundOrigin? Origin);
 
     // An Owned query's subject rest (ProveOwned): whether a work judged it, and the parts it found not Proven.

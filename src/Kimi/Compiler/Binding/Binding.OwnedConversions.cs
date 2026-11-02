@@ -131,15 +131,22 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), the channel cleared before it; an Error's cause is held for
-    // the conversion's record (FailOwnedConversion), never rested here, and a failure names its member (OwnedMember).
+    // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), of its subject (ErasureSubject), the channel cleared before it;
+    // an Error's cause is held for the conversion's record (FailOwnedConversion), never rested here, and a failure names its member
+    // (OwnedMember).
     private ConstraintProof ProveErasedOwned(BoundType actual, Koto node, out OwnedFact owned)
     {
         this.failedCause = null;
-        var proof = this.ProveOwned(actual, node, out var rest);
+        var proof = this.ProveOwned(this.ErasureSubject(actual), node, out var rest);
         owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest);
         return proof;
     }
+
+    // SPEC 7.7.4 (DECISIONS BU-73): an erasure's subject, its callable's complete environment: a Closure's captures as one Tuple, whose
+    // members are the captures' indices (its call signature is the required Function Type's, never a part of the proof), a Function Item
+    // itself.
+    private BoundType ErasureSubject(BoundType callable)
+        => callable.Kind == BoundTypeKind.Closure ? this.types.Tuple((BoundType[])callable.Components) : callable;
 
     // SPEC 15.2.3, 15.6.1 (BU's n6): the member an Owned failure names, from the parts the engine found not Proven: each member in member
     // order with the Origin of its first part; the first whose Origin is Refuted in the forming body (a body-local borrow) wins, else the

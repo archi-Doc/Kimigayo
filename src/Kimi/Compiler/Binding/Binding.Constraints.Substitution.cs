@@ -42,7 +42,7 @@ public sealed partial class Binding
     // it contributes Proven, so only the clauses that can be judged decide.
     private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null)
     {
-        var outer = this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
+        this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
         ClauseFact? best = null;
         for (var i = 0; i < clauses.Count; i++)
@@ -78,15 +78,15 @@ public sealed partial class Binding
 
             // Associated identities also need normalization for calls without a receiver.
             substituted = this.ContractConstraint(substituted, scope, self);
-            var unknown = this.unknownRead;
-            var limit = this.limitRead;
+            var unknown = this.ScopeReads.Unknown;
+            var limit = this.ScopeReads.Limit;
             var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
-                this.unknownRead = unknown; // A clause that is not judged contributes no U fact.
+                this.ScopeReads.Unknown = unknown; // A clause that is not judged contributes no U fact.
             }
-            else if (this.unknownRead is { } fact && !ReferenceEquals(fact, unknown))
+            else if (this.ScopeReads.Unknown is { } fact && !ReferenceEquals(fact, unknown))
             {
                 fact.Clause = constraint; // The outermost clause list's stamp is the last (design-r2 Amendment 4).
             }
@@ -94,14 +94,14 @@ public sealed partial class Binding
             var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
             if (outcome != ConstraintProof.Proven)
             {
-                var onLimit = outcome == ConstraintProof.Unknown && this.limitRead is not null && !ReferenceEquals(this.limitRead, limit);
+                var onLimit = outcome == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
                 best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit));
             }
 
             result = CombineProof(result, outcome, true);
         }
 
-        var verdict = this.EndProof(outer, result);
+        var verdict = this.EndProof(result);
         this.LeaveClause(best, result);
         return verdict;
     }

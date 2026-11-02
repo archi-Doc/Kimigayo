@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 //   component summary's site or stored Type); the capability engine's consumer, under which a scope stays combined.
 // - Outputs: each scope's answer combined as P < U < L < R < E; where an answer is no longer combined, an L as Error resting on its site
 //   and an Error resting on its cause, left in the channel; the Use a failing check takes.
-// - Invariants: scopes nest (proofNesting) and a closing scope restores its enclosing scope's causes; a check clears the channel before
+// - Invariants: scopes nest (proofNesting), each reading into its own slot of the channel's stack (ProofReads), so a closing scope
+//   leaves its enclosing scope's reads as they were and joins only what its answer rests on; a check clears the channel before
 //   its proof and takes the cause after it; each pass starts with the channel clear. A fact the frame carries is stamped with the
 //   outermost clause it was proven for, a consumer takes only a fact with its own frame's stamp, and an untaken fact is dropped when
 //   the next judgment begins (design-r2 Amendment 4; the U fact joins in G216 (a) U2.1 f1-1; r2-6). Frames (design-r2 Amendment 5): a
@@ -31,82 +32,79 @@ public sealed partial class Binding
     // and takes it after (TakeFailedCause); each pass starts with it clear.
     private ICheckCause? failedCause;
 
-    // The proof in progress (DECISIONS BU-22, N3-1): the first limit (L, an Unknown resting on a located Unsupported_Kd) and the first
-    // Error cause it read, of which a proof scope keeps the one its own answer rests on (BeginProof, EndProof).
-    private ICheckCause? limitRead;
-    private ICheckCause? errorRead;
+    // The proofs in progress (DECISIONS BU-22, N3-1): the channel's stack of scopes, one slot per depth (proofNesting; slot 0 is outside
+    // every scope), each holding what its scope read (ProofReads), pushed by BeginProof and popped by EndProof in place.
+    private ProofReads[] proofScopes = new ProofReads[16];
     private int proofNesting;
 
-    // The U fact (design-r2 Amendment 4): the first Callable comparison failure the Unknown answer of the proof scope in progress rests on
-    // (unknownRead), and the one a settled Unknown leaves for its check (failedUnknown), each diagnostic payload only.
-    private CallableUnknown? unknownRead;
-
-    // The first Origin not proven `static` that the Owned answer of the proof scope in progress rests on (R4-M161, r2-1b): kept by a
-    // scope only when its own answer is not Proven, as the U fact (BU-22); diagnostic payload only (CapabilityWork.Origin).
-    private BoundOrigin? originRead;
+    // The U fact a settled Unknown leaves for its check (failedUnknown, design-r2 Amendment 4), diagnostic payload only.
     private CallableUnknown? failedUnknown;
 
     // The candidate trial's own U fact (SlotSolution.Prove), for the selection's explanation of a Pending candidate (CallableOriginFailure).
     private CallableUnknown? trialUnknown;
 
-    // The clause fact (design-r2 G351a, R4-M155): the clause a clause list's combined verdict rests on, handed one step outward
-    // (clauseRead, the scope's), left by a settled clause list for its check (failedClause) and kept by a candidate trial (trialClause),
-    // each diagnostic payload only; a failed candidate's explanation reads its trial's (ClauseFailure, G352).
-    private ClauseFact? clauseRead;
+    // The clause fact (design-r2 G351a, R4-M155): left by a settled clause list for its check (failedClause) and kept by a candidate trial
+    // (trialClause), each diagnostic payload only; a failed candidate's explanation reads its trial's (ClauseFailure, G352).
     private ClauseFact? failedClause;
     private ClauseFact? trialClause;
 
-    // The innermost open frame's epoch (0: none) and the monotonic counter that issues them, never reused (design-r2 Amendment 5).
+    // The innermost open frame's epoch (0: none) and the monotonic counter that issues them, never reused (design-r2 Amendment 5), and
+    // the frame that encloses the outermost scope's own (BeginProof, EndProof).
     private long frameEpoch;
     private long epochCounter;
+    private long judgmentEnclosing;
+
+    // What the proof scope in progress read: the slot of the channel's stack at its depth.
+    private ref ProofReads ScopeReads => ref this.proofScopes[this.proofNesting];
 
     // The first clause at the highest rank of a clause list, or of the lists a scope holds (G351a).
     private static ClauseFact? FirstAtVerdict(ClauseFact? best, ClauseFact clause) => clause.Rank > (best?.Rank ?? 0) ? clause : best;
 
-    // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request. A judgment
-    // (a scope whose answer EndProof no longer combines) first drops the facts the last one left untaken (r2-6).
-    private (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, BoundOrigin? Origin, long Frame) BeginProof()
+    // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request. It pushes a
+    // clear slot; the enclosing scopes' reads stay in theirs. A judgment (a scope whose answer EndProof no longer combines) opens a frame
+    // and first drops the facts the last one left untaken (r2-6).
+    private void BeginProof()
     {
-        if (this.proofNesting == 0 && this.capabilityConsumer is null)
+        if (this.proofNesting == 0)
         {
-            this.failedUnknown = null;
-            this.failedClause = null;
+            if (this.capabilityConsumer is null)
+            {
+                this.failedUnknown = null;
+                this.failedClause = null;
+            }
+
+            this.judgmentEnclosing = this.OpenFrame();
         }
 
-        var outer = (this.limitRead, this.errorRead, this.unknownRead, this.clauseRead, this.originRead, this.proofNesting == 0 ? this.OpenFrame() : -1L);
-        this.originRead = null;
-        this.limitRead = null;
-        this.errorRead = null;
-        this.unknownRead = null;
-        this.clauseRead = null;
-        this.proofNesting++;
-        return outer;
+        if (++this.proofNesting == this.proofScopes.Length)
+        {
+            Array.Resize(ref this.proofScopes, this.proofNesting * 2);
+        }
+
+        this.proofScopes[this.proofNesting] = default;
     }
 
-    // SPEC 8.3.3, 23.1.1, 23.1.2 (DECISIONS BU-22): closes a proof scope with its answer. Inside another scope or the capability engine,
-    // the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is no longer combined,
-    // an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes it (TakeFailedCause),
-    // which publishes a site.
-    private ConstraintProof EndProof(
-        (ICheckCause? Limit, ICheckCause? Error, CallableUnknown? Unknown, ClauseFact? Clause, BoundOrigin? Origin, long Frame) outer, ConstraintProof proof)
+    // SPEC 8.3.3, 23.1.1, 23.1.2 (DECISIONS BU-22): closes a proof scope with its answer and pops its slot. Inside another scope or the
+    // capability engine, the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is
+    // no longer combined, an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes
+    // it (TakeFailedCause), which publishes a site.
+    private ConstraintProof EndProof(ConstraintProof proof)
     {
-        this.proofNesting--;
         var cause = this.ProofCause(proof);
         var fact = this.ProofFact(proof);
-        var origin = proof == ConstraintProof.Proven ? null : this.originRead;
-        this.originRead = outer.Origin;
-        this.limitRead = outer.Limit;
-        this.errorRead = outer.Error;
-        this.unknownRead = outer.Unknown;
-        this.clauseRead = outer.Clause;
-        if (outer.Frame >= 0)
+        var origin = proof == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
+        if (--this.proofNesting == 0)
         {
-            this.CloseFrame(outer.Frame);
+            this.CloseFrame(this.judgmentEnclosing);
         }
 
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
-            this.originRead ??= origin;
+            if (origin is not null)
+            {
+                this.ScopeReads.Origin ??= origin;
+            }
+
             return this.ReadVerdict(proof, cause, fact);
         }
 
@@ -131,7 +129,7 @@ public sealed partial class Binding
 
     // The cause the answer of the proof scope in progress rests on: an Unknown's limit, an Error's cause (EndProof).
     private ICheckCause? ProofCause(ConstraintProof proof)
-        => proof switch { ConstraintProof.Unknown => this.limitRead, ConstraintProof.Error => this.errorRead, _ => null };
+        => proof switch { ConstraintProof.Unknown => this.ScopeReads.Limit, ConstraintProof.Error => this.ScopeReads.Error, _ => null };
 
     // The U fact a settled Unknown left (no fact is a normal state), taken alone: an Unknown's consumer rests on no Error cause
     // (FailUnprovenConstraint, r2-6). A part of a composite proof whose parts settle as separate judgments (ReferenceArgumentProof) keeps
@@ -176,7 +174,8 @@ public sealed partial class Binding
 
         if (this.proofNesting != 0)
         {
-            this.clauseRead = FirstAtVerdict(this.clauseRead, clause);
+            ref var reads = ref this.ScopeReads;
+            reads.Clause = FirstAtVerdict(reads.Clause, clause);
             return;
         }
 
@@ -200,13 +199,31 @@ public sealed partial class Binding
         return enclosing;
     }
 
-    // Closes the innermost frame: its untaken facts are dropped and the enclosing frame is innermost again.
+    // Closes the innermost frame: its untaken facts are dropped and the enclosing frame is innermost again; a frame that holds no fact
+    // writes nothing else.
     private void CloseFrame(long enclosing)
     {
-        this.failedUnknown = this.failedUnknown?.Epoch == this.frameEpoch ? null : this.failedUnknown;
-        this.trialUnknown = this.trialUnknown?.Epoch == this.frameEpoch ? null : this.trialUnknown;
-        this.failedClause = this.failedClause?.Epoch == this.frameEpoch ? null : this.failedClause;
-        this.trialClause = this.trialClause?.Epoch == this.frameEpoch ? null : this.trialClause;
+        var epoch = this.frameEpoch;
+        if (this.failedUnknown is { } failed && failed.Epoch == epoch)
+        {
+            this.failedUnknown = null;
+        }
+
+        if (this.trialUnknown is { } trial && trial.Epoch == epoch)
+        {
+            this.trialUnknown = null;
+        }
+
+        if (this.failedClause.HasValue && this.failedClause.GetValueOrDefault().Epoch == epoch)
+        {
+            this.failedClause = null;
+        }
+
+        if (this.trialClause.HasValue && this.trialClause.GetValueOrDefault().Epoch == epoch)
+        {
+            this.trialClause = null;
+        }
+
         this.frameEpoch = enclosing;
     }
 
@@ -235,19 +252,20 @@ public sealed partial class Binding
     }
 
     // The U fact the answer of the proof scope in progress rests on (EndProof, a cache entry).
-    private CallableUnknown? ProofFact(ConstraintProof proof) => proof == ConstraintProof.Unknown ? this.unknownRead : null;
+    private CallableUnknown? ProofFact(ConstraintProof proof) => proof == ConstraintProof.Unknown ? this.ScopeReads.Unknown : null;
 
     // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit and U fact, an Error's cause.
     private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause, CallableUnknown? fact)
     {
         if (proof == ConstraintProof.Unknown)
         {
-            this.limitRead ??= cause;
-            this.unknownRead ??= fact;
+            ref var reads = ref this.ScopeReads;
+            reads.Limit ??= cause;
+            reads.Unknown ??= fact;
         }
         else if (proof == ConstraintProof.Error)
         {
-            this.errorRead ??= cause;
+            this.ScopeReads.Error ??= cause;
         }
 
         return proof;
@@ -256,13 +274,9 @@ public sealed partial class Binding
     private void ClearProofScopes()
     {
         this.failedCause = null;
-        this.limitRead = null;
-        this.errorRead = null;
-        this.unknownRead = null;
-        this.originRead = null;
+        Array.Clear(this.proofScopes);
         this.failedUnknown = null;
         this.trialUnknown = null;
-        this.clauseRead = null;
         this.failedClause = null;
         this.trialClause = null;
         this.frameEpoch = 0;
@@ -316,5 +330,19 @@ public sealed partial class Binding
             ConstraintProof.Unknown => this.Limit ? 2 : 1,
             _ => 0,
         };
+    }
+
+    // What a proof scope read, of which it keeps what its own answer rests on (EndProof): the first limit (L, an Unknown resting on a
+    // located Unsupported_Kd) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
+    // Unknown rests on (design-r2 Amendment 4); the clause fact, the clause a clause list's combined verdict rests on, handed one step
+    // outward (G351a); and the first Origin not proven `static` an Owned answer rests on, kept only when the answer is not Proven
+    // (R4-M161, r2-1b; CapabilityWork.Origin). All but the causes are diagnostic payload only.
+    private struct ProofReads
+    {
+        internal ICheckCause? Limit;
+        internal ICheckCause? Error;
+        internal CallableUnknown? Unknown;
+        internal ClauseFact? Clause;
+        internal BoundOrigin? Origin;
     }
 }

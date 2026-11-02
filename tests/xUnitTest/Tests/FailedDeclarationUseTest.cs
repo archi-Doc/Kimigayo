@@ -25,6 +25,36 @@ public sealed class FailedDeclarationUseTest
         Assert.All(records, x => Assert.Equal(code, x.Code));
     }
 
+    // PLAN G206, rule W at the candidate's verdict: a parameter or result Type that failed to bind is a wildcard in every fit. A candidate
+    // that would apply rests the call on that failure (it was CheckFaulted_Kd at a failed default: a function, generic or not, beside an
+    // independent record, a method, generic or not, a generic constructor; a valid twin). One that another part refutes leaves the call to
+    // another overload, which keeps its records: a typed argument, a Literal, an aggregate or the arity refutes it, at a failed default,
+    // result or mapped parameter, a constructor's, a method's or a generic one's. The last row's failed overload is refuted by nothing.
+    [Theory]
+    [InlineData("func gref<T>(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    gref(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("func gref(x: i64, y: ref/i64 during x = x@ref) => ()\npublic func main()\n    gref(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("func gref<T>(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    gref(3)\n    let z: i32 = true\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("struct S\n    var v: i64 = 0\n    public init() => ()\n    public func m<T>(self: ref/Self, x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    let s = S.init()\n    s.m(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("struct S\n    var v: i64 = 0\n    public init() => ()\n    public func m(self: ref/Self, x: i64, y: ref/i64 during x = x@ref) => ()\npublic func main()\n    let s = S.init()\n    s.m(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("struct S<T>\n    var v: i64 = 0\n    public init(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    let s = S.init(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("func gref<T>(x: ref/T during a, y: ref/T during a = x) => ()\npublic func main()\n    let v = 3\n    gref(v@ref)\n", "")]
+    [InlineData("func f(x: i64, y: ref/i64 during x = x@ref) -> i64 => 1\nfunc f(x: bool) -> bool => x\npublic func main()\n    let z = f(true)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("func f(x: i64) -> Missing => 1\nfunc f(x: bool) -> bool => x\npublic func main()\n    let z = f(true)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i64, y: Missing) -> i64 => 1\nfunc f(x: bool, y: i64) -> bool => x\npublic func main()\n    let z = f(true, 1)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(y: Missing, x: i64) -> i64 => 1\nfunc f(y: i64, x: bool) -> bool => x\npublic func main()\n    let z = f(1, true)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("struct S\n    var v: i64 = 0\n    public init(x: i64, y: ref/i64 during x = x@ref) => ()\n    public init(x: bool) => ()\npublic func main()\n    let s = S.init(true)\n    let q: i64 = s\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("struct S\n    var v: i64 = 0\n    public init() => ()\n    public func m(self: ref/Self, x: i64, y: ref/i64 during x = x@ref) -> i64 => 1\n    public func m(self: ref/Self, x: bool) -> bool => x\npublic func main()\n    let s = S.init()\n    let z = s.m(true)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("func f<T>(x: T, y: ref/T during x = x@ref, w: i64) -> T => x\nfunc f(x: bool) -> bool => x\npublic func main()\n    let z = f(true)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("enum Failure\n    Busy\nfunc f(x: i64) -> Missing => 1\nfunc f(x: bool) -> Result<i32, Failure> => .Ok(1)\npublic func main()\n    f(true)\n", "DiscardedResult_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: bool, y: ref/i64 during x = x@ref) -> i64 => 1\nfunc f(x: i64) -> bool => true\npublic func main()\n    let z = f(1)\n    let q: i64 = z\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("func f(x: bool) -> Missing => 1\nfunc f(x: i64) -> bool => true\npublic func main()\n    let z = f(1)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: bool, y: Missing) -> i64 => 1\nfunc f(x: i64, y: i64) -> bool => true\npublic func main()\n    let z = f(1, 2)\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: (bool, bool)) -> Missing => 1\nfunc f(x: (i64, i64)) -> bool => true\npublic func main()\n    let z = f((1, 2))\n    let q: i64 = z\n", "TypeMismatch_Kd; UnresolvedBinding_Kd")]
+    [InlineData("enum Failure\n    Busy\nfunc f(x: bool) -> Missing => 1\nfunc f(x: i64) -> Result<i32, Failure> => .Ok(1)\npublic func main()\n    f(1)\n", "DiscardedResult_Kd; UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i64, y: Missing) -> i64 => 1\nfunc f(x: bool, y: i64) -> bool => x\npublic func main()\n    let z = f(1, 1)\n    let q: bool = z\n", "UnresolvedBinding_Kd")]
+    public void ACandidateWithAFailedSignatureRestsTheCallUnlessAnotherPartRefutesIt(string source, string codes)
+        => Assert.Equal(codes, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)));
+
     [Fact]
     public void AMemberOfAStructWithAnInvalidAttributeAddsNoConstraintRecord()
     {

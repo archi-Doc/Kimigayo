@@ -111,6 +111,7 @@ public sealed partial class Binding
         this.BindAccessorReceiver(property.Setter);
         var getterScope = property.Getter.Declaration is { } get ? this.scopes[get] : scope;
         property.Symbol.Type = syntax.TypeKoto is { } type ? this.BindType(type, property.IsStored ? scope : getterScope) : null;
+        property.Refusal = null;
         // Only an initializer can infer storage. Accessor bodies never supply its Type.
         if (property.IsStored && property.Type is null && syntax.TypeKoto is null && syntax.InitializerKoto is { } initializer)
         {
@@ -118,6 +119,7 @@ public sealed partial class Binding
             try
             {
                 property.Symbol.Type = this.BindNode(initializer, scope);
+                property.Refusal = this.UnimagedClosure(property);
             }
             finally
             {
@@ -127,6 +129,29 @@ public sealed partial class Binding
 
         this.BindAccessorSignature(property.Getter);
         this.BindAccessorSignature(property.Setter);
+    }
+
+    // SPEC 11.6, 15.2.3 (DECISIONS BU-73): an inferred stored Property Type holding, at any depth, a Closure whose call signature names an
+    // enclosing container's Origin would carry that Origin out of the container's world unimaged. The first such Closure literal
+    // (FixedAtoms' reached part) is a located Unsupported_Kd, which every use of the Property consults (BindReference); the Property
+    // keeps its Type. The owner accepted the support reduction (2026-10-31). Removal: imaging a container's atoms (PLAN, after R6-check).
+    private FunctionKoto? UnimagedClosure(BoundProperty property)
+    {
+        if (property.Type is not { ContainsClosure: true } inferred)
+        {
+            return null;
+        }
+
+        var count = 0;
+        var query = this.visitedParts.Begin(this.storageVersion);
+        var reached = this.FixedAtoms(inferred, property.Declaration, BinderClass.EnclosingContainer, null, ref count, query);
+        if (reached is not { Symbol.Declaration: FunctionKoto literal })
+        {
+            return null;
+        }
+
+        this.Fail(literal, BindingFailure.Unsupported, true);
+        return literal;
     }
 
     private void BindAccessorReceiver(BoundAccessor accessor)
