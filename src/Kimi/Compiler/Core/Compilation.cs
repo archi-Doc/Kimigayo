@@ -189,7 +189,7 @@ public partial class Compilation
     /// </summary>
     /// <param name="target">The target triple text.</param>
     /// <returns>
-    /// <see langword="true"/> when the language version, settings, pointer width, and LLVM data layout are supported;
+    /// <see langword="true"/> when the language version and settings are supported and the target has an IR target (a pointer width);
     /// otherwise, <see langword="false"/> and the target state is reset to invalid.
     /// </returns>
     /// <remarks>
@@ -232,9 +232,7 @@ public partial class Compilation
         var targetTriple = TargetTriple.Parse(target);
         var irTarget = IrTarget.Create(targetTriple);
 
-        if (targetTriple.Arch == Architecture.Unknown ||
-            irTarget.PointerWidth == 0 ||
-            irTarget.DataLayout.Length == 0)
+        if (irTarget.PointerWidth == 0)
         {
             this.TargetTriple = TargetTriple.Invalid;
             this.IrTarget = IrTarget.Invalid;
@@ -242,18 +240,13 @@ public partial class Compilation
             return false;
         }
 
-        // Rebuild target-dependent conditional compilation variables.
-        var os = targetTriple.Os switch
-        {
-            OsType.Win32 => "windows",
-            OsType.MacOSX => "macos",
-            _ => targetTriple.Os.ToString().ToLowerInvariant(),
-        };
+        // Rebuild target-dependent conditional compilation variables (SPEC 19.2.1; os and arch by the triple's IMPL 20.2.1 families).
+        var os = targetTriple.OsFamily;
         var debug = this.Project.KimiOptions.Debug;
         var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal)
         {
             ["os"] = new(os),
-            ["arch"] = new(targetTriple.Arch.ToString().ToLowerInvariant()),
+            ["arch"] = new(targetTriple.ArchFamily),
             ["windows"] = new(os == "windows"),
             ["linux"] = new(os == "linux"),
             ["macos"] = new(os == "macos"),
