@@ -9942,6 +9942,20 @@ resumed by R4-M86 (2026-10-20).
     Bind-only callers (tests, hover without analysis) pay one publication per Final pass.
   - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
     and counts each such Use once, as it does the prologue's.
+- **BU-83 Rule E: an erasure is its node's only implicit adaptation** (2026-11-03; PLAN G341, scheduled by the owner after G216 (a)'s
+  joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; the BU planning session's design `bu\g341\design.md`)
+  - The defect: a value call (U1) or a Case payload (U2) that received a stored Copy Closure at a Function parameter was
+    `TransferRequired_Kd`, while the named call was valid. Two consumers judged the source's acquisition again on the erased Function
+    Type, which is Non-Copy (SPEC 7.7.4), where SPEC 3.5 and 7.7.4 judge it on the source's own Type.
+  - The rule (SPEC 7.7.4, 3.5, 10.2, 12.5.2): when Binding has erased a source at its position (`ErasedFunctionType`), `AdaptInput`
+    (Binding.ArgumentOperations), the one function value-call arguments and payloads pass through, reports the erased Type with quality
+    Erasure and runs no acquisition row on it. The source is acquired by bare acquisition of its own Type under the Adjust rule
+    (`ChildAdjust`, `BareOf`; R4-M142), as at a named call. One entry row, beside the prepared-receiver and Never rows.
+  - A Non-Copy erased source keeps its record, `TransferRequired_Kd` at the source: the old Analysis's (`Ownership.TransferRequired`)
+    until R6-check H1, then H1's S1 group-erasure row. H1 regression rows: ev_nc and ec_nc as S1 subjects; ev_ok and ec_ok with none.
+  - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) presenting
+    the source's own Type to the value call's `AdaptInput`, which the structural check refuses (Closure against Function); (c) waiting
+    for H1, which never sees a call Binding failed.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

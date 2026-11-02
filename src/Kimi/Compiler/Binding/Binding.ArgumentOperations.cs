@@ -248,6 +248,16 @@ public sealed partial class Binding
             return true; // A noncompleting argument forms no borrow or reference value; an explicit borrow names a Place (IsNeverValue).
         }
 
+        if (source.ErasedFunctionType is { } erased)
+        {
+            // SPEC 7.7.4, 3.5, 10.2 (rule E, DECISIONS BU-83): an erasure is its node's one implicit adaptation. Binding erased the source at
+            // its position, so the input is the erased Function Type and no acquisition is judged on it: the source is acquired by bare
+            // acquisition of its own Type, under the Adjust rule (ChildAdjust, BareOf).
+            adapted = erased;
+            quality = ArgumentAdaptation.Erasure;
+            return true;
+        }
+
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
             ((pattern.Kind == BoundTypeKind.Semantics && !ReferenceTypes.StorageMatches(actual, pattern)) || pattern.Kind == BoundTypeKind.Primitive))
         {
