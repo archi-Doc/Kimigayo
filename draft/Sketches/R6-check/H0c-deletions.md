@@ -70,6 +70,7 @@ OwnershipStorage|InterpretationContext|ControlFlowAnalysis` occur 133 times in 5
 | `Binding.WithoutRawOrigins` (BU-24's exception) | old Analysis 4 sites; **also** AdtDef's view (`Binding.Storage.cs:71, 81`, BU-41) | stays; only the comment's "removed with it at R6-check" changes |
 | `Binding.RequirementAt` (BU-44's exception) | `OwnershipBody.Borrows.cs:1044` and 8 Binding sites | stays; `OwnershipBody.SlotLoanRequirement` goes at H10b |
 | R4-M108's H11 list (AR-4, with R5; answer R4-4; R4 reviews this part) | the twins (at a fit, every relation record of a node with a recorded body chain; at a clause, its body-chain record); `RecordOriginFitFailure`'s `Fail(node, Unsupported)` gate; non-call fits' rows independent of Binding's verdict, as `JudgeCallPosition`'s (the first differing Function Type component and every position after it in `CheckTypeUse`'s order, BU's `fncomp`); the Closure result with `CallLocalOrigin` | they change A5's input: each moves A5's rows to Binding-independent ones; until H11 the twins are class 4, counted (H0b §5.4) |
+| R4-M108's conditions for H11 (BU's N1; R4 r2 N3) | one rule for a fit's Site: the failed node (`return local@ref`), against Binding's record at the value (`local@ref`) | when Binding's twin record goes, the surviving A5 record moves location: class 3 in H11's snapshot classification |
 
 ## 2. Units H6–H15 in order
 

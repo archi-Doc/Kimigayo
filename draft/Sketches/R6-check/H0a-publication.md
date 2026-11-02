@@ -21,7 +21,7 @@ test or probe was run. (H) marks an unchecked inference. Standing request: the o
 | H0a-5 | A record's requirement is its problems' own (R4-M67, R5-M23), never derived from the code; a cross-body disagreement is the `InternalInvariant_Kd` that `Add` already gives. Partition = the requirement's (DIAGNOSTICS rule 1). Binding.* → Ownership.* renames stay at H5 (R5-M23) | 3.3 |
 | H0a-6 | Key: a record with facts at its subject node, condition = its Reason's ordinal among the records of its (code, subject); a location-only code by its location (`ReportLocation`, R4-M71) | 3.4 |
 | H0a-7 | One **fact table**, one row per `MirFactKind` (R4-M132's R5 condition); views give the case evidence and Note through Q8-6's one renderer; no other Note text; explicit rows for `CallBorrows` and the containment edge (Value −1); no new column (answer R4-6, R4 review N1–N3) | 4.1 |
-| H0a-8 | A record with `Cause` facts is `PrerequisiteUnavailable_Kd` (R4-M132 OQ-2 (a)) with `DerivedFrom` = its causes' record keys, or `Binding.FailureCauses(site)` for a Binding cause (`MirFact(Cause, Site, −1)`, Site a Binding-failed node, answer R4-3); the owner's finalization suppresses it (DIAGNOSTICS §4.3); a null `FailureCauses` is never an internal error until H3-2's probe shows it unreachable (answer BU-2) | 4.2 |
+| H0a-8 | A record with `Cause` facts is `PrerequisiteUnavailable_Kd` (R4-M132 OQ-2 (a)) with `DerivedFrom` = its causes' record keys, or `Binding.FailureCauses(site)` for a Binding cause (`MirFact(Cause, Site, −1)`, Site a Binding-failed node, answer R4-3); the owner's finalization suppresses it (DIAGNOSTICS §4.3); a null `FailureCauses` is `InternalInvariant_Kd`: H3-2's probe checks every Binding cause and BU-2's four shapes, a reachable shape is a 2g-1 siting defect fixed in R4's chain before H3-2 (answer BU-2; R4 r2 N1) | 4.2 |
 | H0a-9 | PLAN10 P10's fallback gets **no new producer**: every MIR incompleteness already has its record; DIAGNOSTICS rule 8's contract check stays the net | 4.3 |
 | H0a-10 | Effects (PD29): no MIR analysis problem publishes before H5, so A4 needs no hold and the old analysis no edit; A4's problems publish at H5, which deletes the old effect checks (review B1) | 5.1 |
 | H0a-11 | G128 (PD30): R4-M153 gave A5's `CallRetention.Limit` `OwnershipDepthLimit_Kd`, so PD30's premise (one code, `Unsupported_Kd`) no longer holds. Recommended (A): no rule; where both meet one call, the collector's `StorageNesting` record and A5's depth record both stay, counted, until R7 removes the bound (Q13); confirmed by R4's `Chain<i32>` reproducer (answer R4-5) | 5.2 |
@@ -89,7 +89,10 @@ analysis, a mir lane failing until H5 and a known unsound mir acceptance).
   construction records precede the analyses. `Drops` keeps its reset in `Run`. The collector runs after the analyses and a warm re-run adds
   equal keys, which merge.
 - `Compilation.MirRecords`, `MirDump.cs:42` and the 49 test reads of the two lists (about 28 files, grep at the base) read the class rows
-  through one helper. MIR goldens and the semantic snapshot stay equal.
+  through one helper. MIR goldens and the semantic snapshot stay equal. The ledger is edited (R4 r2 N4): `MirDifferenceLedger.Sides`
+  (`tests/xUnitTest/MirDifferenceLedger.ComparedSet.cs:132-144`) loops over `program.Problems.All` and would see the folded records, so
+  H3-1 makes it skip body `Records` with unchanged output; the `Problems.All` reads in 27 test files (75 lines by grep; R4 counts 91
+  reads) are checked the same way, so the test estimate may grow.
 - Order (R4 review B2): H3-1 lands in R4's chain before 2g-1 (PD1: `MirReport*.cs` are chain files), so 2g-1 has one key path. R4
   writes the Mir hunks; R5 consents to and reviews the `CheckedSet`, `InstanceCollector` and `Compilation.Pipeline` hunks. The reset move
   is safe (answer R4-2): `MirBuilder.Build` clears only for a new HIR version, before `Run` (`MirBuilder.cs:44-67`).
@@ -165,9 +168,9 @@ possibly not the subject (the Opaque site's node, PD17). A cause at a constructi
 H3-1 has folded those records. Keys are stable (answer BU-2): no `Bind` or edit runs between `Analyze` and `ReportAnalysis`
 (`Project.cs:538-551`), keys compare nodes by reference, and a twin's cause is Binding's own condition-0 record. But `FailureCauses(site)`
 is null where Binding left the site resolved (a rejected assignment target, G353's Field selection, a resolved recovery node, an
-unreadable char literal), so 2g-1 records its cause at the failed node. A null becomes `InternalInvariant_Kd` only after H3-2's probe
-over those four shapes shows it unreachable; until then a reachable null publishes the record without `DerivedFrom` (reported, never
-suppressed, never an internal error; answer BU-2).
+unreadable char literal), so 2g-1 records its cause at the failed node (answer BU-2). H3-2's probe checks every Binding cause over the corpus and BU-2's four shapes; a shape found reachable is a 2g-1 siting defect,
+fixed in R4's chain before H3-2; H3-2 lands with null → `InternalInvariant_Kd`; R4 takes the four shapes into 2g-1's contract test
+(already in its exit) (R4 r2 N1).
 
 ### 4.3 PLAN10 P10's fallback (H0a-9)
 
@@ -237,7 +240,7 @@ records are the flip's, classified at H3b and judged at H5. A dependent record r
 
 | Unit | Owner and files | Size (H) |
 | --- | --- | --- |
-| H3-1 fold (bp; in R4's chain before 2g-1, R4 review B2) | R4: `C/Mir/MirProgram.cs`, `C/Mir/Analysis/MirAnalysis.cs` (`:69`), `MirReport.cs`/`MirProblem.cs` contracts (`MirProblem.Records`), `C/Mir/MirDump.cs`; R5 consents and reviews: `C/Backend/Instances/CheckedSet.cs`, `InstanceCollector.cs`, `C/Core/Compilation.Pipeline.cs` (`MirRecords` → the class rows) | +30/−45, t±60 |
+| H3-1 fold (bp; in R4's chain before 2g-1, R4 review B2) | R4: `C/Mir/MirProgram.cs`, `C/Mir/Analysis/MirAnalysis.cs` (`:69`), `MirReport.cs`/`MirProblem.cs` contracts (`MirProblem.Records`), `C/Mir/MirDump.cs`; R5 consents and reviews: `C/Backend/Instances/CheckedSet.cs`, `InstanceCollector.cs`, `C/Core/Compilation.Pipeline.cs` (`MirRecords` → the class rows); `MirDifferenceLedger.Sides` and the `Problems.All` test reads, output unchanged (R4 r2 N4) | +30/−45, t ±90 (H) |
 | H3-2 publisher (default unchanged, review B1) | R4: `C/Mir/Analysis/MirReport.Records.cs` (new, §3.2). R5: `C/Core/Compilation.Publication.cs` (new partial with its entry contract: what it publishes §2, keys §3.4, fact table §4.1, cause resolver §4.2), `Compilation.Pipeline.cs` (`ReportAnalysis` and `MirRecords` through the publisher for today's rows). Docs: DECISIONS (§10), ARCH "Analysis records" row (`:99`), CODEMAP, PLAN (§5.2's count). No old-analysis, `Compilation.Switch.cs` or VERIFICATION edit (review B1) | MirReport +70; Core +150/−10; t +250 |
 
 Total about +250/−55 source (review B1: no old-analysis edit, no `Analysis`/`Problems` change before H5), above the plan's ±200 (the fact table and keys were not in the row). Prerequisites: H3-1 before 2g-1 and OQ11 (given) (R4 review B2); H3-2 R4's exit with A6
@@ -263,7 +266,7 @@ one R review (bp); H3-2 D+R under H0 (plan row H3), one review (Q13); R4 reviews
   `:269` re-pointed to the class rows); the flip's rows (MIR's `MovedPlace_Kd` published, the old one not; an old-only rejection
   accepted; an effect violation published once; a lint error still rejecting through `Accepts`) are H5's tests (H0b; review B1).
 - Snapshot: default Session with `-DiagnosticSnapshot` equal (bp, both commits) and a mir run equal too; no mir census (H3b's rehearsal
-  on the flip branch is the census, review B1). Ledger unchanged (no ledger edit).
+  on the flip branch is the census, review B1). The ledger's output is unchanged; H3-1 edits `Sides` to skip the folded records (R4 r2 N4).
 
 ## 9. Questions and their answers (revision 2)
 

@@ -30,7 +30,7 @@ Counts are greps over the base. No build, test or probe was run. (H) marks an un
 | H0b-5 | `Project.cs` needs **no edit**: `:550-554` already reads `Analyze`, `ReportAnalysis` and `Accepts`, which decide by MIR from H5 | 2.1 |
 | H0b-6 | Generation's gate step 1 becomes `!Accepts` alone; gate step 2's refusal (`FunctionCodegen.cs:90-101`, PD12, R5-M96) becomes one contract: an `Incomplete` body implies a published Error (R4-M69), so one reaching generation is `InternalInvariant_Kd`; the `Group == -1` invariant (`FunctionCodegen.Drops.cs:25-28`) stays (review N2). The contract text and its lowest-layer test land first as unit IC, R4's bp dev unit after R4's exit and before H3b; R5's Backend check stays in H5 (answer R4-7) | 2.1 |
 | H0b-7 | H5 also deletes what the flip leaves without a caller: both old `ReportDiagnostics` (`OwnershipAnalysis.cs:140, 220-456`, `ControlFlowAnalysis.cs:114-127`) and `Binding.FallthroughKey`; their readers outside tests are only `ReportAnalysis` (ruling R4); the one test reader, `T/OptionalTryDiscardTest.cs:246` (`AnalyzeControlFlow().ReportDiagnostics()`), is re-pointed in H5's test hunk (integration) | 2.2 |
-| H0b-8 | **H4 is test-level** (recommended (A)): A4's summary of a row operation's own body replaces `SummarizePublishedOperation`, which has no production caller today; no production record; every SPEC 4.9.6 "None" row operation gets `Row: None` with tests: the four Array compiler functions and the Kimi-bodied `insert`, `remove`, `swap`, `swapRemove`, `reverse`, `appendAll`, `appendCopies` (ruling on R4 review N7); no premise mode in A4: the test reads A4's items (R4 review N6); accepted by R4 (answer R4-8); H4 deletes `Binding.PublishedOperations.cs` before H5 | 4 |
+| H0b-8 | **H4 is test-level** (recommended (A)): A4's summary of a row operation's own body replaces `SummarizePublishedOperation`, which has no production caller today; no production record; `Row: None` with tests on the four Array compiler functions and the Kimi-bodied `insert`, `appendAll`, `appendCopies` and four new `KimiDeclarationId` members, `remove`, `swap`, `swapRemove`, `reverse` (ruling on R4 review N7, R4 r2 N2); the other SPEC 4.9.6 "None" families stay body-composed, outside H4 by design (R4 r2 N2); no premise mode in A4: the test reads A4's items (R4 review N6); accepted by R4 (answer R4-8); H4 deletes `Binding.PublishedOperations.cs` before H5 | 4 |
 | H0b-9 | Five classes under Q13 (§5.3), one row per signature, pre-classified by a fixed map from ledger kind and category and from snapshot kind; the Session, the snapshot and the milestones decide, the ledger only proposes | 5 |
 | H0b-10 | Stop rule: any class 5 row stops H5; class 2 rows block H5 until fixed on dev or accepted by the owner as one list (PD27's form); a second rehearsal round finding a new row of a family already fixed goes one level higher (AGENTS), two on one family to the owner (plan §5.2) | 5.5 |
 | H0b-11 | H6 (hover from MIR) is **part of H5** (review B3, superseding ruling R3's "right after H5"): from H5 nothing in the editor runs the old analysis | 2.1 |
@@ -203,12 +203,18 @@ where a kind is shown unreachable with a reproducer-backed argument.
   compiler-owned invariant. Departs from the plan row's "its records publish from H5" (nothing to publish).
 - (B) A production judgment: each reached row operation's body judged in A4's step 3, `InternalInvariant_Kd` at the operation on a
   violation. Rejected: cost on every check, and a published record no valid input can reach.
-- **"None" rows** (ruling on R4 review N7): `Row: None` on every catalog operation SPEC 4.9.6 lists as None: `ArrayAppend`,
-  `ArrayInsert`, `ArrayPop`, `ArrayRemove` (compiler functions; A4 already gives them "None" through `Bodyless` → `Inputs`) and the
-  Kimi-bodied `insert`, `remove`, `swap`, `swapRemove`, `reverse`, `appendAll`, `appendCopies` (no row today, for example
-  `ArrayInsertPosition`, `Definitions.cs:238`, so A4 composes their bodies); the test checks each Kimi-bodied one. For the four, the row makes SPEC 4.9.6's table the catalog's one answer, so when R8 gives them Kimi bodies A4 composes
+- **"None" rows** (ruling on R4 review N7, R4 r2 N2): `Row: None` on `ArrayAppend`, `ArrayInsert`, `ArrayPop`, `ArrayRemove`
+  (compiler functions; A4 already gives them "None" through `Bodyless` → `Inputs`) and on the Kimi-bodied `insert`
+  (`ArrayInsertPosition`), `appendAll` and `appendCopies` (`Definitions.cs:232-239`, no row today, so A4 composes their bodies). H4 adds
+  four `KimiDeclarationId` members for Array `remove`, `swap`, `swapRemove` and `reverse`, recorded in H4's DECISIONS entry, with
+  `KimiLibraryShapeTest` run; the test checks each Kimi-bodied one.
+- **Boundary (decision, R4 r2 N2).** The other SPEC 4.9.6 "None" families (Array, fixed-array and Slice access, view, position,
+  metadata and capacity operations, whose Kimi-bodied members such as `first`, `last`, `slice` and `iterate` stay body-composed) are
+  outside H4: A4 verifies a body-composed member through its body, and a catalog row is needed only where a member is a published row.
+  No open issue. For the four, the row makes SPEC 4.9.6's table the catalog's one answer, so when R8 gives them Kimi bodies A4 composes
   the row, never the body; for the seven, A4 stops composing the body and reads the row. No verdict changes (H: the bodies stay within
-  "None", which the test checks). Rejected: deferring to R8 (the R8 body would be composed silently); a narrower scope (ruling on N7).
+  "None", which the test checks). Rejected: deferring to R8 (the R8 body would be composed silently); a row for every body-composed member
+  (no published row needs it, R4 r2 N2).
 - When: after R4's exit, before the group's rehearsal; independent of H3 under (A). Review: one R review (D+R under H0); BU reviews
   its Binding edits (the catalog rows, deleting `Binding.PublishedOperations.cs`) (review N3; answer BU-3). Size ≈ +70/−50, t ±90 (H, the
   wider row scope).
@@ -338,7 +344,7 @@ Known rows, named in advance (H where unverified):
 | --- | --- | --- | --- | --- | --- |
 | H1a (bp) | BU | `C/Binding/Binding.Check.cs` (new, from `Binding.cs:1006-…`), `Binding.Hir.cs` | ±70 | D+R (Q8) | G2 (done) |
 | Q8-6 renderer (bp) | BU | `C/Binding/Binding.PairCases.cs`, `OwnershipAnalysis.cs:359`, `OwnershipAnalysis.Cases.cs:321` | ±60 | D+R (Q8) | before H3 |
-| H4 | R4 (BU reviews the Binding edits, review N3) | `C/Mir/Analysis/MirEffects*.cs` (read accessor only), `KimiLibraryCatalog.Definitions.cs` (the "None" rows), `Binding.PublishedOperations.cs` (−48), `T/MirEffectsTest`, `T/EffectBoundImplementationTest*` | +70/−50, t ±90 | R (D+R under H0) | R4's exit |
+| H4 | R4 (BU reviews the Binding edits, review N3) | `C/Mir/Analysis/MirEffects*.cs` (read accessor only), `KimiLibraryCatalog.Definitions.cs` (the "None" rows; four new `KimiDeclarationId` members, R4 r2 N2; `KimiLibraryShapeTest`), `Binding.PublishedOperations.cs` (−48), `T/MirEffectsTest`, `T/EffectBoundImplementationTest*` | +70/−50, t ±90 | R (D+R under H0) | R4's exit |
 | IC (answer R4-7) | R4 | `C/Mir/Analysis/MirDrops.cs` contract ("an `Incomplete` body implies a published Error"), its lowest-layer test (`T/MirAnalysisTest`) | ±10, t +30 | R | R4's exit; before H3b |
 | Q19 (2nd reading) | R4 with R5 (review N5; answer R4-10) | none (evidence: X-1's ledger run at R4's exit head; R4 supplies the MIR-cause residuals, R5 maps rows to tests and snapshot rows) | 0 | — | R4's exit (after Abstract Calls U0–U5, R4-M106, and A6) |
 | Q14 probe | BU | none (evidence `artifacts/verify/r6-q14/`) | 0 | — | H1a; Q8-3's rule as a probe |

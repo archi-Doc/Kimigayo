@@ -4,7 +4,7 @@ Status: H0's one design (plan §4.10 row H0, FP), approved by the owner (R5-M182
 answers and R4's review of its parts, marked "(answer X)" or "(R4 review Bn/Nn)", over revision 1's marks ("(ruling Rn)", "(integration)",
 "(review Bn/Nn)", "(re-review n)"). Parts: [H0a](H0a-publication.md) (H3), [H0b](H0b-flip.md) (H1, H1b, H4, H5, H3b), [H0c](H0c-deletions.md) (H7–H15).
 
-Working time (DECISIONS Q12): integration 18:23–18:36; revision 1 18:47–19:01 (+ re-review fixes); revision 2 19:37–20:05 (2026-11-02).
+Working time (DECISIONS Q12): integration 18:23–18:36; revision 1 18:47–19:01; revision 2 19:37–19:45, R4 r2 notes 19:48–19:55 (2026-11-02).
 
 Base: dev `1d23d559d` (the parts read `1ec539c79` and `e8ba140b3`; only PLAN differs); revision 2: dev `14825e465`, R4's answers on `bdf4eb6b8`. "Plan" is the
 [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`,
@@ -37,7 +37,7 @@ R6-check, the check-only SPEC/IMPL pass and the exit gate (plan §5.5). The owne
 | H0a-5 | A record's requirement is its problems' own (R4-M67, R5-M23); no code → requirement table; partition = requirement's (§3.3) |
 | H0a-6 | Keys: a record with facts at its subject node, condition = its Reason's ordinal; a location-only code by `ReportLocation` (§3.4) |
 | H0a-7 | One fact table, one row per `MirFactKind`, explicit rows for `CallBorrows` and the containment edge; Borrow display and `FixedBy` are class-3 losses, no new column (answer R4-6) (§4.1) |
-| H0a-8 | A record with `Cause` facts publishes as `PrerequisiteUnavailable_Kd`; one Binding form `MirFact(Cause, Site, −1)` (answer R4-3); a null `FailureCauses` is never an internal error until H3-2's probe (answer BU-2) (§4.2) |
+| H0a-8 | A record with `Cause` facts publishes as `PrerequisiteUnavailable_Kd`; one Binding form `MirFact(Cause, Site, −1)` (answer R4-3); a null `FailureCauses` is `InternalInvariant_Kd`, H3-2's probe first, a reachable shape a 2g-1 defect (answer BU-2, R4 r2 N1) (§4.2) |
 | H0a-9 | No new PLAN10 P10 fallback producer: every MIR incompleteness already has a record (§4.3) |
 | H0a-10 | Effects (PD29): no MIR analysis problem publishes before H5, so no A4 hold and no old-analysis edit; A4's problems publish at H5, which deletes the old effect checks (review B1) (§5.1) |
 | H0a-11 | G128 (PD30): (A) no rule; the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay until R7; confirmed by `Chain<i32>` (answer R4-5) (§5.2) |
@@ -50,7 +50,7 @@ R6-check, the check-only SPEC/IMPL pass and the exit gate (plan §5.5). The owne
 | H0b-5 | `Project.cs:550-554` needs no edit (§2.1) |
 | H0b-6 | Generation's gate is `!Accepts`; an `Incomplete` body implies a published Error (R4-M69), its contract and test landing first as R4's unit IC (answer R4-7); H5 adds R5's `InternalInvariant_Kd` check (§2.1) |
 | H0b-7 | H5 deletes both old `ReportDiagnostics` and `FallthroughKey` (ruling R4); one test reader re-pointed (I3) (§2.2) |
-| H0b-8 | H4 (A, answer R4-8): a test reads A4's items, no premise mode (R4 review N6); `Row: None` with tests for every SPEC 4.9.6 "None" operation, seven Kimi-bodied ones included (ruling on N7) (§4) |
+| H0b-8 | H4 (A, answer R4-8): a test reads A4's items, no premise mode (R4 review N6); `Row: None` with tests on the four compiler functions and seven Kimi-bodied Array operations, four new ids; other "None" families stay body-composed by design (N7, R4 r2 N2) (§4) |
 | H0b-9 | Five classes under Q13, pre-classified by fixed maps; Session, snapshot and milestones decide, the ledger proposes (§5.3, §5.4) |
 | H0b-10 | Stop rule: class 5 stops H5; class 2 blocks until fixed on dev or accepted as one owner list; a repeat in a fixed family goes one level higher (§5.5) |
 | H0b-11 | H6 (hover from MIR) is part of H5 (review B3, superseding ruling R3) (§2.1) |
@@ -86,9 +86,9 @@ Groups: G:R6-check-flip (H1, H1b, Q8-3, H5 with H6), G:check-tests (H10a, H8a–
 | --- | --- | --- | --- | --- | --- | --- |
 | H1a | Eager Final publication, `Check` split (bp; Q8 D8) | BU | G2 (done) | D+R (Q8) | — | ±70 |
 | Q8-6 | One Semantics-case renderer in Binding: H1's first commit landing early (bp); the old caller until H5 | BU | before H3-2 | D+R (Q8) | — | ±60 |
-| H3-1 | Fold construction and collector records into `MirReport` with body `Records` (bp; R4 review B1) | R4 (Mir; R5 consents and reviews Backend, Core) | before 2g-1 in R4's chain; OQ11 (given) (R4 review B2) | R | — | +30/−45, t ±60 |
+| H3-1 | Fold construction and collector records into `MirReport` with body `Records` (bp; R4 review B1) | R4 (Mir, ledger `Sides`, R4 r2 N4; R5 consents and reviews Backend, Core) | before 2g-1 in R4's chain; OQ11 (given) (R4 review B2) | R | — | +30/−45, t ±90 |
 | H3-2 | Core's publisher (keys, fact table, cause resolver, BU-2's probe) and `MirReport.Records` (answer R4-1); no published change (B1) | R4 (`Records`), R5 (Core) | R4's exit with A6, G11, Q17, Q8-6, OQ11 | D+R under H0, one review | — | ≈ +220/−10, t +250 |
-| H4 | A4's items checked against each row (test-level); `Row: None` for every SPEC 4.9.6 "None" operation (answer R4-8, N6, N7) | R4 (BU reviews Binding edits) | R4's exit, OQ11 | R (D+R under H0) | — | +70/−50, t ±90 |
+| H4 | A4's items checked against each row (test-level); `Row: None` on the four compiler functions and seven Kimi-bodied Array operations, four new ids (answer R4-8, N6, N7, R4 r2 N2) | R4 (BU reviews Binding edits) | R4's exit, OQ11 | R (D+R under H0) | — | +70/−50, t ±90 |
 | IC | The `Incomplete` contract and its lowest-layer test (bp; answer R4-7) | R4 | R4's exit; before H3b | R | — | ±10, t +30 |
 | Q19 | Second ledger reading (X-1's run at R4's exit head) mapped to tests and snapshot rows (N5; answer R4-10) | R4 with R5 | R4's exit (after Abstract Calls U0–U5, R4-M106, and A6) | — | — | 0 (Evid) |
 | Q14 | Q8's probe, evidence in `artifacts/verify/r6-q14/` | BU | H1a; Q8-3's rule as a probe | — | — | 0 |
@@ -160,14 +160,14 @@ and applied). Revision 2 adds no contradiction: each answer and R4 review findin
 | R4-5 | R4 | Yes: the `Chain<i32>` reproducer confirms H0a-11 (A) |
 | R4-6 | R4 | Partly: the containment edge (Value −1) gets its own fact-table row; Borrow display and `FixedBy` are class-3 losses; no new column |
 | R4-7 | R4 | Yes: the contract and its lowest-layer test land as unit IC (bp, R4's, after R4's exit, before H3b) |
-| R4-8 | R4 | Yes, (A); N6 no premise mode; N7 ruled: every SPEC 4.9.6 "None" operation with a Kimi body gets `Row: None` with tests |
+| R4-8 | R4 | Yes, (A); N6 no premise mode; N7 ruled: the seven Kimi-bodied Array "None" operations get `Row: None` with tests; other families stay body-composed (R4 r2 N2) |
 | R4-9 | R4 | Yes, already R4-exit conditions; missing families F7, F8, F10 |
 | R4-10 | R4 | Yes: Q19 with R5 at R4's exit, before H3b |
 | R4-11 | R4 | BU implements Q8-3; R4 reviews it (single review) |
 | R4-12 | owner (R4's dialog) | Pending: R4 recommends retagging `RequirementImplementation` to R7 with its R7-tagged reader (A-12 does not land before H11) |
 | R4-13 | owner (R4's dialog) | Pending: R4 recommends G121's lost `do` record as a named class-5 row, accepted until G121's construct design |
 | BU-1 | BU | Yes: H1a and Q8-6 (±60–70 each) before H3-2; Q14 before H1's code; queued after G216 (a) |
-| BU-2 | BU | Stable when no Bind or edit runs between `Analyze` and `ReportAnalysis` (`Project.cs:538-551`); null `FailureCauses` at four resolved-site shapes: 2g-1 sites causes at the failed node; H3-2 probes them |
+| BU-2 | BU | Stable when no Bind or edit runs between `Analyze` and `ReportAnalysis` (`Project.cs:538-551`); null `FailureCauses` at four resolved-site shapes: 2g-1 sites causes at the failed node; H3-2 probes them and lands with null → `InternalInvariant_Kd` (R4 r2 N1) |
 | BU-3 | BU | Yes: BU authors H5's Binding hunk (≈ −1,830) with R5's review and reviews H4's Binding edits |
 | BU-4 | BU | Keep the wide-division gate until G157 (1) is fixed (R5's collector); if it slips past R6-check's exit, H7 is retagged with the owner's approval |
 | BU-5 | BU | Yes: census first; located `Unsupported_Kd` where a kind cannot be judged yet; `InternalInvariant_Kd` only with a reproducer-backed argument |
@@ -195,6 +195,6 @@ caller; R4-M112's kept ledger row (successor H1b); PD12's refusal and R5-M96's i
 
 Amendment line for R5-M182, to record at the next DECISIONS edit: "Revision 2 (2026-11-02, answers R4-1..R4-11, BU-1..BU-5, R4's review):
 H3-1 lands in R4's chain before 2g-1, its records with their own body `Records`; `MirReport.Records` exposes members, computed once,
-with its own disagreement record (R4-1 resolved); the `Incomplete` contract lands first as R4's unit IC; H4 covers every SPEC 4.9.6
-'None' operation without a premise mode; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met); R4-M108's H11 list joins H11;
+with its own disagreement record (R4-1 resolved); the `Incomplete` contract lands first as R4's unit IC; H4 gives the seven Kimi-bodied
+Array 'None' operations rows (four new ids), other families body-composed, no premise mode; a null `FailureCauses` is internal; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met); R4-M108's H11 list joins H11;
 R4-12 and R4-13 await the owner in R4's dialog."
