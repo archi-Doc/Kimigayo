@@ -204,7 +204,9 @@ internal static partial class LegacyRuntimeHelpers
         {
             output.Write("  call void @__kimi_abort(i32 ");
             WriteNumber(output, AbortReasons.Format);
-            output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
+            output.Write(", ptr %location, i64 %location_length, i64 ");
+            WriteNumber(output, RuntimeAbi.NoOsError);
+            output.Write(")\n  unreachable\n}\n");
         }
     }
 

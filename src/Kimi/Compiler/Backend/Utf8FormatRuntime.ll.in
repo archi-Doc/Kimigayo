@@ -38,7 +38,7 @@ entry:
 success:
   ret void
 failure:
-  call void @__kimi_abort(i32 {{reason_format}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_format}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
@@ -89,7 +89,7 @@ flush:
   call void @__kimi_format_bytes(ptr %ret, ptr %self, ptr %data, i64 %literal, ptr %location, i64 %location_length)
   ret void
 size_failure:
-  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
@@ -143,7 +143,7 @@ success:
   call void @__kimi_format_take_string(ptr %ret, ptr %buffer)
   ret void
 failure:
-  call void @__kimi_abort(i32 {{reason_format}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_format}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
@@ -242,7 +242,7 @@ prepend:
 complete:
   ret void
 size_failure:
-  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 

@@ -138,7 +138,7 @@ internal static partial class LegacyRuntimeHelpers
           store i64 %target, ptr %capacity_ptr, align 8
           br label %done
         size_failure:
-          call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+          call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
           unreachable
         done:
           ret void
@@ -159,10 +159,10 @@ internal static partial class LegacyRuntimeHelpers
           call void @__kimi_array_grow(ptr %handle, i64 %stride, i64 %minimum, ptr %location, i64 %location_length)
           ret void
         argument_failure:
-          call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+          call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
           unreachable
         overflow_failure:
-          call void @__kimi_abort(i32 {{reason_overflow}}, ptr %location, i64 %location_length, i64 -2)
+          call void @__kimi_abort(i32 {{reason_overflow}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
           unreachable
         }
         {{__kimi_array_shrink}}
@@ -706,7 +706,9 @@ internal static partial class LegacyRuntimeHelpers
     {
         output.Write("  call void @__kimi_abort(i32 ");
         WriteNumber(output, reason);
-        output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n");
+        output.Write(", ptr %location, i64 %location_length, i64 ");
+        WriteNumber(output, RuntimeAbi.NoOsError);
+        output.Write(")\n  unreachable\n");
     }
 
     private static partial class Texts

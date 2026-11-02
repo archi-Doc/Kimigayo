@@ -22,7 +22,7 @@ entry:
   unreachable
 }
 
-; -1 = success; -2 = failure without an OS error; otherwise a zero-extended DWORD error.
+; -1 = success; {{no_os_error}} = failure without an OS error; otherwise a zero-extended DWORD error.
 ; Allocation validity/lifetime is established by checked lowering, not by these numeric checks.
 define internal i64 @__kimi_write_bytes(i32 %which, ptr %data, i64 %length) #0 {
 entry:
@@ -76,7 +76,7 @@ os_failure:
   %error64 = zext i32 %error to i64
   ret i64 %error64
 failure:
-  ret i64 -2
+  ret i64 {{no_os_error}}
 success:
   ret i64 -1
 }
@@ -192,13 +192,13 @@ allocate:
   %failed = icmp eq ptr %memory, null
   br i1 %failed, label %alloc_failure, label %done
 size_failure:
-  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 heap_failure:
-  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 alloc_failure:
-  call void @__kimi_abort(i32 {{reason_alloc}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_alloc}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 done:
   ret ptr %memory
@@ -226,10 +226,10 @@ heap:
 substitute:
   ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)
 size_failure:
-  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 argument_failure:
-  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 }
 
@@ -248,7 +248,7 @@ free:
   %failed = icmp eq i32 %result, 0
   br i1 %failed, label %free_failure, label %done
 heap_failure:
-  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 free_failure:
   %error = call i32 @GetLastError()
@@ -270,7 +270,7 @@ heap:
   call void @__kimi_free(ptr %data, ptr %location, i64 %location_length)
   br label %done
 invalid:
-  call void @__kimi_abort(i32 {{reason_release}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_release}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
 done:
   ret void

@@ -153,8 +153,10 @@ internal static partial class ObjectRuntime
             """);
         output.Write(' ');
         WriteNumber(output, AbortReasons.ReferenceCount);
+        output.Write(", ptr %location, i64 %length, i64 ");
+        WriteNumber(output, RuntimeAbi.NoOsError);
         output.Write("""
-            , ptr %location, i64 %length, i64 -2)
+            )
               unreachable
             }
             define internal void @__kimi_drop_arc(ptr %slot, ptr %location, i64 %length) #0 {
@@ -195,8 +197,10 @@ internal static partial class ObjectRuntime
             """);
         output.Write(' ');
         WriteNumber(output, AbortReasons.ReferenceCount);
+        output.Write(", ptr %location, i64 %length, i64 ");
+        WriteNumber(output, RuntimeAbi.NoOsError);
         output.Write("""
-            , ptr %location, i64 %length, i64 -2)
+            )
               unreachable
             }
             define internal void @__kimi_drop_rc(ptr %slot, ptr %location, i64 %length) #0 {

@@ -4,12 +4,12 @@
 // string values and string handles, the static string release kind, the zero-sized buffer address, and the FunctionAbi of each
 // runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them, and the
 // text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
-// `{{zero_sized_buffer}}`).
+// `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`).
 // Input: none; the entry symbol comes from WindowsProfile; a marker's name and the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
-// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells the
-// zero-sized buffer address only through its marker.
+// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells a
+// marker's constant only through its marker, and a writer through the constant.
 // Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 using System.Globalization;
@@ -137,22 +137,27 @@ internal static class RuntimeAbi
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
     internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
 
+    // The constants a runtime template spells through a marker, by the marker's name (Expand).
+    private static readonly (string Name, long Value)[] Constants = [("zero_sized_buffer", ZeroSizedBuffer), ("no_os_error", NoOsError)];
+
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
     internal static AbiParameter Location => new("ptr", "location", AbiParameterKind.Location);
 
     /// <summary>Gets the byte length parameter of the hidden diagnostic location.</summary>
     internal static AbiParameter LocationLength => new("i64", "location_length", AbiParameterKind.LocationLength);
 
-    // Appends the text of a runtime template's ABI constant marker, the zero-sized buffer address (`zero_sized_buffer`); false for any
-    // other marker.
+    // Appends the text of a runtime template's ABI constant marker, the constant's number; false for any other marker.
     internal static bool Expand(ReadOnlySpan<char> marker, StringBuilder runtime)
     {
-        if (!marker.SequenceEqual("zero_sized_buffer"))
+        foreach (var (name, value) in Constants)
         {
-            return false;
+            if (marker.SequenceEqual(name))
+            {
+                runtime.Append(value.ToString(CultureInfo.InvariantCulture));
+                return true;
+            }
         }
 
-        runtime.Append(ZeroSizedBuffer.ToString(CultureInfo.InvariantCulture));
-        return true;
+        return false;
     }
 }

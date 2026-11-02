@@ -5,7 +5,7 @@
 // defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked one-scan expansion
 // every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' runtime texts too), the external declarations, the overflow and memory
 // intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
-// numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
+// numbers formatted on the stack and the bits of a floating constant's
 // hexadecimal spelling. Code generation writes the frame through it (PD2: promoted, never copied; Name came from the old writer with
 // ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
