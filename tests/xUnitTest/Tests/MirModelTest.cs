@@ -191,6 +191,7 @@ public sealed class MirModelTest
         var program = new MirProgram();
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var key = new MirDefKey(types.Function, MirBodyKind.Fn);
+        int[] roots = [1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             program.Clear();
@@ -209,7 +210,7 @@ public sealed class MirModelTest
                 body.Terminate(block, MirTerminator.Goto(block + 1, At));
             }
 
-            body.AddOpaque(default, [1]);
+            body.AddOpaque(default, roots);
             body.Static(new(types.Function, BoundType.I32, false, false));
             body.AddScope(0, MirScopeKind.Unsafe, default);
         }));

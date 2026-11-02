@@ -21,7 +21,7 @@ public sealed partial class Binding
     {
         var factory = this.Library.GetSymbol(ObjectFactoryId(target.Semantics))!;
         var argument = new BoundArgumentOperation(conversion.Left, source, source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: 0);
-        destination.Set(factory, target, null, [0], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
+        destination.Set(factory, target, null, [argument.ParameterIndex], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
         destination.AdaptationSource = conversion;
         return destination;
     }
