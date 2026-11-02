@@ -11,11 +11,12 @@ namespace Kimi.Compiler;
 public static class EmissionArtifacts
 {
     /// <summary>Publishes both files, with the manifest last, or records why not in the Emission partition without claiming old files
-    /// (DECISIONS R5-M165): the generation entry's records; <c>ArtifactPublicationFailed_Kd</c> at the project, its cause as a note, for an
-    /// output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the project when the
-    /// compiler's embedded backend record is missing. Any other exception, such as a broken contract code generation throws, is not
-    /// classified here: it leaves for the command's fault path (DECISIONS R5-M169). The publication inputs are checked first, since the
-    /// generation entry writes into the temporary IR file (R5 C0a); preparation has validated the native configuration
+    /// (DECISIONS R5-M165): the generation entry's records and, beside them, <c>ArtifactPublicationFailed_Kd</c> at the project, its cause
+    /// as a note, for an output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the
+    /// project when the compiler's embedded backend record is missing. Any other exception, such as a broken contract code generation
+    /// throws, is not classified here: it leaves for the command's fault path (DECISIONS R5-M169). The publication inputs are checked
+    /// first, since the generation entry writes into the temporary IR file (R5 C0a); code generation never reads them, so it runs once
+    /// whatever they found, into no output when they failed (DECISIONS R5-M181); preparation has validated the native configuration
     /// (DependencyConfiguration).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
@@ -26,8 +27,7 @@ public static class EmissionArtifacts
         irPath = null;
         if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
         {
-            Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
-            return false;
+            return FailBeforeGeneration(compilation, DiagnosticCode.InternalInvariant_Kd, null);
         }
 
         var settings = compilation.Project.ProjectFile;
@@ -70,8 +70,7 @@ public static class EmissionArtifacts
             }
             catch (Exception ex) when (IsPublicationFailure(ex))
             {
-                Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
-                return false;
+                return FailBeforeGeneration(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
             }
 
             var generated = GenerateInto(compilation, writer);
@@ -142,11 +141,24 @@ public static class EmissionArtifacts
     private static bool IsPublicationFailure(Exception ex)
         => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
 
-    // A publication failure, at the project, replaces the partition's records as a generation does.
+    // A publication failure, at the project, beside the generation's records (R5-M181).
     private static void Fail(Compilation compilation, DiagnosticCode code, string? cause)
+        => compilation.Diagnostics.Report(DiagnosticPartition.Emission, code, compilation.Project.FilePath, note: cause);
+
+    // A publication failure before generation (DECISIONS R5-M181): code generation never reads publication's inputs, so it still runs, into
+    // no output, for its own records, and the failure is recorded after it, since it clears the partition first, also when it throws.
+    private static bool FailBeforeGeneration(Compilation compilation, DiagnosticCode code, string? cause)
     {
-        compilation.Diagnostics.Invalidate(DiagnosticPartition.Emission);
-        compilation.Diagnostics.Report(DiagnosticPartition.Emission, code, compilation.Project.FilePath, note: cause);
+        try
+        {
+            GenerateInto(compilation, TextWriter.Null);
+        }
+        finally
+        {
+            Fail(compilation, code, cause);
+        }
+
+        return false;
     }
 
     // Checks every configured library's input, even when unused, and selects the backend supply (SPEC 20.4) of the configuration

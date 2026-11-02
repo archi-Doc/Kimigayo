@@ -13879,6 +13879,15 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M166 (provisional, G308): the comparison shim's past-storage walk (`Leaves`' bit, `LayoutNeeds.TypeOf(ComparisonNode)`,
     `FunctionCodegen.Needed(node)`) is replaced by each comparison item's layout at its admission and a comparison call's per-site walk
     (`InstanceCollector.Uses`) over its node with the instance Type; `LayoutNeeds.Of(ComparisonNode)` stays the row.
+  - Amended by PLAN G157 (47) (2026-11-02): a PairLayer makes the next need case-dependent (`LeavesStorage` by the item's view) only
+    as the first boundary since the last need; after a Deref or another boundary the need holds in every case. The pair column took the
+    later layer, so `((*r)@b0).1` (`match r` over `r: ref/(s/X during a)`, or through `let r = e@ref`) lost its owner instance's use,
+    which `match e`'s `(*_4).1` keeps. Acceptance move (Q13, named): dev accepted an invalid program whose only use of a Type without a
+    C layout is such a read (`InstanceCollectorTest.AReadPastADerefAndAPairLayerIsAUseInEveryCase`), an unsound acceptance this
+    closes; where the Type has another use, the read's record was lost and code generation read its layout unchecked. Two consecutive
+    layers (`z@follow@follow.1`, `((_2@b0)@b0).1`) make the need hold in every case: an owner instance adds `InvalidCLayout_Kd` +1 at
+    the read, which stays in storage, so it is no use by SPEC 8.15.3 but a failure caused only by the storage's reported one (SPEC
+    23.1.2 leaves reporting it implementation-defined) on a program already rejected (Q13: an added record, counted).
 - **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import
   signatures (unit G288)** (2026-10-29, R5; PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim
   「みなす (推奨)」, PLAN `63f54877e`; extends BU-48; Major, design accepted by the R5 planning session; BU reviews the Binding part and
@@ -14485,6 +14494,8 @@ structure is recorded here by the unit that first implements it.
     R5-M162 (`ReportPublicationFailure`).
   - Superseded in part by R5-M169 (G330): the mapping of code generation's argument, data and support exceptions to
     `InternalInvariant_Kd` is gone; an exception publication does not classify is the Emission result's fault (`CheckFaulted_Kd`).
+  - Amended by R5-M181 (PLAN G157 (7)): a publication failure no longer replaces the partition's records; it is recorded beside
+    generation's, which runs at every publication.
 - **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
   Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
   expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
@@ -15133,3 +15144,20 @@ structure is recorded here by the unit that first implements it.
     itself).
   - Open: no mechanical rule stops a new non-byte constant `ReadOnlySpan<T>` table, which would bring the Debug allocation back;
     none is added.
+- **R5-M181 A publication failure leaves code generation's records (PLAN G157 (7))** (2026-11-02, R5; under R5-M165, R5-M169 and
+  Q13; amends R5-M165 with its amendment line) Minor.
+  - Cause: `EmissionArtifacts.Publish` checks its inputs (the embedded backend record, paths, native configuration and supplies,
+    `LlvmBin`, the output) before code generation and returned at a failure, its record replacing the partition's, so generation never
+    ran: its records (a gate step 2 refusal, a code generation `InternalInvariant_Kd` or `Unsupported_Kd`) and its fault were lost.
+    Code generation never reads those inputs, so by Q13's rule W its records are independent (SPEC 23.1.2). The converse never
+    happened: the inputs are checked first.
+  - Rule: a failure before generation still runs generation once, into `TextWriter.Null`, and is recorded after it in a `finally`
+    (`FailBeforeGeneration`), since generation clears the partition first; a generation fault so keeps the record beside
+    `CheckFaulted_Kd`. `Fail` only reports, so a failure after generation (flush, manifest, replacement) is recorded beside its records.
+    Every publication is a generation request (R5-M165's clearing holds: generation clears).
+  - Rejected: checking the configuration after generation (a generation fault would hide it, and the backend checks read the embedded
+    record); carrying the failure across generation in the method (every path variable needs a placeholder value).
+  - Test: `EmissionArtifactsTest.AConfigurationFailureLeavesGenerationsRecords` (an unused non-.lib input and a Drop without a verdict;
+    fail-first: only the publication record). A generation fault beside such a failure was verified by the review's throwaway
+    reflection probe (`CheckFaulted_Kd` and the publication record; the base only the latter); no lasting test, since no program makes
+    generation throw without a production seam (R5-M175).

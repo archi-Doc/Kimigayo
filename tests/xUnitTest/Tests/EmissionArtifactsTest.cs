@@ -297,6 +297,24 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
     }
 
+    // PLAN G157 (7), DECISIONS R5-M181: code generation never reads the native configuration, so a publication-time configuration
+    // failure (an unused native input that is not a .lib) and a generation failure (a runtime Drop without a verdict, InternalInvariant_Kd
+    // at the Drop) are independent, and both are reported.
+    [Fact]
+    public void AConfigurationFailureLeavesGenerationsRecords()
+    {
+        var c = this.Create();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = "unused.dll" } };
+        FunctionCodegenTest.RemoveTheDropVerdict(c);
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
+        Assert.Null(path);
+        Assert.Equal(
+            [("ArtifactPublicationFailed_Kd", (string?)null), ("InternalInvariant_Kd", "\"Hello, world!\"")],
+            TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text)).Order());
+        Assert.Contains(".lib", PublicationFailure(c), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
+    }
+
     // DECISIONS R5-M169: a command ends a result that an exception ends as Faulted (Project.Faults): one CheckFaulted_Kd (Exception) at
     // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
     // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
