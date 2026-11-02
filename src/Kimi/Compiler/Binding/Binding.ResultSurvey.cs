@@ -36,7 +36,7 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.1: the outermost form that delivers a result source to its target, through parentheses and a single-item body: the
-    // result-source walk's delivery chain, which ResultTarget and an unselected call's completion (PublishJudged) read.
+    // result-source walk's delivery chain, which ResultTarget and an unselected call's completion (ReportHeldConflicts) read.
     private static Koto ResultSourceForm(Koto source)
     {
         var node = source;

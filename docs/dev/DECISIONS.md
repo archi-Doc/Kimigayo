@@ -9205,6 +9205,7 @@ resumed by R4-M86 (2026-10-20).
     is never reached there).
 
 - **BU-77 FailedFit: the evidence walk publishes, per candidate, each unbound failed part it meets and the candidate's pattern there**
+  (Superseded by BU-79, rule W.)
   (2026-11-01; PLAN G216 (a) Part 1 U1.6h-1; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g216a-p1\u16h-design.md` revisions 4
   and 4a, R4's ACCEPT under C19-C23; the owner's 「推奨どおり」 and 「改訂 4でGO！」) A failed part fits every candidate (U1.6d), so a
   slot or an ambiguity that only its Type could decide is dependent (SPEC 23.1.2). Deciding that needs the candidate's Type at the
@@ -9278,6 +9279,7 @@ resumed by R4-M86 (2026-10-20).
     rests on it only where kept candidates' Types differ there, and an unsolved slot only when every one occurs at one; an unselected
     call publishes only the verdicts its waiting join judged and links every other part to them (fix (a)). Only unbound failed parts
     are covered (R4's C19); a typed one is decided at the merge into U2.1.
+  - B4 and fix (a) below are superseded by BU-79 (rule W): only a held join's own Conflict report stays (ReportHeldConflicts).
   - B4 and fix (a), the unselected call's completion (CompleteUnselectedPart's one row, PublishJudged): a held join judged Conflict
     writes its own record once (`FailJudged`, the record's one form, shared with DecideWaiting: R4's N9). A held waiting join rests
     through its verdict (`DecideRest`: R4's C25) on its recorded Cause, or else on the verdict it lies under. Every other unbound part
@@ -9286,6 +9288,23 @@ resumed by R4-M86 (2026-10-20).
     ResultTarget reads: R4's C24, the unused local's derived PrerequisiteUnavailable_Kd). Nothing is bound and no default is taken (review 2's B4).
   - Rejected: a call resting on its taken argument's cause at Calls.cs:391 (h2 never reaches selection); a shared join-rests
     completion for DecideResult (it changed no probe).
+
+- **BU-79 Rule W: a failed part is a wildcard; only a node's own verdict over a failed child is suppressed** (2026-11-02, the owner's
+  「了解しました。5件とも推奨どおり進めてください。」; PLAN dev 4c7d13a9c; audit `simplify\impl-audit.md` §2;
+  the done-when, DECISIONS Q13)
+  Supersedes BU-77 (FailedFit, its readers C15 and C16, B1, B2, and step 1's certain rule) and BU-78's B4 and fix (a).
+  - The reason that no longer holds: those readers tried to decide exactly which records a failed part makes dependent. That cannot
+    be decided locally (evidence-fixed slots, clause-only slots, pairings), and SPEC 23.1.2 does not require it: an implementation
+    may report a dependent failure, and must not lose an independent one.
+  - The rule (ArgumentKinds' contract): a failed part fits every candidate and is no evidence (U1.6d). Only a node's own verdict over
+    a failed child is suppressed: a join's DecideRest, BU-78's sites 2-4, and CompleteJoinResults. Every other record of the call is
+    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records.
+  - An unselected call's held join that its formation judged Conflict still writes its own record (ReportHeldConflicts, the part of
+    BU-78's fix (a) that reports, not rests). Without it, an independent TypeMismatch_Kd would be lost (ACRT a1 and a3, f1).
+  - Deleted: Binding.ArgumentKinds.FailedFits.cs (FailedFit, its scope, PublishFailedFit, PublishHeldFailures, RestingFailedPart,
+    AmbiguityRestingPart, CertainMismatch); PublishJudged, RestJudged, RestOnVerdict, HasOwnCause and FailJudged; IsOwnLength.
+  - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
+    record blocks; dependent records added or removed are counted by class.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

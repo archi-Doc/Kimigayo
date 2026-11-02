@@ -6,9 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // A candidate's solution from its call's evaluation: the call's slot arrays, scope, Self and explicit Type arguments, and the
-    // candidate's FailedFit entries (its index in the evaluation).
-    private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
+    // A candidate's solution from its call's evaluation: the call's slot arrays, scope, Self and explicit Type arguments.
+    private SlotSolution Solution(in CallEvaluation evaluation, FunctionKoto function, BoundType? declaringType)
         => new()
         {
             Binding = this,
@@ -22,7 +21,6 @@ public sealed partial class Binding
             Lengths = evaluation.LengthArguments,
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
-            FailedFits = new(evaluation.FailedFits, candidate),
         };
 
     // SPEC 6.5.2, 10.8.1: a Case construction's solution: the enum owns its slots and binds its Origins; it has no Self, declaring Type,
@@ -69,7 +67,6 @@ public sealed partial class Binding
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
         internal OriginInference? OriginInference;
-        internal FailedFitScope? FailedFits; // A call candidate's (Solution(evaluation, ...)); none for any other solution.
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);

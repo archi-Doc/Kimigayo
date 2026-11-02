@@ -260,7 +260,6 @@ public class ApplicabilityChainRegressionTest
     [InlineData("first(if c => (if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("first(if c => ((if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w), x) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w")]
     [InlineData("takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
-    [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
     [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
     [InlineData("applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
@@ -268,6 +267,17 @@ public class ApplicabilityChainRegressionTest
         var source = ControlFlowDeclarations + use + "\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02): a failed part is a wildcard and no evidence, so beside the
+    // closure's own record (`v`) the call reports F unbound, a dependent record SPEC 23.1.2 allows. The Dictionary held in the join's
+    // Tuple no longer rests F on its failed part (U1.6h-3' fix (b), superseded).
+    [Fact]
+    public void AFailedPartIsAWildcardAndTheCallsOwnRecordIsReported()
+    {
+        var source = ControlFlowDeclarations + "applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))\n";
+        var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
+        Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnresolvedBinding_Kd v"], shown);
     }
 
     // SPEC 23.1.2, 10.4 (U1.6h-3'): a join of Tuple results fits `take(i64)` whatever its failed part is, so the call's
@@ -303,12 +313,12 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd)], codes);
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): a waited source of a failed join that holds neither a literal nor a join (here the functions its
-    // call completed) rests on the join's record, that prerequisite recorded in the pass that bound it, and is no record of its own;
-    // the enclosing join rests on the failed join. A source bound before the join decides, `["k": stop()]`, is no waited source and
-    // rests on nothing.
+    // SPEC 23.1.2 (DECISIONS BU-43, BU-79): at a call that selects none, a held join's own Conflict is its one record, and the enclosing
+    // join rests on it (its own verdict over a failed child). Under rule W (the owner, 2026-11-02) a waited source of the failed join is
+    // linked to nothing: U1.6h-3' fix (a)'s links are superseded. A source bound before the join decides, `["k": stop()]`, rests on
+    // nothing.
     [Fact]
-    public void ASourceHoldingNeitherLiteralNorJoinRestsOnItsJoinsRecord()
+    public void AHeldJoinsOwnConflictIsItsCallsOneRecord()
     {
         var c = CompilationTestHelper.ParseSuccess(ControlFlowDeclarations +
             "first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))\n");
@@ -316,7 +326,7 @@ public class ApplicabilityChainRegressionTest
         var joins = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().ToArray();
         Assert.Same(joins[1], Assert.Single(c.Binding.Issues).Node);
         var source = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().First(x => x.Elements[0] is FunctionKoto).Parent!; // The expression body.
-        Assert.Same(joins[1], Assert.Single(c.Binding.FailureCauses(source)!).Subject);
+        Assert.DoesNotContain(c.Binding.FailureCauses(source) ?? [], x => ReferenceEquals(x.Subject, joins[1]));
         Assert.Same(joins[1], Assert.Single(c.Binding.FailureCauses(joins[0])!).Subject);
         var dictionaries = MinimalEmissionTest.Analyze(ControlFlowDeclarations +
             "takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])\n");

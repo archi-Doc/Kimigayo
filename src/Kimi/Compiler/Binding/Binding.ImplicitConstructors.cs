@@ -75,7 +75,6 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(shape.InputOrigins);
         var evaluated = this.candidateScratch.Rent(shape.Count);
         var operations = this.argumentOperationScratch.Rent(shape.Count);
-        var failedFits = this.failedFits.Count;
         try
         {
             var evaluation = new CallEvaluation
@@ -101,7 +100,6 @@ public sealed partial class Binding
                 MaxGenerics = shape.Generics,
                 OriginSlots = shape.Origins,
                 InputSlots = shape.InputOrigins,
-                FailedFits = failedFits,
                 Winner = -1,
                 PremisesOnly = true,
             };
@@ -130,7 +128,6 @@ public sealed partial class Binding
             }
 
             this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
-            this.failedFits.RemoveRange(failedFits, this.failedFits.Count - failedFits);
             this.acquisitionFailure = acquisition;
             this.failedCause = failedCause;
             this.activeRequirementContract = requirementContract;

@@ -171,7 +171,6 @@ public sealed partial class Binding
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
         BoundDefaultArgument[]? defaults = null;
-        var failedFits = this.failedFits.Count;
         try
         {
             if (generic is not null)
@@ -246,7 +245,6 @@ public sealed partial class Binding
                 MaxGenerics = maxGenerics,
                 OriginSlots = originSlots,
                 InputSlots = inputSlots,
-                FailedFits = failedFits,
                 Winner = -1,
                 PremisesOnly = true,
             };
@@ -379,7 +377,7 @@ public sealed partial class Binding
                 }
 
                 var state = this.TryCandidate(
-                    this.Solution(evaluation, winnerIndex, selected, selectedType),
+                    this.Solution(evaluation, selected, selectedType),
                     explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,
@@ -479,7 +477,7 @@ public sealed partial class Binding
             // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
+            var solution = this.Solution(evaluation, selected, selectedType);
             var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
             this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType, defaults.AsSpan(0, formed ? defaultCount : 0));
             if (!formed)
@@ -553,25 +551,17 @@ public sealed partial class Binding
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
             this.typeScratch.Return(scratch, clearArray: true);
-            this.failedFits.RemoveRange(failedFits, this.failedFits.Count - failedFits);
         }
     }
 
-    // SPEC 10.4, 23.1.2: the Ambiguous outcome of a call's selection. Under the argument probe a nested call waits (DeferNestedCall); an
-    // ambiguity that a failed part's Type could have resolved rests on that part (U1.6h B1, AmbiguityRestingPart), its waiting parts
-    // resting on the call; otherwise the kept candidates explain the failed selection.
+    // SPEC 10.4, 23.1.2: the Ambiguous outcome of a call's selection. Under the argument probe a nested call waits (DeferNestedCall);
+    // otherwise the kept candidates explain the failed selection, a failed argument part included (rule W, DECISIONS BU-79).
     private BoundType? CompleteAmbiguous(in CallEvaluation evaluation)
     {
         var call = evaluation.Call;
         if (this.DeferNestedCall(call, evaluation.Expected))
         {
             return Complete(call, null);
-        }
-
-        if (this.AmbiguityRestingPart(evaluation) is { } failed)
-        {
-            this.MarkWaitingHeaders(call);
-            return this.CompleteDependent(call, failed);
         }
 
         var evaluated = evaluation.Evaluated;

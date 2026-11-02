@@ -408,7 +408,7 @@ public sealed partial class Binding
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
             this.BindWaitedSources(node, context, ResultExpectation(node, expected));
-            return context.Outcome == JoinOutcome.Conflict ? this.FailJudged(node) : this.CompleteDependent(node, context.Cause!);
+            return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependent(node, context.Cause!);
         }
 
         context.Outcome = JoinOutcome.Undecided;

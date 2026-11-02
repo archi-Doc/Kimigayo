@@ -35,9 +35,8 @@ namespace Kimi.Compiler;
 //   23.1.2; Binding.ArgumentKinds.Completion.cs); the waiting-binds-F rule (TakeWaiting, Binding.ArgumentKinds.Waiting.cs), the one
 //   walk to the waiting callables at an F that the call's queries and the completions share; SlotSolution
 //   (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of one candidate or one Case construction, whose evidence walk takes
-//   each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs), publishing a candidate's FailedFit
-//   at each unbound failed part (Binding.ArgumentKinds.FailedFits.cs), and applies the defaults (DefaultArguments, DefaultPayloads), and
-//   whose candidate operations substitute the solution (Type) and judge the Constraints over it
+//   each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies the defaults
+//   (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the Constraints over it
 //   (Prove).
 // - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
 //   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
@@ -50,6 +49,9 @@ namespace Kimi.Compiler;
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
 //   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
 //   selected candidate; a Never-typed part is no evidence (SPEC 10.8).
+//   Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part is a wildcard: it fits every candidate and is no evidence; only a node's own
+//   verdict over a failed child is suppressed (a join's DecideRest, its position and kind, CompleteJoinResults), and every other
+//   record of the call is reported: Ambiguous, UnboundTypeArgument, NoApplicable and an unselected call's part records.
 // - Prohibitions: a consumer reads a part's kind from KindOf and whether it awaits its call from AwaitsCall, and tells only the forms
 //   of one kind apart to fit them; whether a part waits for its position, not its call, is ResultPropagation's position waiting
 //   (Deferred, AwaitsFor; SPEC 14.9.2, 4.3); the call, element, Case-payload and value-call paths keep no evidence or fit dispatch of
@@ -432,8 +434,8 @@ public sealed partial class Binding
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
     // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
     // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another, and a slot
-    // still unbound is the inference boundary, unless every unsolved slot occurs at a failed part (FailedFit), on which the call then
-    // rests (SPEC 23.1.2). False when the call is complete: waiting or failed.
+    // still unbound is the inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or
+    // failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
@@ -443,7 +445,7 @@ public sealed partial class Binding
 
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
-        var solution = this.Solution(evaluation, winner, selected, declaringType);
+        var solution = this.Solution(evaluation, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
         if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
         {
@@ -477,11 +479,6 @@ public sealed partial class Binding
         if (this.DeferNestedCall(call, evaluation.Expected))
         {
             Complete(call, null);
-        }
-        else if (solution.RestingFailedPart(evaluation.Mapping) is { } failed)
-        {
-            // SPEC 23.1.2 (U1.6h B2): every unsolved slot occurs at a failed part (FailedFit), whose Type could have bound it.
-            this.CompleteDependent(call, failed);
         }
         else
         {
