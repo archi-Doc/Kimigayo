@@ -111,6 +111,9 @@ public partial class ResultPremiseTest
 
     private const string ClauseType = "struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\n";
 
+    // A Type whose argument must be Copy: `Box<Array<i32>>` fails a closed clause wherever it is written.
+    private const string BoxType = "struct Box<T>\n    T is Copy\n    public let x: T\n\n    public init(x: T) => self.x = x\n\n";
+
     private const string ClauseResult = "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n    return 0\n\n";
 
     private const string SelfReturning = ClauseType + "struct R {a}\n    origin a outlives static\n    public let next: () -> Option<R during a>\n\n" +
@@ -126,6 +129,8 @@ public partial class ResultPremiseTest
     private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
 
     private const string Mismatch = nameof(DiagnosticCode.TypeMismatch_Kd) + "|";
+
+    private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd) + "|";
 
     // SPEC 15.6.5: pickRelated is valid and runs; the call's result keeps the Loans of both borrows, so writing either referent while
     // it lives is a Loan conflict.
@@ -504,7 +509,11 @@ public partial class ResultPremiseTest
     [InlineData(ClauseResult + ClauseType, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7, the Type declared after
     [InlineData(ClauseType + ClauseResult + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", nameof(DiagnosticCode.UnprovenOriginContract_Kd) + "|func [] () => 5|the result's well-formedness requires the borrow a outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1a: a call keeps judging its Closure argument, recording at it (the owner's D-1, 「記録は引数に」)
     [InlineData(ClauseType + ClauseResult + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1s: and adds no call record
-    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Constraint + "k(s, func [] (t) => true)|")] // b2in, dev's records: an input's clause still fails the call's signature formation and hides the argument's TypeMismatch_Kd (pre-existing since R4-M137, an open issue)
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Mismatch + "true|expected i32, found bool")] // b2in: an input's clause is that signature's premise (R4-M137), so the callee's declaration walk does not enter it and the Closure keeps its own TypeMismatch_Kd (G374, closed by G375's structural core, DECISIONS R4-M163)
+    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "(Box<Array<i32>>)|", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "k(func [] (b) => 0)|", Unsatisfied + "b|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes, and the selected call's instantiated input and the Closure's parameter fail where they occur (DECISIONS R4-M163, Q13)
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => 0)\n\n")] // b2valid: b2in's valid twin is accepted at the call (dev: UnprovenConstraint_Kd at the call; an acceptance move, DECISIONS R4-M163)
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    let g = k\n    _ = g\n    return 0\n\n")] // refvalid: and at a function reference (dev: UnprovenConstraint_Kd at `k`; an acceptance move, R4-M163)
+    [InlineData("public struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\npublic contract C\n    func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32\n\npublic struct S\n    Self is C\n    public func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32 => 0\n\n")] // ctrvalid: and in contract matching (dev: UnprovenConstraint_Kd at the conformance; an acceptance move, R4-M163)
     [InlineData(ClauseType + "func k(q: ref/i32) -> i32\n    let c = func [] (f: () -> Option<T during q>) -> i32 => 0\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a Closure parameter
     [InlineData(ClauseType + "func k(q: ref/i32, h: () -> Option<T during static>) -> i32\n    let g: () -> Option<T during q> = h@move\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a local annotation
     [InlineData(SelfReturning, Unproven + "Option<R during q>|requires q outlives static, which is not proven")] // a Type whose Field returns itself
