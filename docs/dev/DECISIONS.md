@@ -13235,8 +13235,9 @@ structure is recorded here by the unit that first implements it.
     skipped expression's temps Keep or Elide become Flag; a check-only Drop after a Never first expression becomes a runtime Elide); every
     other form builds the same MIR. R4 reviewed the builder hunk (ACCEPT). The fixture row `Utf8TryWriteFailure` leaves the ledger.
   - Records: the collector records nothing new (no target, no layout use, no capability row: an estimate past MaxObjectSize or the limit
-    chooses the heap). Code generation records the interim's `Unsupported_Kd` and broken contracts only (`InternalInvariant_Kd`: a step's
-    constant of another kind, a value Type `TypeOf` cannot make, a stack buffer's destination that is not a whole local).
+    chooses the heap). Code generation records the interim's `Unsupported_Kd` and broken contracts only (`InternalInvariant_Kd`: a value
+    Type `TypeOf` cannot make, a stack buffer's destination that is not a whole local); a step's constants are MirValidator's (G157 (37),
+    below).
   - Deviations (IR only, PD9): the stack adapter's kind 1; regions named `%r<local>` per local (the old `%formatBytes<n>`; `Utf8ConsoleTest`'s
     old spelling, R5-M12 class I, is now generator-neutral, the 33 bytes kept); FormatFinish's buffer read from the adapter (the same
     address); each write's failure tested by its Result where the old calls `__kimi_format_check`; a Region buffer's HeapBuffer glue item
@@ -13272,12 +13273,14 @@ structure is recorded here by the unit that first implements it.
     (Utf8Writer's Fields are `let`; R8's form), splicing the runtime's bounds from the C# table (a new marker in the checked splice; the test
     ties them).
   - Amended (PLAN G157 (37), 2026-11-02; closes the open point): MirValidator checks the contract (`MirValidator.Calls`). Each step's
-    values' Types are a TypeToken constant of a Tuple (`Tokens`, a Type finding), which code generation reads element by element. Each
-    FormatFinish's estimate operands are the FormatBuffer's whose buffer its adapter is over (`Finishes`, an Arity finding): the adapter it
-    moves is a Call's result whose first operand a Ref of the buffer that FormatBuffer writes lends; one pass over a body with a
-    FormatFinish links each whole local to the Call writing it and the local a Ref into it lends (kept scratch). Code generation trusts
-    both. `MirValidatorTest.AnInterpolationsStepsCarryItsEstimate` (fail-before: no finding); `MirCensusTest` finds none in the library,
-    milestones, goldens and SPEC cases. Rejected: pairing by block order or nesting (the builder's numbering, not a MIR fact); a token
+    constants are of their positions' kinds (`Constants`, one row over a table of each step's: the literal bytes an Integer, the values'
+    Types a TypeToken of their Tuple, read element by element, the direct mark a Bool, a segment's text a string; a Type finding). Each
+    FormatFinish's estimate operands are the FormatBuffer's whose buffer its adapter is over (`Finishes`, an Arity finding, also for an
+    adapter over no FormatBuffer's buffer): the adapter it moves is a Call's result whose first operand a Ref of the buffer that
+    FormatBuffer writes lends; one pass over a body with a FormatFinish links each whole local to the Call writing it and the local a Ref
+    into it lends (kept scratch, a warm validation 0 B). Code generation reads the constants unchecked (`StepConstant` and its record
+    deleted). `MirValidatorTest.AnInterpolationsStepsCarryItsEstimate` (fail-before: no finding); `MirCensusTest` finds none in the
+    library, milestones, goldens and SPEC cases. Rejected: pairing by block order or nesting (the builder's numbering, not a MIR fact); a
     check in code generation (consumers trust validated IR).
 - **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27, to the R5 planning session directly;
   the consequences are the planning session's)

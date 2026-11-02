@@ -26,7 +26,8 @@ namespace Kimi.Compiler.Backend;
 // keeps its destination Type's writer kind (FunctionCodegen.Formatting's Writer): the region's size is the instance maximum of every
 // reservation (the literals, a flushed deferred one included, and the bounded values' maxima), so the HeapBuffer arm of the runtime's
 // reserve never grows it.
-// A step whose constants are not its row's, or a value Type TypeOf cannot make, is a broken contract (InternalInvariant_Kd).
+// A step's constants are read unchecked (MirValidator's Constants row); a value Type TypeOf cannot make is a broken contract
+// (InternalInvariant_Kd).
 internal sealed partial class FunctionCodegen
 {
     // Utf8Writer's Field holding the destination the adapter borrows, the interpolation's buffer (Formatting.kimi; the runtime's word 0).
@@ -36,8 +37,7 @@ internal sealed partial class FunctionCodegen
     // stack, its destination, a whole local, becomes a Region of the estimate's total.
     private void Region(in MirTerminator call)
     {
-        if (this.Estimate(call, 0) is not { } estimate || this.StepConstant(call, 2, MirConstKind.Bool) is not { } direct ||
-            !estimate.Stack(direct.Bits != 0))
+        if (this.Estimate(call, 0) is not { } estimate || !estimate.Stack(this.Constant(call, 2).Bits != 0))
         {
             return; // On the heap, or a broken contract, recorded.
         }
@@ -94,15 +94,14 @@ internal sealed partial class FunctionCodegen
     // values (operands 2 and 3), then the position's literal text (operand 1) when not empty (SegmentText).
     private void FormatSegment(in MirTerminator call, in IntrinsicRow row)
     {
-        if (this.Estimate(call, 2) is not { } estimate || this.StepConstant(call, 1, MirConstKind.String) is not { Value: string text } ||
-            !this.Operand(this.body.Operands[call.Start], out var adapter))
+        if (this.Estimate(call, 2) is not { } estimate || !this.Operand(this.body.Operands[call.Start], out var adapter))
         {
             return; // Recorded.
         }
 
         this.module.Request(HelperNeeds.FormattingRuntime);
         _ = this.WriteCall(row.Routine!, [adapter, new('\0', estimate.Hint)]);
-        if (text.Length > 0 && !this.SegmentText(call, adapter))
+        if (((string)this.Constant(call, 1).Value!).Length > 0 && !this.SegmentText(call, adapter))
         {
             return; // Recorded.
         }
@@ -122,7 +121,7 @@ internal sealed partial class FunctionCodegen
             return false; // Recorded.
         }
 
-        var routine = this.StepConstant(call, 3, MirConstKind.TypeToken)!.Value.Type.Components.Count > 0 ? LegacyRuntimeHelpers.FormatLiteral
+        var routine = this.Constant(call, 3).Type.Components.Count > 0 ? LegacyRuntimeHelpers.FormatLiteral
             : LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi;
         var kind = new Value('\0', LegacyRuntimeHelpers.FormatKind(BoundType.String));
         _ = this.WriteCall(routine, [new('s', this.CalleeCopy()), adapter, record, kind, site.Text, site.Length]);
@@ -135,8 +134,7 @@ internal sealed partial class FunctionCodegen
     private void FormatFinish(in MirTerminator call, in IntrinsicRow row)
     {
         var operand = this.body.Operands[call.Start];
-        if (this.Estimate(call, 1) is not { } estimate || this.StepConstant(call, 3, MirConstKind.Bool) is not { } direct ||
-            this.LoweringOf(operand) is not { } adapterLowering)
+        if (this.Estimate(call, 1) is not { } estimate || this.LoweringOf(operand) is not { } adapterLowering)
         {
             return; // Recorded.
         }
@@ -148,7 +146,7 @@ internal sealed partial class FunctionCodegen
 
         this.module.Request(HelperNeeds.FormattingRuntime);
         var buffer = this.LoadAt(this.Offset(adapter, adapterLowering.Layout.FieldOffsets.Span[AdapterDestination]), PointerLayout);
-        var routine = estimate.Stack(direct.Bits != 0) ? LegacyRuntimeHelpers.FormatStackFinish : row.Routine!;
+        var routine = estimate.Stack(this.Constant(call, 3).Bits != 0) ? LegacyRuntimeHelpers.FormatStackFinish : row.Routine!;
         _ = this.WriteCall(routine, [result, buffer, adapter, site.Text, site.Length]);
         this.Finish(call, null);
     }
@@ -157,13 +155,8 @@ internal sealed partial class FunctionCodegen
     // Types token at `at + 1`; null after a record.
     private FormatEstimate? Estimate(in MirTerminator call, int at)
     {
-        if (this.StepConstant(call, at, MirConstKind.Integer) is not { } bytes ||
-            this.StepConstant(call, at + 1, MirConstKind.TypeToken) is not { Type.Components: var values })
-        {
-            return null;
-        }
-
-        var estimate = FormatEstimate.Empty.Add((long)bytes.Bits);
+        var values = this.Constant(call, at + 1).Type.Components;
+        var estimate = FormatEstimate.Empty.Add((long)this.Constant(call, at).Bits);
         for (var i = 0; i < values.Count; i++)
         {
             if (this.collector.TypeOf(this.item, values[i]) is not { } type)
@@ -178,16 +171,6 @@ internal sealed partial class FunctionCodegen
         return estimate;
     }
 
-    // A step's constant of a kind at an operand position; null after a record (the builder writes each, MirBuilder.Estimate).
-    private MirConst? StepConstant(in MirTerminator call, int at, MirConstKind kind)
-    {
-        if (at < call.Count && this.body.Operands[call.Start + at] is { Kind: MirOperandKind.Const } operand &&
-            this.body.Consts[operand.Arg] is var constant && constant.Kind == kind)
-        {
-            return constant;
-        }
-
-        this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
-        return null;
-    }
+    // A step's constant at an operand position, of the kind MirValidator's Constants row gives that position.
+    private MirConst Constant(in MirTerminator call, int at) => this.body.Consts[this.body.Operands[call.Start + at].Arg];
 }
