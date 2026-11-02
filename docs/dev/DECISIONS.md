@@ -14828,7 +14828,10 @@ structure is recorded here by the unit that first implements it.
     `__kimi_buffer_into_string`: the kinds' numbering (Static false's 0, Heap true's 1) is a checked fact,
     `Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold`, with `ZeroSizedBuffer` below `UnmappedBound` (formerly a doc comment).
     Every expanded text byte-identical (SHA-256). Kept, other meanings: the UTF-8 and code point bounds 65536 and the writer's failed
-    flag `store i8 1` in the formatting runtime.
+    flag `store i8 1` in the formatting runtime. Cost: `TestRuntime.Text`'s one build per process (a test build's first frame) allocates
+    115,280 B instead of 62,544 B (the expansion's builder and copy, which `Replace` without a `\r\n` skipped); retained unchanged.
+    `Kernel32ImportsTest.TheRuntimeTextsOfAFreshProcess` bounds it with the other texts (1,806,408 B for 185,918 chars, 11 B/char
+    allowed). Not avoided: the text holds a marker, so returning a marker-free input unexpanded would not apply.
     Rejected: a `select` of the two kind markers (changes the text); a compile-time assertion (C# has none; a constant-overflow trick
     would be the only one in the code); the bound in `RuntimeAbi` (a Windows fact, not the runtime's representation); a marker table in
     `WindowsProfile` (a second expansion owner).

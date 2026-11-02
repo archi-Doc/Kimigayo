@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
+using Kimi.Testing;
 using Xunit;
 
 namespace XunitTest;
@@ -124,9 +125,10 @@ public sealed class Kernel32ImportsTest
             template.Replace(marker, replacement, StringComparison.Ordinal), LegacyRuntimeHelpers.ArrayRuntimeDefinitions));
     }
 
-    // PLAN G358: a process's first code generation builds its runtime texts once, each read, expanded in one scan and kept: about
-    // 10 bytes per char of the texts (1,691,080 B for 172,775 chars on .NET 10). The bound, 11 bytes per char, admits no further whole
-    // copy of the formatting runtime (79% of the chars); the per-marker whole-text copies G358 removed cost 51 bytes per char.
+    // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
+    // expanded in one scan and kept: about 10 bytes per char of the texts (1,806,408 B for 185,918 chars on .NET 10). The bound, 11
+    // bytes per char, admits no further whole copy of the formatting runtime (74% of the chars); the per-marker whole-text copies G358
+    // removed cost 51 bytes per char.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public Task AFreshProcessBuildsTheRuntimeTextsOnce()
@@ -145,10 +147,11 @@ public sealed class Kernel32ImportsTest
         {
             LlvmModuleText.WriteRuntime(TextWriter.Null, null);
             LegacyRuntimeHelpers.WriteFormattingRuntime(TextWriter.Null);
+            LlvmModuleText.WriteRuntime(TextWriter.Null, TestRuntime.Text);
         });
         var texts = new StringWriter();
         LlvmModuleText.WriteRuntime(texts, null);
-        LlvmModuleText.WriteRuntime(texts, string.Empty);
+        LlvmModuleText.WriteRuntime(texts, TestRuntime.Text);
         LegacyRuntimeHelpers.WriteFormattingRuntime(texts);
         LegacyRuntimeHelpers.WriteArrayRuntime(texts);
         texts.Write(LegacyRuntimeHelpers.StringComparisons + LlvmModuleText.TryAllocate + LlvmModuleText.TransferBytes);

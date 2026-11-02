@@ -33,7 +33,7 @@ public static class WindowsProfile
     internal const string FloatMarker = "_fltused";
 
     /// <summary>The bound below which Windows maps no address (the null-pointer partition, 64 KiB): no heap block lies below it, so
-    /// the runtime's release skips such an address (null, RuntimeAbi.ZeroSizedBuffer).</summary>
+    /// the runtime's release skips such an address.</summary>
     internal const int UnmappedBound = 65536;
 
     /// <summary>Gets the helper symbols supplied by the backend archive, in catalog order.</summary>
