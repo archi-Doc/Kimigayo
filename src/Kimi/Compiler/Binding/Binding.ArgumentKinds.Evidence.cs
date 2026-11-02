@@ -23,16 +23,20 @@ public sealed partial class Binding
         Result,
     }
 
-    // The contribution of a whole argument by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed
-    // part is Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate or
-    // join argument is judged by its parts' fits until its child positions contribute (G216 (a) U2.2 U2), so it stays Evidence. A
+    // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
+    // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
+    // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2,
+    // RequireChildPremises; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
     // receiver is Evidence; a default is a Signature position.
     private Contribution PartContribution(Koto part)
-        => this.RecordedPart(KotoHelper.UnwrapParentheses(part)).Kind switch
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        return ClassifyPart(core) == PartKind.Aggregate ? Contribution.Signature : this.RecordedPart(core).Kind switch
         {
             PartKind.Typed or PartKind.Aggregate or PartKind.Join => Contribution.Evidence,
             _ => Contribution.Signature,
         };
+    }
 
     // SPEC 10.8, 10.5.1: the evidence walk of a candidate's solution, by each argument part's kind at its position. A typed part is
     // evidence through the common adaptation (SPEC 10.2) and, at a Function pattern, its known call signature; a Never-typed part is
@@ -46,7 +50,9 @@ public sealed partial class Binding
     {
         // F1 (R4-M164): each argument's contribution by its part's kind (PartContribution), once the expected result has filled the
         // slots no evidence bound (`unbound`, which keeps those it solved); a Signature position whose parameter Type names such a slot
-        // is a Result position, which the contributor of the expected result proves (SPEC 10.3).
+        // is a Result position, which the contributor of the expected result proves (SPEC 10.3). The Result is the record of the
+        // candidate's evaluation (U2b): its selected candidate's later runs (CheckDefaulted, the re-run after CompleteWaiting) fix the
+        // slots the expected result solved from the construction's Type, so they keep a recorded Result and never rewrite it.
         internal readonly void Contribute(int[] mapping, ref SlotSet unbound)
         {
             for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
@@ -60,8 +66,9 @@ public sealed partial class Binding
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
-                this.Contributions[i] = contribution == Contribution.Signature && this.Function.Parameters[mapping[i]].Type.BoundType is { } pattern &&
-                    MentionsSlots(pattern, this.SlotOwner, unbound) ? Contribution.Result : contribution;
+                this.Contributions[i] = contribution == Contribution.Signature && (this.Contributions[i] == Contribution.Result ||
+                    (this.Function.Parameters[mapping[i]].Type.BoundType is { } pattern && MentionsSlots(pattern, this.SlotOwner, unbound)))
+                    ? Contribution.Result : contribution;
             }
         }
 
@@ -288,7 +295,11 @@ public sealed partial class Binding
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                if (binding.PartContribution(source) == Contribution.Evidence)
+                {
+                    // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
+                    binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                }
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());

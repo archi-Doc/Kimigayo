@@ -6147,17 +6147,43 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (cxc). C2b (the `MatchInputOrigin` meet) is no cause: with the bound the solve already shortens the input Origin (a 2-Origin
     `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged. Evidence: R4's `r4-notes\g216a-u22-impl\state-u1b.md`
     (01:15, 01:26) with `trace-b.txt` and `trace-c.txt` there.
+  - U2 (aggregate arguments; R4 planning's decision, 2026-11-03; C3): an argument whose operation has no adapted Type is walked by
+    its child positions (`RequireChildPremises`, `Binding.CallRelations.cs`, over the position composition's `ChildPositions` and
+    `AddChildPosition`), each child part judged at its own sub-Type by `PartContribution`: a typed part beside its own Type, any
+    other part, and an aggregate whose positions no part fills (`[]`), at every position; a failed part is a wildcard (rule W).
+    Every record stays at the argument (S1; the sites are U3's). An aggregate (by its form, `ClassifyPart`) is a Signature
+    position, so `SolveLate` bounds the solve with its instantiated parameter Type. Rows: b01, b02, b03, b11, q06, r05_n, vc2
+    and d09 (its Loan conflict follows the call's record; C7 not needed). The walk reads no `PositionKind` row and changes no
+    evidence or fit walk. A composite borrowed at `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType`
+    (b01_ref; U2's review B1). A child position whose parameter Type cannot be derived is a located `Unsupported_Kd` at the
+    argument, never a skip.
+  - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
+    B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
+    Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
+  - U2b (i01_n, N2; R4 planning's brief, 2026-11-03): the fact "this position's Type comes through a slot the expected result
+    solved" is F1's Result itself, recorded in the candidate's `Contributions` slice. Its writer is `Contribute` in the
+    candidate's first run, where the expected result solves the slots. `EvaluateCallCandidate` empties the slice before that run,
+    because the pooled buffer is not cleared on return. Its readers are the selected candidate's later runs (`CheckDefaulted`,
+    the re-run after `CompleteWaiting`), which fix those slots from the construction's Type: they keep a recorded Result and
+    never rewrite it as Signature. No slot-set buffer is added. The fixed-construction re-check keeps its own zeroed buffer;
+    the selected call reads the first evaluation's. N2: `InferAdapted` collects input premises for Evidence parts only
+    (`PartContribution`), so a completed Signature part's premises have one path, `SolveLate`'s, over the instantiated
+    parameter Type. i01_n gives only its outer record. Open, for the planning session (U2's review N4): an aggregate argument is
+    a Signature position, so `SolveLate` collects its whole instantiated Type, while its typed children are also collected
+    through `InferComposite` and `InferAdapted`. One path for them needs SolveLate to walk the child positions and collect only
+    the non-Evidence ones: the pooled F1 list of child positions in design §3, a new representation that this unit does not add.
+    The duplicate bounds move no row.
   - Staged rows, each with its unit and condition (U1c; the review's B2):
-    - i01_n, U2: `Contribute` recomputes "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
+    - i01_n, done in U2b: `Contribute` recomputed "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
       re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
       Result position as Signature: one more record at `.None` beside the outer call's, never one fewer. Cure: the solve publishes
       once, per candidate, the slots its expected result solved, and `Contribute` reads them; every `TryCandidate` solution carries
       that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
       its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
-      `FormedApplication`, then `SolveLate`; the review's N2): U2, with i01_n.
+      `FormedApplication`, then `SolveLate`; the review's N2): done in U2b, with i01_n.
     - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
     - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
-    - vc2, U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
+    - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
   - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
     written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
   - U1e: the well-formedness visit (`VisitWellFormedPremises`, `Binding.ResultPremises.cs`) makes each entry call one query of
