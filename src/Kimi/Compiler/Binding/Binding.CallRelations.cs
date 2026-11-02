@@ -115,7 +115,7 @@ public sealed partial class Binding
                     // SPEC 10.1, 10.3, 15.6.1: applicability fitted the structural part alone (FitsStructuralPartAt); a Function Type
                     // position's whole contract and its implementation's own well-formedness are judged here, after selection, at the
                     // argument (DECISIONS R4-M155, landing review B1).
-                    var walk = new RelationWalk(this, at, OriginPart.Structural);
+                    var walk = new RelationWalk(this, at, OriginPart.Structural, true);
                     if (!walk.Fits(adapted, parameter))
                     {
                         _ = this.FailMismatch(at, at, adapted, parameter, walk.Failure);

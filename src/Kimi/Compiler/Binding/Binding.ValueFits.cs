@@ -28,7 +28,7 @@ public sealed partial class Binding
     // FitsType with the walk's first failure.
     internal static bool FitsType(BoundType actual, BoundType expected, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var walk = new RelationWalk(null, null, OriginPart.Judged, true);
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
         return fits;
@@ -37,7 +37,7 @@ public sealed partial class Binding
     // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
     // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
     internal static bool FitsStructurally(BoundType actual, BoundType expected)
-        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Structural).Fits(actual, expected);
+        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Structural, false).Fits(actual, expected);
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
@@ -55,14 +55,14 @@ public sealed partial class Binding
             new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Verified).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is null);
 
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
+        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural, false).Fits(actual, expected);
 
     // SPEC 10.1, 10.3, 10.4 step 2, 15.6.1: the one entry of every pre-selection fit (a candidate's result, argument, receiver, its
     // acquisition and adaptation): the structural part alone, every Origin binding equal inside Function Types too, so no Origin relation
     // and no implementation well-formedness (FailedSignatureWellFormedness) drops a candidate for another to win; the selected candidate's
     // own fit judges them (DECISIONS R4-M155, landing review B1).
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
+        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere, false).Fits(actual, expected);
 
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);

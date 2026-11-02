@@ -19,19 +19,19 @@ public sealed partial class Binding
 
     // SPEC 3.8: whether `actual` is a subtype of `expected`; `own` is the declaration whose per-call inputs `actual` names.
     internal static bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
-        => new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected, own: own);
+        => new RelationWalk(null, null, OriginPart.Judged, false).Fits(actual, expected, own: own);
 
     // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
     // bindings never rank candidates.
     internal static bool FitsStructuralPart(BoundType actual, BoundType expected)
-        => new RelationWalk(null, null, OriginPart.Everywhere).Fits(actual, expected);
+        => new RelationWalk(null, null, OriginPart.Everywhere, false).Fits(actual, expected);
 
     // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
     // result Never when the implementation's is (CompatibleResult), judged without recording a bound; `own` is the declaration whose
     // per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
     internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var walk = new RelationWalk(null, null, OriginPart.Judged, true);
         var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
         failure = walk.Failure;
         return fits;
@@ -59,7 +59,7 @@ public sealed partial class Binding
     }
 
     // SPEC 3.8 at a use whose premises and Origins the relation reads.
-    internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected);
+    internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => new RelationWalk(this, use, OriginPart.Judged, false).Fits(actual, expected);
 
     // SPEC 10.7: an implementation's result R fits a required result Q when R <: Q or R is Never, at the result's top level only: the
     // required result it is compared against.

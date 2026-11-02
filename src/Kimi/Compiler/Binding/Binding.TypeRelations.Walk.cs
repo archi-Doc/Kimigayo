@@ -9,9 +9,9 @@ namespace Kimi.Compiler;
 //   (FunctionFits), whose implementation conditions it judges at every nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
-// - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
-//   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
-//   (comparisonFacts, design-r2 Amendment 1 A2).
+// - Outputs: whether the relation holds and, when it does not and the walk explains, its first failure where the walk found it
+//   (ComparisonFailure), which the reader that records the failure takes from the walk that decided; a recording root's walk also keeps
+//   one fact per failing position (comparisonFacts, design-r2 Amendment 1 A2). A walk whose reader takes only the answer keeps none.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
 //   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
 //   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
@@ -103,20 +103,23 @@ public sealed partial class Binding
         private readonly Koto? use;
         private readonly List<ComparisonFailure>? facts;
         private readonly int start;
+        private readonly bool explains;
         private OriginPart part;
         private ComparisonFailure failure;
         private bool ended;
 
-        internal RelationWalk(Binding? binding, Koto? use, OriginPart part)
+        // `explains`: whether the walk's reader takes its failure (Failure); a walk that only decides keeps none.
+        internal RelationWalk(Binding? binding, Koto? use, OriginPart part, bool explains)
         {
             this.binding = binding;
             this.use = use;
             this.part = part;
+            this.explains = explains;
         }
 
         // A recording root's walk: its facts follow `facts`' current end, which the root truncates back once it has read them.
         internal RelationWalk(Binding binding, Koto use, List<ComparisonFailure> facts)
-            : this(binding, use, OriginPart.Judged)
+            : this(binding, use, OriginPart.Judged, true)
         {
             this.facts = facts;
             this.start = facts.Count;
@@ -263,7 +266,11 @@ public sealed partial class Binding
 
         private bool Fail(in ComparisonFailure failure)
         {
-            this.failure = failure;
+            if (this.explains)
+            {
+                this.failure = failure;
+            }
+
             return false;
         }
 
@@ -275,6 +282,11 @@ public sealed partial class Binding
         // comparison's failure (false).
         private bool Keep(in ComparisonFailure failure, in CallableInstance instance)
         {
+            if (!this.explains)
+            {
+                return false;
+            }
+
             this.failure = failure;
             if (!this.Goes(instance))
             {
