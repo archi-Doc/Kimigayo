@@ -75,6 +75,8 @@ public sealed partial class Binding
         // F1 of a Case construction (R4-M164 U4): the call's rule over its payloads. `solved` holds the slots its expected Type fixed; as
         // in a call, only those that no evidence binds count as the expected result's (Contribute), and an Evidence payload binds each
         // slot its Type names (SPEC 10.8), settled or not, since the expected Type fixes the slots before the payloads' evidence (c3a).
+        // That derivation is a second copy of the call's rule (R4-M164 U4c, PLAN G391): it goes when the solve publishes the slots its
+        // evidence binds for calls and constructions alike.
         internal readonly void ContributePayloads(ReadOnlySpan<Koto> payload, SlotSet solved)
         {
             var slot = this.Binding.RentSlotSet(CallSlotCount(this.Binder));

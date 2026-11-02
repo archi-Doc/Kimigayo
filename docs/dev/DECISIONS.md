@@ -6206,11 +6206,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     payload whose Type the qualifier or expected Type already fixes reads its own kind, never the absent record's Typed. A slot the
     expected Type fixes counts as the expected result's only where no evidence binds it, as in a call: since the expected Type fixes
     the slots before the payloads' evidence (SPEC 10.8.1), `ContributePayloads` takes an Evidence payload as binding each slot its
-    Type names. This is derived from the payloads' F1 and Types, not read from a published fact: a construction's solve has none
-    after an evidence pass (the planning session's to confirm). Rows: c3q, c3a (UnprovenOriginRelation_Kd .None), cx2q, cx2e, cx2c
-    (UnprovenOriginRelation_Kd .None: the written Type's omitted Origin fixes T; a named call's T, bound by `short@ref`, is
-    refuted), their valid twins, c3m unchanged. Open: an aggregate payload's typed children bind no slot here (the call's do, through
-    InferComposite), so such a payload's sibling stays a Result position and unjudged.
+    Type names. Rows: c3q, c3a, cx2q, cx2e, cx2c (each a record at `.None`), their valid twins, c3m unchanged.
+  - U4c (U4b's re-check; R4 planning's decisions, 2026-11-03): two named open issues, each pinned by its rows.
+    - PLAN G391, a second copy of the call's rule: `ContributePayloads` derives "the slots evidence binds" from its Evidence
+      payloads' Types, while a call reads its evidence walk's result (`UnboundTypeSlots` after the early pass). Target, one owner:
+      the solve publishes the slots its evidence binds (a call's early-pass binds; a construction's, where `Infer` meets a fixed
+      slot) for calls and constructions alike, and both read it. Removal: when that fact is published, the derivation goes.
+      Divergences pinned as accepted (the named calls record): wf, a Function payload's written header binds T; wt, an aggregate
+      payload's typed child binds T; also possible, a slot a payload's Type names without binding it (under `s/U`, a projection).
+    - PLAN G392, the code of cx2q, cx2e and cx2c: T holds the written Type's omitted Origin, a body region that never outlives
+      `static`, so DIAGNOSTICS requires `UnsatisfiedOriginRelation_Kd`. They give `UnprovenOriginRelation_Kd`: the construction
+      passes that Origin to the shared judge (`JudgeOriginRelation`, `Binding.OriginProof.cs`), whose atom classification refutes
+      only a body-local Projection or Anchor at the longer end (`RefutesOriginRelation`) and returns Unknown for the open initializer
+      Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
+      Unproven until G392.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
