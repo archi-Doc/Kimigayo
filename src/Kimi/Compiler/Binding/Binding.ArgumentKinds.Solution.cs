@@ -50,7 +50,8 @@ public sealed partial class Binding
 
     // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
     // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
-    // inferred Type is checked fixed (ValidateFixedConstruction) and the Origin inference its evidence begins. The binder (a function or
+    // inferred Type is checked fixed (ValidateFixedConstruction), the Origin inference its evidence begins, and a candidate's
+    // contributions, what each argument's position contributes to its call (F1, Contributions; DECISIONS R4-M164). The binder (a function or
     // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Invariant: a Case
     // construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk, the defaults, the
     // waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.

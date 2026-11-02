@@ -6141,10 +6141,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - C2: `SolveLate` collects each Signature position's premises (a default's among them) over the instantiated parameter Type
     (`SubstituteType`, Rule C), not `FormedApplication`, which kept `T` unsubstituted so that `T`'s stored Origin bounded nothing
     (cxc). C2b (the `MatchInputOrigin` meet) is no cause: with the bound the solve already shortens the input Origin (a 2-Origin
-    `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged.
-  - Open: i01_n (a later re-run of the winner, with the construction's slots fixed, rewrites F1 as Signature); cs1_ty and ea1 (an
-    annotation as the contributor: the rows want a record at the argument too); n7g2 (the independent Loan conflict beside a
-    Binding-level record, PLAN G56 until H11); h4_n (C7, not probed); vc2 (U2).
+    `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged. Evidence: R4's `r4-notes\g216a-u22-impl\state-u1b.md`
+    (01:15, 01:26) with `trace-b.txt` and `trace-c.txt` there.
+  - Staged rows, each with its unit and condition (U1c; the review's B2):
+    - i01_n, U2: `Contribute` recomputes "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
+      re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
+      Result position as Signature: one more record at `.None` beside the outer call's, never one fewer. Cure: the solve publishes
+      once, per candidate, the slots its expected result solved, and `Contribute` reads them; every `TryCandidate` solution carries
+      that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
+      its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
+      `FormedApplication`, then `SolveLate`; the review's N2): U2, with i01_n.
+    - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
+    - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
+    - vc2, U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection

@@ -169,8 +169,8 @@ public partial class OriginRelationDiagnosticTest
 
     // Contextual parts of value calls (d3 §7; the owner's (A)): a value call proves its callee's nested input well-formedness for the
     // instantiated Types at the argument, as a named call does; each twin states the relation. k6 is vc1 (not repeated).
-    [InlineData("vc1", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return g(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
     [Theory]
+    [InlineData("vc1", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return g(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
     [InlineData("vc1_ok", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n" + WithPremise + "    return g(Option.None)\n", "")]
     [InlineData("vc2_ok", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n" + WithPremise + "    return g((Option.None, 1))\n", "")]
     public void AValueCallProvesItsCalleesNestedInputs(string form, string body, string records)
@@ -190,8 +190,8 @@ public partial class OriginRelationDiagnosticTest
     // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4);
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
-    [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [Theory]
+    [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [InlineData("j02_ok", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + LongBody + "    put8(p, v, E.init())\n    return 0\n", "", null)]
     [InlineData("t7c_ok", ClauseCall + "    origin p outlives static\n    return g(.None, p)\n", "", null)]
     [InlineData("cx1", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc bad(p: ref/i32) -> i32\n    let short = 2\n    let w = W.Make(short@ref, p, .None)\n    return 0\n", "", null)]
