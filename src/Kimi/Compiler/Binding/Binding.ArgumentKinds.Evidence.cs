@@ -76,7 +76,7 @@ public sealed partial class Binding
             for (var i = 0; i < arguments.Count; i++)
             {
                 var source = arguments[i];
-                if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot ||
+                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
                     source.BoundType is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
