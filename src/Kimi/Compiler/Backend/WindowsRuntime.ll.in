@@ -204,7 +204,7 @@ done:
   ret ptr %memory
 }
 
-; SPEC 5.6: a negative count (as for Array capacity) or an unrepresentable byte size Aborts; zero bytes return the nonnull substitute 4096, which
+; SPEC 5.6: a negative count (as for Array capacity) or an unrepresentable byte size Aborts; zero bytes return the nonnull substitute {{zero_sized_buffer}}, which
 ; is aligned for every supported element and which __kimi_free ignores.
 define internal ptr @__kimi_raw_allocate(i64 %count, i64 %stride, ptr %location, i64 %location_length) #0 {
 entry:
@@ -224,7 +224,7 @@ heap:
   %memory = call ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length)
   ret ptr %memory
 substitute:
-  ret ptr inttoptr (i64 4096 to ptr)
+  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)
 size_failure:
   call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
   unreachable

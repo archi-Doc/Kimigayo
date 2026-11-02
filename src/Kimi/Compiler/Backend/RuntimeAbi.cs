@@ -2,12 +2,18 @@
 
 // Owns the runtime ABI of the windows-x64-v1 profile (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
 // string values and string handles, the static string release kind, the zero-sized buffer address, and the FunctionAbi of each
-// runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them.
-// Input: none; the entry symbol comes from WindowsProfile.
-// Output: the records, read by code generation and by LlvmModuleText's runtime splice.
+// runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them, and the
+// text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
+// `{{zero_sized_buffer}}`).
+// Input: none; the entry symbol comes from WindowsProfile; a marker's name and the expanded text being written.
+// Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
-// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once.
+// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells the
+// zero-sized buffer address only through its marker.
 // Must not take BoundType, syntax or MIR types, or hold a per-module record.
+
+using System.Globalization;
+using System.Text;
 
 namespace Kimi.Compiler.Backend;
 
@@ -136,4 +142,17 @@ internal static class RuntimeAbi
 
     /// <summary>Gets the byte length parameter of the hidden diagnostic location.</summary>
     internal static AbiParameter LocationLength => new("i64", "location_length", AbiParameterKind.LocationLength);
+
+    // Appends the text of a runtime template's ABI constant marker, the zero-sized buffer address (`zero_sized_buffer`); false for any
+    // other marker.
+    internal static bool Expand(ReadOnlySpan<char> marker, StringBuilder runtime)
+    {
+        if (!marker.SequenceEqual("zero_sized_buffer"))
+        {
+            return false;
+        }
+
+        runtime.Append(ZeroSizedBuffer.ToString(CultureInfo.InvariantCulture));
+        return true;
+    }
 }

@@ -84,7 +84,11 @@ internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, Stored
 /// {buffer, length, capacity} handle (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
-    private const string ArrayGrowBody = """
+    // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy. A
+    // runtime template (LlvmModuleText.ExpandRuntime): each routine's definition at its marker line, its abort reasons and the
+    // zero-sized buffer address at theirs.
+    internal const string ArrayRuntimeTemplate = """
+        {{__kimi_array_grow}}
         entry:
           %capacity_ptr = getelementptr i8, ptr %handle, i64 16
           %capacity = load i64, ptr %capacity_ptr, align 8
@@ -96,7 +100,7 @@ internal static partial class LegacyRuntimeHelpers
         unbounded:
           ; SPEC 4.5, 4.9.5: zero-sized elements need no bytes, so every count fits without allocation. The buffer is
           ; a fixed nonnull substitute, aligned for any element, that __kimi_free never releases.
-          store ptr inttoptr (i64 ZERO_SIZED_BUFFER to ptr), ptr %handle, align 8
+          store ptr inttoptr (i64 {{zero_sized_buffer}} to ptr), ptr %handle, align 8
           store i64 9223372036854775807, ptr %capacity_ptr, align 8
           br label %done
         sized:
@@ -134,15 +138,12 @@ internal static partial class LegacyRuntimeHelpers
           store i64 %target, ptr %capacity_ptr, align 8
           br label %done
         size_failure:
-          call void @__kimi_abort(i32 REASON_SIZE, ptr %location, i64 %location_length, i64 -2)
+          call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
           unreachable
         done:
           ret void
         }
-
-        """;
-
-    private const string ArrayReserveBody = """
+        {{__kimi_array_reserve}}
         entry:
           ; SPEC 4.9.5: a nonnegative additional count; the checked total is the minimum capacity.
           %negative = icmp slt i64 %additional, 0
@@ -158,16 +159,13 @@ internal static partial class LegacyRuntimeHelpers
           call void @__kimi_array_grow(ptr %handle, i64 %stride, i64 %minimum, ptr %location, i64 %location_length)
           ret void
         argument_failure:
-          call void @__kimi_abort(i32 REASON_ARGUMENT, ptr %location, i64 %location_length, i64 -2)
+          call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
           unreachable
         overflow_failure:
-          call void @__kimi_abort(i32 REASON_OVERFLOW, ptr %location, i64 %location_length, i64 -2)
+          call void @__kimi_abort(i32 {{reason_overflow}}, ptr %location, i64 %location_length, i64 -2)
           unreachable
         }
-
-        """;
-
-    private const string ArrayShrinkBody = """
+        {{__kimi_array_shrink}}
         entry:
           ; SPEC 4.9.5: a failed candidate allocation leaves the handle unchanged.
           %length_ptr = getelementptr i8, ptr %handle, i64 8
@@ -212,6 +210,9 @@ internal static partial class LegacyRuntimeHelpers
         }
 
         """;
+
+    /// <summary>The routines whose definitions ArrayRuntimeTemplate splices, each at its one marker line.</summary>
+    internal static readonly FunctionAbi[] ArrayRuntimeDefinitions = [RuntimeAbi.ArrayGrow, RuntimeAbi.ArrayReserve, RuntimeAbi.ArrayShrink];
 
     private const string ArrayHelperPrologue = """
         entry:
@@ -710,14 +711,7 @@ internal static partial class LegacyRuntimeHelpers
 
     private static partial class Texts
     {
-        // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy.
-        internal static readonly string ArrayRuntime =
-            RuntimeAbi.ArrayGrow.GetDefinition(exported: false) +
-            ArrayGrowBody.Replace("REASON_SIZE", Number(AbortReasons.AllocationSize), StringComparison.Ordinal)
-                .Replace("ZERO_SIZED_BUFFER", Number(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +
-            RuntimeAbi.ArrayReserve.GetDefinition(exported: false) +
-            ArrayReserveBody.Replace("REASON_ARGUMENT", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
-                .Replace("REASON_OVERFLOW", Number(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
-            RuntimeAbi.ArrayShrink.GetDefinition(exported: false) + ArrayShrinkBody;
+        // The Array runtime (ArrayRuntimeTemplate), expanded once.
+        internal static readonly string ArrayRuntime = ExpandRuntime(ArrayRuntimeTemplate, ArrayRuntimeDefinitions);
     }
 }

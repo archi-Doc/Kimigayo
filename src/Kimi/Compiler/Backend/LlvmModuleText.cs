@@ -3,13 +3,13 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the runtime routines a module
 // defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked one-scan expansion
-// every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations, the overflow and memory
+// every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' runtime texts too), the external declarations, the overflow and memory
 // intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
 // numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
 // hexadecimal spelling. Code generation writes the frame through it (PD2: promoted, never copied; Name came from the old writer with
 // ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
-// floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons)
+// floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records and constants (RuntimeAbi), the abort reasons (AbortReasons)
 // and the target profile (WindowsProfile).
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
 // runtime template; a floating constant's hexadecimal spelling bits.
@@ -180,11 +180,12 @@ internal static partial class LlvmModuleText
         }
     }
 
-    // A runtime template (the Windows runtime, the formatting runtime) expanded in one ordered scan into one builder sized for the
-    // template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at its `{{name}}` marker line and every other
-    // marker takes its abort reason text (AbortReasons.Expand). Compiler-facing runtime signatures come from the same FunctionAbi
-    // records as calls and each is defined once, so a missing or repeated definition marker, or a marker neither expands, is a broken
-    // template. Every `{{` opens a marker, so a `{` right before one (`{{{name}}`) fails too.
+    // A runtime template (the Windows runtime, the formatting and Array runtimes) expanded in one ordered scan into one builder sized
+    // for the template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at its `{{name}}` marker line and every
+    // other marker takes its owner's text, an abort reason's (AbortReasons.Expand) or an ABI constant's (RuntimeAbi.Expand), whose
+    // names are disjoint. Compiler-facing runtime signatures come from the same FunctionAbi records as calls and each is defined once,
+    // so a missing or repeated definition marker, or a marker no owner expands, is a broken template. Every `{{` opens a marker, so a
+    // `{` right before one (`{{{name}}`) fails too.
     internal static string ExpandRuntime(string template, ReadOnlySpan<FunctionAbi> definitions)
     {
         var length = template.Length;
@@ -240,7 +241,7 @@ internal static partial class LlvmModuleText
     }
 
     // Writes the marker that begins the rest of a template and returns the text after it: a definition's marker line (the marker
-    // and its newline) takes the definition the first time; any other marker its abort reason text. A repeated definition marker,
+    // and its newline) takes the definition the first time; any other marker its owner's text. A repeated definition marker,
     // an unknown marker or one without its end is left unexpanded, so the template fails.
     private static ReadOnlySpan<char> Splice(StringBuilder runtime, ReadOnlySpan<char> rest, ReadOnlySpan<FunctionAbi> definitions, bool[] spliced)
     {
@@ -263,7 +264,9 @@ internal static partial class LlvmModuleText
             }
         }
 
-        return AbortReasons.Expand(name, runtime) ? after : throw new InvalidDataException("The runtime template has an unexpanded marker.");
+        return AbortReasons.Expand(name, runtime) || RuntimeAbi.Expand(name, runtime)
+            ? after
+            : throw new InvalidDataException("The runtime template has an unexpanded marker.");
     }
 
     private static string ReportTestAbort(string runtime, FunctionAbi abort)
