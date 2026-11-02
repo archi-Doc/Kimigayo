@@ -10867,7 +10867,8 @@ structure is recorded here by the unit that first implements it.
     need a drop keeps its erased Type (its target, the payload's glue, is the payload's erased Type's); one whose Sealed payload needs
     none, and one whose payload is not Sealed (`MonoKey.Variant` 1), are keyed by the handle over Unit (`TyCtxt.Rebuild`, keeping the
     counting), so each such release has one glue per counting, represented by its first requester (`InstanceCollector.GlueKey`, through
-    `DropGlue.Parts` and `MirTypes.MayNeedDrop`, the readings Release makes); code generation is unchanged. The old generator shared
+    `DropGlue.Parts` and `MirTypes.MayNeedDrop`, the readings Release makes, once per handle Type in a run: a memo the run clears,
+    since MayNeedDrop walks the payload's destruction to its bound); code generation is unchanged. The old generator shared
     the same classes (by mode and payload drop). The height cap moves before `Find`: it is the requested Type's (R5-M171), so a
     requester past it is refused whether or not its shared key exists. Not shared: a handle over a shared handle (`rc/rc/A` and
     `rc/rc/B`, whose key would have to carry the inner release) and struct, Tuple or enum glues of one layout and part glues (outside

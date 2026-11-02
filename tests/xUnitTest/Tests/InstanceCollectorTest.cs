@@ -761,7 +761,9 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         var actual = string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
-        Assert.True(shape is "height" or "shared" ? actual.StartsWith(records, StringComparison.Ordinal) && set.Records.Count() == 1 : actual == records, actual);
+        Assert.True(
+            shape is "height" or "shared" ? actual.StartsWith(records, StringComparison.Ordinal) && set.Records.Count() == 1 : actual == records,
+            actual);
         if (shape == "breadth")
         {
             Assert.Equal(1024, set.Items.ToArray().Count(x => Label(program, x).StartsWith("DropGlue Nest<", StringComparison.Ordinal)));
