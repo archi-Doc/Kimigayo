@@ -139,6 +139,38 @@ public class ConcreteClosureTest
     public void AClosureIsOwnedWhenItsFixedSignatureOriginsAreStatic(string id, string declarations, string? record)
         => Assert.Equal(record is null ? [id] : [id, record], [id, .. RawPointerSyntaxTest.Records(NeedOwned + declarations)]);
 
+    // DECISIONS BU-73: a warm rebind of Closures' Owned proofs over their call signatures, of an erasure of a Closure's environment and of
+    // stored Properties whose inferred Types hold Closures (FixedAtoms' walk) reuses its storage.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ClosureSignaturesAndFieldClosuresRebindWithoutAllocating()
+    {
+        var c = MinimalEmissionTest.Analyze(NeedOwned + """
+            struct View {source}
+                public let data: ref/i32 during source
+                public let cb = (func (y: ref/i32 during source) => (), 1)
+                public let mk = func () => func (y: ref/i32 during source) => ()
+                public init(data: ref/i32 during source) => self.data = data
+
+            func f(r: ref/i32) -> i32
+                let view = View.init(r)
+                let inner = func (y: ref/i32 during r) => ()
+                let g: (ref/i32 during r) -> () = inner
+                let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> i32 => 0
+                let c = outer(r)
+                let k = need(view.cb.0) + need(view.mk)
+                return need(inner) + need(c@move)
+
+            func g<T>(v: T) -> i32
+                let c = func (x: T) => ()
+                return need(c)
+
+            public func main() => ()
+
+            """);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
     // A function requiring Owned of its argument (SPEC 15.2.3), the subject of the Owned rows here and in PropertyBindingTest.
     internal const string NeedOwned = "func need<T>(value: T) -> i32\n    T is Owned\n    return 1\n\n";
 }

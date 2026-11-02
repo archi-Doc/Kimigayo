@@ -9619,6 +9619,31 @@ resumed by R4-M86 (2026-10-20).
     `(s).a`, the chain), `T is Array<Pair>` (`s[i]`) and `T is (Pair, i32)` (`s.0`), the same object after a warm rebind; absent
     without a premise, under `T is Pick` and at c1's `xs[i]` and `xs[i].a`; `AWarmRebindRepublishesAnAccesssIdentityWithoutAllocating`
     (Purpose=Allocation, a chain to `Array<Pair>`).
+- **BU-73 A callable's fixed signature Origins are Owned parts; an erasure judges its environment; one atom walk with a binder class**
+  (2026-11-02; PLAN G353, unit bu100; design revision 2, BU notes `g353\design.md`, ACCEPTED by BU's and R4's reviews 3; the owner,
+  2026-10-31, verbatim 「G353 の設計 今すぐ設計だけ始める で決定します」 and 「G353：サポートの縮小を認める」) SPEC 15.2.3, 7.7.4, 8.10,
+  11.6, 15.3.4, 15.8.2.
+  - Fixed signature Origins (SPEC 15.2.3): the Origins of a callable's call signature other than its per-call ones, which are exactly
+    the omitted Origins of its direct borrowed parameters (SPEC 8.10), its receiver ρ and its call result (15.8.2). Written `during`
+    Origins, enclosing atoms, Type arguments' Origins and an anonymous function's nested borrow-layer and aggregate-slot parameter
+    Origins (body inference variables, fixed once, 15.3.4) are fixed. Nothing enters a Type's identity, Height or held context.
+  - One rule, `SignatureCapability`: a callable signature is an Owned part with its own per-call Origins closed to static
+    (`SubstituteStoredOrigins` with `PerCallImages`: the direct inputs, ρ and the result), never the aggregate inputs. `CallSignature`
+    gives the rows: a Function Type quantifying an input is its own signature under its syntax, and its verdict is the closed
+    signature's, since it stores nothing else.
+  - The erasure's subject, `ErasureSubject`: SPEC 7.7.4's complete environment, a Closure's captures as one Tuple (`TyCtxt.Tuple` over
+    its Components, no copy), a Function Item itself. The required Function Type states the signature, so the erasure never judges it;
+    the Tuple's members are the capture indices, so `OwnedMember` and r2-1b's ErasureOutcome read it unchanged.
+  - One atom walk, `FixedAtoms` (R4-M159's Collect): the atoms of a binder class that a Type names, in first-occurrence order (its
+    Components gated by `CarriesAnyOrigin || ContainsClosure`, and each Closure part's `ClosureSignature` at any depth, one
+    `visitedParts` query), returning the first Closure part, outermost, through which it met one. `BinderClass` is closed:
+    `EnclosingAnonymous` (an anonymous function enclosing the subject, ClosureType's Origin arguments) and `EnclosingContainer` (a
+    container enclosing it). Enclosure is the ancestry test (`IsWithin`). For `EnclosingAnonymous` the descent adds nothing: a nested
+    Closure's enclosing atoms are already its Origin arguments, and its own atoms do not enclose the subject.
+  - U1 restructures with no behavior change: 143 related classes on both pipelines, the diagnostic snapshot against
+    shared-base/bdf4eb6b8, warm Bind 0 B (`ConcreteClosureTest.ClosureSignaturesAndFieldClosuresRebindWithoutAllocating`).
+  - Rejected: imaging a container's atoms in the Closure Type now (option (B): K5 grows until R6-check); a second walk for the record's
+    location (BU's n1, R4's N3-1); an open `Func` filter, which reads as a mode (BU's n2).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; design
   `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g216a-p1\u16g3r-design.md`, R4's ACCEPT under C9-C11; the owner's
