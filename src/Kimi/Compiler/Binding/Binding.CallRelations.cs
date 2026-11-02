@@ -58,16 +58,12 @@ public sealed partial class Binding
     // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
     // represent yet, is an obligation that it reports as the located limit at that value. Erasures, anonymous bodies, aggregates and
     // contextual payloads are judged where they are bound. The expected result is judged at its destination. `operations` holds the
-    // arguments' and, last, the receiver's.
+    // arguments' and, last, the receiver's; the selected candidate's solution holds its Origins and each argument's contribution (F1,
+    // R4-M164), and the receiver is Evidence.
     private void JudgeSelectedCall(
-        InvocationKoto call,
-        FunctionKoto selected,
-        ReadOnlySpan<BoundArgumentOperation> operations,
-        BoundOrigin[] origins,
-        BoundOrigin[] inputs,
-        BoundType? declaringType,
-        ReadOnlySpan<BoundDefaultArgument> defaults)
+        InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
+        var selected = solution.Function;
         this.callRelationScratch.Clear();
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
@@ -81,20 +77,20 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
-        foreach (ref readonly var operation in operations)
+        for (var i = 0; i < operations.Length; i++)
         {
-            if (operation is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+            if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
             {
-                this.RequireInputPremises(at, parameter, adapted);
+                this.RequireInputPremises(at, parameter, adapted, i < argumentCount ? solution.Contributions[i] : Contribution.Evidence);
             }
         }
 
         foreach (var argument in defaults)
         {
-            this.RequireInputPremises(call, argument.ParameterType, null);
+            this.RequireInputPremises(call, argument.ParameterType, null, Contribution.Signature);
         }
 
-        this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
+        this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
         this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);
     }

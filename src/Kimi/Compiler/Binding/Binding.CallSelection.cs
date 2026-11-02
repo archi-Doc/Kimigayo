@@ -105,7 +105,7 @@ public sealed partial class Binding
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
             state = this.TryCandidate(
-                this.Solution(evaluation, function, declaringType),
+                this.Solution(evaluation, index, function, declaringType),
                 evaluation.ExplicitLengths,
                 evaluation.Mapping,
                 argumentMap,
@@ -237,6 +237,7 @@ public sealed partial class Binding
         internal BoundOrigin[] Inputs;
         internal EvaluatedCandidate[] Evaluated;
         internal BoundArgumentOperation[] Operations;
+        internal Contribution[] Contributions;
         internal int OperationStride;
         internal int SavedCandidates;
         internal BoundType?[] AllTypes;
