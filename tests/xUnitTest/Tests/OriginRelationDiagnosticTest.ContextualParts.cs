@@ -45,6 +45,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Put3 = "func put3(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\n";
 
+    private const string PutRef = "func putr(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: ref/(Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\n";
+
     private const string Put4 = "func put4(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: [1 of Option<ref/(ref/i32 during b) during a>])\n    slot@follow = v\n";
 
     private const string Put5 = "func put5(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Array<ref/(ref/i32 during b) during a>)\n    slot@follow = v\n";
@@ -106,10 +108,12 @@ public partial class OriginRelationDiagnosticTest
     // argument's instantiated well-formedness at that argument. d09's call adds `short`'s Loan to `keep`, read after `short` ends, so its
     // record is the Loan conflict at `short`. Each twin passes a value that outlives `q`, states the relation or reads before the end; the
     // same shape without a contextual part (t03) stays valid inside a Closure, as s04 does (ClosureEnvironmentOriginTest). cs2 is b11 and
-    // q12 is vc2 (not repeated).
+    // q12 is vc2 (not repeated). b01_ref is b01 borrowed by the cross-semantics borrow (SPEC 10.2; U2's review B1).
     [Theory]
     [InlineData("b01", Put3 + ShortBody + "    put3(p, sr, (Option.None, 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (Option.None, 1)")]
     [InlineData("b01_ok", Put3 + LongBody + "    put3(p, v, (Option.None, 1))\n    return 0\n", "")]
+    [InlineData("b01_ref", PutRef + ShortBody + "    putr(p, sr, (Option.None, 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (Option.None, 1)")]
+    [InlineData("b01_ref_ok", PutRef + LongBody + "    putr(p, v, (Option.None, 1))\n    return 0\n", "")]
     [InlineData("b02", Put4 + ShortBody + "    put4(p, sr, [Option.None])\n    return 0\n", "UnsatisfiedOriginRelation_Kd [Option.None]")]
     [InlineData("b02_ok", Put4 + LongBody + "    put4(p, v, [Option.None])\n    return 0\n", "")]
     [InlineData("b03", Put5 + ShortBody + "    put5(p, sr, [])\n    return 0\n", "UnsatisfiedOriginRelation_Kd []")]
