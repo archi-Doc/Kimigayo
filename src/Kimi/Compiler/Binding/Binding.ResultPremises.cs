@@ -15,8 +15,8 @@ namespace Kimi.Compiler;
 // Origin. One visitor serves both.
 public sealed partial class Binding
 {
-    // The parts one well-formedness visit met, and those one borrow layer's stored visit met, each beside the substituted and argument
-    // parts it met them with (VisitWellFormedPremises; DECISIONS BU-55, R4-M164 U1e).
+    // The parts one well-formedness visit met, and those one borrow layer's stored visit met, each with the substituted and argument
+    // parts it last met them beside (VisitWellFormedPremises; DECISIONS BU-55, R4-M164 U1e).
     private readonly TypeMemo<(BoundType Result, BoundType? Actual)> wellFormedParts = new();
     private readonly TypeMemo<(BoundType Result, BoundType? Actual)> storedParts = new();
 
@@ -408,7 +408,10 @@ public sealed partial class Binding
     // input's visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the
     // argument's own Type, which is well formed, it covers only the positions that the fit replaced. Each entry call is one query of
     // wellFormedParts, each borrow layer's stored visit one of storedParts: a part met again beside the same parts only repeats what its
-    // first visit added (each record, obligation and bound is kept once), and a false ends the query, so each is visited once per query.
+    // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
+    // once per distinct (substituted, argument) pair beside which it is met consecutively: linear where the pair follows from the part
+    // (no argument, or an argument Type that is the instantiated parameter itself), but argument parts that diverge and alternate beside
+    // a shared pattern part can still cost 2^n, as before U1e (an open issue).
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
         => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
 
