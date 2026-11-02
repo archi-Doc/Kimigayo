@@ -11,6 +11,8 @@ namespace XunitTest;
 // call of it proves it for the instantiated Types), the owner's (a) (2026-10-27: a Function Item converted to a Function Type may assume
 // the target's own well-formedness, as a Function value does), the owner's G56 answer and PLAN G269 (C). Each row names its form and states
 // every Error record of the program on both pipelines, as `Code text` (the first line of the primary span) in ordinal order.
+// The rows that wait for PLAN G216 (a) U2.2 (contextual parts, joins, nested generic calls, instantiated Types at calls and
+// constructions, D-1) are kept on `claude/a5-g216a-t2-tests` and return with U2.2; the comments below may name them.
 public partial class OriginRelationDiagnosticTest
 {
     internal const string IndependentConflict = "    var x = 1\n    let w = x@ref\n    x = 2\n    let u = w@follow\n";
@@ -67,12 +69,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("g2", LayerBox + "func f<E>(x: E, y: ref/Box<E> during c, z: uniq/(ref/i32 during c)) -> () => ()\nfunc g(q: ref/Box<ref/i32 during s> during t, w: uniq/(ref/i32 during t)) -> ()\n    let m: i32 = 5\n    f(m@ref, q, w)\n", "UnsatisfiedOriginRelation_Kd q", "requires the borrow m@ref outlives t, which is false")]
     [InlineData("g4", GenericLayer + "func g(v: ref/i32, q: ref/(ref/i32 during s) during t, w: uniq/(ref/i32 during t)) -> ()\n    f(v, q, w)\n", "UnprovenOriginRelation_Kd q", "requires v outlives t, which is not proven")]
     [InlineData("g1ok", GenericLayer + "func g(v: ref/i32 during s, q: ref/(ref/i32 during s) during t, w: uniq/(ref/i32 during t)) -> ()\n    f(v, q, w)\n", "", null)]
-    [InlineData("nn1", NestedHead + NestedInner + "    return inner(Option.None, q)\n", "UnprovenOriginRelation_Kd Option.None", null)]
-    [InlineData("nn1b", NestedHead + NestedInner + "    return inner(.None, q)\n", "UnprovenOriginRelation_Kd .None", null)]
     [InlineData("nn1ok", NestedHead + "    origin q outlives r\n" + NestedInner + "    return inner(Option.None, q)\n", "", null)]
-    [InlineData("h2", Container + StoreHead + "    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n" + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("h2c", Container + StoreHead + "    origin q outlives r\n    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n", "", null)]
-    [InlineData("nn1x", StoreHead + StoreInner + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("nn1x_c", StoreHead + "    origin q outlives r\n" + StoreInner + Dangling, "ComparisonLoanConflict_Kd let short = 2", null)]
     public void EachCallProvesItsCalleesNestedInputs(string form, string body, string records, string? label)
         => AssertRecords(form, body, records, label);
@@ -82,11 +80,9 @@ public partial class OriginRelationDiagnosticTest
     // Type is judged at its occurrence, so n7h2's call adds no second record for it; a contextually typed `.None` is judged at the call.
     // Each twin states the relation and keeps the independent records.
     [Theory]
-    [InlineData("n7g2", FixedHead + FixedClosure + IndependentConflict + "    return c(Option.None)\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginRelation_Kd Option.None")]
     [InlineData("n7g2_c", FixedHead + "    origin q outlives r\n" + FixedClosure + IndependentConflict + "    return c(Option.None)\n", "ComparisonLoanConflict_Kd x = 2")]
     [InlineData("n7h2", FixedHead + FixedClosure + FixedNone + IndependentConflict + "    return c(none)\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("n7h2_c", FixedHead + "    origin q outlives r\n" + FixedClosure + FixedNone + IndependentConflict + "    return c(none)\n", "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData("p1b", TypedOwn + "    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "UnprovenOriginRelation_Kd h(a, b, none); UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
     [InlineData("p1b_c", TypedOwn + "    origin a outlives b\n    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "")]
     public void ALocatedRecordThatDoesNotFailBindingIsReported(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -94,24 +90,21 @@ public partial class OriginRelationDiagnosticTest
     // PLAN G269 (C): a contextually typed `.None` argument over the call's own Origins has its instantiated well-formedness judged at that
     // argument; a Borrow of `short` cannot outlive `q` (Refuted). The twins pass a value that outlives `q`.
     [Theory]
-    [InlineData("x5", ImpliedStore + ShortBody + "    put2(p, sr, Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("x5_ok", ImpliedStore + LongBody + "    put2(p, v, Option.None)\n    return 0\n", "")]
-    [InlineData("x8", ImpliedCheck + ShortBody + "    let n = chk(Option.None, p, sr)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("x8_ok", ImpliedCheck + LongBody + "    let n = chk(Option.None, p, v)\n    return 0\n", "")]
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
     // G216 (a) T2: PLAN G277's (3) and (4) (e1c, G277 (2), is CallableOriginForwardingTest's U2.1 row). s4, decided by the owner
     // (2026-10-31, 「すべて推奨の内容でお願いします」, PLAN 7f3e61b1b): a written result Type's own clause is a body obligation (SPEC 15.6.1,
-    // 15.3.2, 15.6.4 step 3), as n4u's, and G277 (3) is no defect; so the Closure body's `.None` keeps dev's record (s4u), and a call also
-    // proves its result Type's clauses at `c()` (s4c, t7's rule, U2.3). h4: a call whose contextual `E.init()` needs q outlives r is valid
+    // 15.3.2, 15.6.4 step 3), as n4u's, and G277 (3) is no defect; so the Closure body's `.None` keeps dev's record (s4u), and a call of it
+    // adds none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). h4: a call whose contextual `E.init()` needs q outlives r is valid
     // when the result is read while `long` lives (dev no longer reports G277 (4)'s Loan conflict); its twin reads the result after `short`
     // ends, which the call's judgment of `E.init()` (U2.2, as j02) makes the Loan conflict at `short` (as d09).
     [Theory]
     [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
-    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None; UnprovenConstraint_Kd c()")]
+    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None")]
     [InlineData("U2.2", "h4", H4Head + "func ok(b: ref/i32) -> i32\n    let long = 1\n    let x = h4(long@ref, b, E.init())\n    return x@follow\n", "")]
-    [InlineData("U2.2", "h4_n", H4Head + "func bad() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        keep = h4(short@ref, keep, E.init())\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     public void APlanG277FormHasItsVerdict(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 

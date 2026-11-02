@@ -17,7 +17,7 @@ public partial class ResultPremiseTest
     // A nested result relating Origins its inputs do not relate is the declaration's record where it is written, whether or not the
     // body calls it (z1 beside `return q`, r3, r3_call, v2, v3; DECISIONS R4-M162); t7 is ResultPremiseTest's Type-clause half.
     [Theory]
-    [InlineData("t7", StaticClause + ResultCall + "    let o = f()\n    return 0\n", "UnprovenConstraint_Kd f()")]
+    [InlineData("t7", StaticClause + ResultCall + "    let o = f()\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("t7_c", StaticClause + ResultCall + "    origin q outlives static\n    let o = f()\n    return 0\n", "")]
     [InlineData("t7n", StaticClause + "func h(x: ref/i32) -> Option<T during x>\n    origin x outlives static\n    return .None\nfunc k(q: ref/i32) -> i32\n    let o = h(q)\n    return 0\n", "UnprovenConstraint_Kd h(q); UnprovenOriginRelation_Kd q")]
     [InlineData("t7l", StaticClause + "func k(q: ref/i32) -> i32\n    let o: Option<T during q> = .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
