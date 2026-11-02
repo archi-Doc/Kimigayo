@@ -61,9 +61,7 @@ internal static class NativeConfiguration
                 var valid = ValidatePackaged(packaged[i], ref failures);
                 for (var j = 0; valid && j < i; j++)
                 {
-                    if (packaged[j] is { } other && packaged[i].Name == other.Name && packaged[i].Package == other.Package &&
-                        (!Agree(packaged[i].ContractId, other.ContractId, StringComparison.Ordinal) ||
-                        !Agree(packaged[i].Sha256, other.Sha256, StringComparison.OrdinalIgnoreCase)) && IsValidPackaged(other))
+                    if (Conflicts(packaged[i], packaged[j]) && IsValidPackaged(packaged[j]))
                     {
                         (failures ??= []).Add($"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' " +
                             "assert different ContractId or Sha256 values and cannot merge.");
@@ -241,8 +239,13 @@ internal static class NativeConfiguration
         return (failures?.Count ?? 0) == count;
     }
 
+    // Whether two packaged records supply one name of one package with assertions that cannot both hold.
+    private static bool Conflicts(NativeLibraryInput record, NativeLibraryInput? other)
+        => other is not null && record.Name == other.Name && record.Package == other.Package &&
+            (!Agree(record.ContractId, other.ContractId, StringComparison.Ordinal) || !Agree(record.Sha256, other.Sha256, StringComparison.OrdinalIgnoreCase));
+
     // Whether a packaged record is valid, without a note (reported where it was validated); allocation-free when it is.
-    private static bool IsValidPackaged(NativeLibraryInput record)
+    private static bool IsValidPackaged(NativeLibraryInput? record)
     {
         List<string>? ignored = null;
         return ValidatePackaged(record, ref ignored);
