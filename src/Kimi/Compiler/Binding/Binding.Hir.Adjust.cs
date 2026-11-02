@@ -101,11 +101,14 @@ public sealed partial class Binding
             case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
                 uses.FixAdjust(transfer.Left, new(HirAcquire.Move, HirAdaptation.None));
                 break;
-            case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent and a runtime test use their operand in place.
+            case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent, a runtime test and a case adaptation (SPEC 8.14, 13.5.3:
+                // its Adapt reads a Place in place and a value through a Temporary; R6-check Q14 (b)) use their operand in place.
+                var inPlace = op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest ||
+                    node is ConversionKoto { ConversionBinding: ConversionBinding.CaseAdaptation };
                 uses.Use(
                     node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left,
                     ViewBorrow(node),
-                    op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest ? UseKind.InPlace : UseKind.Acquisition);
+                    inPlace ? UseKind.InPlace : UseKind.Acquisition);
                 break;
             case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
                 var adaptation = this.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None;

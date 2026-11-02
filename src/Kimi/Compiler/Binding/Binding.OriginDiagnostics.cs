@@ -356,7 +356,7 @@ public sealed partial class Binding
             else
             {
                 var separator = union ? "; " : ", ";
-                text.Append(i == 0 ? string.Empty : separator).Append(cases[i].Target.Pair?.Name ?? cases[i].Target.Name).Append(" = ");
+                text.Append(i == 0 ? string.Empty : separator).Append(BinderName(cases[i].Target)).Append(" = ");
                 several |= union && i > 0;
             }
 
