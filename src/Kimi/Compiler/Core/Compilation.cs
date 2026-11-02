@@ -210,29 +210,26 @@ public partial class Compilation
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
-        // SPEC 23.1.2: each configuration failure is its own record.
+        // SPEC 23.1.2: each failure is its own record. The configuration, the graph, the language version and each compile-time setting
+        // are independent; an unsupported target leaves out what derives from it (its Conditions and the settings checked against them).
         var invalid = DependencyConfiguration.Validate(this.Project.ProjectFile);
         for (var i = 0; i < invalid.Count; i++)
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: invalid[i]);
         }
 
-        if (invalid.Count != 0)
-        {
-            return false;
-        }
-
-        if (this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
+        var failed = invalid.Count != 0;
+        if (!failed && this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnresolvedDependencyGraph_Kd, this.Project.FilePath);
-            return false;
+            failed = true;
         }
 
         var languageVersion = this.Project.ProjectFile.LangVersion ?? this.Project.SolutionLanguageVersion ?? CurrentLanguageVersion;
         if (languageVersion != CurrentLanguageVersion)
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedLanguageVersion_Kd, this.Project.FilePath, languageVersion, CurrentLanguageVersion);
-            return false;
+            failed = true;
         }
 
         var targetTriple = TargetTriple.Parse(target);
@@ -273,10 +270,16 @@ public partial class Compilation
                 variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
             {
                 this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
-                return false;
+                failed = true;
+                continue;
             }
 
             variables.Add(name, value);
+        }
+
+        if (failed)
+        {
+            return false;
         }
 
         this.TargetTriple = targetTriple;

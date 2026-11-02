@@ -70,6 +70,8 @@ public partial record class ProjectFile
 
     // Convert once using Tinyhand's text grammar. Inspect the original map entries before
     // its dictionary formatter can overwrite duplicates, then deserialize the same bytes.
+    // SPEC 23.1.2: each repeated or invalid setting is its own note; the configuration rules of a file whose settings are ambiguous
+    // depend on them and are left out.
     internal static ProjectFile? Load(ReadOnlySpan<byte> utf8)
     {
         var writer = TinyhandWriter.CreateFromThreadStaticBuffer();
@@ -77,7 +79,13 @@ public partial record class ProjectFile
         {
             TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
             var reader = new TinyhandReader(writer);
-            ValidateMapNames(reader);
+            List<string>? settings = null;
+            ValidateMapNames(reader, ref settings);
+            if (settings is not null)
+            {
+                throw new ProjectConfigurationException(settings);
+            }
+
             var file = TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
             if (file is not null && DependencyConfiguration.Validate(file) is { Count: > 0 } failures)
             {
@@ -92,7 +100,7 @@ public partial record class ProjectFile
         }
     }
 
-    private static void ValidateMapNames(TinyhandReader reader)
+    private static void ValidateMapNames(TinyhandReader reader, ref List<string>? failures)
     {
         if (reader.TryReadNil())
         {
@@ -116,17 +124,21 @@ public partial record class ProjectFile
             {
                 if (testSettingsSeen)
                 {
-                    throw new TinyhandException("Repeated Test settings record.");
+                    (failures ??= []).Add("Repeated Test settings record.");
+                    reader.Skip();
+                    continue;
                 }
 
                 testSettingsSeen = true;
-                ValidateTestMap(ref reader);
+                ValidateTestMap(ref reader, ref failures);
                 continue;
             }
 
             if (key.SequenceEqual("NativeBindings"u8))
             {
-                throw new TinyhandException(NativeConfiguration.SupersededBindings);
+                (failures ??= []).Add(NativeConfiguration.SupersededBindings);
+                reader.Skip();
+                continue;
             }
 
             if (key.SequenceEqual("NativeRequirements"u8) || key.SequenceEqual("NativeLibraries"u8))
@@ -136,11 +148,13 @@ public partial record class ProjectFile
                 ref var keySeen = ref isRequirements ? ref requirementsSeen : ref suppliesSeen;
                 if (keySeen)
                 {
-                    throw new TinyhandException($"Duplicate {(isRequirements ? "NativeRequirements" : "NativeLibraries")} setting.");
+                    (failures ??= []).Add($"Duplicate {(isRequirements ? "NativeRequirements" : "NativeLibraries")} setting.");
+                    reader.Skip();
+                    continue;
                 }
 
                 keySeen = true;
-                ValidateNativeMap(ref reader, ref isRequirements ? ref requirements : ref supplies, !isRequirements);
+                ValidateNativeMap(ref reader, ref isRequirements ? ref requirements : ref supplies, !isRequirements, ref failures);
                 continue;
             }
 
@@ -154,7 +168,9 @@ public partial record class ProjectFile
             // As for the native maps, a repeated key would replace the whole earlier map.
             if ((mapsSeen & (1 << map)) != 0)
             {
-                throw new TinyhandException($"Duplicate {(map == 1 ? "CompileTimeSettings" : map == 2 ? "Dependencies" : "TestDependencies")} setting.");
+                (failures ??= []).Add($"Duplicate {(map == 1 ? "CompileTimeSettings" : map == 2 ? "Dependencies" : "TestDependencies")} setting.");
+                reader.Skip();
+                continue;
             }
 
             mapsSeen |= 1 << map;
@@ -172,7 +188,7 @@ public partial record class ProjectFile
                 seen ??= new(StringComparer.Ordinal);
                 if (name is null || !seen.Add(name))
                 {
-                    throw new TinyhandException($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
+                    (failures ??= []).Add($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
                 }
 
                 reader.Skip();
@@ -182,7 +198,7 @@ public partial record class ProjectFile
 
     // Per-target native maps: a repeated target/name would be silently overwritten by the dictionary formatter.
     // A NativeLibraries record array is checked by NativeLibrarySupplies itself.
-    private static void ValidateNativeMap(ref TinyhandReader reader, ref HashSet<(string Target, string Name)>? seen, bool records)
+    private static void ValidateNativeMap(ref TinyhandReader reader, ref HashSet<(string Target, string Name)>? seen, bool records, ref List<string>? failures)
     {
         if (reader.TryReadNil())
         {
@@ -196,7 +212,9 @@ public partial record class ProjectFile
             seen ??= new();
             if (target is null || !seen.Add((target, "\0")))
             {
-                throw new TinyhandException($"Duplicate or null native target: {target}");
+                (failures ??= []).Add($"Duplicate or null native target: {target}");
+                reader.Skip();
+                continue;
             }
 
             if (reader.TryReadNil())
@@ -216,7 +234,9 @@ public partial record class ProjectFile
                 var probe = reader;
                 if (probe.ReadArrayHeader() != 0)
                 {
-                    throw new TinyhandException($"NativeRequirements target '{target}' must map native names to requirements.");
+                    (failures ??= []).Add($"NativeRequirements target '{target}' must map native names to requirements.");
+                    reader.Skip();
+                    continue;
                 }
             }
 
@@ -225,9 +245,9 @@ public partial record class ProjectFile
             {
                 var name = reader.ReadString();
                 seen ??= new();
-                if (target is null || name is null || !seen.Add((target, name)))
+                if (name is null || !seen.Add((target, name)))
                 {
-                    throw new TinyhandException($"Duplicate or null native entry: {target}/{name}");
+                    (failures ??= []).Add($"Duplicate or null native entry: {target}/{name}");
                 }
 
                 reader.Skip();
@@ -235,11 +255,12 @@ public partial record class ProjectFile
         }
     }
 
-    private static void ValidateTestMap(ref TinyhandReader reader)
+    private static void ValidateTestMap(ref TinyhandReader reader, ref List<string>? failures)
     {
         if (reader.TryReadNil())
         {
-            throw new TinyhandException("Test must be a settings record.");
+            (failures ??= []).Add("Test must be a settings record.");
+            return;
         }
 
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -249,7 +270,9 @@ public partial record class ProjectFile
             var name = reader.ReadString();
             if (name is null || !names.Add(name) || name is not ("Timeout" or "RecoveryGrace" or "DiagnosticCount" or "DiagnosticBytes" or "LogBytes" or "Environment"))
             {
-                throw new TinyhandException("Unknown or duplicate Test setting: " + name);
+                (failures ??= []).Add("Unknown or duplicate Test setting: " + name);
+                reader.Skip();
+                continue;
             }
 
             if (name != "Environment")
@@ -260,7 +283,8 @@ public partial record class ProjectFile
 
             if (reader.TryReadNil())
             {
-                throw new TinyhandException("Test.Environment must be a map.");
+                (failures ??= []).Add("Test.Environment must be a map.");
+                continue;
             }
 
             var environment = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -270,7 +294,7 @@ public partial record class ProjectFile
                 var variable = reader.ReadString();
                 if (variable is null || !environment.Add(variable))
                 {
-                    throw new TinyhandException("Duplicate test environment name: " + variable);
+                    (failures ??= []).Add("Duplicate test environment name: " + variable);
                 }
 
                 reader.Skip();

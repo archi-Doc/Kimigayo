@@ -15,22 +15,29 @@ public partial class Project
     /// <param name="cancellationToken">Cancels dependency resolution.</param>
     /// <param name="context">The check context, or null for the command, which reads the disk.</param>
     /// <returns>The accepted test compilation, or null.</returns>
-    /// <exception cref="InvalidDataException">The test settings, identity or target is invalid.</exception>
+    /// <exception cref="InvalidDataException">The test target cannot be selected.</exception>
     internal Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context)
     {
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
         cancellationToken.ThrowIfCancellationRequested();
 
-        // As for a product build, each configuration and resolution failure is its own record (SPEC 23.1.2); a command renders them.
+        // As for a product build, each configuration, test setting and resolution failure is its own record (SPEC 23.1.2), blocking the
+        // check before the front end (SPEC 23.2.2); a command renders them.
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
-        if (!this.ValidateConfiguration(diagnostics, out var sources))
+        var valid = this.ValidateConfiguration(diagnostics, out var sources);
+        valid &= !this.Reported(diagnostics, this.ProjectFile.Test.Validate());
+        if (Testing.TestCatalog.TryProjectIdOf(this) is null)
+        {
+            this.Fail(diagnostics, Testing.TestCatalog.InvalidProjectId);
+            valid = false;
+        }
+
+        if (!valid)
         {
             this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
             return null;
         }
 
-        this.ProjectFile.Test.Validate();
-        _ = Testing.TestCatalog.ProjectIdOf(this); // SPEC 23.2.2: an invalid configuration blocks the check before the front end.
         var target = this.KimiOptions.Target;
         if (string.IsNullOrEmpty(target))
         {

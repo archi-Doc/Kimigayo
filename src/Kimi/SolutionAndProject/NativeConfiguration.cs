@@ -75,88 +75,62 @@ internal static class NativeConfiguration
         }
     }
 
-    // Checks supplies that target resolved dependency modules against those modules' own requirements (SPEC 20.4).
-    // A supply can neither create nor change another module's requirement, so a supply for a name that module does not require stays unused.
-    internal static string? ValidatePackageSupplies(ProjectFile file, DependencyNode[] nodes)
+    // The graph's supplies (SPEC 20.4), each failure its own note at its module. A supply that targets a resolved module is checked
+    // against that module's requirement: it can neither create nor change it, so a supply for a name the module does not require stays
+    // unused. Supplies of one module's native name merge only when their contracts agree; content agreement needs the actual files,
+    // and ContractId and Sha256 assertions that can never both hold are rejected here. A conflicting supply joins no merge.
+    internal static void ValidateGraphSupplies(DependencyNode[] nodes, ref List<(int Module, string Note)>? failures)
     {
-        foreach (var (target, supplies) in file.NativeLibraries)
+        for (var i = 0; i < nodes.Length; i++)
         {
-            foreach (var supply in supplies.Packaged)
+            foreach (var (target, supplies) in nodes[i].Input.Configuration.NativeLibraries)
             {
-                var package = supply.Package!;
-                foreach (var node in nodes)
+                foreach (var supply in supplies.Packaged)
                 {
-                    var module = node.Input.Configuration;
-                    if (module.PackageId != package.PackageId || module.PackageVersion != package.PackageVersion ||
-                        !TryGetRequirement(module, target, supply.Name!, out var contractId, out var sha256))
-                    {
-                        continue;
-                    }
-
-                    if (contractId is not null && supply.ContractId != contractId)
-                    {
-                        return $"NativeLibraries record '{supply.Name}' for package '{package.PackageId}' must assert the required ContractId '{contractId}'.";
-                    }
-
-                    if (!Agree(supply.ContractId, contractId, StringComparison.Ordinal) || !Agree(supply.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return $"NativeLibraries record '{supply.Name}' for package '{package.PackageId}' disagrees with that module's ContractId or Sha256 requirement.";
-                    }
+                    ValidateTargetedSupply(target, supply, nodes, i, ref failures);
                 }
             }
         }
 
-        return null;
-    }
-
-    // Several supplies of one module's native name merge only when their contracts agree (SPEC 20.4). Content
-    // agreement needs the actual files; ContractId and Sha256 assertions that can never both hold are rejected here.
-    internal static string? ValidateSupplyAgreement(DependencyNode[] nodes, out int module)
-    {
-        Dictionary<(string Target, string PackageId, string PackageVersion, string Name), (string? ContractId, string? Sha256)>? supplies = null;
-        for (module = 0; module < nodes.Length; module++)
+        Dictionary<(string Target, string PackageId, string PackageVersion, string Name), (string? ContractId, string? Sha256)>? merged = null;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            var file = nodes[module].Input.Configuration;
+            var file = nodes[i].Input.Configuration;
             foreach (var (target, libraries) in file.NativeLibraries)
             {
                 if (file.PackageId is { } packageId && file.PackageVersion is { } packageVersion)
                 {
                     foreach (var (name, library) in libraries)
                     {
-                        if (!Merge(ref supplies, (target, packageId, packageVersion, name), library))
-                        {
-                            return Conflict(name, packageId);
-                        }
+                        Merge(ref merged, (target, packageId, packageVersion, name), library, i, ref failures);
                     }
                 }
 
                 foreach (var library in libraries.Packaged)
                 {
-                    if (!Merge(ref supplies, (target, library.Package!.PackageId, library.Package.PackageVersion, library.Name!), library))
-                    {
-                        return Conflict(library.Name, library.Package.PackageId);
-                    }
+                    Merge(ref merged, (target, library.Package!.PackageId, library.Package.PackageVersion, library.Name!), library, i, ref failures);
                 }
             }
         }
 
-        module = -1;
-        return null;
-
-        static string Conflict(string? name, string packageId)
-            => $"NativeLibraries supplies of '{name}' for package '{packageId}' assert different ContractId or Sha256 values and cannot merge.";
-
-        static bool Merge(ref Dictionary<(string, string, string, string), (string? ContractId, string? Sha256)>? supplies, (string, string, string, string) key, NativeLibraryInput library)
+        static void Merge(
+            ref Dictionary<(string, string, string, string), (string? ContractId, string? Sha256)>? merged,
+            (string Target, string PackageId, string PackageVersion, string Name) key,
+            NativeLibraryInput library,
+            int module,
+            ref List<(int Module, string Note)>? failures)
         {
-            supplies ??= new();
-            ref var merged = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(supplies, key, out var exists);
-            if (exists && (!Agree(merged.ContractId, library.ContractId, StringComparison.Ordinal) || !Agree(merged.Sha256, library.Sha256, StringComparison.OrdinalIgnoreCase)))
+            merged ??= new();
+            ref var entry = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(merged, key, out var exists);
+            if (exists && (!Agree(entry.ContractId, library.ContractId, StringComparison.Ordinal) ||
+                !Agree(entry.Sha256, library.Sha256, StringComparison.OrdinalIgnoreCase)))
             {
-                return false;
+                (failures ??= []).Add((module, $"NativeLibraries supplies of '{key.Name}' for package '{key.PackageId}' " +
+                    "assert different ContractId or Sha256 values and cannot merge."));
+                return;
             }
 
-            merged = (merged.ContractId ?? library.ContractId, merged.Sha256 ?? library.Sha256);
-            return true;
+            entry = (entry.ContractId ?? library.ContractId, entry.Sha256 ?? library.Sha256);
         }
     }
 
@@ -165,6 +139,36 @@ internal static class NativeConfiguration
     {
         var requirement = file.NativeRequirements.TryGetValue(target, out var requirements) ? requirements.GetValueOrDefault(name) : null;
         return ((library.Kind ?? requirement?.Kind)!, library.Sha256 ?? requirement?.Sha256);
+    }
+
+    // A supply for another package checked against the resolved module of that identity: a missing or different required ContractId
+    // and a disagreeing Sha256 are independent.
+    private static void ValidateTargetedSupply(
+        string target, NativeLibraryInput supply, DependencyNode[] nodes, int owner, ref List<(int Module, string Note)>? failures)
+    {
+        var package = supply.Package!;
+        foreach (var node in nodes)
+        {
+            var module = node.Input.Configuration;
+            if (module.PackageId != package.PackageId || module.PackageVersion != package.PackageVersion ||
+                !TryGetRequirement(module, target, supply.Name!, out var contractId, out var sha256))
+            {
+                continue;
+            }
+
+            // A ContractId that disagrees is always a missing or different required one, so the second check reads Sha256 alone.
+            if (contractId is not null && supply.ContractId != contractId)
+            {
+                (failures ??= []).Add((owner, $"NativeLibraries record '{supply.Name}' for package '{package.PackageId}' " +
+                    $"must assert the required ContractId '{contractId}'."));
+            }
+
+            if (!Agree(supply.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                (failures ??= []).Add((owner, $"NativeLibraries record '{supply.Name}' for package '{package.PackageId}' " +
+                    "disagrees with that module's ContractId or Sha256 requirement."));
+            }
+        }
     }
 
     // A self-targeted supply's failures, each its own note; a null entry has nothing else to check.

@@ -18,6 +18,8 @@ internal sealed record TestSite(int Id, string File, int Line, int Column, strin
 
 internal sealed class TestCatalog
 {
+    internal const string InvalidProjectId = "TestProjectId must be nonempty text without NUL.";
+
     private readonly Dictionary<SourceRef, int> siteIds = new();
 
     internal string ProjectId { get; private set; } = string.Empty;
@@ -54,10 +56,16 @@ internal sealed class TestCatalog
     /// <returns>The identity.</returns>
     /// <exception cref="InvalidDataException">The identity is empty or contains NUL.</exception>
     internal static string ProjectIdOf(Project project)
+        => TryProjectIdOf(project) ?? throw new InvalidDataException(InvalidProjectId);
+
+    /// <summary>Gets a project's test identity, or null when it is empty or contains NUL (test preparation reports it).</summary>
+    /// <param name="project">The project.</param>
+    /// <returns>The identity, or null.</returns>
+    internal static string? TryProjectIdOf(Project project)
     {
         var id = (project.ProjectFile.TestProjectId ?? project.ProjectFile.PackageId ??
             (project.FilePath is { } file ? Path.GetFileName(file) : project.Name + ".kimi")).Normalize(NormalizationForm.FormC);
-        return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? throw new InvalidDataException("TestProjectId must be nonempty text without NUL.") : id;
+        return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? null : id;
     }
 
     /// <summary>Gets the SiteId of a verification, which code generation passes for its site (SPEC 20.6.2, plan 5.6.7).</summary>

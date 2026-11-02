@@ -14981,10 +14981,18 @@ structure is recorded here by the unit that first implements it.
     through `Project.Fail` (test preparation too, no longer one `InvalidDataException`), and `kimi restore` prints each.
     `DuplicateTestSource` becomes `InvalidConfiguration` (the configuration's owner reports it). A dependency's directory-free failures,
     found by `ProjectFile.Load`, still hide its TestSources comparison until fixed (the load precedes the comparison, as for a root).
+  - Input validators (G367c, the same cause one level higher): `Compilation.Prepare` records the configuration, the unresolved graph,
+    the language version and each compile-time setting independently; an unsupported target leaves out its Conditions and the settings
+    checked against them (dependent). `PrepareModules` records each dependency setting and, through
+    `NativeConfiguration.ValidateGraphSupplies` (replacing `ValidatePackageSupplies` and `ValidateSupplyAgreement`), each requirement a
+    supply for a resolved module breaks (a missing ContractId and a different Sha256 independently) and each conflicting merge, at its
+    module. `TestSettings.Validate` returns its notes (each deadline, the budgets, each environment entry), and test preparation
+    records them with the test identity (`TestCatalog.TryProjectIdOf`) instead of throwing; the command's merged options still throw
+    their first (a command option error, not an Input record). `ProjectFile.Load` collects each repeated or invalid setting
+    (`ValidateMapNames`) into its `ProjectConfigurationException` and leaves the configuration rules of that ambiguous file out.
+    Kept: a Tinyhand syntax failure stays one `TinyhandException`; a test target that cannot be selected stays a throw.
   - Rejected: validating the configuration only at preparation (the language server's project item reads the maps after the load); a
     mode flag or an optional directory steering one `Validate`; joining the notes into one record's text.
-  - Same cause, not in this unit: `NativeConfiguration.ValidatePackageSupplies` and `ValidateSupplyAgreement` (the graph's supplies),
-    `TestSettings.Validate` and `ProjectFile.ValidateMapNames` (a repeated setting) still stop at their first failure.
   - Tests: `DependencyConfigurationTest.EachIndependentConfigurationFailureIsReported` (four records; one before),
     `CheckServiceTest.EachDuplicateTestSourceIsReported` and `PreparationReportsEachConfigurationFailure` (product and test; one
     record, or a load failure, before), `CheckJsonOutputTest.EachConfigurationFailureOfAnUnloadedProjectIsReported` (two
@@ -14992,4 +15000,8 @@ structure is recorded here by the unit that first implements it.
     `DependencyResolutionTest.EachIndependentGraphFailureIsReported` (five failures, a failed node's reference left out) and
     `CheckServiceTest.EachIndependentDependencyFailureIsReported` (two records in product and test checks; one before). Review:
     `AnInvalidPackagedSupplyLeavesTheOtherMergesChecked` (two records; one before), `EachRequirementOfAPackagedSupplyIsReported`
-    (three; two before), `AFailedProjectReachedTwiceIsReportedOnce` (one failure; two before).
+    (three; two before), `AFailedProjectReachedTwiceIsReportedOnce` (one failure; two before). G367c:
+    `CompilationSpecificationTest.EachIndependentPreparationFailureIsReported` (three records, or two with an unsupported target; one
+    before), `EachRepeatedSettingIsALoadFailure` (three notes; one `TinyhandException` before), `DependencyConfigurationTest.
+    EachGraphFailureIsReported` (two settings and three supply records; one before), `CheckServiceTest.EachTestSettingFailureIsReported`
+    (three records; one before).

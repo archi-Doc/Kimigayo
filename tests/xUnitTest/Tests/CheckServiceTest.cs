@@ -146,6 +146,22 @@ public sealed partial class CheckServiceTest : IDisposable
             ["Duplicate resolved TestSources path: a.kimi", "Duplicate resolved TestSources path: b.kimi"], output.Diagnostics.Select(static x => x.Note));
     }
 
+    // SPEC 23.1.2, 23.2.2: each test setting and the test identity are independent records blocking test preparation; the product
+    // check, which reads none of them, is accepted.
+    [Fact]
+    public void EachTestSettingFailureIsReported()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "TestProjectId=\" \" Test={Timeout=\"0s\" Environment={TMP=\"x\"}}");
+        var output = this.Run(project, CheckMode.Test);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        Assert.Equal(3, output.Diagnostics.Length);
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("Test durations", StringComparison.Ordinal));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("environment name: TMP", StringComparison.Ordinal));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("TestProjectId", StringComparison.Ordinal));
+        Assert.True(this.Run(project).Accepted);
+    }
+
     // SPEC 23.1.2: each independent failure of the dependency graph is its own record, in a product and a test check alike.
     [Theory]
     [InlineData(CheckMode.Product)]

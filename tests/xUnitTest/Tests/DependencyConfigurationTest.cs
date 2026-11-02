@@ -81,7 +81,10 @@ public class DependencyConfigurationTest
     [InlineData("NativeBindings={}")]
     [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}")]
     public void SupersededNativeBindingsRequireMigration(string source)
-        => Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Throws<TinyhandException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Message);
+    {
+        var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
+        Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Single(failures));
+    }
 
     [Fact]
     public void IndentedNativeRequirementIsRead()
@@ -213,6 +216,40 @@ public class DependencyConfigurationTest
         c.Project.ProjectFile.Dependencies = null!;
         Assert.False(c.Prepare(WindowsProfile.Target));
         Assert.Equal("Dependency maps and source lists must not be null.", Assert.Single(ConfigurationNotes(c)));
+    }
+
+    // SPEC 23.1.2: each failure of the graph is its own record at its module: each dependency setting and each requirement a supply
+    // targeting a resolved module breaks (a missing ContractId and a different Sha256 are independent).
+    [Fact]
+    public void EachGraphFailureIsReported()
+    {
+        var c = Compilation.CreateForTest();
+        var root = c.Project.ProjectFile;
+        root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
+        var package = new NativePackageTarget { PackageId = "library", PackageVersion = "1" };
+        root.NativeLibraries[WindowsProfile.Target] = new()
+        {
+            Packaged =
+            [
+                new() { Name = "codec", Package = package, Sha256 = new string('b', 64), Input = "codec.lib" },
+                new() { Name = "observer", Package = package, ContractId = "x", Input = "observer.lib" },
+            ],
+        };
+        var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
+        library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        {
+            ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = new string('a', 64) },
+            ["observer"] = new() { Kind = "static", ContractId = "o.v1" },
+        };
+        library.CompileTimeSettings["os"] = new() { Bool = true };
+        library.CompileTimeSettings["debug"] = new() { Bool = true };
+        var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
+        var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
+        rootNode.Edges.Add("Lib", libraryNode.Key);
+        Assert.False(c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        var records = TestDiagnostics.Of(c);
+        Assert.Equal(2, records.Count(static x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd)));
+        Assert.Equal(3, ConfigurationNotes(c).Length);
     }
 
     // SPEC 23.1.2: an invalid packaged supply leaves the merge of the valid ones checked (two records, not one).

@@ -2,7 +2,7 @@
 
 namespace Kimi;
 
-/// <summary>A loaded project file whose configuration breaks <see cref="DependencyConfiguration"/>'s rules.</summary>
+/// <summary>A loaded project file whose settings (repeated or ambiguous) or configuration (<see cref="DependencyConfiguration"/>) break their rules.</summary>
 /// <param name="failures">One note per independent failure (SPEC 23.1.2), at least one.</param>
 internal sealed class ProjectConfigurationException(IReadOnlyList<string> failures) : Exception(failures[0])
 {
