@@ -9939,7 +9939,9 @@ resumed by R4-M86 (2026-10-20).
   - **Outside arguments and the text** (B2b-3). The survey's array literal row (ResultEvidence): without an expected Type, an array
     literal whose elements all supply one Type supplies `Array<T>`, so `zeros()` beside `[1@i64, 2@i64]` in a `let` misfits
     (z8_lit64); under an argument probe it supplies none. SPEC §4.3.1, §4.4.1, §10.2.1, §10.5.1, §10.8 and §14.9.2 step 2 take the
-    approved draft's text and examples; STATUS's inference row names the support. B3 deletes what the rule leaves unused.
+    approved draft's text and examples; STATUS's inference row names the support.
+  - Staged removal: ClassifiedByCall, ConflictWaits, the argument-side survey rows and the waited-join argument path stay reached
+    after revision B (counter in `spec-b\impl-stop-B3.md`); PLAN G383 (B3a–B3c; B3c with G335 U1) schedules their removal.
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
