@@ -13881,9 +13881,13 @@ structure is recorded here by the unit that first implements it.
     (`InstanceCollector.Uses`) over its node with the instance Type; `LayoutNeeds.Of(ComparisonNode)` stays the row.
   - Amended by PLAN G157 (47) (2026-11-02): a PairLayer makes the next need case-dependent (`LeavesStorage` by the item's view) only
     as the first boundary since the last need; after a Deref or another boundary the need holds in every case. The pair column took the
-    later layer, so `((*r)@b0).1` (through `let r = e@ref`) lost its owner instance's use, which `match e`'s `(*_4).1` keeps: a lost
-    per-use record and a layout code generation read unchecked (a valid program generated and ran correctly at O0 and O2: the
-    referent's storage lays the Type out where it is declared). Two consecutive layers make the need hold in every case (no form found).
+    later layer, so `((*r)@b0).1` (`match r` over `r: ref/(s/X during a)`, or through `let r = e@ref`) lost its owner instance's use,
+    which `match e`'s `(*_4).1` keeps. Acceptance move (Q13, named): dev accepted an invalid program whose only use of a Type without a
+    C layout is such a read (`InstanceCollectorTest.AReadPastADerefAndAPairLayerIsAUseInEveryCase`), an unsound acceptance this
+    closes; where the Type has another use, the read's record was lost and code generation read its layout unchecked. Two consecutive
+    layers (`z@follow@follow.1`, `((_2@b0)@b0).1`) make the need hold in every case: an owner instance adds `InvalidCLayout_Kd` +1 at
+    the read, which stays in storage, so it is no use by SPEC 8.15.3 but a failure caused only by the storage's reported one (SPEC
+    23.1.2 leaves reporting it implementation-defined) on a program already rejected (Q13: an added record, counted).
 - **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import
   signatures (unit G288)** (2026-10-29, R5; PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim
   「みなす (推奨)」, PLAN `63f54877e`; extends BU-48; Major, design accepted by the R5 planning session; BU reviews the Binding part and
@@ -15154,5 +15158,6 @@ structure is recorded here by the unit that first implements it.
   - Rejected: checking the configuration after generation (a generation fault would hide it, and the backend checks read the embedded
     record); carrying the failure across generation in the method (every path variable needs a placeholder value).
   - Test: `EmissionArtifactsTest.AConfigurationFailureLeavesGenerationsRecords` (an unused non-.lib input and a Drop without a verdict;
-    fail-first: only the publication record). A generation fault beside such a failure holds by structure: no program makes generation
-    throw without a production seam (R5-M175).
+    fail-first: only the publication record). A generation fault beside such a failure was verified by the review's throwaway
+    reflection probe (`CheckFaulted_Kd` and the publication record; the base only the latter); no lasting test, since no program makes
+    generation throw without a production seam (R5-M175).

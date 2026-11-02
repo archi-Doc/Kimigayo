@@ -55,6 +55,19 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
+    // SPEC 8.15.3, 23.2.2 (PLAN G157 (47)'s finding): where the read past a Deref and then the layer, `((*r)@b0).1`, is the only use of
+    // (S, i32), whose S has no C layout (h passes a borrow, so f's owner instance stores none), its record rejects the program, which
+    // was accepted while the pair layer made that read conditional on its case.
+    [Fact]
+    public void AReadPastADerefAndAPairLayerIsAUseInEveryCase()
+    {
+        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct S\n    public var n: i32\n    public var u: ()\n" +
+            "func f<s/T>(m: s/T, r: ref/(s/(S, i32) during a) during b) -> i32\n    s is value or valueborrow\n    match r\n" +
+            "        (_, let k) => return k\nfunc h(r: ref/(S, i32)) -> i32 => f(1, r)\nlet zz = 1\n");
+        Assert.Equal("InvalidCLayout_Kd let k", MinimalEmissionTest.Problems(c));
+        Assert.False(c.Accepts);
+    }
+
     // R5-M149: the layout-need rows (the owner's list) and LayoutNeeds.TypeOf, the one function naming each need's Type in its body: a Field
     // step through a raw pointer its prefix, a raw pointer's displacement its pointee; a call's row its Type arguments.
     [Fact]
