@@ -8,9 +8,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // CheckTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on (DECISIONS BU-55).
-    private readonly TypeMemo<(ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact)> formedParts = new();
-
     // The causes of each pair occurrence that a final check failed with a Language cause, for its evidence and for the separate record
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
@@ -157,81 +154,6 @@ public sealed partial class Binding
         }
 
         return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
-    }
-
-    // SPEC 8.3: a Type's formation in `scope`: each part's declaration context, its Origin clauses and a constructed part's clauses under
-    // its arguments. A part's proof and the cause it rests on depend on the part alone in one query (its scope fixed), so each distinct
-    // part is proven once (FormedPart; DECISIONS BU-19, BU-55).
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
-        => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion), false);
-
-    // `calleeDeclaration`: `type` is a Type of a declaration's own signature, re-proven in that declaration's own scope
-    // (CheckSignatureTypeConstraints) by its three callers: a call's candidate evaluation, contract matching (the requirement's and
-    // the implementation's signatures) and a function reference. A nested Function Type's result there is judged once, where it
-    // occurs, by that declaration (BindFunctionType; SPEC 15.3.4, 15.6.4 step 3; DECISIONS R4-M162), so the re-proof does not enter
-    // it: re-proving it made every call of a callee whose nested result fails Unknown and left its arguments unjudged (U2.3s review
-    // B2). Local patch; removal condition: PLAN G375, each of the three callers reads the declaration's published signature verdict
-    // instead of re-proving it (CheckSignatureTypeConstraints goes), and this parameter goes with it.
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, bool calleeDeclaration)
-    {
-        if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
-        {
-            return ConstraintProof.Error;
-        }
-
-        this.BeginProof();
-        var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
-        proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
-        // A Function Type's components are its inputs and its result.
-        var count = calleeDeclaration && type.Kind == BoundTypeKind.Function ? 1 : type.Components.Count;
-        for (var i = 0; i < count; i++)
-        {
-            proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query, calleeDeclaration), true);
-        }
-
-        if (type is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } &&
-            (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
-        {
-            for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
-            {
-                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, container, (BoundType[])type.Components, scope), true);
-            }
-        }
-
-        return this.EndProof(proof);
-    }
-
-    // A component's formation (CheckTypeConstraints), each distinct one with components proven once per query: its proof and the cause it
-    // rests on are read again into its own proof scope (ReadVerdict) where it recurs, as EndProof reads a recomputation; a leaf is cheaper
-    // to prove again than to record.
-    private ConstraintProof FormedPart(BoundType part, BindingScope scope, uint query, bool calleeDeclaration)
-    {
-        if (part.Components.Count == 0)
-        {
-            return this.CheckTypeConstraints(part, scope, query, calleeDeclaration);
-        }
-
-        this.BeginProof();
-        if (!this.formedParts.TryGet(part, query, out var known))
-        {
-            var proof = this.CheckTypeConstraints(part, scope, query, calleeDeclaration);
-            known = (proof, this.ProofCause(proof), this.ProofFact(proof));
-            this.formedParts.Set(part, query, known);
-        }
-
-        return this.EndProof(this.ReadVerdict(known.Proof, known.Cause, known.Fact));
-    }
-
-    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
-    {
-        var scope = this.scopes[function];
-        var proof = function.BoundSymbol?.Type is { } result ? this.CheckTypeConstraints(result, scope, this.formedParts.Begin(this.storageVersion), true) : ConstraintProof.Unknown;
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckTypeConstraints(parameter, scope, this.formedParts.Begin(this.storageVersion), true) : ConstraintProof.Unknown, true);
-        }
-
-        return proof;
     }
 
     private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
