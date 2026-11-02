@@ -6102,6 +6102,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     condition: U1, where the walk publishes the kind from `PositionKind` and the helper goes; a Signature position whose Type is
     the instantiated parameter is then proven (cause C1). The per-layer test beside the supplied Type (`SameOriginArguments`)
     stays in the visitor, which a whole-contract comparison's Prove visit shares (`ProvesInputPremises`); U1 settles its part.
+  - U1a+U1b (one group; R4 planning's decisions (b) and "GO", 2026-11-03): F1's source is the walk. `TryCandidateCore` writes it
+    once the expected result has solved its slots (`SlotSolution.Contribute`): a part its producer recorded as Case, Call, Function,
+    Reference or Literal (`RecordedPart`, which completion keeps; `KindOf` turns Typed) is Signature, or Result where its parameter
+    Type names a slot no evidence bound and the expected result solved; any other part is Evidence; aggregates and joins stay
+    Evidence until U2. F1 is a pooled list on the selected candidate's solution: `CallEvaluation.Contributions` (one per argument of
+    each candidate, rented and returned with the operations, so it lives through `JudgeSelectedCall`), sliced into
+    `SlotSolution.Contributions` by `Solution(evaluation, candidate, …)`. `JudgeSelectedCall` takes the selected solution (its
+    Origins, declaring Type and F1); a property call's solution holds Evidence; a value call reads `PartContribution`; a fixed
+    construction's re-check passes its own buffer. `InputContribution` is gone (C1). `SameOriginArguments` stays: it is Evidence's
+    per-layer "where the fit replaced an Origin" and the Prove visit's.
+  - C2: `SolveLate` collects each Signature position's premises (a default's among them) over the instantiated parameter Type
+    (`SubstituteType`, Rule C), not `FormedApplication`, which kept `T` unsubstituted so that `T`'s stored Origin bounded nothing
+    (cxc). C2b (the `MatchInputOrigin` meet) is no cause: with the bound the solve already shortens the input Origin (a 2-Origin
+    `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged.
+  - Open: i01_n (a later re-run of the winner, with the construction's slots fixed, rewrites F1 as Signature); cs1_ty and ea1 (an
+    annotation as the contributor: the rows want a record at the argument too); n7g2 (the independent Loan conflict beside a
+    Binding-level record, PLAN G56 until H11); h4_n (C7, not probed); vc2 (U2).
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection

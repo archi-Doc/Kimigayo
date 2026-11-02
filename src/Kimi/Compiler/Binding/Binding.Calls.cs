@@ -170,7 +170,7 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
-        var contributions = this.contributionScratch.Rent(candidateCount * operationStride);
+        var contributions = this.contributionScratch.Rent(candidateCount * argumentCount);
         BoundDefaultArgument[]? defaults = null;
         try
         {

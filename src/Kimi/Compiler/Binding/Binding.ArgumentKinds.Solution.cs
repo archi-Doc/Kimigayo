@@ -11,7 +11,7 @@ public sealed partial class Binding
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
         => new()
         {
-            Contributions = evaluation.Contributions.AsSpan(candidate * evaluation.OperationStride, evaluation.Call.ArgumentNodes.Count),
+            Contributions = evaluation.Contributions.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
             Binding = this,
             Call = evaluation.Call,
             Binder = function,
@@ -71,7 +71,8 @@ public sealed partial class Binding
         internal OriginInference? OriginInference;
 
         // F1 (R4-M164): each argument's contribution to this candidate's call (Contribute), a slice of the call's pooled
-        // CallEvaluation.Contributions, which lives until the call's selected candidate is judged (JudgeSelectedCall).
+        // CallEvaluation.Contributions (one per argument of each candidate; none for a call without arguments), which lives until the
+        // call's selected candidate is judged (JudgeSelectedCall).
         internal Span<Contribution> Contributions;
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.

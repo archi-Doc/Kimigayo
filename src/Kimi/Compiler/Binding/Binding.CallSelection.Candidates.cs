@@ -640,9 +640,10 @@ public sealed partial class Binding
         {
             var slot = Array.IndexOf(mapping, i, 0, call.ArgumentNodes.Count);
             if ((slot < 0 ? defaults.Contains(i) : solution.Contributions[slot] == Contribution.Signature) &&
-                function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern)
+                function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
+                this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
             {
-                this.CollectInputPremises(this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
+                this.CollectInputPremises(instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
             }
         }
 

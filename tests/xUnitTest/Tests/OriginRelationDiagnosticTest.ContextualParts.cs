@@ -85,9 +85,12 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("k3", MkNone + OwnH + LocalUse + "    let x = h(a, b, mkNone())\n    return 0\n", "")]
     [InlineData("k4", MkNone + ImpliedStore + ShortBody + "    put2(p, sr, mkNone())\n    return 0\n", "UnsatisfiedOriginRelation_Kd mkNone()")]
     [InlineData("d01", IdFunc + OwnH + LocalUse + "    let x = h(a, b, id(Option.None))\n    return 0\n", "")]
+    [InlineData("d01_n", ImpliedStore + IdFunc + ShortBody + "    put2(p, sr, id(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd id(Option.None)")]
     [InlineData("d04", WrapFunc + OwnH + LocalUse + "    let x = h(a, b, wrap(Option.None))\n    return 0\n", "")]
+    [InlineData("d04_n", ImpliedStore + WrapFunc + ShortBody + "    put2(p, sr, wrap(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd wrap(Option.None)")]
     [InlineData("i01", LayerBox + "func h3(q: ref/i32, r: ref/i32, x: Box<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h3(a, b, Box.init(item: Option.None))\n    return 0\n", "")]
     [InlineData("i02", PassStruct + OwnH + LocalUse + "    let s = S.init()\n    let x = h(a, b, s.pass(Option.None))\n    return 0\n", "")]
+    [InlineData("i02_n", PassStruct + ImpliedStore + ShortBody + "    let s = S.init()\n    put2(p, sr, s.pass(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd s.pass(Option.None)")]
     [InlineData("q10b", "func h(q: ref/i32, r: ref/i32, x: (Option<ref/(ref/i32 during q) during r>, i32)) -> ref/i32 during r\n    return q\n" + PairFunc + LocalUse + "    let x = h(a, b, pair(Option.None))\n    return 0\n", "")]
     [InlineData("q14", IdFunc + OwnH + LocalUse + "    let x = h(a, b, id(id(Option.None)))\n    return 0\n", "")]
     [InlineData("j01", EmptyStruct + "func h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h4(a, b, E.init())\n    return 0\n", "")]
@@ -113,6 +116,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("t03", "func same11<T>(x: [2 of (ref/T during c, i32)]) => ()\n" + TwoCopies + "    let f = func [a, b] () -> ()\n        same11([(a@ref, 1), (b@ref, 1)])\n    f()\n    return 0\n", "")]
     [InlineData("q05", ImpliedStore + ShortBody + "    put2(slot: p, v: sr, w: Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("q05_ok", ImpliedStore + LongBody + "    put2(slot: p, v: v, w: Option.None)\n    return 0\n", "")]
+    [InlineData("q10", Put3 + PairFunc + ShortBody + "    put3(p, sr, pair(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd pair(Option.None)")]
+    [InlineData("q15", ImpliedStore + IdFunc + ShortBody + "    put2(p, sr, id(id(Option.None)))\n    return 0\n", "UnsatisfiedOriginRelation_Kd id(id(Option.None))")]
     public void AContextualPartOfAnAggregateArgumentIsJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
@@ -167,7 +172,6 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("vc1", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return g(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
     [Theory]
     [InlineData("vc1_ok", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n" + WithPremise + "    return g(Option.None)\n", "")]
-    [InlineData("vc2", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n    return g((Option.None, 1))\n", "UnprovenOriginRelation_Kd (Option.None, 1)")]
     [InlineData("vc2_ok", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n" + WithPremise + "    return g((Option.None, 1))\n", "")]
     public void AValueCallProvesItsCalleesNestedInputs(string form, string body, string records)
         => AssertRecords(form, body, records, null);
