@@ -19,6 +19,8 @@ public class ErasureAfterSelectionTest
 
     private const string FieldS = "struct S\n    public var h: ((i32) -> i32, i32) -> i32\nfunc k(s: ref/S) -> i32\n";
 
+    private const string ActEnum = "enum Act\n    Run((i32) -> i32)\nfunc k() -> Act\n";
+
     [Theory]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
@@ -89,6 +91,19 @@ public class ErasureAfterSelectionTest
     [InlineData("ev_nc", ValueH + "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n    return h(f, 1)\n", "TransferRequired_Kd f")]
     [InlineData("ev_erased", ValueH + "    let y: i32 = 2\n    let f: (i32) -> i32 = func [y] (n: i32) => n + y\n    return h(f, 1)\n", "TransferRequired_Kd f")]
     public void AStoredCopyClosureErasesAtAValueCallAsAtANamedCall(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 3.5, 6.5.2 (G341, rule E, DECISIONS BU-83): a Case payload at a Function Type acquires its erased source by the
+    // source's own Type too, contextual (ec_ok) or qualified (ec_q); a Non-Copy source still needs `@move` (ec_nc).
+    [Theory]
+    [InlineData("ec_ok", ActEnum + Copied + "    return .Run(f)\n", "")]
+    [InlineData("ec_q", ActEnum + Copied + "    return Act.Run(f)\n", "")]
+    [InlineData("ec_nc", ActEnum + "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n    return .Run(f)\n", "TransferRequired_Kd f")]
+    public void AStoredCopyClosureErasesAtACasePayload(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // The program's records, each `Code text` in report order ("; " between them), with a startup body.
+    private static void AssertRecords(string form, string source, string records)
     {
         source += "public func main() -> () => ()\n";
         var shown = string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"));

@@ -9951,8 +9951,14 @@ resumed by R4-M86 (2026-10-20).
     (Binding.ArgumentOperations), the one function value-call arguments and payloads pass through, reports the erased Type with quality
     Erasure and runs no acquisition row on it. The source is acquired by bare acquisition of its own Type under the Adjust rule
     (`ChildAdjust`, `BareOf`; R4-M142), as at a named call. One entry row, beside the prepared-receiver and Never rows.
-  - A Non-Copy erased source keeps its record, `TransferRequired_Kd` at the source: the old Analysis's (`Ownership.TransferRequired`)
-    until R6-check H1, then H1's S1 group-erasure row. H1 regression rows: ev_nc and ec_nc as S1 subjects; ev_ok and ec_ok with none.
+  - A payload (U2): `Binding.Enums` adapts the source's completed Type, without its own copy of the erasure, and
+    `CompleteEnumAcquisitions`' bare row judges an Erasure operation on the source's own Type, since the old
+    Analysis judges no payload Adjust (without the row, ec_nc was accepted). The row fails the construction at the source, as
+    `AdaptInput`'s acquisition failure does, so no resolved construction keeps an invalid plan (that was a broken HIR contract,
+    `InternalInvariant_Kd`).
+  - A Non-Copy erased source keeps its record, `TransferRequired_Kd` at the source: at a value call the old Analysis's
+    (`Ownership.TransferRequired`) until R6-check H1, then H1's S1 group-erasure row; at a payload Binding's. H1 regression rows:
+    ev_nc and ec_nc as S1 subjects; ev_ok and ec_ok with none.
   - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) presenting
     the source's own Type to the value call's `AdaptInput`, which the structural check refuses (Closure against Function); (c) waiting
     for H1, which never sees a call Binding failed.
