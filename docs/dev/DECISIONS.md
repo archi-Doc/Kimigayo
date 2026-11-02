@@ -14765,8 +14765,9 @@ structure is recorded here by the unit that first implements it.
     `LlvmModuleText.Number`, which only the `Replace`s used, is gone.
     Rejected: a marker table in `LlvmModuleText` (a third owner of the names); the constant among the abort reasons (another owner's
     table); a `const_<name>` form read by reflection over `RuntimeAbi` (a second lookup); keeping `Replace` (a second expansion rule).
-    Open, different contracts (PLAN): the string release kinds (`i8 0`, `i8 1`) in `__kimi_destroy_string` and `__kimi_free`'s
-    65536 reserved-address bound.
+    Open, different contracts (PLAN): the string release kinds spelled by hand, `i8 0` and `i8 1` in `__kimi_destroy_string`
+    (`WindowsRuntime.ll.in`), `zext i1 %heap to i8` in `__kimi_format_take_string` and `store i8 0` in `__kimi_format_stack_finish`
+    (`Utf8FormatRuntime.ll.in`); `__kimi_free`'s 65536 reserved-address bound.
 - **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, R5; PLAN
   G157 (17), (25)'s cache clause, (44)'s test; R5's U1, its review; amends R5-M102 and R5-M114) A call through a pointer (a common
   Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;
