@@ -85,7 +85,10 @@ public sealed partial class Binding
             }
             else if (i < argumentCount && solution.Contributions[i] != Contribution.Result && operations[i] is { Source: { } whole, ParameterType: { } type })
             {
-                this.RequireChildPremises(whole, whole, type);
+                // SPEC 10.2: a composite borrowed at `ref/T` (its cross-semantics borrow) is walked at its value Type T, the operation's
+                // SourceType (FitComposite).
+                var borrowed = operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value } ? value : null;
+                this.RequireChildPremises(whole, whole, borrowed ?? type);
             }
         }
 
@@ -103,7 +106,8 @@ public sealed partial class Binding
     // is the parts of its child positions (ChildPositions, AddChildPosition), each judged at its own sub-Type by what it contributes
     // (PartContribution): a typed part only where its fit replaced an Origin; any other part, and an aggregate whose positions no part
     // fills (`[]`), at every position. Every record is at the argument `at` (S1; the sites are U3's). A failed part is a wildcard (rule
-    // W, SPEC 23.1.2).
+    // W, SPEC 23.1.2). A child position whose parameter Type the composition cannot derive is never skipped: it is the located
+    // Unsupported_Kd at the argument (U2's review B1).
     private void RequireChildPremises(Koto at, Koto part, BoundType type)
     {
         var node = KotoHelper.UnwrapParentheses(part);
@@ -117,12 +121,16 @@ public sealed partial class Binding
         for (var i = 0; i < count; i++)
         {
             var child = this.positionParts.Count;
-            if (this.AddChildPosition(start, start + 1, i, type) is { } element)
+            if (this.AddChildPosition(start, start + 1, i, type) is not { } element)
             {
-                for (int j = child, end = this.positionParts.Count; j < end; j++)
-                {
-                    this.RequireChildPremises(at, this.positionParts[j], element);
-                }
+                this.ClosePosition(start);
+                this.Fail(at, BindingFailure.Unsupported);
+                return;
+            }
+
+            for (int j = child, end = this.positionParts.Count; j < end; j++)
+            {
+                this.RequireChildPremises(at, this.positionParts[j], element);
             }
 
             this.ClosePosition(child);

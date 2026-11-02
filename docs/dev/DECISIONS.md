@@ -6154,7 +6154,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Every record stays at the argument (S1; the sites are U3's). An aggregate (by its form, `ClassifyPart`) is a Signature
     position, so `SolveLate` bounds the solve with its instantiated parameter Type. Rows: b01, b02, b03, b11, q06, r05_n, vc2
     and d09 (its Loan conflict follows the call's record; C7 not needed). The walk reads no `PositionKind` row and changes no
-    evidence or fit walk.
+    evidence or fit walk. A composite borrowed at `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType`
+    (b01_ref; U2's review B1). A child position whose parameter Type cannot be derived is a located `Unsupported_Kd` at the
+    argument, never a skip.
   - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
     B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
     Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
