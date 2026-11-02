@@ -240,18 +240,13 @@ public partial class Compilation
             return false;
         }
 
-        // Rebuild target-dependent conditional compilation variables.
-        var os = targetTriple.Os switch
-        {
-            OsType.Win32 => "windows",
-            OsType.MacOSX => "macos",
-            _ => targetTriple.Os.ToString().ToLowerInvariant(),
-        };
+        // Rebuild target-dependent conditional compilation variables (SPEC 19.2.1; os and arch by the triple's IMPL 20.2.1 families).
+        var os = targetTriple.OsFamily;
         var debug = this.Project.KimiOptions.Debug;
         var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal)
         {
             ["os"] = new(os),
-            ["arch"] = new(targetTriple.Arch.ToString().ToLowerInvariant()),
+            ["arch"] = new(targetTriple.ArchFamily),
             ["windows"] = new(os == "windows"),
             ["linux"] = new(os == "linux"),
             ["macos"] = new(os == "macos"),

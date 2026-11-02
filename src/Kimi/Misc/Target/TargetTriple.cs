@@ -7,16 +7,33 @@ namespace Kimi.Compiler.Target;
 #pragma warning disable SA1611 // Element parameters should be documented
 
 /// <summary>
-/// Parsed LLVM target triple ARCHITECTURE-VENDOR-OS[-ENVIRONMENT]: the architecture, OS and environment, parsed as the llvm::Triple
-/// constructor does (no normalization). The vendor and the object format are not classified; nothing reads them.
+/// Parsed LLVM target triple ARCHITECTURE-VENDOR-OS[-ENVIRONMENT]: the architecture and environment, parsed as the llvm::Triple
+/// constructor does (no normalization), and the families of the built-in Conditions <c>os</c> and <c>arch</c> (SPEC 19.2.1) by IMPL
+/// 20.2.1's table. The vendor and the object format are not classified; nothing reads them.
 /// </summary>
 public sealed record class TargetTriple(
     string Value,
     Architecture Arch,
-    OsType Os,
-    EnvironmentType Environment)
+    EnvironmentType Environment,
+    string OsFamily,
+    string ArchFamily)
 {
-    public static readonly TargetTriple Invalid = new(string.Empty, Architecture.Unknown, OsType.Unknown, EnvironmentType.Unknown);
+    public static readonly TargetTriple Invalid = new(string.Empty, Architecture.Unknown, EnvironmentType.Unknown, string.Empty, string.Empty);
+
+    // IMPL 20.2.1: the os family of the OS component without its version suffix (digits and dots) and the arch family of the
+    // architecture component, a row per spelling; any other spelling, or a missing component, is UnknownFamily.
+    private const string UnknownFamily = "unknown";
+
+    private static readonly (string Spelling, string Family)[] OsFamilies =
+    [
+        ("windows", "windows"), ("win32", "windows"), ("linux", "linux"), ("macos", "macos"), ("macosx", "macos"), ("darwin", "macos"),
+    ];
+
+    private static readonly (string Spelling, string Family)[] ArchFamilies =
+    [
+        ("x86_64", "x86_64"), ("amd64", "x86_64"), ("i386", "x86"), ("i486", "x86"), ("i586", "x86"), ("i686", "x86"), ("x86", "x86"),
+        ("aarch64", "aarch64"), ("arm64", "aarch64"), ("riscv64", "riscv64"),
+    ];
 
     /// <summary>
     /// Parse a target triple string. Mirrors Triple::Triple(std::string):
@@ -44,11 +61,11 @@ public sealed record class TargetTriple(
         ranges[count++] = new Range(start, s.Length);
 
         var archSpan = s[ranges[0]];
-        var os = OsType.Unknown;
+        var osFamily = UnknownFamily;
         var env = EnvironmentType.Unknown;
         if (count > 2)
         {
-            os = ParseOs(s[ranges[2]]);
+            osFamily = OsFamilyOf(s[ranges[2]]);
             if (count > 3)
             {
                 env = ParseEnvironment(s[ranges[3]]);
@@ -61,7 +78,7 @@ public sealed record class TargetTriple(
             env = ImpliedMipsEnvironment(archSpan);
         }
 
-        return new(triple, ParseArch(archSpan), os, env);
+        return new(triple, ParseArch(archSpan), env, osFamily, ArchFamilyOf(archSpan));
     }
 
     // ------------------------------------------------------------------
@@ -261,330 +278,33 @@ public sealed record class TargetTriple(
     }
 
     // ------------------------------------------------------------------
-    // OS (prefix match; declaration order from TripleName.def is significant:
-    // "wasip1/2/3" before "wasi", "macosx" before "macos", etc.)
+    // Condition families (IMPL 20.2.1)
     // ------------------------------------------------------------------
 
-    private static OsType ParseOs(ReadOnlySpan<char> name)
+    private static string OsFamilyOf(ReadOnlySpan<char> os)
     {
-        if (name.IsEmpty)
+        foreach (var (spelling, family) in OsFamilies)
         {
-            return OsType.Unknown;
+            if (os.StartsWith(spelling) && !os[spelling.Length..].ContainsAnyExcept("0123456789."))
+            {
+                return family;
+            }
         }
 
-        // Bucket by first character to minimize StartsWith calls; the order
-        // inside each bucket preserves the TripleName.def declaration order.
-        switch (name[0])
+        return UnknownFamily;
+    }
+
+    private static string ArchFamilyOf(ReadOnlySpan<char> arch)
+    {
+        foreach (var (spelling, family) in ArchFamilies)
         {
-            case 'a':
-                if (name.StartsWith("aix"))
-                {
-                    return OsType.AIX;
-                }
-
-                if (name.StartsWith("amdhsa"))
-                {
-                    return OsType.AmdHsa;
-                }
-
-                if (name.StartsWith("amdpal"))
-                {
-                    return OsType.AmdPal;
-                }
-
-                break;
-            case 'b':
-                if (name.StartsWith("bridgeos"))
-                {
-                    return OsType.BridgeOS;
-                }
-
-                break;
-            case 'c':
-                if (name.StartsWith("cuda"))
-                {
-                    return OsType.Cuda;
-                }
-
-                if (name.StartsWith("cheriotrtos"))
-                {
-                    return OsType.CheriotRtos;
-                }
-
-                if (name.StartsWith("chipstar"))
-                {
-                    return OsType.ChipStar;
-                }
-
-                break;
-            case 'd':
-                if (name.StartsWith("darwin"))
-                {
-                    return OsType.Darwin;
-                }
-
-                if (name.StartsWith("dragonfly"))
-                {
-                    return OsType.DragonFly;
-                }
-
-                if (name.StartsWith("driverkit"))
-                {
-                    return OsType.DriverKit;
-                }
-
-                break;
-            case 'e':
-                if (name.StartsWith("elfiamcu"))
-                {
-                    return OsType.ElfIamcu;
-                }
-
-                if (name.StartsWith("emscripten"))
-                {
-                    return OsType.Emscripten;
-                }
-
-                break;
-            case 'f':
-                if (name.StartsWith("freebsd"))
-                {
-                    return OsType.FreeBSD;
-                }
-
-                if (name.StartsWith("fuchsia"))
-                {
-                    return OsType.Fuchsia;
-                }
-
-                if (name.StartsWith("firmware"))
-                {
-                    return OsType.Firmware;
-                }
-
-                break;
-            case 'h':
-                if (name.StartsWith("haiku"))
-                {
-                    return OsType.Haiku;
-                }
-
-                if (name.StartsWith("hermit"))
-                {
-                    return OsType.HermitCore;
-                }
-
-                if (name.StartsWith("hurd"))
-                {
-                    return OsType.Hurd;
-                }
-
-                if (name.StartsWith("h2"))
-                {
-                    return OsType.H2;
-                }
-
-                break;
-            case 'i':
-                if (name.StartsWith("ios"))
-                {
-                    return OsType.IOS;
-                }
-
-                break;
-            case 'k':
-                if (name.StartsWith("kfreebsd"))
-                {
-                    return OsType.KFreeBSD;
-                }
-
-                break;
-            case 'l':
-                if (name.StartsWith("linux"))
-                {
-                    return OsType.Linux;
-                }
-
-                if (name.StartsWith("lv2"))
-                {
-                    return OsType.Lv2;
-                }
-
-                if (name.StartsWith("liteos"))
-                {
-                    return OsType.LiteOS;
-                }
-
-                break;
-            case 'm':
-                if (name.StartsWith("macosx"))
-                {
-                    return OsType.MacOSX;
-                }
-
-                if (name.StartsWith("macos"))
-                {
-                    return OsType.MacOSX;   // alias
-                }
-
-                if (name.StartsWith("managarm"))
-                {
-                    return OsType.Managarm;
-                }
-
-                if (name.StartsWith("mesa3d"))
-                {
-                    return OsType.Mesa3D;
-                }
-
-                break;
-            case 'n':
-                if (name.StartsWith("netbsd"))
-                {
-                    return OsType.NetBSD;
-                }
-
-                if (name.StartsWith("nvcl"))
-                {
-                    return OsType.NVCL;
-                }
-
-                break;
-            case 'o':
-                if (name.StartsWith("openbsd"))
-                {
-                    return OsType.OpenBSD;
-                }
-
-                if (name.StartsWith("opencl"))
-                {
-                    return OsType.OpenCL;
-                }
-
-                break;
-            case 'p':
-                if (name.StartsWith("ps4"))
-                {
-                    return OsType.PS4;
-                }
-
-                if (name.StartsWith("ps5"))
-                {
-                    return OsType.PS5;
-                }
-
-                break;
-            case 'q':
-                if (name.StartsWith("qurt"))
-                {
-                    return OsType.Qurt;
-                }
-
-                break;
-            case 'r':
-                if (name.StartsWith("rtems"))
-                {
-                    return OsType.RTEMS;
-                }
-
-                break;
-            case 's':
-                if (name.StartsWith("solaris"))
-                {
-                    return OsType.Solaris;
-                }
-
-                if (name.StartsWith("shadermodel"))
-                {
-                    return OsType.ShaderModel;
-                }
-
-                if (name.StartsWith("serenity"))
-                {
-                    return OsType.Serenity;
-                }
-
-                break;
-            case 't':
-                if (name.StartsWith("tvos"))
-                {
-                    return OsType.TvOS;
-                }
-
-                break;
-            case 'u':
-                if (name.StartsWith("uefi"))
-                {
-                    return OsType.UEFI;
-                }
-
-                break;
-            case 'v':
-                if (name.StartsWith("visionos"))
-                {
-                    return OsType.XROS; // alias
-                }
-
-                if (name.StartsWith("vulkan"))
-                {
-                    return OsType.Vulkan;
-                }
-
-                break;
-            case 'w':
-                if (name.StartsWith("windows"))
-                {
-                    return OsType.Win32;
-                }
-
-                if (name.StartsWith("win32"))
-                {
-                    return OsType.Win32;   // alias
-                }
-
-                if (name.StartsWith("watchos"))
-                {
-                    return OsType.WatchOS;
-                }
-
-                if (name.StartsWith("wasip1"))
-                {
-                    return OsType.WasiP1;
-                }
-
-                if (name.StartsWith("wasip2"))
-                {
-                    return OsType.WasiP2;
-                }
-
-                if (name.StartsWith("wasip3"))
-                {
-                    return OsType.WasiP3;
-                }
-
-                if (name.StartsWith("wasi"))
-                {
-                    return OsType.Wasi;
-                }
-
-                break;
-            case 'x':
-                if (name.StartsWith("xros"))
-                {
-                    return OsType.XROS;
-                }
-
-                break;
-            case 'z':
-                if (name.StartsWith("zos"))
-                {
-                    return OsType.ZOS;
-                }
-
-                break;
+            if (arch.SequenceEqual(spelling))
+            {
+                return family;
+            }
         }
 
-        return OsType.Unknown;
+        return UnknownFamily;
     }
 
     // ------------------------------------------------------------------

@@ -14954,3 +14954,19 @@ structure is recorded here by the unit that first implements it.
     U+1F600 pair (documentation); `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two
     documents given in reverse) and `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory
     source between product sources, a U+FF21 name before a U+1F600 one) fail under `AddSources` without its sort (the parse order).
+- **R5-M178 The built-in Conditions `os` and `arch` by IMPL 20.2.1's table: `TargetTriple.OsFamily` and `ArchFamily` (PLAN G370)**
+  (2026-11-02, R5; G363's review) Major.
+  - Cause: `Compilation.Prepare` derived `os` from LLVM's OS classification (`OsType`: two switch arms, any other OS its enum name)
+    and `arch` from the `Architecture` enum's name, so `darwin` gave `darwin`, `freebsd13.2` `freebsd`, `armv7` `arm` and `x86_64h`
+    `x86_64`, where IMPL 20.2.1 gives `macos`, `unknown`, `unknown` and `unknown`.
+  - Rule: `TargetTriple` publishes `OsFamily` and `ArchFamily` from one table of IMPL 20.2.1's rows, a row per spelling: the OS
+    component without its version suffix (digits and dots) and the architecture component exactly; any other spelling, or no OS
+    component, is `unknown`. `Compilation.Prepare` reads them; `windows`, `linux` and `macos` stay `os == ...` (SPEC 19.2.1). A new
+    spelling adds a row. Windows triples keep their values.
+  - Replaces: Compilation's switch and enum-name lowering, and `TargetTriple.Os` with LLVM's OS parse (`ParseOs`) and `OsType`, whose
+    one reader was that switch. `Arch` (LLVM's architecture with its aliases) stays for the pointer width (R5-M174): another contract.
+  - IMPL's `x86` row is unreachable: the LLVM architecture parse does not know `x86`, so an `x86-...` triple has no IR target
+    (`UnsupportedTarget_Kd`). LLVM's aliases outside the table (`x86_64h`, `i786`, `arm64e`, `arm64ec`) are `unknown`.
+  - Rejected: keying the table on `OsType` and `Architecture` (LLVM's prefix and alias matches would give `linuxfoo`, `x86_64h` or
+    `arm64e` a family IMPL does not list, and keep a 320-line OS parse for one Condition); a switch per form in Compilation (a
+    consumer deciding what the triple's owner publishes).
