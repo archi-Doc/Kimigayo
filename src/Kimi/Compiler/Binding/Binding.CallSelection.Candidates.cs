@@ -146,6 +146,13 @@ public sealed partial class Binding
             Array.Clear(origins, 0, function.Origins.Count);
             Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
 
+            // A parameter or result Type that failed to bind cannot be judged at an argument or a default: the candidate stays pending,
+            // and the selection rests on the failed signature (EvaluateCallCandidate's FailedPendingSignature; PLAN G206).
+            if (IncompleteSignature(function) is not null)
+            {
+                return CandidateApplicability.Pending;
+            }
+
             for (var i = 0; i < CallOwnSlots(function).Count; i++)
             {
                 if (CallOwnSlots(function)[i] is not (GenericParameterKoto or LengthParameterKoto))
@@ -226,12 +233,7 @@ public sealed partial class Binding
                 var kind = this.KindOf(part);
                 contextualInputs |= kind is PartKind.Aggregate or PartKind.Join;
                 contextualCallables |= kind is PartKind.Function or PartKind.Reference;
-                var type = function.Parameters[mapping[i]].Type.BoundType;
-                if (type is null)
-                {
-                    return CandidateApplicability.Pending;
-                }
-
+                var type = function.Parameters[mapping[i]].Type.BoundType!;
                 if (this.FormedApplication(type, CallSlotOwner(function), arguments).Kind == BoundTypeKind.SemanticsApplication)
                 {
                     waiting.Add(i); // SPEC 10.2: solved together; s/U is matched once another argument fixes s.

@@ -25,6 +25,17 @@ public sealed class FailedDeclarationUseTest
         Assert.All(records, x => Assert.Equal(code, x.Code));
     }
 
+    // PLAN G206: a defaulted parameter whose Type failed to bind (InvalidOriginBinding_Kd: `during x` names an owned parameter) leaves its
+    // candidate pending at the candidate's start (IncompleteSignature), so the call rests on the declaration's record instead of a fault
+    // in the candidate's parameter checks (it was CheckFaulted_Kd); generic or not, beside an independent record, and a valid twin.
+    [Theory]
+    [InlineData("func gref<T>(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    gref(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("func gref(x: i64, y: ref/i64 during x = x@ref) => ()\npublic func main()\n    gref(3)\n", "InvalidOriginBinding_Kd")]
+    [InlineData("func gref<T>(x: T, y: ref/T during x = x@ref) => ()\npublic func main()\n    gref(3)\n    let z: i32 = true\n", "InvalidOriginBinding_Kd; TypeMismatch_Kd")]
+    [InlineData("func gref<T>(x: ref/T during a, y: ref/T during a = x) => ()\npublic func main()\n    let v = 3\n    gref(v@ref)\n", "")]
+    public void ACallOfADeclarationWithAFailedDefaultTypeRestsOnIt(string source, string codes)
+        => Assert.Equal(codes, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)));
+
     [Fact]
     public void AMemberOfAStructWithAnInvalidAttributeAddsNoConstraintRecord()
     {
