@@ -539,17 +539,13 @@ public sealed partial class Binding
             {
                 var operation = plan.PayloadOperations[i];
                 var proof = this.ProveCopy(operation.ParameterType!, entry.Key);
-
-                // SPEC 7.7.4, 3.5 (rule E, DECISIONS BU-83): an erasure acquires its source by the source's own Type, never by the erased
-                // Function Type it adapts to.
-                var acquired = operation.Adaptation == ArgumentAdaptation.Erasure ? operation.Source!.BoundType! : operation.SourceType!;
                 if (proof == ConstraintProof.Error)
                 {
                     plan.IsValid = false;
                     this.Fail(entry.Key, BindingFailure.InvalidConstraint);
                 }
                 else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource) &&
-                    this.BareAcquire(acquired, payloadSource, out _) == HirAcquire.Move)
+                    this.BareAcquire(operation.SourceType!, payloadSource, out _) == HirAcquire.Move)
                 {
                     // SPEC 6.5.2, 3.5, 8.14: a payload Place is acquired by its bare acquisition, by case for a pair layer; one without a
                     // plan never Moves into a payload; write value@move.

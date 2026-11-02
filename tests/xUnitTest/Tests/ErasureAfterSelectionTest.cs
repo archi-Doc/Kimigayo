@@ -21,6 +21,8 @@ public class ErasureAfterSelectionTest
 
     private const string ActEnum = "enum Act\n    Run((i32) -> i32)\nfunc k() -> Act\n";
 
+    private const string NonCopy = "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n";
+
     [Theory]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
@@ -100,6 +102,17 @@ public class ErasureAfterSelectionTest
     [InlineData("ec_q", ActEnum + Copied + "    return Act.Run(f)\n", "")]
     [InlineData("ec_nc", ActEnum + "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n    return .Run(f)\n", "TransferRequired_Kd f")]
     public void AStoredCopyClosureErasesAtACasePayload(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 3.5, 23.1.2 (G341, rule E, DECISIONS BU-83): Binding judges an erased source's bare acquisition once, at the source,
+    // so a Non-Copy source's record stands beside an independent one (q_v_nc_berr, r_geninst_nc), inside a payload's failing argument
+    // (p_typemis) and at each use, with no Move of the source (r_twice_nc).
+    [Theory]
+    [InlineData("q_v_nc_berr", ValueH + NonCopy + "    return h(f, 1)\nfunc z() -> i32\n    return \"x\"\n", "TransferRequired_Kd f; TypeMismatch_Kd \"x\"")]
+    [InlineData("r_geninst_nc", "func k<T>(h: ((i32) -> i32, i32) -> i32, t: T) -> i32\n" + NonCopy + "    return h(f, 1)\nfunc m(h: ((i32) -> i32, i32) -> i32) -> i32\n    return k(h, 1)\n", "TransferRequired_Kd f; TransferRequired_Kd h")]
+    [InlineData("p_typemis", "enum Act\n    Run((i32) -> i32)\nfunc k(h: ((i32) -> i32, i32) -> i32) -> Act\n" + NonCopy + "    return .Run(h(f, 1) + 0)\n", "TransferRequired_Kd f")]
+    [InlineData("r_twice_nc", ValueH + NonCopy + "    return h(f, 1) + h(f, 2)\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
+    public void ANonCopyErasedSourceIsBindingsRecordAtEachUse(string form, string source, string records)
         => AssertRecords(form, source, records);
 
     // The program's records, each `Code text` in report order ("; " between them), with a startup body.
