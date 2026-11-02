@@ -178,8 +178,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.2.3 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a Function
-    // Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its definition. A
-    // Closure's signature is none where BU-60's view withholds its held instance (an Origin position closed in no instance, PLAN G300).
+    // Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its literal, which
+    // every Closure Type names (ClosureType). A Closure's signature is unreadable, none, where BU-60's view withholds its held instance (an
+    // Origin position closed in no instance, PLAN G300) or its literal's header did not bind (the Type BindConcreteClosure starts with).
     private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
     {
         if (type.Kind == BoundTypeKind.Function)
@@ -187,12 +188,17 @@ public sealed partial class Binding
             return OwnFunctionBinder(type, type) is { } binder ? (type, binder) : null;
         }
 
-        if (type.Kind != BoundTypeKind.Closure || type.Symbol?.Declaration is not FunctionKoto definition || this.ClosureSignature(type) is not { } signature)
+        if (type.Kind != BoundTypeKind.Closure)
         {
             return null;
         }
 
-        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : signature, definition);
+        if (type.Symbol?.Declaration is not FunctionKoto definition)
+        {
+            throw new InvalidOperationException($"Closure Type `{type}` names no literal (InternalInvariant; BU-73).");
+        }
+
+        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)
@@ -490,8 +496,8 @@ public sealed partial class Binding
             this.originRead = work.Part(parts.Member, proof, this.originRead, saved);
         }
 
-        // A Closure's call signature is a part after its captures, member Components.Count; one BU-60's view withholds answers BU-22's
-        // limit with its literal as the site (DECISIONS BU-73).
+        // A Closure's call signature is a part after its captures, member Components.Count; an unreadable one (CallSignature) answers
+        // BU-22's limit with its literal as the site, on which a failed literal's use rests (DECISIONS BU-73).
         if (call is { } closure)
         {
             var saved = this.originRead;

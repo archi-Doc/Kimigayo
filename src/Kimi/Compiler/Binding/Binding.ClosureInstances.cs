@@ -180,7 +180,9 @@ public sealed partial class Binding
             var part = type.Components[i];
             if ((part.CarriesAnyOrigin || part.ContainsClosure) && this.FirstVisit(part, query))
             {
-                reached ??= this.FixedAtoms(part, subject, binders, scratch, ref count, query);
+                // Every part is walked; the first Closure part reached is kept.
+                var found = this.FixedAtoms(part, subject, binders, scratch, ref count, query);
+                reached ??= found;
             }
         }
 

@@ -77,7 +77,7 @@ public sealed partial class Binding
 
         internal List<CapabilityPart>? Parts { get; private set; }
 
-        // The limit site its own judgment answers where BU-60's view withholds a Closure's signature, its Use the literal (DECISIONS
+        // The limit site its own judgment answers where a Closure's signature is unreadable (CallSignature), its Use the literal (DECISIONS
         // BU-73); kept across passes, so a warm rebind allocates nothing.
         internal ComponentSite? Site { get; set; }
 

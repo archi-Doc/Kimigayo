@@ -9648,10 +9648,18 @@ resumed by R4-M86 (2026-10-20).
     Components gated by `CarriesAnyOrigin || ContainsClosure`, and each Closure part's `ClosureSignature` at any depth, one
     `visitedParts` query), returning the first Closure part, outermost, through which it met one. `BinderClass` is closed:
     `EnclosingAnonymous` (an anonymous function enclosing the subject, ClosureType's Origin arguments) and `EnclosingContainer` (a
-    container enclosing it). Enclosure is the ancestry test (`IsWithin`). For `EnclosingAnonymous` the descent adds nothing: a nested
-    Closure's enclosing atoms are already its Origin arguments, and its own atoms do not enclose the subject.
-  - U1 restructures with no behavior change: 143 related classes on both pipelines, the diagnostic snapshot against
-    shared-base/bdf4eb6b8, warm Bind 0 B (`ConcreteClosureTest.ClosureSignaturesAndFieldClosuresRebindWithoutAllocating`).
+    container enclosing it). Enclosure is the ancestry test (`IsWithin`). The walk visits every part, keeping the first Closure part
+    reached. For `EnclosingAnonymous` the descent adds nothing: a nested Closure's enclosing atoms are already its Origin arguments,
+    and its own atoms do not enclose the subject. `IsWithin(subject, binder)` there is a no-op on Collect's walk: by R4-M159's
+    invariant an atom of a Closure that does not enclose the subject reaches its signature only through a Type that passed its
+    maker's call, which images it, so every anonymous atom the signature names, its own excepted, is an enclosing Closure's; it keeps
+    the descent's nested Closures' own atoms (and those of Closures between them and the subject) out.
+  - U1 was to restructure with no behavior change, but its Components loop (`reached ??= FixedAtoms(...)`) skipped every part after
+    the first Closure part that met an atom, so ClosureType dropped their atoms (G353's review B1): records moved at U1 (a1-a3, a5,
+    a6, a8: the Origin of `s` in `func () => (func () => r, func () => s)`), and at U2b the valid a9 got `UnprovenConstraint_Kd`. The
+    fix round walks every part and restores dev's records (`ClosureResultOriginTest.AClosuresImagesReachEveryPartAfterAClosurePart`,
+    a10 the control). Its checks: 143 related classes on both pipelines, the diagnostic snapshot against shared-base/bdf4eb6b8, warm
+    Bind 0 B (`ConcreteClosureTest.ClosureSignaturesAndFieldClosuresRebindWithoutAllocating`).
   - The Field rule (U2a; amends R4-M159): `BindPropertyHeader`, the one producer of an inferred stored Property Type (SPEC 11.6),
     refuses one holding a Closure (`ContainsClosure`) whose signature names an enclosing container's Origin (its Origin parameters,
     inherited ones included, directly or as an image): FixedAtoms' reached part for `EnclosingContainer`, the first Closure literal,
@@ -9668,7 +9676,7 @@ resumed by R4-M86 (2026-10-20).
     correct `UnprovenOriginRelation_Kd` of m1, v1 and v2. Two consequences: m1 loses its independent `UnprovenOriginRelation_Kd` at
     `w@move`, which `data` alone causes (keeping it needs a variance producer that skips a refused Field, a new mechanism: a stated
     limit until imaging); and the old Analysis stops after a Binding error, so an unrelated function's Loan conflict is unpublished on
-    the default pipeline (n5), as after any Binding `Unsupported_Kd`. On the mir ledger A5's `UnprovenOriginRelation_Kd` stands
+    both pipelines (n5; the old Analysis' records are published on both until R6-check), as after any Binding `Unsupported_Kd`. On the mir ledger A5's `UnprovenOriginRelation_Kd` stands
     beside m1, v1 and v2, dependent on the refused Field (R4's own item).
   - Removal condition (PLAN, after R6-check): ClosureType's binder class takes containers, the Field read images them through the
     storage substitution, and `TypeOrigins.AccumulateRequirements` reads a Closure's arguments through `OriginArgumentVariance`, so
@@ -9679,14 +9687,18 @@ resumed by R4-M86 (2026-10-20).
     erasure, judging `ErasureSubject`, never reads it). New rejections, correct under SPEC 15.2.3, each `UnprovenConstraint_Kd` at the
     use on both pipelines: the j group (j, a, e, p3b, p4-p7: a Closure naming an enclosing function's Origin, written, through a maker,
     a generic pass, an Option or the result; e's only record is now Binding's, before the old Analysis' R4-M159 stop), p10 (a generic
-    maker's `func (x: T) => ()`, SPEC 8.15) and q1, q2 (a nested or aggregate parameter's Origin, SPEC 15.3.4); the twins b, h, k, p8,
-    p10b, q1s, q2s stay accepted. K5 does not grow; no library or milestone program is newly rejected. Closes G353 and G273's
-    named-function item.
+    maker's `func (x: T) => ()`, SPEC 8.15), q1, q2 (a nested or aggregate parameter's Origin, SPEC 15.3.4) and a method's Closure
+    naming its container's Origin (m2 `source`, m3 `self.source`); the twins b, h, k, p8, p10b, q1s, q2s stay accepted. K5 does not
+    grow; no library or milestone program is newly rejected. Like any Binding `UnprovenConstraint_Kd`, a new rejection stops the old
+    Analysis, so another function's record is unpublished on both pipelines (m4 loses a `TransferRequired_Kd`, as dev does beside
+    any such record, z1). Closes G353 and G273's named-function item.
   - The BU-60 gap row: where BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300),
     `CallSignature` gives no signature and the part answers BU-22's limit with a site whose Use is the literal (`CapabilityWork.Site`,
     kept across passes); at the outermost scope it is Error and the prologue publishes the one located `Unsupported_Kd`, with no
     `UnprovenConstraint_Kd` added. N4 and N4b's record moves from the collector's at the whole literal (7:21) to Binding's at its
-    signature (7:26): the program now stops before collection.
+    signature (7:26): the program now stops before collection. A Closure Type whose literal's header did not bind (the Type
+    BindConcreteClosure starts with) has no signature either, so its use rests on the literal's own failure (or gets the located
+    `Unsupported_Kd` there), never on its captures alone (the review's N2); a Closure Type naming no literal is a broken contract.
   - Cost: one closed signature per Closure proven Owned, one Tuple per erased Closure; warm Bind 0 B; cold Bind +4.3 KB (+0.09%) on
     Milestone 1 and 26 and +7.9 KB on a G353 program, timing within noise (pinned A/B against dev 87388b1a9,
     `artifacts/benchmarks/20261102-g353-bind`). Tests: `ConcreteClosureTest.AClosureIsOwnedWhenItsFixedSignatureOriginsAreStatic` (20
