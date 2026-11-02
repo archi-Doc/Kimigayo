@@ -10019,6 +10019,12 @@ resumed by R4-M86 (2026-10-20).
     record and once per use (round 2; review B1 and N1: the value call's record had been the old Analysis's alone, lost beside another
     Binding error). H1 regression rows (review N2): ev_ok and ec_ok with no S1 subject; ev_nc and ec_nc are Binding's records, not S1
     subjects.
+  - The old Analysis (U4; R5's consent with conditions, 2026-11-03): its erased branch (`OwnershipAnalysis.Expression`) forwarded a
+    payload's committed acquisition, (ii), to the source as well, so a payload Moved a stored Copy Closure (review B2,
+    `MovedPlace_Kd`). It now passes none: the source is acquired by its bare acquisition, and `Argument` checks the committed
+    acquisition against the erasure's temporary. The line goes with the old Analysis at H10b (R5-M182's amendment). Acceptance
+    moves (Q13, named): p_useafter_ok, p_useafter2_ok, p_twice_ok, p_then_v_ok and p_gen_useafter_ok become valid; p_twice_nc stays
+    rejected on both pipelines.
   - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) fitting
     the source's own Type structurally, which the check refuses (Closure against Function: `NoApplicableOverload_Kd`); (c) waiting for
     H1, which never sees a call Binding failed; (d) leaving the value call's Non-Copy record to the old Analysis (review B1).

@@ -21,6 +21,8 @@ public class ErasureAfterSelectionTest
 
     private const string ActEnum = "enum Act\n    Run((i32) -> i32)\nfunc k() -> Act\n";
 
+    private const string ActRun = "enum Act\n    Run((i32) -> i32)\nfunc k() -> i32\n";
+
     private const string NonCopy = "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n";
 
     [Theory]
@@ -113,6 +115,19 @@ public class ErasureAfterSelectionTest
     [InlineData("p_typemis", "enum Act\n    Run((i32) -> i32)\nfunc k(h: ((i32) -> i32, i32) -> i32) -> Act\n" + NonCopy + "    return .Run(h(f, 1) + 0)\n", "TransferRequired_Kd f")]
     [InlineData("r_twice_nc", ValueH + NonCopy + "    return h(f, 1) + h(f, 2)\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
     public void ANonCopyErasedSourceIsBindingsRecordAtEachUse(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 3.5 (G341, rule E, DECISIONS BU-83): a payload's erasure Copies a Copy source, which stays usable afterwards
+    // (p_useafter_ok, p_useafter2_ok, p_gen_useafter_ok), in a second payload (p_twice_ok) or at a value call (p_then_v_ok); the
+    // payload slot's Move takes only the fresh erased value. A Non-Copy source still needs `@move` at each payload (p_twice_nc).
+    [Theory]
+    [InlineData("p_useafter_ok", ActRun + Copied + "    let a = Act.Run(f)\n    return f(1)\n", "")]
+    [InlineData("p_useafter2_ok", ActRun + Copied + "    let a: Act = .Run(f)\n    return f(1)\n", "")]
+    [InlineData("p_twice_ok", ActRun + Copied + "    let a = Act.Run(f)\n    let b = Act.Run(f)\n    return 1\n", "")]
+    [InlineData("p_then_v_ok", "enum Act\n    Run((i32) -> i32)\n" + ValueH + Copied + "    let a = Act.Run(f)\n    return h(f, 1)\n", "")]
+    [InlineData("p_gen_useafter_ok", "enum Act<T>\n    Run((T) -> T)\nfunc k() -> i32\n" + Copied + "    let a: Act<i32> = .Run(f)\n    return f(1)\n", "")]
+    [InlineData("p_twice_nc", ActRun + NonCopy + "    let a = Act.Run(f)\n    let b = Act.Run(f)\n    return 1\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
+    public void APayloadErasureLeavesACopySourceUsable(string form, string source, string records)
         => AssertRecords(form, source, records);
 
     // The program's records, each `Code text` in report order ("; " between them), with a startup body.
