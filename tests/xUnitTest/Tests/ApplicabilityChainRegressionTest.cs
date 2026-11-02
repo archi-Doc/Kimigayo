@@ -226,7 +226,9 @@ public class ApplicabilityChainRegressionTest
 
     // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
     // Literal fits a candidate only when every source does. Its results classified by position (the owner, 2026-10-26), a join ranks as
-    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole.
+    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole. SPEC
+    // revision B (BU-80; the owner's "Accept as is", 2026-11-02): typed sources in conflict at a call argument are fitted per candidate,
+    // so the call has no candidate where the join's own TypeMismatch_Kd was (takeT's and first's nested join).
     [Theory]
     [InlineData("choose(if c => 1 else => 2)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if c => 1 else => 2)")]
     [InlineData("h(if c => 100 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 100 else => stop())")]
@@ -240,7 +242,7 @@ public class ApplicabilityChainRegressionTest
     [InlineData("takeF(if c => func [] (v: bool) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeF(if c => func [] (v: bool) => v else => stop())")]
     [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
     [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(func [] (v) => v)")]
-    [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (r, stop()) else => (true, stop())")]
+    [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeT(if c => (r, stop()) else => (true, stop()))")]
     [InlineData("takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "true")]
     [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
@@ -250,7 +252,7 @@ public class ApplicabilityChainRegressionTest
     [InlineData("applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))")]
     [InlineData("keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
     [InlineData("keep((func [] (v: i64) -> i64 => v, x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep((func [] (v: i64) -> i64 => v, x))")]
-    [InlineData("first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (5, x) else => (stop(), true)")]
+    [InlineData("first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5)")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)")]
@@ -303,14 +305,15 @@ public class ApplicabilityChainRegressionTest
         Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.NoApplicableOverload_Kd));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): in a call's join, a defaults conflict of a nested join is reported beside an independent failure of
-    // the enclosing join, as outside a call.
+    // SPEC 23.1.2 (DECISIONS BU-43): in a call's join, a nested join's failure is reported beside an independent failure of the enclosing
+    // join. SPEC revision B (BU-80; the owner's "Accept as is", 2026-11-02): at a call argument the nested join's literals are argument
+    // sources fitted per candidate, so `2.5`, which fits no `i64`, leaves the call no candidate where the join's defaults conflict was.
     [Fact]
     public void AWaitingJoinsOwnConflictInACallIsReportedBesideAnotherFailure()
     {
         var source = ControlFlowDeclarations + "takeT(if c => (if c => (5, x) else => (2.5, stop())) else => (missing, x))\n";
         var codes = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order();
-        Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd)], codes);
+        Assert.Equal([nameof(DiagnosticCode.NoApplicableOverload_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd)], codes);
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43, BU-79): at a call that selects none, a held join's own Conflict is its one record, and the enclosing

@@ -9905,7 +9905,8 @@ resumed by R4-M86 (2026-10-20).
   fitted per candidate; a length is a slot** (2026-11-02; SPEC revision B, the owner's 「1進めて下さい 2(b) 3お願いします」 on the draft
   `C:\Users\bwff1\AppData\Local\Temp\claude\bu\spec-b\draft.md` with Q1 (b), after 「(a) この方針を採る。SPEC 改訂として、上の境界も
   含めて扱います。にしましょう。」; PLAN dev c2103f353; units B0-B3 on `claude/bu104-specb`)
-  - Opened by B2a, the part the current text already covers; B2b adds the rule.
+  - Opened by B2a, the part the current text already covers; B2b-1 adds the rule at call arguments, B2b-2 its rows, B2b-3 the
+    survey row outside arguments and the SPEC text (the owner's split, 「分割しないで良いので、そのまま継続してください。制限は2時間とします。」).
   - **A length is a slot** (SPEC 10.8 collects length constraints with the others). An unbound length is no mismatch, and the
     Constraints that need it are not judged (SlotProof proves it as an unbound Type slot); after selection it is the inference
     boundary, UnboundTypeArgument_Kd. The old "an unresolved length remains pending" (UnsolvedSlots' `unrepresentable`) contradicted
@@ -9918,6 +9919,23 @@ resumed by R4-M86 (2026-10-20).
     `g216a-p1\u16-len-design.md`, held `held/bu87-len` 3234a728e, which B2a lands without its CertainMismatch part, deleted by BU-79),
     and the N3 class of G216 (a)'s landing (`landing\b2-classes.md` class 8: under reading A a typed array source typed its join as
     `Array<T>`, so n3 and n3_v had no candidate). Neither was recorded in DECISIONS.
+  - **The rule at call arguments** (B2b-1). The argument probe's control flow has no survey candidate and no common-Type search
+    before selection (`IsArgumentJoin`: InferResultExpected, DecideResult), so its call classifies it. PositionKind's **Join** row
+    takes sources with no common kind (a failed part, typed parts with no common Type, parts awaiting their call beside a literal or
+    an aggregate) one by one: each is an argument at the position for evidence (InferArgument), fit (FitArgument), defaults and step
+    3. Typed parts with a common Type stay one evidence, value reads included (Q1 (b)). An array literal argument source waits (P2,
+    AwaitsCallAtResult) with its elements bound as its join's sources, so it is never typed `Array<T>` first (4.4.1).
+    BindWaitedSources takes a waited source that step 3 bound. A value call fits each argument by FitArgument before its one
+    signature, as a named call does (D1).
+  - **Named moves** (the owner's "Accept as is", 2026-11-02, PLAN d53c4b808 and 7591883df; the planning session's record
+    selection): class (1), a leaf that fits only some candidates rules them out, Ambiguous to valid (pw8, pw16, pw17, wj_ov, wj_elem,
+    wj_tup, wj_tup_m, sg1, sg1b), in its erasure form too (g254, g254n, g050), and under rule W beside a failed name (h2_ovl_lit, n4,
+    n4c, n5, h3c: the name's record alone); class (2), records only, the sources' records become NoApplicableOverload_Kd at the call
+    (wj_one_n, wj_one_v, wj_pick_n, wj_ctor_n, wj_tup_n, sg1n, b5ap_n, b6ap, b7ap_n, b5k_n, b7k_n, b6x; under rule W fp1_*, fp2_*,
+    fp_seed_g026m, fp_seed_g026m2, g259; g192t1's closure record, which the outer join's common-Type search gave); draft §3's typed
+    conflict, records only (sc_ov, sc_tov, e4, sc_fi, sc_elem, sc_h, sc_tfi; g020, g020g, g020n, g040, g040fix at a generic callee;
+    ACRT's takeT and first); the N3 group and the typed array sources (n3, n3_v, t_j2lit64_*, m_j3_lit64, z6n_lit64) and lengths
+    at joins (z6_join_n, m_jN_fill, lp_one, len_cnt).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
