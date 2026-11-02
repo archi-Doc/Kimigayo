@@ -195,9 +195,10 @@ public sealed partial class Binding
         this.CloseHeldParts(start);
     }
 
-    // SPEC 14.9.2 (PLAN G368 (3)): the one walk to the parts a source holds at its positions, through the forms that deliver it
-    // (DeliveredOperand) and the parts of Tuple, array and Dictionary literals, appending each part it stops at, a held join among them,
-    // to heldParts. Returns the range's start; the caller reads [start, end) and closes it (CloseHeldParts).
+    // SPEC 14.9.2, 10.5.1 (PLAN G368 (3)): the one walk to the parts a source holds at its positions, through the forms that deliver it
+    // (DeliveredOperand) and into Tuple, array, fill and Dictionary literals by element position (ChildAt, the child selection of the
+    // argument-source walk), appending each part it stops at, a held join among them, to heldParts. Returns the range's start; the
+    // caller reads [start, end) and closes it (CloseHeldParts).
     private int AddHeldParts(Koto part)
     {
         var start = this.heldParts.Count;
@@ -205,6 +206,7 @@ public sealed partial class Binding
         return start;
     }
 
+    // In source order: each element in turn, a Dictionary entry's key before its value.
     private void AppendHeldParts(Koto part)
     {
         if (DeliveredOperand(part) is { } operand)
@@ -213,33 +215,21 @@ public sealed partial class Binding
             return;
         }
 
-        switch (part)
+        if (part is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
         {
-            case TupleLiteralKoto tuple:
-                foreach (var element in tuple.Elements)
-                {
-                    this.AppendHeldParts(element);
-                }
+            this.heldParts.Add(part);
+            return;
+        }
 
-                return;
-            case ArrayLiteralKoto array:
-                foreach (var element in array.Elements)
+        for (var k = 0; ChildAt(part, 0, k) is not null; k++)
+        {
+            for (var i = 0; i < IndexedChildren(part); i++)
+            {
+                if (ChildAt(part, i, k) is { } child)
                 {
-                    this.AppendHeldParts(element);
+                    this.AppendHeldParts(child);
                 }
-
-                return;
-            case DictionaryLiteralKoto dictionary:
-                foreach (var entry in dictionary.Entries)
-                {
-                    this.AppendHeldParts(entry.Key);
-                    this.AppendHeldParts(entry.Value);
-                }
-
-                return;
-            default:
-                this.heldParts.Add(part);
-                return;
+            }
         }
     }
 

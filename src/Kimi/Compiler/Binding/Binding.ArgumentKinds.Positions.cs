@@ -24,7 +24,8 @@ namespace Kimi.Compiler;
 //   its siblings are checked at the selected candidate's Type. Every
 //   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
-//   positions and the parameter Type at each; PositionKind.
+//   positions and the parameter Type at each; ChildAt, an aggregate part's parts at a child position, which the held-part walk
+//   (AddHeldParts) shares; PositionKind.
 // - Invariants: a walk removes the parts it appended before it returns, so nested walks share the list; a position's parts end where
 //   the list ends when its walk begins.
 // - Prohibitions: no fit, evidence or record here; the walks decide what a position's parts are to their candidate.
@@ -52,6 +53,17 @@ public sealed partial class Binding
         ArrayLiteralKoto array => array.Elements.Count,
         DictionaryLiteralKoto => 2,
         _ => throw new InvalidOperationException("An aggregate part is a Tuple, array or Dictionary literal."),
+    };
+
+    // The k-th part at child position `index` of an aggregate literal part, null past the last: a Tuple's or array's element there (a
+    // fill's one value at its element position), each Dictionary entry's key (0) or value (1). The one child selection of the walks
+    // into argument sources (AddIndexedChild) and into the parts a source holds (AppendHeldParts).
+    private static Koto? ChildAt(Koto part, int index, int k) => part switch
+    {
+        TupleLiteralKoto tuple => k == 0 && index < tuple.Elements.Count ? tuple.Elements[index] : null,
+        ArrayLiteralKoto array => k == 0 && index < array.Elements.Count ? array.Elements[index] : null,
+        DictionaryLiteralKoto dictionary => k < dictionary.Entries.Count ? (index == 0 ? dictionary.Entries[k].Key : dictionary.Entries[k].Value) : null,
+        _ => null,
     };
 
     // A walk's position of one argument part; ClosePosition removes it with every part appended after it.
@@ -116,25 +128,13 @@ public sealed partial class Binding
         return pattern;
     }
 
-    // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for a Tuple or array without
-    // one (Tuple results of other lengths wait under U1.6g (a) and fail their shape per candidate), a Dictionary's keys or values.
+    // Appends a part's child `index` (IndexedChildren, ChildAt), formed by AddResultPart: its element there, none for a Tuple or array
+    // without one (Tuple results of other lengths wait under U1.6g (a) and fail their shape per candidate), a Dictionary's keys or values.
     private void AddIndexedChild(Koto part, int index)
     {
-        switch (part)
+        for (var k = 0; ChildAt(part, index, k) is { } child; k++)
         {
-            case TupleLiteralKoto tuple when index < tuple.Elements.Count:
-                this.AddResultPart(tuple.Elements[index]);
-                break;
-            case ArrayLiteralKoto array when index < array.Elements.Count:
-                this.AddResultPart(array.Elements[index]);
-                break;
-            case DictionaryLiteralKoto dictionary:
-                foreach (var entry in dictionary.Entries)
-                {
-                    this.AddResultPart(index == 0 ? entry.Key : entry.Value);
-                }
-
-                break;
+            this.AddResultPart(child);
         }
     }
 
