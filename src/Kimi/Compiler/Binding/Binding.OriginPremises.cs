@@ -334,18 +334,13 @@ public sealed partial class Binding
     // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
     // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
     // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment. A nested
-    // Function Type's inputs add none: their well-formedness is that signature's premise, proven at each call (RequireInputPremises), never
-    // one of the body whose input holds the Function Type (SPEC 15.3.4, 15.6.1; DECISIONS R4-M137); its result is PLAN G216's open half.
+    // Function Type adds none. Its inputs' well-formedness is that signature's premise, proven at each call (RequireInputPremises;
+    // DECISIONS R4-M137). Its result is judged where it is written, under the enclosing premises and its own inputs (SPEC 15.3.4, 15.6.1;
+    // DECISIONS R4-M162). Neither is a premise of the body whose input holds the Function Type.
     private void AddTypePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
-        if (!environment.Types.Add(type))
+        if (type.Kind == BoundTypeKind.Function || !environment.Types.Add(type))
         {
-            return;
-        }
-
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            this.AddTypePremises(environment, type.Components[1], rule);
             return;
         }
 
