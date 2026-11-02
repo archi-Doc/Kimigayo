@@ -53,7 +53,7 @@ public class CoreModelTest
         Assert.Equal(expectedPointerWidth, pointerWidth.I64);
     }
 
-    // An unknown architecture, and one without an LLVM backend (32- and 64-bit), has no IR target (DECISIONS R5-M174, G363).
+    // An unknown architecture, and one without an LLVM backend (LLVM's pointer width 32 or 64), has no IR target (DECISIONS R5-M174).
     [Theory]
     [InlineData("unknown-unknown-unknown")]
     [InlineData("amdil-unknown-unknown")]

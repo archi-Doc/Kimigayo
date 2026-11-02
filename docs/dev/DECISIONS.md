@@ -14816,10 +14816,11 @@ structure is recorded here by the unit that first implements it.
     P2-P12 read and R9's move cannot take.
   - Amended (PLAN G363, 2026-11-02): the known duplicate is gone; the layout has one copy, `WindowsProfile.DataLayout`. `IrTarget`
     publishes the pointer width only (`IrTarget(int PointerWidth)`): its port of `Triple::computeDataLayout`, the triple parts only that
-    port read (vendor, object format, component names, eight predicates) and `CoreModelTest`'s tie are deleted. The emptiness check
-    stood for one fact, that an architecture without an LLVM backend (AMDIL, HSAIL and their 64-bit forms, Kalimba, SHAVE,
-    RenderScript32/64) has no IR target; that fact is now pointer width 0, `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s
-    one check, so every architecture and environment keeps its acceptance and width.
+    port read (vendor, object format, component names, nine predicates and `OsMajorVersion`) and `CoreModelTest`'s tie are deleted. The
+    emptiness check stood for one fact, that an architecture without an LLVM backend (AMDIL, HSAIL and their 64-bit forms, Kalimba,
+    SHAVE, RenderScript32/64) has no IR target; that fact is now `IrTarget.Create`'s pointer width 0 (it was 32 or 64 for them),
+    `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s one check. Each width is an explicit row per architecture; an
+    unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, R5;
   design `draft/Sketches/R5/LN-design.md` revision 2, accepted by design review 3; the owner's 「両レーンで GO！」) IMPL 20.1 names a source by
   its project-relative path with `/` separators. Five copies disagreed on the base (the root's or the source's own project), the

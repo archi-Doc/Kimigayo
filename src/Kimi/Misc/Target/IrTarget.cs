@@ -23,10 +23,6 @@ public sealed record class IrTarget(int PointerWidth)
     /// </summary>
     private static int GetArchPointerBitWidth(Architecture arch) => arch switch
     {
-        Architecture.Unknown or
-        Architecture.AmdIL or Architecture.AmdIL64 or Architecture.Hsail or Architecture.Hsail64 or Architecture.Kalimba or
-        Architecture.Shave or Architecture.RenderScript32 or Architecture.RenderScript64 => 0,
-
         Architecture.Avr or Architecture.Msp430 => 16,
 
         Architecture.AArch64_32 or Architecture.Arc or
@@ -42,8 +38,18 @@ public sealed record class IrTarget(int PointerWidth)
         Architecture.ThumbEB or Architecture.Wasm32 or Architecture.X86 or
         Architecture.XCore or Architecture.Xtensa => 32,
 
-        // Everything else (aarch64, x86_64, riscv64, wasm64, systemz, ...).
-        _ => 64,
+        Architecture.AArch64 or Architecture.AArch64BE or Architecture.AmdGpu or
+        Architecture.BpfEB or Architecture.BpfEL or Architecture.LoongArch64 or
+        Architecture.Mips64 or Architecture.Mips64EL or Architecture.Nvptx64 or
+        Architecture.Ppc64 or Architecture.Ppc64LE or Architecture.RiscV64 or
+        Architecture.RiscV64BE or Architecture.SparcV9 or Architecture.Spir64 or
+        Architecture.SpirV or Architecture.SpirV64 or Architecture.SystemZ or
+        Architecture.TceLE64 or Architecture.Ve or Architecture.Wasm64 or
+        Architecture.X86_64 => 64,
+
+        // No IR target: Unknown, the architectures without an LLVM backend (AmdIL, AmdIL64, Hsail, Hsail64, Kalimba, Shave,
+        // RenderScript32, RenderScript64) and any architecture not classified above.
+        _ => 0,
     };
 
     /// <summary>
