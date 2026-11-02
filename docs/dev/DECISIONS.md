@@ -9972,6 +9972,12 @@ resumed by R4-M86 (2026-10-20).
     verdict (`JudgeObligations`, today the Definition obligations' `FailTypeRole`). Its entry file states the contract.
   - H1b-1 (behavior-preserving) deletes `BindingObligationKind.Loan` and `StaticStorage`: no rule produced either, so they were
     unreachable by construction.
+  - H1b-2: a symbolic length is proven where it is formed (`Binding.Lengths` `BindLength`, SPEC 4.4.1, 4.4.2), with or without a
+    Function scope. Before, a length outside a Function scope (only under a misplaced length list, `struct S<length N>`) became an
+    unproven obligation that only the old Analysis' non-relation branch could see. It now fails at the length with the site's
+    existing code, `InvalidTypeFormation` (`InvalidTypeFormation_Kd`). Such a program already carries the Parse error
+    `MisplacedSyntax_Kd`, so the record is a dependent one added on a rejected program (Q13). The Final check can then never fire
+    on a parse-error program.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
