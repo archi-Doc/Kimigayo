@@ -376,7 +376,11 @@ public class DependencyConfigurationTest
     [Fact]
     public void WarmConfigurationValidationAllocatesNothing()
     {
-        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("PackageId=\"a\" PackageVersion=\"V1+build\" Dependencies={Math={PackageId=\"b\" PackageVersion=\"2\" Project=\"Math.kimiproj\"}} TestSources={\"tests/test.kimi\"}"))!;
+        var supplies = "NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"c\" Input=\"a.lib\"} " +
+            "{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" Input=\"b.lib\"}}}";
+        var text = "PackageId=\"a\" PackageVersion=\"V1+build\" Dependencies={Math={PackageId=\"b\" PackageVersion=\"2\" Project=\"Math.kimiproj\"}} " +
+            "TestSources={\"tests/test.kimi\"} " + supplies;
+        var file = ProjectFile.Load(Encoding.UTF8.GetBytes(text))!;
         Assert.Empty(DependencyConfiguration.Validate(file));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

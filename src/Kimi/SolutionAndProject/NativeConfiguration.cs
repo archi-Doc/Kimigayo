@@ -56,15 +56,14 @@ internal static class NativeConfiguration
 
             // Records of one project merge under the same rule as supplies across the graph.
             var packaged = libraries.Packaged;
-            bool[] valid = packaged.Length == 0 ? [] : new bool[packaged.Length];
             for (var i = 0; i < packaged.Length; i++)
             {
-                valid[i] = ValidatePackaged(packaged[i], ref failures);
-                for (var j = 0; valid[i] && j < i; j++)
+                var valid = ValidatePackaged(packaged[i], ref failures);
+                for (var j = 0; valid && j < i; j++)
                 {
-                    if (valid[j] && packaged[i].Name == packaged[j].Name && packaged[i].Package == packaged[j].Package &&
-                        (!Agree(packaged[i].ContractId, packaged[j].ContractId, StringComparison.Ordinal) ||
-                        !Agree(packaged[i].Sha256, packaged[j].Sha256, StringComparison.OrdinalIgnoreCase)))
+                    if (packaged[j] is { } other && packaged[i].Name == other.Name && packaged[i].Package == other.Package &&
+                        (!Agree(packaged[i].ContractId, other.ContractId, StringComparison.Ordinal) ||
+                        !Agree(packaged[i].Sha256, other.Sha256, StringComparison.OrdinalIgnoreCase)) && IsValidPackaged(other))
                     {
                         (failures ??= []).Add($"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' " +
                             "assert different ContractId or Sha256 values and cannot merge.");
@@ -240,6 +239,13 @@ internal static class NativeConfiguration
         }
 
         return (failures?.Count ?? 0) == count;
+    }
+
+    // Whether a packaged record is valid, without a note (reported where it was validated); allocation-free when it is.
+    private static bool IsValidPackaged(NativeLibraryInput record)
+    {
+        List<string>? ignored = null;
+        return ValidatePackaged(record, ref ignored);
     }
 
     // Gets a module's own requirement, declared directly or by a self-targeted combined supply.

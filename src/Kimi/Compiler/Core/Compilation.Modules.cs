@@ -9,6 +9,10 @@ namespace Kimi.Compiler;
 public partial class Compilation
 {
     private static readonly string[] RequiredAliases = ["Kimi"];
+
+    // The names of the built-in Conditions Prepare derives from the target and the Debug setting (SPEC 19.2); fixed for every target, so
+    // a compile-time setting is checked against them even when the target is unsupported.
+    private static readonly string[] ConditionNames = ["os", "arch", "windows", "linux", "macos", "pointerWidth", "debug", "release"];
     private DependencyPartition? dependencyGraph;
     private Dictionary<Kotonoha, IReadOnlyDictionary<string, BasicValue>>? moduleVariables;
     private Dictionary<Kotonoha, Dictionary<string, Kotonoha>>? moduleReferences;

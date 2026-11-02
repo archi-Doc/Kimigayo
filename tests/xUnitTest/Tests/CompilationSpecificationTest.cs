@@ -227,10 +227,12 @@ public class CompilationSpecificationTest
     }
 
     // SPEC 23.1.2: the language version and each compile-time setting are independent records; an unsupported target leaves out the
-    // settings, which are checked against its Conditions (dependent).
+    // settings, which are checked against the fixed Condition names, whatever the target.
     [Theory]
     [InlineData(WindowsProfile.Target, new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd" })]
-    [InlineData("unknown-none-elf", new[] { "UnsupportedLanguageVersion_Kd", "UnsupportedTarget_Kd" })]
+    [InlineData(
+        "unknown-none-elf",
+        new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd", "UnsupportedTarget_Kd" })]
     public void EachIndependentPreparationFailureIsReported(string target, string[] codes)
     {
         var compilation = Compilation.CreateForTest();
@@ -242,15 +244,19 @@ public class CompilationSpecificationTest
         Assert.Equal(codes, TestDiagnostics.Of(compilation).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
-    // SPEC 23.1.2: each repeated or invalid setting of a project file is its own load failure.
+    // SPEC 23.1.2: each repeated or invalid setting of a project file is its own load failure, and so is each configuration failure;
+    // only the rules that read a repeated map (here Dependencies' reference) are left out.
     [Fact]
     public void EachRepeatedSettingIsALoadFailure()
     {
-        var text = "CompileTimeSettings={A={Bool=true} A={Bool=false}} NativeBindings={} Test={Timeout=\"1s\" Timeout=\"2s\"}";
+        var text = "CompileTimeSettings={A={Bool=true} A={Bool=false}} NativeBindings={} Test={Timeout=\"1s\" Timeout=\"2s\"} " +
+            "PackageId=\"Bad\" PackageVersion=\"1\" Dependencies={x={PackageId=\"a\" PackageVersion=\"1\"}} Dependencies={y={PackageId=\"Bad\"}}";
         var source = System.Text.Encoding.UTF8.GetBytes(text);
         var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(source)).Failures;
-        Assert.Equal(3, failures.Count);
+        Assert.Equal(5, failures.Count);
         Assert.Contains(NativeConfiguration.SupersededBindings, failures);
+        Assert.Contains("PackageId and PackageVersion must both be supplied with valid exact identity spellings.", failures);
+        Assert.Contains("Duplicate Dependencies setting.", failures);
     }
 
     [Fact]

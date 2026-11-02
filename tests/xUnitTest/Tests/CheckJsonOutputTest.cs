@@ -155,7 +155,8 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.Equal(CheckOutcome.Blocked, document.Outcome);
         Assert.All(document.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectLoadFailed_Kd), x.Code));
         Assert.Equal(2, document.Diagnostics.Length);
-        Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("valid exact identity spellings.", StringComparison.Ordinal));
+        const string identity = "PackageId and PackageVersion must both be supplied with valid exact identity spellings.";
+        Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith(identity, StringComparison.Ordinal));
         Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("Alias requires nonempty Container paths.", StringComparison.Ordinal));
     }
 

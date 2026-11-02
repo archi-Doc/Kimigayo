@@ -210,8 +210,8 @@ public partial class Compilation
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
-        // SPEC 23.1.2: each failure is its own record. The configuration, the graph, the language version and each compile-time setting
-        // are independent; an unsupported target leaves out what derives from it (its Conditions and the settings checked against them).
+        // SPEC 23.1.2: each failure is its own record. The configuration, the graph, the language version, the target and each
+        // compile-time setting (checked against the fixed Condition names) are independent; an unsupported target leaves out its Conditions.
         var invalid = DependencyConfiguration.Validate(this.Project.ProjectFile);
         for (var i = 0; i < invalid.Count; i++)
         {
@@ -230,6 +230,20 @@ public partial class Compilation
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedLanguageVersion_Kd, this.Project.FilePath, languageVersion, CurrentLanguageVersion);
             failed = true;
+        }
+
+        List<(string Name, BasicValue Value)>? settings = null;
+        foreach (var (name, setting) in this.Project.ProjectFile.CompileTimeSettings)
+        {
+            if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
+                ConditionNames.Contains(name) || setting is null || !setting.TryGetValue(out var value))
+            {
+                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
+                failed = true;
+                continue;
+            }
+
+            (settings ??= []).Add((name, value));
         }
 
         var targetTriple = TargetTriple.Parse(target);
@@ -264,17 +278,9 @@ public partial class Compilation
             ["debug"] = new(debug),
             ["release"] = new(!debug),
         };
-        foreach (var (name, setting) in this.Project.ProjectFile.CompileTimeSettings)
+        for (var i = 0; i < (settings?.Count ?? 0); i++)
         {
-            if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
-                variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
-            {
-                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
-                failed = true;
-                continue;
-            }
-
-            variables.Add(name, value);
+            variables.Add(settings![i].Name, settings[i].Value);
         }
 
         if (failed)

@@ -9,6 +9,11 @@ namespace Kimi;
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public partial record class ProjectFile
 {
+    // The settings ValidateMapNames inspects, as bit positions of the ambiguous maps it returns.
+    private const int DependenciesMap = 2;
+    private const int RequirementsMap = 4;
+    private const int SuppliesMap = 5;
+
     /// <summary>Gets or sets whether startup is selected for an Application or excluded for a Library.</summary>
     [IgnoreMember]
     public OutputKind OutputKind { get; set; }
@@ -70,8 +75,8 @@ public partial record class ProjectFile
 
     // Convert once using Tinyhand's text grammar. Inspect the original map entries before
     // its dictionary formatter can overwrite duplicates, then deserialize the same bytes.
-    // SPEC 23.1.2: each repeated or invalid setting is its own note; the configuration rules of a file whose settings are ambiguous
-    // depend on them and are left out.
+    // SPEC 23.1.2: each repeated or invalid setting and each configuration failure is its own note. A rule that reads a repeated or
+    // ambiguous map depends on that failure and reads the map as empty (the file is then discarded); every other rule still reports.
     internal static ProjectFile? Load(ReadOnlySpan<byte> utf8)
     {
         var writer = TinyhandWriter.CreateFromThreadStaticBuffer();
@@ -79,20 +84,32 @@ public partial record class ProjectFile
         {
             TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
             var reader = new TinyhandReader(writer);
-            List<string>? settings = null;
-            ValidateMapNames(reader, ref settings);
-            if (settings is not null)
+            List<string>? failures = null;
+            var ambiguous = ValidateMapNames(reader, ref failures);
+            ProjectFile? file;
+            try
             {
-                throw new ProjectConfigurationException(settings);
+                file = TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
             }
-
-            var file = TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
-            if (file is not null && DependencyConfiguration.Validate(file) is { Count: > 0 } failures)
+            catch (TinyhandException ex) when (failures is not null)
             {
+                failures.Add(ex.Message); // The settings above may leave the file unreadable; their notes are kept.
                 throw new ProjectConfigurationException(failures);
             }
 
-            return file;
+            if (file is not null)
+            {
+                file.Dependencies = (ambiguous & (1 << DependenciesMap)) != 0 ? new(StringComparer.Ordinal) : file.Dependencies;
+                file.NativeRequirements = (ambiguous & (1 << RequirementsMap)) != 0 ? new(StringComparer.Ordinal) : file.NativeRequirements;
+                file.NativeLibraries = (ambiguous & (1 << SuppliesMap)) != 0 ? new() : file.NativeLibraries;
+                var invalid = DependencyConfiguration.Validate(file);
+                for (var i = 0; i < invalid.Count; i++)
+                {
+                    (failures ??= []).Add(invalid[i]);
+                }
+            }
+
+            return failures is null ? file : throw new ProjectConfigurationException(failures);
         }
         finally
         {
@@ -100,12 +117,15 @@ public partial record class ProjectFile
         }
     }
 
-    private static void ValidateMapNames(TinyhandReader reader, ref List<string>? failures)
+    // Returns the ambiguous maps (a repeated setting or a failure inside one) as bits of their positions.
+    private static int ValidateMapNames(TinyhandReader reader, ref List<string>? failures)
     {
         if (reader.TryReadNil())
         {
-            return;
+            return 0;
         }
+
+        var ambiguous = 0;
 
         HashSet<string>? names = null;
         HashSet<string>? dependencies = null;
@@ -146,15 +166,19 @@ public partial record class ProjectFile
                 // A repeated key would replace the whole earlier map, even when its targets differ.
                 var isRequirements = key.SequenceEqual("NativeRequirements"u8);
                 ref var keySeen = ref isRequirements ? ref requirementsSeen : ref suppliesSeen;
+                var before = failures?.Count ?? 0;
                 if (keySeen)
                 {
                     (failures ??= []).Add($"Duplicate {(isRequirements ? "NativeRequirements" : "NativeLibraries")} setting.");
                     reader.Skip();
-                    continue;
+                }
+                else
+                {
+                    keySeen = true;
+                    ValidateNativeMap(ref reader, ref isRequirements ? ref requirements : ref supplies, !isRequirements, ref failures);
                 }
 
-                keySeen = true;
-                ValidateNativeMap(ref reader, ref isRequirements ? ref requirements : ref supplies, !isRequirements, ref failures);
+                ambiguous |= (failures?.Count ?? 0) != before ? 1 << (isRequirements ? RequirementsMap : SuppliesMap) : 0;
                 continue;
             }
 
@@ -169,6 +193,7 @@ public partial record class ProjectFile
             if ((mapsSeen & (1 << map)) != 0)
             {
                 (failures ??= []).Add($"Duplicate {(map == 1 ? "CompileTimeSettings" : map == 2 ? "Dependencies" : "TestDependencies")} setting.");
+                ambiguous |= 1 << map;
                 reader.Skip();
                 continue;
             }
@@ -189,11 +214,14 @@ public partial record class ProjectFile
                 if (name is null || !seen.Add(name))
                 {
                     (failures ??= []).Add($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
+                    ambiguous |= 1 << map;
                 }
 
                 reader.Skip();
             }
         }
+
+        return ambiguous;
     }
 
     // Per-target native maps: a repeated target/name would be silently overwritten by the dictionary formatter.
