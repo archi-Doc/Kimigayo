@@ -59,7 +59,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("js3_ok", PutT + "func good(p: uniq/(Option<ref/i32 during q>), w: ref/i32 during q) -> i32\n    put(p, .Some(w))\n    return 0\n", "", null)]
     [InlineData("js4_ok", PutT + "func good(p: uniq/((Option<ref/i32 during q>, i32)), w: ref/i32 during q) -> i32\n    put(p, (.Some(w), 1))\n    return 0\n", "", null)]
     [InlineData("js5_ok", PutT + "func good(p: uniq/((Option<ref/i32 during q>, i32)), c: bool, w: ref/i32 during q) -> i32\n    put(p, (if c => .Some(w) else => .None, 1))\n    return 0\n", "", null)]
+    [InlineData("jt2", JoinHead + NestedInner + "    return inner(if c => .None else => .None, q)\n", "UnprovenOriginRelation_Kd if c => .None else => .None", null)]
     [InlineData("jt2_ok", JoinHead + WithPremise + NestedInner + "    return inner(if c => .None else => .None, q)\n", "", null)]
+    [InlineData("mj2", JoinHead + NestedInner + "    return inner((" + MatchNoneArms + "    ), q)\n", "UnprovenOriginRelation_Kd (match c", null)]
     [InlineData("mj2_ok", JoinHead + WithPremise + NestedInner + "    return inner((" + MatchNoneArms + "    ), q)\n", "", null)]
     public void AJoinArgumentIsRecordedOnceAtTheArgument(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
@@ -67,6 +69,7 @@ public partial class OriginRelationDiagnosticTest
     // Depth 2 (the redesign's structure row): a join inside a Tuple inside a join is one argument, judged and recorded once at it (dn2), with
     // a payload at an opened position related (dn2p, D-1); each twin states the relation or passes a value that outlives `q`.
     [Theory]
+    [InlineData("dn2", DepthHead + InnerDepth + DepthJoin, "UnprovenOriginRelation_Kd if c => ((if d => .None else => .None, 1), 2) else => ((.None, 3), 4)", null)]
     [InlineData("dn2_ok", DepthHead + WithPremise + InnerDepth + DepthJoin, "", null)]
     [InlineData("dn2p_ok", PutT + "func good(p: uniq/((Option<ref/i32 during q>, i32)), c: bool, d: bool, w: ref/i32 during q) -> i32\n    put(p, if c => (if d => .Some(w) else => .None, 1) else => (.None, 2))\n    return 0\n", "", null)]
     public void ANestedJoinArgumentIsRecordedOnceAtTheArgument(string form, string body, string records, string? payload)
@@ -76,6 +79,7 @@ public partial class OriginRelationDiagnosticTest
     // every size (kd); with the premise every size is valid (kd_ok). The class has no scaling helper, so the row asserts the records at
     // each size, not the work.
     [Theory]
+    [InlineData("kd", false)]
     [InlineData("kd_ok", true)]
     public void JoinArgumentsRecordOncePerArgumentAtEverySize(string form, bool premise)
     {
