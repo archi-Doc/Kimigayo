@@ -296,7 +296,8 @@ public sealed partial class Binding
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var source = this.Call.ArgumentNodes[i];
-                if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot || source.BoundType is null ||
+                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
+                    source.BoundType is null ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     binding.CallMemberPattern(requiredSignature, this.Binder, this.DeclaringType) is not { } memberSignature ||
                     this.Type(binding.ContractType(memberSignature, this.Scope, this.Self)) is not { } required ||
