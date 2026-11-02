@@ -446,7 +446,7 @@ public sealed partial class Binding
 
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
-        var solution = this.Solution(evaluation, selected, declaringType);
+        var solution = this.Solution(evaluation, winner, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
         if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
         {

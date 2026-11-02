@@ -83,6 +83,7 @@ public partial class OriginRelationDiagnosticTest
     // aggregate theory).
     [Theory]
     [InlineData("k3", MkNone + OwnH + LocalUse + "    let x = h(a, b, mkNone())\n    return 0\n", "")]
+    [InlineData("k4", MkNone + ImpliedStore + ShortBody + "    put2(p, sr, mkNone())\n    return 0\n", "UnsatisfiedOriginRelation_Kd mkNone()")]
     [InlineData("d01", IdFunc + OwnH + LocalUse + "    let x = h(a, b, id(Option.None))\n    return 0\n", "")]
     [InlineData("d04", WrapFunc + OwnH + LocalUse + "    let x = h(a, b, wrap(Option.None))\n    return 0\n", "")]
     [InlineData("i01", LayerBox + "func h3(q: ref/i32, r: ref/i32, x: Box<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h3(a, b, Box.init(item: Option.None))\n    return 0\n", "")]
@@ -90,6 +91,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("q10b", "func h(q: ref/i32, r: ref/i32, x: (Option<ref/(ref/i32 during q) during r>, i32)) -> ref/i32 during r\n    return q\n" + PairFunc + LocalUse + "    let x = h(a, b, pair(Option.None))\n    return 0\n", "")]
     [InlineData("q14", IdFunc + OwnH + LocalUse + "    let x = h(a, b, id(id(Option.None)))\n    return 0\n", "")]
     [InlineData("j01", EmptyStruct + "func h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h4(a, b, E.init())\n    return 0\n", "")]
+    [InlineData("j01n", EmptyStruct + NestedHead + InnerE + "    return inner(E.init(), q)\n", "UnprovenOriginRelation_Kd E.init()")]
     [InlineData("j01n_ok", EmptyStruct + NestedHead + WithPremise + InnerE + "    return inner(E.init(), q)\n", "")]
     [InlineData("ea2", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "")]
     public void EachCallProvesItsInputsThroughANestedGenericCall(string form, string body, string records)
@@ -109,6 +111,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("d09_ok", Put3 + KeepShort + "        let seen = keep@follow\n    return 0\n", "")]
     [InlineData("q06_ok", Put6 + LongBody + "    put6(p, v, ((Option.None, 1), 2))\n    return 0\n", "")]
     [InlineData("t03", "func same11<T>(x: [2 of (ref/T during c, i32)]) => ()\n" + TwoCopies + "    let f = func [a, b] () -> ()\n        same11([(a@ref, 1), (b@ref, 1)])\n    f()\n    return 0\n", "")]
+    [InlineData("q05", ImpliedStore + ShortBody + "    put2(slot: p, v: sr, w: Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("q05_ok", ImpliedStore + LongBody + "    put2(slot: p, v: v, w: Option.None)\n    return 0\n", "")]
     public void AContextualPartOfAnAggregateArgumentIsJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -150,6 +153,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cv2_n", WeakPayloadHead + InnerPair + "    return inner((Option.Some(v), 1), q)\n", "UnprovenOriginRelation_Kd (Option.Some(v), 1)", null)]
     [InlineData("cv3", PayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "", null)]
     [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
+    [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
     [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
@@ -160,8 +164,10 @@ public partial class OriginRelationDiagnosticTest
 
     // Contextual parts of value calls (d3 §7; the owner's (A)): a value call proves its callee's nested input well-formedness for the
     // instantiated Types at the argument, as a named call does; each twin states the relation. k6 is vc1 (not repeated).
+    [InlineData("vc1", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return g(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
     [Theory]
     [InlineData("vc1_ok", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n" + WithPremise + "    return g(Option.None)\n", "")]
+    [InlineData("vc2", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n    return g((Option.None, 1))\n", "UnprovenOriginRelation_Kd (Option.None, 1)")]
     [InlineData("vc2_ok", "func k(q: ref/i32, r: ref/i32, g: ((Option<ref/(ref/i32 during q) during r>, i32)) -> i32) -> i32\n" + WithPremise + "    return g((Option.None, 1))\n", "")]
     public void AValueCallProvesItsCalleesNestedInputs(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -170,6 +176,7 @@ public partial class OriginRelationDiagnosticTest
     // n7h2, p1b and n7g2's Loan conflict are ALocatedRecordThatDoesNotFailBindingIsReported's rows.
     [Theory]
     [InlineData("nn1t", NestedHead + WithPremise + InnerTrailing + "    return inner(q, Option.None)\n", "")]
+    [InlineData("nn1t_n", NestedHead + InnerTrailing + "    return inner(q, Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
     public void AOneRecordFormKeepsOneRecord(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
@@ -179,6 +186,7 @@ public partial class OriginRelationDiagnosticTest
     // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4);
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
+    [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [Theory]
     [InlineData("j02_ok", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + LongBody + "    put8(p, v, E.init())\n    return 0\n", "", null)]
     [InlineData("t7c_ok", ClauseCall + "    origin p outlives static\n    return g(.None, p)\n", "", null)]
@@ -191,6 +199,20 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("dl1_ok", ImpliedStore + "func good(p: uniq/(ref/i32 during q), v: ref/i32 during q, ys: ref/(ref/i32 during q) during q) -> i32\n    put2(p, v, .Some(ys))\n    return 0\n", "", null)]
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
+
+    // t7c (d3 §6; the planning session's decision, by D-3's reasoning): T's own clause in x's instantiated Type fails (`p outlives static`
+    // is Unknown) and is required as an Origin relation record at the argument `.None` (DIAGNOSTICS: source `declared`); SPEC 23.1.2 leaves
+    // grouping implementation-defined, so at most one further record is allowed and none beyond. Its twin is t7c_ok above.
+    [Theory]
+    [InlineData("t7c", ClauseCall + "    return g(.None, p)\n")]
+    public void AnArgumentsTypeClauseIsRecordedAtTheArgument(string form, string body)
+    {
+        var source = body + Main;
+        CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
+            .Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").ToArray();
+        Assert.True(errors.Contains("UnprovenOriginRelation_Kd .None") && errors.Length <= 2, $"{form}: expected UnprovenOriginRelation_Kd .None and at most one further record, found [{string.Join("; ", errors)}]");
+    }
 
     // AssertRecords, and for a contextual payload (`payload` not null) D-1's related location: every Error record relates the payload's
     // text.

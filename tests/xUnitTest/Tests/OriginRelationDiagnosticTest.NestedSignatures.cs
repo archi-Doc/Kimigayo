@@ -69,8 +69,12 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("g2", LayerBox + "func f<E>(x: E, y: ref/Box<E> during c, z: uniq/(ref/i32 during c)) -> () => ()\nfunc g(q: ref/Box<ref/i32 during s> during t, w: uniq/(ref/i32 during t)) -> ()\n    let m: i32 = 5\n    f(m@ref, q, w)\n", "UnsatisfiedOriginRelation_Kd q", "requires the borrow m@ref outlives t, which is false")]
     [InlineData("g4", GenericLayer + "func g(v: ref/i32, q: ref/(ref/i32 during s) during t, w: uniq/(ref/i32 during t)) -> ()\n    f(v, q, w)\n", "UnprovenOriginRelation_Kd q", "requires v outlives t, which is not proven")]
     [InlineData("g1ok", GenericLayer + "func g(v: ref/i32 during s, q: ref/(ref/i32 during s) during t, w: uniq/(ref/i32 during t)) -> ()\n    f(v, q, w)\n", "", null)]
+    [InlineData("nn1", NestedHead + NestedInner + "    return inner(Option.None, q)\n", "UnprovenOriginRelation_Kd Option.None", null)]
+    [InlineData("nn1b", NestedHead + NestedInner + "    return inner(.None, q)\n", "UnprovenOriginRelation_Kd .None", null)]
     [InlineData("nn1ok", NestedHead + "    origin q outlives r\n" + NestedInner + "    return inner(Option.None, q)\n", "", null)]
+    [InlineData("h2", Container + StoreHead + "    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n" + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("h2c", Container + StoreHead + "    origin q outlives r\n    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n", "", null)]
+    [InlineData("nn1x", StoreHead + StoreInner + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("nn1x_c", StoreHead + "    origin q outlives r\n" + StoreInner + Dangling, "ComparisonLoanConflict_Kd let short = 2", null)]
     public void EachCallProvesItsCalleesNestedInputs(string form, string body, string records, string? label)
         => AssertRecords(form, body, records, label);
@@ -89,8 +93,10 @@ public partial class OriginRelationDiagnosticTest
 
     // PLAN G269 (C): a contextually typed `.None` argument over the call's own Origins has its instantiated well-formedness judged at that
     // argument; a Borrow of `short` cannot outlive `q` (Refuted). The twins pass a value that outlives `q`.
+    [InlineData("x5", ImpliedStore + ShortBody + "    put2(p, sr, Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [Theory]
     [InlineData("x5_ok", ImpliedStore + LongBody + "    put2(p, v, Option.None)\n    return 0\n", "")]
+    [InlineData("x8", ImpliedCheck + ShortBody + "    let n = chk(Option.None, p, sr)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("x8_ok", ImpliedCheck + LongBody + "    let n = chk(Option.None, p, v)\n    return 0\n", "")]
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);

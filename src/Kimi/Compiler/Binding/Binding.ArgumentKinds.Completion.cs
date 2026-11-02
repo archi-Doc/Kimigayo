@@ -22,7 +22,7 @@ public sealed partial class Binding
     {
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
-        var solution = this.Solution(evaluation, selected, evaluation.Evaluated[winner].DeclaringType);
+        var solution = this.Solution(evaluation, winner, selected, evaluation.Evaluated[winner].DeclaringType);
         var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
