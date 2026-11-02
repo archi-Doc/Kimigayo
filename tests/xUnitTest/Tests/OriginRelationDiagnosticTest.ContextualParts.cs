@@ -204,6 +204,16 @@ public partial class OriginRelationDiagnosticTest
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
 
+    // An ill-formed explicit Type argument whose slot a contextual argument fills (DECISIONS R4-M164; the planning session's ruling,
+    // 2026-11-03): the call records at the argument (Binding). The written Type's own record is the old ownership analysis's body
+    // obligation, which does not run beside a Binding record (PLAN G56): u1's, expl's and boxe's each return at H11.
+    [Theory]
+    [InlineData("u1", "func use1<T>(x: T) -> i32 => 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    return use1<Option<ref/(ref/i32 during q) during r>>(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
+    [InlineData("expl", "func id<T>(x: T) -> T => x@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = id<Option<ref/(ref/i32 during q) during r>>(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None")]
+    [InlineData("boxe", "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = Box<Option<ref/(ref/i32 during q) during r>>.init(item: Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None")]
+    public void AnExplicitTypeArgumentsContextualArgumentRecordsAtTheArgument(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
+
     // t7c (d3 §6; the planning session's decision, by D-3's reasoning): T's own clause in x's instantiated Type fails (`p outlives static`
     // is Unknown) and is required as an Origin relation record at the argument `.None` (DIAGNOSTICS: source `declared`); SPEC 23.1.2 leaves
     // grouping implementation-defined, so at most one further record is allowed and none beyond. Its twin is t7c_ok above.

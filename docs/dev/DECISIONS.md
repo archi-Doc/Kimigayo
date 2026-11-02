@@ -6154,6 +6154,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
     - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
     - vc2, U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
+  - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
+    written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
