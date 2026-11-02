@@ -48,6 +48,10 @@ public sealed partial class Binding
     private ClauseFact? failedClause;
     private ClauseFact? trialClause;
 
+    // The judgment that left a candidate trial Pending before its proof (DECISIONS BU-86), diagnostic payload only; its selection reads
+    // it (EvaluateCallCandidate).
+    private PendingJudgment? trialPending;
+
     // The innermost open frame's epoch (0: none) and the monotonic counter that issues them, never reused (design-r2 Amendment 5), and
     // the frame that encloses the outermost scope's own (BeginProof, EndProof).
     private long frameEpoch;
@@ -224,6 +228,11 @@ public sealed partial class Binding
             this.trialClause = null;
         }
 
+        if (this.trialPending.HasValue && this.trialPending.GetValueOrDefault().Epoch == epoch)
+        {
+            this.trialPending = null;
+        }
+
         this.frameEpoch = enclosing;
     }
 
@@ -232,6 +241,7 @@ public sealed partial class Binding
     {
         this.trialUnknown = null;
         this.trialClause = null;
+        this.trialPending = null;
         return this.OpenFrame();
     }
 
@@ -241,6 +251,7 @@ public sealed partial class Binding
     {
         var unknown = enclosing != 0 ? this.trialUnknown : null;
         var clause = enclosing != 0 ? this.trialClause : null;
+        var pending = enclosing != 0 ? this.trialPending : null;
         this.CloseFrame(enclosing);
         if (unknown is not null)
         {
@@ -249,6 +260,7 @@ public sealed partial class Binding
 
         this.trialUnknown = unknown;
         this.trialClause = clause is { } kept ? kept with { Epoch = enclosing } : null;
+        this.trialPending = pending is { } judged ? judged with { Epoch = enclosing } : null;
     }
 
     // The U fact the answer of the proof scope in progress rests on (EndProof, a cache entry).
@@ -279,6 +291,7 @@ public sealed partial class Binding
         this.trialUnknown = null;
         this.failedClause = null;
         this.trialClause = null;
+        this.trialPending = null;
         this.frameEpoch = 0;
         this.proofNesting = 0;
     }

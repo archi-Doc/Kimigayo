@@ -48,6 +48,8 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    var w: Missing = .None\n    w = .Some(1)", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("func make() -> Missing => .None\npublic func main()\n    let v = make()", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("func make() -> Missing\n    return .None\npublic func main()\n    let v = make()", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<Undefined>(1)", "UnresolvedBinding_Kd", "Undefined")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\npublic func main()\n    let values = identity<[_ of i32]>([1])", "ExpectedSyntax_Kd", "_")]
     public void LimitsAndDependentChecksPublishOneSpecificError(string source, string code, string text)
     {
         var c = MinimalEmissionTest.Analyze(source);

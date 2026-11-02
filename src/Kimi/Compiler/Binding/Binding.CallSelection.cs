@@ -135,7 +135,10 @@ public sealed partial class Binding
         }
 
         evaluation.Pending |= state == CandidateApplicability.Pending;
-        evaluation.FailedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? this.FailedSignaturePart(function) : null;
+        // A failed signature part or explicit Type argument leaves the selection resting on it (SPEC 23.1.2; DECISIONS BU-86).
+        evaluation.FailedPendingSignature ??= state != CandidateApplicability.Pending ? null
+            : IncompleteSignature(function) ?? this.FailedSignaturePart(function) ??
+                (this.trialPending is { Kind: PendingJudgmentKind.FailedTypeArgument } failed ? failed.Part : null);
         if (state == CandidateApplicability.Pending)
         {
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.

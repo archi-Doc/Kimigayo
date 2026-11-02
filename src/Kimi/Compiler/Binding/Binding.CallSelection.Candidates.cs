@@ -185,6 +185,7 @@ public sealed partial class Binding
                     arguments[i] = generic.TypeArguments[i].BoundType;
                     if (arguments[i] is null)
                     {
+                        this.trialPending = new(PendingJudgmentKind.FailedTypeArgument, generic.TypeArguments[i]) { Epoch = this.frameEpoch };
                         return CandidateApplicability.Pending;
                     }
                 }

@@ -17,6 +17,12 @@ public sealed partial class Binding
         Error,
     }
 
+    // DECISIONS BU-86: the closed vocabulary of PendingJudgment.
+    private enum PendingJudgmentKind : byte
+    {
+        FailedTypeArgument,
+    }
+
     // SPEC 10.4, 8.3.3: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
     // only by an Unknown premise after every argument and result check, ranked as the applicable candidate it would be.
     private static bool Ranked(in EvaluatedCandidate candidate, bool premises)
@@ -258,4 +264,12 @@ public sealed partial class Binding
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);
+
+    // DECISIONS BU-86: a judgment that leaves a candidate Pending before its proof, written once where TryCandidateCore decides it.
+    // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
+    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part)
+    {
+        // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
+        internal long Epoch { get; init; }
+    }
 }

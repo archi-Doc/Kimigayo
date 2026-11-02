@@ -10037,6 +10037,18 @@ resumed by R4-M86 (2026-10-20).
     class requirement, `, ` where every binder must give the class (a product) and `; ` where one suffices (a union), which is not a
     found case set.
 
+- **BU-86 A Pending candidate's judgment before its proof is one fact** (2026-11-03; PLAN G354 (1), scheduled by the owner after the
+  joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; design `bu\g352-354\design.md` §3, census `census.md`)
+  - The defect: a judgment that left a candidate Pending before its proof published no fact, so the call ended in a fact-less
+    `UnprovenConstraint_Kd` (`FailWaitingSelection`). The census reached L184, L488 and L531(b) of `TryCandidateCore`.
+  - The fact: `PendingJudgment` (`Binding.CandidateEvaluation`), a closed vocabulary, written once where `TryCandidateCore` decides
+    and kept as the trial's fact (`trialPending`, the trial frame's row beside `trialClause`); the candidate's selection reads it.
+  - `FailedTypeArgument` (L184): an explicit Type argument that did not bind. Writer: the explicit-argument loop. Reader:
+    `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
+    parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
+  - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
+    reached); L593 (G354 (2)).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
