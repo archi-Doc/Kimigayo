@@ -267,11 +267,22 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("r18", RefLocals + "    let j = if c => (x@ref, 1) else => (1, y)\n    return 0\n", "")]
     [InlineData("s07", IdentityT + RefLocals + "    let r = identity(if c => (x@ref, 1) else => (1, y))\n    return 0\n", "")]
     [InlineData("s08", "func ft(x: (i64, i32)) -> i32 => 0\nfunc ft(x: (bool, i32)) -> i32 => 1\n" + RefI64 + "    return ft(if c => (r, 1) else => (1, 2))\n", "")]
-    [InlineData("q2d", HaT + RefLocals + "    return ha(if c => [x@ref, y] else => [y, x])\n", "NoApplicableOverload_Kd ha(if c => [x@ref, y] else => [y, x])")]
+    [InlineData("q2d", HaT + RefLocals + "    return ha(if c => [x@ref, y] else => [y, x])\n", "NoApplicableOverload_Kd ha(if c => [x@ref, y] else => [y, x]); TypeMismatch_Kd y")]
     [InlineData("r01", HaT + RefLocals + "    return ha([x@ref, y])\n", "NoApplicableOverload_Kd ha([x@ref, y])")]
     [InlineData("q2f", "func ga<T>(x: Array<T>) -> i32 => 0\n" + RefLocals + "    return ga(if c => [x@ref] else => [y])\n", "NoApplicableOverload_Kd ga(if c => [x@ref] else => [y])")]
     [InlineData("r09", HaT + RefLocals + "    return ha(if c => [x@ref, x@ref] else => [y, y])\n", "NoApplicableOverload_Kd ha(if c => [x@ref, x@ref] else => [y, y])")]
     public void OneJoinsResultSourcesAgreeByAValueRead(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
+
+    // SPEC 10.5.1, 4.3.1, 14.9.2 step 2 (revision B's fix round, BU-80; the group review's B2 and B3): an array literal source is typed
+    // whole. At a slot that takes it whole it gives Array<T> beside a waiting source (q3b), so a waiting `zeros()` beside it misfits
+    // (p3f); in a `let` join it is typed as the literal alone, its elements' reference layers never merged (q2a, r10, as on dev).
+    [Theory]
+    [InlineData("q3b", IdentityT + "func g<T>(x: T) -> i32 => 0\n" + KX + "    return g(if c => [x] else => identity([x]))\n", "")]
+    [InlineData("p3f", ZerosN + "func g<T>(x: T) -> i32 => 0\n" + KHead + "    return g(if c => [1@i64, 2@i64] else => zeros())\n", "NoApplicableOverload_Kd zeros()")]
+    [InlineData("q2a", RefLocals + "    let j = if c => [x@ref] else => [y]\n    return 0\n", "TypeMismatch_Kd if c => [x@ref] else => [y]")]
+    [InlineData("r10", RefLocals + "    let j = if c => [x@ref, y] else => [y, y]\n    return 0\n", "TypeMismatch_Kd y")]
+    public void AnArrayLiteralSourceIsTypedWhole(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
     // SPEC revision B (BU-80; supersedes U1.6g (a) and (b) at call arguments): typed sources in conflict at a call argument are argument
@@ -308,7 +319,8 @@ public partial class OriginRelationDiagnosticTest
     // literal-only u6f_fix_lit), Tuple elements included (u6f_fix_tup); an `Array<T>` index holds the elements of the sources that have
     // it (u6f_dyn_len, u6f_g_len). A literal index that fits no candidate leaves none (g244, b1_afix_W_fb), as a source of another length
     // does at `[N of T]` (u6f_fix_len, 4.3.1); with every index waiting no candidate is best (u6f_dyn_wait); at a bare slot the join's Type
-    // keeps one element position (14.9.2 step 2), so a waiting element leaves T unbound (u6f_g_wait).
+    // keeps one element position (14.9.2 step 2). SPEC revision B (BU-80 class (3), N4; Fix-B): a bare slot that a waiting element and
+    // literals leave open is formed after selection from their Types after the literal defaults, so u6f_g_wait is valid.
     [Theory]
     [InlineData("U1.6f", "sg4b", IdentityT + FFixed + KD + "    return f(if c => [if d => identity(1) else => 2, 3] else => [4, 5])\n", "")]
     [InlineData("U1.6f", "wj_arr", IdentityT + FFixed + KHead + "    return f(if c => [identity(1), 2] else => [2, 3])\n", "")]
@@ -324,7 +336,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6f", "b1_afix_W_fb", IdentityT + Stop + "func f(x: [2 of bool]) -> i32 => 1\n" + KD + "    return f(if c => [(if d => identity(1) else => 2), 3] else => stop())\n", "NoApplicableOverload_Kd f(if c => [(if d => identity(1) else => 2), 3] else => stop())")]
     [InlineData("U1.6f", "u6f_fix_len", IdentityT + FFixed + KHead + "    return f(if c => [identity(1), 2] else => [3, 4, 5])\n", "NoApplicableOverload_Kd f(if c => [identity(1), 2] else => [3, 4, 5])")]
     [InlineData("U1.6f", "u6f_dyn_wait", IdentityT + FArrays + KHead + "    return f(if c => [identity(1)] else => [identity(2)])\n", "AmbiguousBinding_Kd f(if c => [identity(1)] else => [identity(2)])")]
-    [InlineData("U1.6f", "u6f_g_wait", IdentityT + "func g<T>(x: T) -> i32 => 0\n" + KHead + "    return g(if c => [identity(1), 2] else => [3, 4])\n", "UnboundTypeArgument_Kd g(if c => [identity(1), 2] else => [3, 4])")]
+    [InlineData("U1.6f", "u6f_g_wait", IdentityT + "func g<T>(x: T) -> i32 => 0\n" + KHead + "    return g(if c => [identity(1), 2] else => [3, 4])\n", "")]
     public void AJoinsArrayResultsAreClassifiedPerIndex(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 

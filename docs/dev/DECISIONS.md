@@ -9977,6 +9977,14 @@ resumed by R4-M86 (2026-10-20).
     t04; head's other rejection `one(if c => r else => r)` and its identity variants); B4 conflicting evidence again (q2d, q2e, q2f,
     r09, r15); r18 (the `let` Tuple gap) and its argument twins s07, r19 rejected → valid by the literal clause per part; s08 valid by
     per-candidate leaf fitting, class (1). p46 and its `let` twin q2b stay valid.
+  - **Fix-B** (the group review's B2 and B3; main's decision: an array literal source is typed whole). One representation,
+    FormedByElement (a Tuple or a fill; an array or Dictionary literal is typed whole), which FormationRoot climbs and PositionKind
+    reads: several array literal sources at one position are Join, each its own evidence. IndependentPositionType forms an unbound
+    array literal as Array<T> at a slot that takes it whole. The survey's array row types a `let` source as the literal alone: Array<T>
+    when its elements supply one Type, bound alone to its own record when they differ. Moves: q3b valid again as on dev; p3f and s06
+    get `zeros()`'s misfit (NoApplicableOverload_Kd) instead of UnboundTypeArgument; q2a and r10 TypeMismatch again as on dev; q2d
+    and q2e get dev's records again; p65 and u6f_g_wait valid by class (3). p48 is Unsupported_Kd (an Origin fit after selection): a
+    slot fixed by one source's whole evidence fits the other's elements instead of comparing its whole evidence, a limit left open.
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's

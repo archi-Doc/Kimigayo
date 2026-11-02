@@ -145,7 +145,8 @@ public sealed partial class Binding
     // The kind of a position of several parts, a join's, typed first (SPEC 14.9.2 step 2): Typed at the common Type of its typed parts,
     // whatever else it holds, or with no Type when it has no part; Join (revision B, BU-80; SPEC 10.5.1) for sources fitted one by one:
     // a failed part among them (rule W), typed parts with no common Type, or parts awaiting their call (AwaitsCall) beside a literal or
-    // an aggregate; Call when its parts all await their call; then Aggregate when its parts are aggregates, then Literal.
+    // an aggregate, or the aggregate sources of a join that are typed whole (FormedByElement); Call when its parts all await their call;
+    // then Aggregate when its parts are aggregates, then Literal.
     private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;
@@ -180,10 +181,11 @@ public sealed partial class Binding
         }
 
         // SPEC 10.5.1 (revision B, BU-80): argument sources with no common kind are fitted one by one, each at the position: typed parts
-        // with no common Type, or parts that await their call beside a literal or an aggregate. Parts that all await their call wait.
-        var shape = this.PartsShape(start, end) is not null;
-        return typed || (waits && (literal || shape)) ? PartKind.Join : waits ? PartKind.Call : shape ? PartKind.Aggregate :
-            literal ? PartKind.Literal : PartKind.Typed;
+        // with no common Type, parts that await their call beside a literal or an aggregate, and aggregates that are typed whole (an array
+        // literal source gives Array<T>, 14.9.2 step 2). Parts that all await their call wait.
+        var shape = this.PartsShape(start, end);
+        return typed || (waits && (literal || shape is not null)) ? PartKind.Join : waits ? PartKind.Call :
+            shape is not null ? (end - start > 1 && !FormedByElement(shape) ? PartKind.Join : PartKind.Aggregate) : literal ? PartKind.Literal : PartKind.Typed;
     }
 
     // The first typed part of [start, end), as which a Typed position's common Type is evidence, a typed argument's (InferParts).

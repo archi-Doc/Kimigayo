@@ -65,15 +65,15 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 2 (revision B, Q1 (b)): the root of the part-by-part formation `source` is a part of: the outermost control-flow
-    // expression it is a result source of (ResultTarget), through nested ones and the Tuple literals it is an element of (formed by
-    // element), or `source` itself. An array or Dictionary literal is typed whole, so its elements are parts of no outer formation.
+    // expression it is a result source of (ResultTarget), through nested ones and the aggregates formed by element it is a part of
+    // (FormedByElement), or `source` itself. An array or Dictionary literal is typed whole, so its elements are parts of no outer formation.
     private static Koto FormationRoot(Koto source)
     {
         while (true)
         {
-            if (ResultSourceForm(source).Parent is TupleLiteralKoto tuple)
+            if (ResultSourceForm(source).Parent is { } aggregate && FormedByElement(aggregate))
             {
-                source = tuple;
+                source = aggregate;
             }
             else if (ResultTarget(source) is { } target && ControlFlowExpression(target) is not null)
             {
@@ -85,6 +85,11 @@ public sealed partial class Binding
             }
         }
     }
+
+    // SPEC 14.9.2 step 2 (revision B; main's decision, 2026-11-03): whether an aggregate literal's Type is formed by element across the
+    // sources of a join, each child position holding one part of it: a Tuple, a fill. An array or Dictionary literal, whose elements or
+    // entries share a position, is typed whole.
+    private static bool FormedByElement(Koto aggregate) => aggregate is TupleLiteralKoto or ArrayLiteralKoto { FillCount: not null };
 
     // SPEC 3.5.3, 14.9.2 step 2 (Q1 (b)): the Type one join's sources agree on when literals sit beside typed sources of common Type
     // `common`: a reference's terminal read Type, which the reference sources supply by a value read; `common` otherwise.
@@ -310,21 +315,25 @@ public sealed partial class Binding
 
                 return selected is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 }, Type: { } result } ? this.CallResultEvidence(this.MemberType(result, declaring), scope, readConversions) : null;
             case ArrayLiteralKoto { FillLength: null, Elements.Count: > 0 } array when !this.UnderArgumentProbe(array):
-                // SPEC 4.3.1, 14.9.2 step 2 (revision B, BU-80): without an expected Type an array literal whose elements all supply one
-                // Type constructs Array<T>, the candidate it supplies; one with a literal or unknown element supplies none. An argument
-                // source supplies none: its call fits it per candidate (10.5.1).
+                // SPEC 4.3.1, 14.9.2 step 2 (revision B, BU-80; the review's B3): without an expected Type an array literal whose elements
+                // all supply a Type is typed as the literal alone: Array<T> when they supply one, the candidate it supplies; bound alone to
+                // its own record when they differ (no merge across its elements' reference layers). One with a literal or unknown element
+                // supplies none. An argument source supplies none: its call fits it per candidate (10.5.1).
                 BoundType? element = null;
+                var differ = false;
                 foreach (var item in array.Elements)
                 {
-                    if (this.ResultEvidence(item, scope) is not { } part || ReferenceEquals(part, BoundType.Never) || (element is not null && !ReferenceEquals(part, element)))
+                    if (this.ResultEvidence(item, scope, readConversions: true) is not { } part || ReferenceEquals(part, BoundType.Never))
                     {
                         return null;
                     }
 
+                    differ |= element is not null && !ReferenceEquals(part, element);
                     element = part;
                 }
 
-                return this.types.Intern(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element!]);
+                return differ ? this.BindNode(array, this.NodeScope(array, scope)) :
+                    this.types.Intern(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element!]);
             case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
                 // SPEC 4.6.2, 14.9.2: a written `^x` or range with a typed operand has an independent Type, which a
                 // literal-only source such as `0..3` beside `0..n` then fits.

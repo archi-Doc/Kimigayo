@@ -553,9 +553,10 @@ public sealed partial class Binding
         return false;
     }
 
-    // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): a Tuple's, a fill's, a join's or a join
-    // position's from its children; with `fitLiterals`, a Literal part gives its default once DefaultArguments applied it. A part of
-    // Type Never, also a position Never in every source, gives none (SPEC 10.8; DECISIONS BU-2 U3's D6).
+    // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): a Tuple's, an array literal's (Array<T>), a
+    // fill's, a join's or a join position's from its children (SPEC 10.5.1: a slot that takes a whole aggregate source); with
+    // `fitLiterals`, a Literal part gives its default once DefaultArguments applied it. A part of Type Never, also a position Never in
+    // every source, gives none (SPEC 10.8; DECISIONS BU-2 U3's D6).
     private BoundType? IndependentPositionType(int position, bool fitLiterals)
     {
         var end = this.positionParts.Count;
@@ -593,7 +594,7 @@ public sealed partial class Binding
             return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, last]);
         }
 
-        if (source is TupleLiteralKoto or ArrayLiteralKoto { FillCount: not null })
+        if (source is TupleLiteralKoto or ArrayLiteralKoto)
         {
             return this.IndependentShapeType(position, end, source, fitLiterals);
         }
