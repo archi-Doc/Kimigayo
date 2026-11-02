@@ -1,8 +1,8 @@
 # R6-check H0c: the deletions, migrations and the exit gate (units H6–H15)
 
 Status: H0's part c (plan §4.10 row H0: the deletion order, the benchmark successors, the check-only pass, OQ12–OQ15; units
-H6–H15), revision 0, design only, not reviewed; integrated by [H0-design](H0-design.md) (the planning session's rulings R1–R4 applied
-in place, each marked). Working record, not authority: what it decides becomes authority only through H0's
+H6–H15), revision 0, design only, not reviewed; integrated by [H0-design](H0-design.md) (the planning session's rulings R1–R4 and the design review's
+findings applied in place, each marked "(ruling Rn)" or "(review Bn/Nn)"). Working record, not authority: what it decides becomes authority only through H0's
 DEC entry after OQ11's approval (DECISIONS R5-M1), and its owner items only by the owner's answers.
 
 Standing request: the owner approved R6-check's division of work on 2026-11-02 (R5 leads: H0, H3b, H5's Core side, H8–H10, H12,
@@ -20,11 +20,11 @@ Working time (WORKFLOW "Working-time limit", DECISIONS Q12): 2026-11-02 17:40–
 
 | ID | Proposal |
 | --- | --- |
-| D-c1 | Between H5 and H10b the old analysis keeps running inside `Compilation.Analyze` as an unpublished shadow (as the MIR ran before G2), so the 30 `Bodies`, 16 `Issues` and 55 control-flow readers in tests keep their inputs while G:check-tests migrates them; H10b deletes the call with the code. Its cost is today's, so no measurement gates it; PLAN10-P3 is taken after H10b (§3) |
-| D-c2 | H10 splits: **H10a** (the ledger harness and its 13 reader files, `Compilation.Analyzed`, `KIMI_MIR_DIFF`, `Binding.IsTwinRecord`, R5, G:check-tests) right after H5 and H6 (ruling R3); **H10b** (the old Analysis itself, R5, G:check-del) after H8a–c, H9, H6 and H10a. After the flip nothing classifies against the ledger, and H10a alone touches 15 test files: one unit for both exceeds Q12's hour |
-| D-c3 | Order after G:R6-check-flip: H6 (ruling R3: right after H5) → H10a → H8a → H8b → H8c → H9 → H10b → H11 → H12 → H14; H7 any time after H5 once G157 (1) is settled; H13 is documentation and may land first; H15 last (§2) |
+| D-c1 | Between H5 and H10b the old analysis runs only when its test or benchmark readers call one explicit entry, `Compilation.AnalyzeLegacyOwnership()` (`[Transitional("R6-check")]`, removal H10b); `Compilation.Analyze` no longer runs it, since frozen code throws on shapes the MIR accepts and would fault checks and the editor service (review B3). The 30 `Bodies` and 16 `Issues` readers reach it through their helpers while G:check-tests migrates them; the 55 control-flow readers keep `AnalyzeControlFlow()`; H10b deletes the entry with the code. PLAN10-P3 is taken after H10b (§3) |
+| D-c2 | H10 splits: **H10a** (the ledger harness and its 13 reader files, `Compilation.Analyzed`, `KIMI_MIR_DIFF`, `Binding.IsTwinRecord`, R5, G:check-tests) right after H5's post-merge sweep (H6 is in H5, review B3); **H10b** (the old Analysis itself, R5, G:check-del) after H8a–c, H9 and H10a. After the flip nothing classifies against the ledger, and H10a alone touches 15 test files: one unit for both exceeds Q12's hour |
+| D-c3 | Order after G:R6-check-flip (H5 with H6, review B3): the post-merge sweep → H10a → H8a → H8b → H8c → H9 → H10b → H11 → H12 → H14; P42's remainder, H7, H8b and H8c are held until the sweep passes (review N1); H7 after the sweep once G157 (1) is settled; H13 is documentation and may land first; H15 last (§2) |
 | D-c4 | The zero-reference rows (§5.5 item 2) land in two steps: tests, `src/Benchmark` and `src/Playground` with H10b; `src/Kimi` with H11, because Binding's comments and the R4-M152 gate members (`Binding.ValueCallGate.cs:8`, `:27`, `Binding.RawOrigins.cs:48`) name `OwnershipAnalysis` until BU deletes or rewords them |
-| D-c5 | Stage 4 of the compiler pipeline series keeps its report name `ControlFlowAndOwnership` (PD26; the O2 corpus harness compares names) and times `MirAnalysis.Run` plus collection (and, until H10b, the old shadow in `Analyze`); stage 3 times HIR publication, construction and validation. H9 splits `Compilation.BuildMir`'s two composed steps at that boundary (behavior-preserving commit first), no benchmark-only seam (§3) |
+| D-c5 | Stage 4 of the compiler pipeline series keeps its report name `ControlFlowAndOwnership` (PD26; the O2 corpus harness compares names) and times `MirAnalysis.Run` plus collection (from H5 `Analyze` runs no old analysis, review B3); stage 3 times HIR publication, construction and validation. H9 splits `Compilation.BuildMir`'s two composed steps at that boundary (behavior-preserving commit first), no benchmark-only seam (§3) |
 | D-c6 | H14 also covers the forwarding-property reads in Mir and the Backend (`MirBuilder.cs:112`, `:134`, `MirBuilder.Opaque.Roots.cs:133`, `MirBuilder.Values.cs:273`, `InstanceCollector.Objects.cs:64`, `:70`, and any others its exact count finds): R5-M9 postponed only Binding's reads, so the rest are due at R6-check |
 | D-c7 | Record corrections: H7's site is now `C/Binding/Binding.Operators.cs:331-334`; H11's A3 gates are `Binding.OriginFits.cs:96-100` and `Binding.TypeOrigins.cs:187-198`; H5's ledger effect filter is `MirDifferenceLedger.ComparedSet.cs:21, 160`; H10's `ReportAnalysis` control-flow read is `Compilation.Pipeline.cs:84` (it stops at H5, ruling R2); G186's old walk `EffectBounds.Comparison` goes at H5 (it is inside `EffectSummary`), not H11 |
 | D-c8 | `ComparisonPlan(CallPlan)` and `DictionaryComparison` go at H11 as their Transitional tags say (their compiler readers are in `EffectSummary`, deleted at H5; one test reader, `T/ComparisonCompositionTest.cs:575`); the plan's "stays until R7" holds only for `InstantiateRequirementCall` and `CallPlan.TupleOperator` |
@@ -40,9 +40,9 @@ OwnershipStorage|InterpretationContext|ControlFlowAnalysis` occur 133 times in 5
 | Reader outside `C/Analysis` | Site | Removed by |
 | --- | --- | --- |
 | `Compilation.Ownership`, `AnalyzeControlFlow` | `C/Core/Compilation.cs:126-129`, `:314-318` | H10b |
-| `Analysis`, `Problems`, `Analyze`, `ReportAnalysis` | `C/Core/Compilation.Pipeline.cs:39, 56, 73, 84, 93` | H5 (decide by MIR; :84 and :93 stop publishing, ruling R2; :73 stays as the shadow, D-c1), H10b (:73) |
+| `Analysis`, `Problems`, `Analyze`, `ReportAnalysis` | `C/Core/Compilation.Pipeline.cs:39, 56, 73, 84, 93` | H5 (decide by MIR; :84 and :93 stop publishing, ruling R2; :73's `Ownership.Analyze()` leaves `Analyze` for the transitional entry, review B3), H10b (the entry) |
 | `Accepts` through `Analysis` | `C/Core/Compilation.Generation.cs:46`; `Project.cs:550-554` (the plan's `:510`) | H5 |
-| Hover "Ownership checks" | `src/Kimi/Checking/Hover/HoverBuilder.Virtual.cs:75` | H6 |
+| Hover "Ownership checks" | `src/Kimi/Checking/Hover/HoverBuilder.Virtual.cs:75` | H5 (H6 is part of H5, review B3) |
 | `EffectSummary` (`TemplateBody`, `Ownership.ControlFlow`, `CollectCaseDestructions`) | `C/Binding/Binding.EffectBounds.cs` (1,421 lines: :17, :98, :140-143, :983, :1071), `Binding.PublishedOperations.cs` (48) | H5 |
 | Virtual effect check | `C/Binding/Binding.VirtualEffects.cs:41` | H5 |
 | `ElementAccess` `OwnershipBody` overloads | `C/ElementAccess.cs:102`, `:142` | H10b |
@@ -79,22 +79,22 @@ reader an earlier unit (or itself) removed.
 
 | Order | ID | Owner | Change (files) | Prereq | Verification | Size | Review |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0 (ruling R3: right after H5) | H6 | R5 | `HoverBuilder.Virtual.cs:75` reads "completed" when the function's MIR body has no problem in `MirReport`, else "pending" (R4's `MirReport` API from H3); `T/VirtualHoverTest.cs:54`; HOVER row | H5, H3 | Comp: Hover tests | ±20 | R |
-| 1 | H10a | R5 | Delete `tests/xUnitTest/MirDifferenceLedger{,.Aggregation,.ComparedSet}.cs` (474), `LegacyRecords.cs` (56), `T/MirDifferenceTest{,.ComparedSet}.cs` (342), `Compilation.Analyzed` (`Compilation.Pipeline.cs:31-32`, its invocation), `KIMI_MIR_DIFF` (`FreshProcess.cs`, `FreshProcessTest`), `Binding.IsTwinRecord` (its last reader goes; the twins stay to H11). The MIR half of `Sides`, `Entry`, `MirAnalysisOf` moves into `CompilationTestHelper` for its 13 reader files (`ClosureEnvironmentOriginTest` 5, `ClosureResultOriginTest{,.Makers}` 7, `MirCensusTest` 3, `NeverContinuationTest` 4, `SemanticSnapshotTest` 8, `VerifiedSpecExampleTest` 3, `AbstractCallReachTest`, `MinimalEmissionTest`, `MirOriginsTest.Proofs`, `OriginRelationDiagnosticTest`, `PairFollowTest`); `T/PipelineSwitchTest.cs:337-370`'s `Analyzed` test goes; `MirTargetSide` keeps its MIR assertion only if an OldRule test survived H5, else goes; `SemanticSnapshotTest` prints the published MIR records in place of `LegacyRecords.Of` (snapshot re-baselined, reason: the flip, H5) | H5 | Comp: the 13 classes, `SemanticSnapshotTest`, `VerifiedSpecExampleTest`; snapshot classified | ≈ −1,000 t, +80 t | G:check-tests |
-| 2 | H8a | R5 (R4 reviews MIR-dump successors) | `Bodies` and `Issues` residue: 30 `.Ownership.Bodies` reads in 16 files and the 3 `Body(c)` helpers (`T/EnumOwnershipTest.cs:306`, `T/MatchOwnershipTest.cs:368`, `T/OwnershipAnalysisTest.cs:311`; 29 calls); 16 `.Ownership.Issues` reads in 10 files (incl. `TempProbeTest.cs`, the tracked KIMI_PROBE dumper) → MIR dump goldens, MIR problems or deletion; the `Bodies` and `Issues` rows tightened to their counts as reads leave | H5, H10a, Q18 or H2 | Comp: the touched classes | ≈ −900 t | G:check-tests |
-| 3 | H8b | R5 (BU reviews Binding/Parsing classes) | 55 `AnalyzeControlFlow()`/`ControlFlowAnalysis.Analyze(` calls in 15 files (ratchet 64) and 14 `LintErrors`/`LintErrorRecords` reads in 7 test files → lint observations; ratchet → 0 | H5, Q9–Q12 | Comp; ratchet 0 | ≈ −700 t | G:check-tests |
-| 4 | H8c | R5 (R4 reviews MIR rewrites) | The 16 Analysis-declared enums (`OwnershipOperationKind` 48, `CleanupAction` 31, `OwnershipPlaceKind` 23, `PlaceState` 20, …) in 10 test files, and the 22 old-type names in 9 test files (`OwnershipStorageLimitTest` 5, `SharedEngineTotalityTest` 5, `MirInitTest` 1, …): rewrite as MIR assertions or delete with their classes (`OwnershipAnalysisTest`, `EnumOwnershipTest`, `MatchOwnershipTest`, `BorrowDependencyStorageTest`, `CallableRegionScalingTest` → a MIR scaling check) | H5 | Comp | ≈ −1,100 t | G:check-tests |
-| 5 | H9 | R5 | §3 | H5 | Bench: slnx build, `--compiler-pipeline-check` | ≈ −350, +30 | G:check-del |
-| 7 | H10b | R5 | Delete `C/Analysis/` (50 files, 16,180), `Compilation.Ownership`/`AnalyzeControlFlow`, the shadow call (`Compilation.Pipeline.cs:73`; `:84` stopped at H5, ruling R2), `ElementAccess.cs:102, 142`, `Binding.Lints.cs:81-139`'s `LintErrors` and `LintErrorRecords` (`FallthroughKey` went at H5, ruling R4), `DeferredExpansionLimit_Kd`; the `.Ownership.*` and control-flow rows of `ArchitectureRulesTest` → zero-reference rows (D-c4); the ARCH structure-limit exemption of the old Analysis ends | H8a–c, H9, H6, H10a | Comp: Session with milestones | ≈ −16,300 | G:check-del |
+| in H5 (review B3; supersedes ruling R3) | H6 | R5 | `HoverBuilder.Virtual.cs:75` reads "completed" when the function's MIR body has no problem in `MirReport`, else "pending" (R4's `MirReport` API from H3); `T/VirtualHoverTest.cs:54`; HOVER row | H5, H3 | Comp: Hover tests | ±20 | R |
+| 1 | H10a | R5 | Delete `tests/xUnitTest/MirDifferenceLedger{,.Aggregation,.ComparedSet}.cs` (474), `LegacyRecords.cs` (56), `T/MirDifferenceTest{,.ComparedSet}.cs` (342), `Compilation.Analyzed` (`Compilation.Pipeline.cs:31-32`, its invocation), `KIMI_MIR_DIFF` (`FreshProcess.cs`, `FreshProcessTest`), `Binding.IsTwinRecord` (its last reader goes; the twins stay to H11). The MIR half of `Sides`, `Entry`, `MirAnalysisOf` moves into `CompilationTestHelper` for its 13 reader files (`ClosureEnvironmentOriginTest` 5, `ClosureResultOriginTest{,.Makers}` 7, `MirCensusTest` 3, `NeverContinuationTest` 4, `SemanticSnapshotTest` 8, `VerifiedSpecExampleTest` 3, `AbstractCallReachTest`, `MinimalEmissionTest`, `MirOriginsTest.Proofs`, `OriginRelationDiagnosticTest`, `PairFollowTest`); `T/PipelineSwitchTest.cs:337-370`'s `Analyzed` test goes; `MirTargetSide` keeps its MIR assertion only if an OldRule test survived H5, else goes; `SemanticSnapshotTest` prints the published MIR records in place of `LegacyRecords.Of` (snapshot re-baselined, reason: the flip, H5) | H5's post-merge sweep (review N1) | Comp: the 13 classes, `SemanticSnapshotTest`, `VerifiedSpecExampleTest`; snapshot classified | ≈ −1,000 t, +80 t | G:check-tests |
+| 2 | H8a | R5 (R4 reviews MIR-dump successors) | `Bodies` and `Issues` residue: 30 `.Ownership.Bodies` reads in 16 files and the 3 `Body(c)` helpers (`T/EnumOwnershipTest.cs:306`, `T/MatchOwnershipTest.cs:368`, `T/OwnershipAnalysisTest.cs:311`; 29 calls); 16 `.Ownership.Issues` reads in 10 files (incl. `TempProbeTest.cs`, the tracked KIMI_PROBE dumper), read through `Compilation.AnalyzeLegacyOwnership()` from H5 (review B3) → MIR dump goldens, MIR problems or deletion; the `Bodies` and `Issues` rows tightened to their counts as reads leave | H5, H10a, Q18 or H2 | Comp: the touched classes | ≈ −900 t | G:check-tests |
+| 3 | H8b | R5 (BU reviews Binding/Parsing classes) | 55 `AnalyzeControlFlow()`/`ControlFlowAnalysis.Analyze(` calls in 15 files (ratchet 64) and 14 `LintErrors`/`LintErrorRecords` reads in 7 test files → lint observations; ratchet → 0 | H8a (D-c3's order), H5's sweep (review N1), Q9–Q12 | Comp; ratchet 0 | ≈ −700 t | G:check-tests |
+| 4 | H8c | R5 (R4 reviews MIR rewrites) | The 16 Analysis-declared enums (`OwnershipOperationKind` 48, `CleanupAction` 31, `OwnershipPlaceKind` 23, `PlaceState` 20, …) in 10 test files, and the 22 old-type names in 9 test files (`OwnershipStorageLimitTest` 5, `SharedEngineTotalityTest` 5, `MirInitTest` 1, …): rewrite as MIR assertions or delete with their classes (`OwnershipAnalysisTest`, `EnumOwnershipTest`, `MatchOwnershipTest`, `BorrowDependencyStorageTest`, `CallableRegionScalingTest` → a MIR scaling check) | H8b (D-c3's order), H5's sweep (review N1) | Comp | ≈ −1,100 t | G:check-tests |
+| 5 | H9 | R5 | §3 | H5's sweep; after H8c (D-c3) | Bench: slnx build, `--compiler-pipeline-check` | ≈ −350, +30 | G:check-del |
+| 7 | H10b | R5 | Delete `C/Analysis/` (50 files, 16,180), `Compilation.Ownership`/`AnalyzeControlFlow`, the transitional entry `Compilation.AnalyzeLegacyOwnership()` (review B3; `:73`'s call and `:84` left `Analyze`/`ReportAnalysis` at H5, ruling R2), `ElementAccess.cs:102, 142`, `Binding.Lints.cs:81-139`'s `LintErrors` and `LintErrorRecords` (`FallthroughKey` went at H5, ruling R4), `DeferredExpansionLimit_Kd`; the `.Ownership.*` and control-flow rows of `ArchitectureRulesTest` → zero-reference rows (D-c4); the ARCH structure-limit exemption of the old Analysis ends | H8a–c, H9, H10a | Comp: Session with milestones | ≈ −16,300 | G:check-del |
 | 8 | H11 | BU | §1's H11 table; the `src/Kimi` zero-reference row (D-c4) | H10b, Q-c2 | Comp; snapshot (A3's gates) | ≈ −700 | G:check-del |
 | 9 | H12 | R5 | §4.2 | H10a, H10b | Tool + Comp | ≈ −600 | G:check-del |
 | 10 | H14 | R5 (BU reviews) | §4.4 | H10b, H11 | Comp; snapshots equal | ≈ −150 | G:check-del |
-| any, after H5 | H7 | BU | Delete Binding's wide-division gate `Binding.Operators.cs:331-334` (A3b's `Capability.WideDivision` owns it) | H5, K9a, Q-c1 | Comp: i128 tests, A3b tests; snapshot | −4 | G:check-del |
+| any, after H5's sweep (review N1) | H7 | BU | Delete Binding's wide-division gate `Binding.Operators.cs:331-334` (A3b's `Capability.WideDivision` owns it) | H5's sweep, K9a, Q-c1 | Comp: i128 tests, A3b tests; snapshot | −4 | G:check-del |
 | any | H13 | R5 | §4.3 (documentation only) | none | Doc | 0 | R |
-| last | H15 | R5 | §8 | H6–H14, OQ15 | Doc + Session | docs | final review |
+| last | H15 | R5 | §8 | H7–H14, OQ15 | Doc + Session | docs | final review |
 
-**Constraints this order puts on H0's other parts (the flip, H5).** H5 must leave `Compilation.Ownership.Analyze()` running in
-`Analyze` (D-c1) and the harness compiling until H10a; delete `IsEffectRecord` together with its ledger reader
+**Constraints this order puts on H0's other parts (the flip, H5).** H5 must remove `Ownership.Analyze()` from
+`Analyze`, add `Compilation.AnalyzeLegacyOwnership()` for its readers (D-c1, review B3) and keep the harness compiling until H10a; delete `IsEffectRecord` together with its ledger reader
 (`MirDifferenceLedger.ComparedSet.cs:21, 160`); delete the OldRule traits (25 lines in 13 files today, plan: 19) with the
 `ArchitectureRulesTest` OldRule ratchet row (`:80`) and `MirTargetSide`'s legacy half (10 ledger reads); and name the successors of
 the old analysis's three published reports that H5 stops publishing (ruling R2; H0b §2.3 names them): `RequireFallthrough_Kd` (`ControlFlowAnalysis.cs:800`; `MirLints`
@@ -120,8 +120,8 @@ Ten `src/Benchmark` files read the old Analysis today, plus `Program.cs` (the pl
 
 The `.md` series keep their historical rows; each gets one line naming the removed column or benchmark. Stage 4 (D-c5): today
 `ControlFlowAndOwnership` times `Compilation.Analyze`, the old analysis over stage 3's memoized MIR (`CompilerPipeline.md:17`).
-After H10b it would time nothing, so H9 moves the MIR analyses and collection into stage 4, which until H10b also holds the
-old shadow inside `Analyze` (D-c1); H10b removes that part with no stage-map change. H9 must land before H10b, which deletes the
+After H10b it would time nothing, so H9 moves the MIR analyses and collection into stage 4; from H5 `Analyze` runs no old analysis (review B3), so stage 4
+loses it at H5 (a series break H5's commit names) and H10b changes no stage. H9 must land before H10b, which deletes the
 `Compilation.Ownership` these files read. The **PLAN10-P3 record** (exit gate item 7), taken after H10b by H15:
 `--compiler-pipeline` stages 3 + 4 ("BuildMir + collection") on the O2 corpus inputs against the R6-gen exit series (its base in
 `artifacts/benchmarks/r6-gen-exit-areas.md`), where stage 4 was the old analysis; `--collection-cost` for collection's share; the
@@ -129,7 +129,7 @@ warm Bind/Analyze zero-allocation tests.
 
 ## 4. H6, H12, H13, H14
 
-**4.1 H6** — above. The line keeps its two values; "completed" means the published MIR records name no problem in the function's
+**4.1 H6** — part of H5 (review B3). The line keeps its two values; "completed" means the published MIR records name no problem in the function's
 body, never "no error anywhere".
 
 **4.2 H12, the switch's removal** (after H10a, which removes the ledger, the switch's last behavior):
@@ -166,6 +166,7 @@ zero-reference row; the 37 forwarding declarations (`Koto.cs` 10, `BinaryKoto.cs
 | Koto forwarding properties (§4.4) | 37 R6 | retagged R7 at H14 (owner-approved, R5-M9) |
 | `Compilation.Switch.cs` | 5 R6 | H12 |
 | `Compilation.Analyzed` | 1 R6 | H10a |
+| `Compilation.AnalyzeLegacyOwnership()` (added at H5, review B3) | 1 R6-check | H10b |
 | `Binding.IsEffectRecord` | 1 R6 | H5 |
 | `Binding.IsTwinRecord` | 1 R6 | H10a (D-c2; tag says H11) |
 | `Binding.Lints` `LintErrors`, `LintErrorRecords`, `FallthroughKey` | 3 R6 | H10b; `FallthroughKey` at H5 (ruling R4) |
@@ -197,13 +198,13 @@ ends with deleted code and no verdict change of its own.
 
 | Unit | Rows |
 | --- | --- |
-| H3 (MIR published under mir; the default verdict moves at H5, H0a-1: integration) | G164, G203 (acceptance at H3 under mir), G213, G218, G268, G291 |
+| H5, not H3 (review B1: H3 changes no published record) | G164, G203 (their "acceptance at H3" moves to H5), G213, G218, G268, G291 |
 | H5 (MIR decides) | G124, G165 (verdict), G177 (owner 「R6-checkを待ちます」), G186's old walk (D-c7), G211, G217, G228, G299, G313, G160's default verdicts; G121's 2x-P10 regression: a lost fallthrough record in a failed `do` (Q13 (3)) must be fixed before H5 or classified (Q-c4) |
 | H7 | G157 (1) (precondition, Q-c1) |
 | H10b ("closes with the old path") | G47 (old-Ownership candidates), G65, G75, G100 (old Analysis part), G159 (4), G162 (2), G205, G231, G232, G269 (A), G315 (after its SPEC reading) |
 | H11 | G56 (the Binding-level relation stop) |
 | Before H15 (preconditions, not deletions) | G215 (rule or ruling), G220, G222 (R4), G318 (R4 with BU), G335, G351 (BU; R4 with BU), G258 (A5's cost at R6-check, measured with §3's record), G289 (5) |
-| Starts after H5 | P42's remainder (R5-M13) |
+| Starts after H5's post-merge sweep (review N1) | P42's remainder (R5-M13) |
 
 ## 6. Check-only pass: PLAN10 §11's R6 rows and R4-M15a's IMPL text
 
@@ -232,7 +233,7 @@ review" (R5-M11).
 
 | Item | Satisfied by | Evidence |
 | --- | --- | --- |
-| 1 MIR decides; Session green; snapshot differences classified; `VerifiedSpecExampleTest` MIR-only; M12's OldRule (25), spec-case Old (34 today, plan 22) and pair-case Old (1) at 0 | H5 (H3b's table), H10a | H5's Session + milestones + `'*.ll'` + `-DiagnosticSnapshot` evidence; greps at H15 |
+| 1 MIR decides; Session green; snapshot differences classified; `VerifiedSpecExampleTest` MIR-only; M12's OldRule (25), spec-case Old (34 today, plan 22) and pair-case Old (1) at 0 | H5 (H3b's table, each row with its class and category, H0b-14, review N4), H10a | H5's Session + milestones + `'*.ll'` + `-DiagnosticSnapshot` evidence; greps at H15 |
 | 2 Zero-reference rows; Ownership ratchets at 0 | H10b, H11 (D-c4) | `ArchitectureRulesTest` rows in the H11 Session |
 | 3 No `[Transitional("R6")]`/`("R6-check")` except R7 postponements | H5, H10a, H10b, H11, H12, H14, G318 | grep at H15; the 37 retags cite R5-M9; Q-c2's answer if `RequirementImplementation` is retagged |
 | 4 `KIMI_PIPELINE`, `CompilerPipeline`, `-Pipeline`, `[mir]` removed | H12 | grep over src, tests, scripts, docs |
