@@ -6028,8 +6028,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amendment (r2-1b, 2026-11-01): the engine's Owned fact. A work's final evaluation keeps the first Origin not proven `static`
     that its verdict rests on (`CapabilityWork.Origin`) and, for a Type judged by its parts, each part that is not Proven with its
     member (a `Components` index; a requirement reference's arguments and Origin arguments are member 1) and Origin (`Parts`). The
-    Origin is a proof-scope read (`originRead`, beside `unknownRead`): BeginProof saves and clears it, EndProof joins it only for an
-    answer that is not Proven, so premises that prove a part leave none; `StaticOrigin` writes it, a child's work joins it at its read.
+    Origin is a proof-scope read, since the performance unit's P1 the `Origin` slot of the channel-owned `ProofReads` stack indexed
+    by the proof nesting (an inner scope reads into its own cleared slot, so nothing is saved or restored); EndProof joins it only
+    for an answer that is not Proven, so premises that prove a part leave none; `StaticOrigin` writes it, a child's work joins it at
+    its read.
     Both are cleared by `Reset`, outside the fixpoint's equality, and read by no decision. The erasure reads them once
     (`ProveOwned(…, out OwnedRest)`) and names the member (`OwnedMember`, BU's n6): each member in order with its first part's Origin,
     the first Refuted in the forming body, else the first. An Owned failure that no work judged (RequestCapability returned on a failed
@@ -9051,7 +9053,9 @@ resumed by R4-M86 (2026-10-20).
     directions) is C3's, removed by its scheduler (PLAN G170). `SourceCheckWork` publishes a pass's checks to the scaling test.
   - Readers: `AvailableContractPremise` (the Contract and each ancestor: declaration context, then the state) and
     `VerifyConformance`'s prerequisite, each through `ReadSourceState`, `EndProof(BeginProof(), ReadVerdict(state, cause))`, the
-    proof scope the check had (BU-22). Path memos keep only Proven and Invalid, which a Pending read cannot produce wrongly.
+    proof scope the check had (BU-22). Since the performance unit's P2, a read inside an open proof scope is `ReadVerdict` into
+    that scope directly, the same answer and the same writes; at depth 0 it still opens its own scope. Path memos keep only Proven
+    and Invalid, which a Pending read cannot produce wrongly.
   - Staged to C3 (with its removal condition): `ResolveConformance`'s on-demand verification stays in proof. `VerifyConformance`
     keeps Proven (`IsVerified`) and Invalid only; Unknown and a non-Invalid Error are verified again at each read, `Checking`
     answering Unknown. Removed when conformance verification is a node of C3's scheduler (C1 §5) and `ResolveConformance` reads the

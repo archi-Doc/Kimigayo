@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 //   part that is not Proven with its member and Origin (CapabilityPart); the judgment of one OwnedOrigins Origin against `static`
 //   (StaticOrigin); the payload's one reader, an Owned query's rest (ProveOwned with OwnedRest, read by the erasure).
 // - Inputs: the engine's evaluations (Binding.Capabilities: RequestCapability's dequeue loop writes a work's verdict and payload; the
-//   proof scopes' originRead, Binding.ConstraintValidation.Proofs).
+//   Origin slot of the proof scope in progress, ProofReads.Origin of the channel-owned stack through ScopeReads,
+//   Binding.ConstraintValidation.Proofs).
 // - Outputs: a work's Result and Cause, which the fixpoint compares, and its payload, which no decision reads (the selection of a record
 //   reads it). A part's Origin is kept only when the part is not Proven, so premises that prove a part leave none.
 // - Determinism: a dependent is queued again whenever a part's Result or Cause changes, so the final evaluation sees each part's final
