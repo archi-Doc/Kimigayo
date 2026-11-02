@@ -921,7 +921,8 @@ internal sealed class WorkspaceCheck
     {
         if (plan.Key.Kind == UnitKind.FailedRoot || plan.Project is { Project: null })
         {
-            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, plan.Project is { Failures.Count: > 0 } failed ? failed.Failures : ["The project could not be loaded."]);
+            var failures = plan.Project is { Failures.Count: > 0 } failed ? failed.Failures : ["The project could not be loaded."];
+            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, failures);
         }
 
         if (plan.Key.Target.Length == 0)

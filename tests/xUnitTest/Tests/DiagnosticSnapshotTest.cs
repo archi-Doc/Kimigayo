@@ -203,7 +203,9 @@ public sealed class DiagnosticSnapshotTest : IDisposable
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
         }
 
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         var root = Path.GetDirectoryName(project)!;
         var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range), Format(x.Repairs))).ToArray();

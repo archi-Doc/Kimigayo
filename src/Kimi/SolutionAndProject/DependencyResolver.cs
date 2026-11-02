@@ -38,7 +38,7 @@ internal sealed record DependencyResolution(DependencyPartition Product, Depende
 /// <summary>Resolves exact Project graphs from one attempt's fixed local input bytes.</summary>
 internal sealed class DependencyResolver
 {
-    private readonly Dictionary<string, DependencyInput> inputs = new(SourceIdentity.PathComparer);
+    private readonly Dictionary<string, DependencyInput?> inputs = new(SourceIdentity.PathComparer); // null: the load failed
     private readonly string languageVersion;
     private readonly CancellationToken cancellationToken;
     private readonly CheckInputSource source;
@@ -301,7 +301,10 @@ internal sealed class DependencyResolver
                     }
                     else if (!SameInput(nodes[childIndex].Input, child, this.languageVersion))
                     {
-                        failures.Add(new("ConflictingInput", $"Conflicting inputs for {reference.PackageId}@{reference.PackageVersion}: {DependencyPath(nodes, childIndex)} ('{nodes[childIndex].Input.Path}') and {DependencyPath(nodes, index, name)} ('{child.Path}')."));
+                        var message = $"Conflicting inputs for {reference.PackageId}@{reference.PackageVersion}: " +
+                            $"{DependencyPath(nodes, childIndex)} ('{nodes[childIndex].Input.Path}') and " +
+                            $"{DependencyPath(nodes, index, name)} ('{child.Path}').";
+                        failures.Add(new("ConflictingInput", message));
                         continue;
                     }
 
@@ -342,7 +345,9 @@ internal sealed class DependencyResolver
 
         if (child.Configuration.PackageId != reference.PackageId || child.Configuration.PackageVersion != reference.PackageVersion)
         {
-            failures.Add(new("IdentityMismatch", $"Requested {reference.PackageId}@{reference.PackageVersion} at {DependencyPath(nodes, index, name)}; '{child.Path}' declares {child.Configuration.PackageId}@{child.Configuration.PackageVersion}."));
+            var message = $"Requested {reference.PackageId}@{reference.PackageVersion} at {DependencyPath(nodes, index, name)}; " +
+                $"'{child.Path}' declares {child.Configuration.PackageId}@{child.Configuration.PackageVersion}.";
+            failures.Add(new("IdentityMismatch", message));
             return null;
         }
 
@@ -361,7 +366,8 @@ internal sealed class DependencyResolver
         return child;
     }
 
-    // Loads one project; each failure is recorded and the node is not created (its children depend on it).
+    // Loads one project; each failure is recorded and the node is not created (its children depend on it). A failed load is
+    // remembered, so a project that several references reach is reported once (SPEC 23.1.2).
     private DependencyInput? Load(string path, List<ResolutionFailure> failures)
     {
         this.cancellationToken.ThrowIfCancellationRequested();
@@ -378,13 +384,13 @@ internal sealed class DependencyResolver
             if (ProjectFile.Load(bytes) is not { } file)
             {
                 failures.Add(new("InvalidConfiguration", $"Empty Project configuration: '{path}'."));
-                return null;
+                return this.inputs[path] = null;
             }
 
             var directory = Path.GetDirectoryName(path)!;
             if (Invalid(path, DependencyConfiguration.Validate(file, directory, out var tests), failures))
             {
-                return null;
+                return this.inputs[path] = null;
             }
 
             var listed = this.source.GetFiles(directory, "*.kimi");
@@ -405,12 +411,12 @@ internal sealed class DependencyResolver
         catch (ProjectConfigurationException ex)
         {
             Invalid(path, ex.Failures, failures);
-            return null;
+            return this.inputs[path] = null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or TinyhandException)
         {
             failures.Add(new("InvalidProjectInput", ex.Message));
-            return null;
+            return this.inputs[path] = null;
         }
 
         static bool Invalid(string path, IReadOnlyList<string> notes, List<ResolutionFailure> failures)

@@ -205,10 +205,22 @@ public sealed class DependencyResolutionTest : IDisposable
         this.Write("Leaf", "leaf");
         this.Write("App", "app", Edge("Gone", "Missing", "missing"), settings: "OutputKind=\"Application\"");
         this.Write("Bad", "bad", settings: "Alias={\" \"} PackageSources={{PackageId=\"a\"}}");
-        var root = this.Write("Root", "root", Edge("App", "App", "app") + Edge("Bad", "Bad", "bad") + Edge("Missing", "Missing", "missing") + Edge("Wrong", "Leaf", "other"));
+        var edges = Edge("App", "App", "app") + Edge("Bad", "Bad", "bad") + Edge("Missing", "Missing", "missing") + Edge("Wrong", "Leaf", "other");
+        var root = this.Write("Root", "root", edges);
         var result = Resolve(root);
-        Assert.Equal(["IdentityMismatch", "InvalidConfiguration", "InvalidConfiguration", "InvalidProjectInput", "NotLibrary"], result.Product.Failures!.Select(static x => x.Code).Order(StringComparer.Ordinal));
+        Assert.Equal(
+            ["IdentityMismatch", "InvalidConfiguration", "InvalidConfiguration", "InvalidProjectInput", "NotLibrary"],
+            result.Product.Failures!.Select(static x => x.Code).Order(StringComparer.Ordinal));
         Assert.Equal("ProductUnresolved", Failure(result.Test).Code);
+    }
+
+    // SPEC 23.1.2: a project that fails to load is one failure, however many references reach it.
+    [Fact]
+    public void AFailedProjectReachedTwiceIsReportedOnce()
+    {
+        this.Write("Bad", "bad", settings: "Alias={\" \"}");
+        var root = this.Write("Root", "root", Edge("One", "Bad", "bad") + Edge("Two", "Bad", "bad"));
+        Assert.Equal("InvalidConfiguration", Failure(Resolve(root).Product).Code);
     }
 
     private static ResolutionFailure Failure(DependencyPartition partition)

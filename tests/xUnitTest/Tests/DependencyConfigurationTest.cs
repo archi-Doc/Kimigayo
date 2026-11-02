@@ -215,6 +215,35 @@ public class DependencyConfigurationTest
         Assert.Equal("Dependency maps and source lists must not be null.", Assert.Single(ConfigurationNotes(c)));
     }
 
+    // SPEC 23.1.2: an invalid packaged supply leaves the merge of the valid ones checked (two records, not one).
+    [Fact]
+    public void AnInvalidPackagedSupplyLeavesTheOtherMergesChecked()
+    {
+        var package = new NativePackageTarget { PackageId = "p", PackageVersion = "1" };
+        var notes = PackagedNotes(
+            new() { Name = "other", Package = package, Kind = "static", Input = "o.lib" },
+            new() { Name = "codec", Package = package, ContractId = "a", Input = "a.lib" },
+            new() { Name = "codec", Package = package, ContractId = "b", Input = "b.lib" });
+        Assert.Equal(2, notes.Length);
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries record 'other'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries supplies of 'codec'", StringComparison.Ordinal));
+    }
+
+    // SPEC 23.1.2: each failed requirement of a packaged supply is its own record; a record without a valid Name has nothing else
+    // to check (dependent).
+    [Fact]
+    public void EachRequirementOfAPackagedSupplyIsReported()
+    {
+        var package = new NativePackageTarget { PackageId = "p", PackageVersion = "1" };
+        var notes = PackagedNotes(
+            new() { Name = "kernel32", Package = package, Kind = "static", Input = "k.lib" },
+            new() { Package = package, Kind = "static", Input = "x.lib" });
+        Assert.Equal(3, notes.Length);
+        Assert.Single(notes, static x => x.StartsWith("kernel32 is generated", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries record 'kernel32'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("NativeLibraries records targeting a Package", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void LegacyProgrammaticReferencesCannotBeSilentlyIgnored()
     {
@@ -323,4 +352,12 @@ public class DependencyConfigurationTest
 
     private static string[] ConfigurationNotes(Compilation c)
         => TestDiagnostics.Of(c).Where(static x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)).Select(static x => x.Note!).ToArray();
+
+    private static string[] PackagedNotes(params NativeLibraryInput[] packaged)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = packaged };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        return ConfigurationNotes(c);
+    }
 }

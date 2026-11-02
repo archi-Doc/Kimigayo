@@ -11,8 +11,8 @@ internal static class NativeConfiguration
 
     private static readonly System.Buffers.SearchValues<char> HexDigits = System.Buffers.SearchValues.Create("0123456789ABCDEFabcdef");
 
-    // SPEC 23.1.2: each target and entry is checked independently; an entry's first failure is its record, and a null
-    // map's entries, which cannot be read, are left out.
+    // SPEC 23.1.2: each target, entry and requirement is checked independently. Left out as dependent: the entries of a null map,
+    // the other checks of a null entry or of a packaged record without a valid Name, and merging a pair with an invalid record.
     internal static void Validate(ProjectFile file, ref List<string>? failures)
     {
         if (file.NativeRequirements is null || file.NativeLibraries is null)
@@ -31,10 +31,11 @@ internal static class NativeConfiguration
 
             foreach (var (name, requirement) in requirements)
             {
-                if (!ValidName(name) || requirement is null || requirement.Kind is not ("import" or "static") || !ValidAssertions(requirement.ContractId, requirement.Sha256))
+                if (!ValidName(name) || requirement is null || requirement.Kind is not ("import" or "static") ||
+                    !ValidAssertions(requirement.ContractId, requirement.Sha256))
                 {
-                    (failures ??= []).Add(
-                        $"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
+                    (failures ??= []).Add($"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; " +
+                        "ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
                 }
             }
         }
@@ -50,34 +51,23 @@ internal static class NativeConfiguration
             file.NativeRequirements.TryGetValue(target, out var requirements);
             foreach (var (name, library) in libraries)
             {
-                if (ValidateSupply(name, library, requirements?.GetValueOrDefault(name)) is { } failure)
-                {
-                    (failures ??= []).Add(failure);
-                }
+                ValidateSupply(name, library, requirements?.GetValueOrDefault(name), ref failures);
             }
 
-            // A supply for another module cannot create or change that module's requirement, so it carries no Kind.
-            var packagedValid = true;
-            foreach (var library in libraries.Packaged)
-            {
-                if (ValidatePackaged(library) is { } failure)
-                {
-                    (failures ??= []).Add(failure);
-                    packagedValid = false;
-                }
-            }
-
-            // Records of one project merge under the same rule as supplies across the graph; invalid records cannot merge (dependent).
+            // Records of one project merge under the same rule as supplies across the graph.
             var packaged = libraries.Packaged;
-            for (var i = 1; packagedValid && i < packaged.Length; i++)
+            bool[] valid = packaged.Length == 0 ? [] : new bool[packaged.Length];
+            for (var i = 0; i < packaged.Length; i++)
             {
-                for (var j = 0; j < i; j++)
+                valid[i] = ValidatePackaged(packaged[i], ref failures);
+                for (var j = 0; valid[i] && j < i; j++)
                 {
-                    if (packaged[i].Name == packaged[j].Name && packaged[i].Package == packaged[j].Package &&
-                        (!Agree(packaged[i].ContractId, packaged[j].ContractId, StringComparison.Ordinal) || !Agree(packaged[i].Sha256, packaged[j].Sha256, StringComparison.OrdinalIgnoreCase)))
+                    if (valid[j] && packaged[i].Name == packaged[j].Name && packaged[i].Package == packaged[j].Package &&
+                        (!Agree(packaged[i].ContractId, packaged[j].ContractId, StringComparison.Ordinal) ||
+                        !Agree(packaged[i].Sha256, packaged[j].Sha256, StringComparison.OrdinalIgnoreCase)))
                     {
-                        (failures ??= []).Add(
-                            $"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' assert different ContractId or Sha256 values and cannot merge.");
+                        (failures ??= []).Add($"NativeLibraries supplies of '{packaged[i].Name}' for package '{packaged[i].Package!.PackageId}' " +
+                            "assert different ContractId or Sha256 values and cannot merge.");
                         break;
                     }
                 }
@@ -177,17 +167,23 @@ internal static class NativeConfiguration
         return ((library.Kind ?? requirement?.Kind)!, library.Sha256 ?? requirement?.Sha256);
     }
 
-    // A self-targeted supply's first failure, or null.
-    private static string? ValidateSupply(string name, NativeLibraryInput? library, NativeRequirement? requirement)
+    // A self-targeted supply's failures, each its own note; a null entry has nothing else to check.
+    private static void ValidateSupply(string name, NativeLibraryInput? library, NativeRequirement? requirement, ref List<string>? failures)
     {
-        if (!ValidName(name) || library is null || library.Package is not null || (library.Name is not null && library.Name != name) || !ValidAssertions(library.ContractId, library.Sha256))
+        if (library is null || !ValidName(name) || library.Package is not null || (library.Name is not null && library.Name != name) ||
+            !ValidAssertions(library.ContractId, library.Sha256))
         {
-            return "NativeLibraries requires nonempty logical names; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
+            (failures ??= []).Add("NativeLibraries requires nonempty logical names; " +
+                "ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
+            if (library is null)
+            {
+                return;
+            }
         }
 
         if (name == WindowsProfile.Kernel32Library)
         {
-            return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
+            (failures ??= []).Add("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
         }
 
         // A self-targeted record expands into a requirement and a supply; overlapping explicit fields must agree.
@@ -196,44 +192,50 @@ internal static class NativeConfiguration
             !Agree(library.ContractId, requirement.ContractId, StringComparison.Ordinal) ||
             !Agree(library.Sha256, requirement.Sha256, StringComparison.OrdinalIgnoreCase)))
         {
-            return $"NativeLibraries entry '{name}' disagrees with its NativeRequirements Kind, ContractId or Sha256.";
+            (failures ??= []).Add($"NativeLibraries entry '{name}' disagrees with its NativeRequirements Kind, ContractId or Sha256.");
         }
 
         if ((library.Kind ?? requirement?.Kind) is not ("import" or "static"))
         {
-            return $"NativeLibraries entry '{name}' requires Kind \"static\" or \"import\" after requirement expansion.";
+            (failures ??= []).Add($"NativeLibraries entry '{name}' requires Kind \"static\" or \"import\" after requirement expansion.");
         }
-
-        return null;
     }
 
-    // A supply record for another package's first failure, or null.
-    private static string? ValidatePackaged(NativeLibraryInput? library)
+    // A supply record for another package: each failure its own note; true when the record is valid. A record without a valid Name
+    // has nothing else to check.
+    private static bool ValidatePackaged(NativeLibraryInput? library, ref List<string>? failures)
     {
+        var count = failures?.Count ?? 0;
         if (library is null || !ValidName(library.Name) || library.Package is not { } package ||
             !DependencyConfiguration.ValidPackageId(package.PackageId) || !DependencyConfiguration.ValidPackageVersion(package.PackageVersion) ||
             !ValidAssertions(library.ContractId, library.Sha256))
         {
-            return "NativeLibraries records targeting a Package require a nonempty Name and a valid PackageId and PackageVersion; ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.";
+            (failures ??= []).Add("NativeLibraries records targeting a Package require a nonempty Name and a valid PackageId and PackageVersion; " +
+                "ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
+            if (library is null || !ValidName(library.Name))
+            {
+                return false;
+            }
         }
 
         if (library.Name == WindowsProfile.Kernel32Library)
         {
-            return "kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.";
+            (failures ??= []).Add("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
         }
 
         // The reserved backend is one compiler-managed supply; only a project's own legacy override may name it.
         if (library.Name == WindowsProfile.BackendLibrary)
         {
-            return "kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.";
+            (failures ??= []).Add("kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.");
         }
 
         if (library.Kind is not null)
         {
-            return $"NativeLibraries record '{library.Name}' for package '{package.PackageId}' cannot declare Kind; Kind is allowed only in self-targeted records.";
+            (failures ??= []).Add($"NativeLibraries record '{library.Name}' for package '{library.Package?.PackageId}' cannot declare Kind; " +
+                "Kind is allowed only in self-targeted records.");
         }
 
-        return null;
+        return (failures?.Count ?? 0) == count;
     }
 
     // Gets a module's own requirement, declared directly or by a self-targeted combined supply.

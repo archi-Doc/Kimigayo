@@ -82,7 +82,8 @@ internal static class DependencyLock
                 return ["Invalid dependency lock schema; run restore."];
             }
 
-            return Matches(root, "product", resolution.Product) && (!includeTests || Matches(root, "test", resolution.Test)) ? [] : ["Dependency lock is stale or unresolved; run restore."];
+            return Matches(root, "product", resolution.Product) && (!includeTests || Matches(root, "test", resolution.Test))
+                ? [] : ["Dependency lock is stale or unresolved; run restore."];
         }
         catch (JsonException)
         {

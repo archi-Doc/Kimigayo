@@ -142,7 +142,8 @@ public sealed partial class CheckServiceTest : IDisposable
         var output = this.Run(project, mode);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
-        Assert.Equal(["Duplicate resolved TestSources path: a.kimi", "Duplicate resolved TestSources path: b.kimi"], output.Diagnostics.Select(static x => x.Note));
+        Assert.Equal(
+            ["Duplicate resolved TestSources path: a.kimi", "Duplicate resolved TestSources path: b.kimi"], output.Diagnostics.Select(static x => x.Note));
     }
 
     // SPEC 23.1.2: each independent failure of the dependency graph is its own record, in a product and a test check alike.
@@ -151,7 +152,9 @@ public sealed partial class CheckServiceTest : IDisposable
     [InlineData(CheckMode.Test)]
     public void EachIndependentDependencyFailureIsReported(CheckMode mode)
     {
-        var project = this.WriteProject("App", ("main.kimi", Valid), dependencies: "A={PackageId=\"a\" PackageVersion=\"1\" Project=\"../A/A.kimiproj\"} B={PackageId=\"b\" PackageVersion=\"1\" Project=\"../B/B.kimiproj\"}");
+        var dependencies = "A={PackageId=\"a\" PackageVersion=\"1\" Project=\"../A/A.kimiproj\"} " +
+            "B={PackageId=\"b\" PackageVersion=\"1\" Project=\"../B/B.kimiproj\"}";
+        var project = this.WriteProject("App", ("main.kimi", Valid), dependencies: dependencies);
         var output = this.Run(project, mode);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(2, output.Diagnostics.Length);
@@ -168,7 +171,9 @@ public sealed partial class CheckServiceTest : IDisposable
     public void PreparationReportsEachConfigurationFailure(CheckMode mode)
     {
         var project = this.WriteProject("App", ("main.kimi", Valid));
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
         loaded.ProjectFile.Alias = [" "];
         loaded.ProjectFile.TestSources = ["*.kimi", "*.kimi"];
         var output = CheckService.Run(loaded, WindowsProfile.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
@@ -247,7 +252,9 @@ public sealed partial class CheckServiceTest : IDisposable
         File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
         File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
         File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "public func wide() -> i32 => 5\n");
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
         loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
         var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
         Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "\uFF21.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
@@ -258,7 +265,9 @@ public sealed partial class CheckServiceTest : IDisposable
     public void ATwinSourceNameIsAPreparationFailure()
     {
         var project = this.WriteProject("App", ("main.kimi", Valid));
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
         loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "public func twin() -> i32 => 2\n");
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
@@ -513,7 +522,9 @@ public sealed partial class CheckServiceTest : IDisposable
     private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null)
     {
         inputs ??= CheckInputSource.Disk;
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures), string.Join(", ", failures));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures),
+            string.Join(", ", failures));
         return CheckService.Run(project, target.Length == 0 ? WindowsProfile.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
     }
 

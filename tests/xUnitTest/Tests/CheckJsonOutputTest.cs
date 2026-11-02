@@ -100,7 +100,9 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.All(document.Sources, static x => Assert.True(x.IsInput));
 
         // The entry is shared, so the records are those the check service publishes for the same inputs.
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures), string.Join(", ", failures));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
         var expected = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(expected.Diagnostics, document.Diagnostics);
         var record = Assert.Single(document.Diagnostics);
@@ -153,7 +155,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.Equal(CheckOutcome.Blocked, document.Outcome);
         Assert.All(document.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectLoadFailed_Kd), x.Code));
         Assert.Equal(2, document.Diagnostics.Length);
-        Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("PackageId and PackageVersion must both be supplied with valid exact identity spellings.", StringComparison.Ordinal));
+        Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("valid exact identity spellings.", StringComparison.Ordinal));
         Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("Alias requires nonempty Container paths.", StringComparison.Ordinal));
     }
 

@@ -171,8 +171,9 @@ internal static class DependencyConfiguration
 
         foreach (var source in file.PackageSources ?? [])
         {
-            if (source is null || (source.Store is { } store ? string.IsNullOrWhiteSpace(store) || source.PackageId is not null || source.PackageVersion is not null || source.Package is not null :
-                !ValidPackageId(source.PackageId) || !ValidPackageVersion(source.PackageVersion) || string.IsNullOrWhiteSpace(source.Package)))
+            if (source is null || (source.Store is { } store
+                ? string.IsNullOrWhiteSpace(store) || source.PackageId is not null || source.PackageVersion is not null || source.Package is not null
+                : !ValidPackageId(source.PackageId) || !ValidPackageVersion(source.PackageVersion) || string.IsNullOrWhiteSpace(source.Package)))
             {
                 (failures ??= []).Add("PackageSources entries require either Store or PackageId, PackageVersion and Package.");
             }

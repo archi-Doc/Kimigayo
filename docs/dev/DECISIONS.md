@@ -14957,9 +14957,10 @@ structure is recorded here by the unit that first implements it.
     `Compilation.Prepare`) and `Validate(ProjectFile, directory, out testSources)` (the same plus the TestSources compared as resolved
     paths, and the resolved set: product and test preparation, the resolver) return one note per independent failure, empty and
     allocation-free when valid. Independent: KotonohaArray, the identity, each reference's name, identity and source, each native
-    target and entry, each Alias and PackageSources entry, each TestSources entry's syntax and each duplicate. Left out as dependent:
-    the checks that read a null map, a null native target's entries, a null reference's source, merging invalid packaged records,
-    and comparing an entry that breaks the path syntax (one predicate, `ValidTestSource`).
+    target, entry and requirement, each Alias and PackageSources entry, each TestSources entry's syntax and each duplicate. Left out
+    as dependent: the checks that read a null map, a null native target's entries, the other checks of a null native entry or of a
+    packaged record without a valid Name, a merge pair with an invalid packaged record, a null reference's source, and comparing an
+    entry that breaks the path syntax (one predicate, `ValidTestSource`).
   - Shape: a list of notes, as `Kotonoha.CheckNames` (R5-M175), each its own record of the existing code: `ProjectPreparationFailed_Kd`
     through `Project.Fail` (test preparation now reports its configuration failures through its owner and publishes them for the
     command, as the product does, instead of throwing one `InvalidDataException`), `InvalidDependencyConfiguration_Kd`
@@ -14973,8 +14974,9 @@ structure is recorded here by the unit that first implements it.
     instead of one `ReasonCode` and `Diagnostic`, and the resolver records each independent failure instead of throwing at the first:
     each failed reference (UnsupportedPackage, IdentityMismatch, the root Cycle, NotLibrary, ConflictingInput, ReferenceReassignment,
     each invalid test reference) adds no edge, and a node that fails to load (I/O, each configuration note, a duplicate TestSources)
-    adds no children, so their dependents are left out; TargetMismatch and LanguageMismatch are recorded and the node still resolves;
-    without the root or its target nothing else resolves; acyclicity is checked over the resolved part. A lock records the first
+    adds no children, so their dependents are left out (a failed load is remembered, so a project several references reach fails
+    once); TargetMismatch and LanguageMismatch are recorded and the node still resolves; without the root or its target nothing else
+    resolves; acyclicity is checked over the resolved part. A lock records the first
     failure's code (`reasonCode`, schema unchanged); `DependencyLock.Validate` gives every failure, each a `ProjectPreparationFailed_Kd`
     through `Project.Fail` (test preparation too, no longer one `InvalidDataException`), and `kimi restore` prints each.
     `DuplicateTestSource` becomes `InvalidConfiguration` (the configuration's owner reports it). A dependency's directory-free failures,
@@ -14988,4 +14990,6 @@ structure is recorded here by the unit that first implements it.
     record, or a load failure, before), `CheckJsonOutputTest.EachConfigurationFailureOfAnUnloadedProjectIsReported` (two
     `ProjectLoadFailed_Kd`; one before); `ANullMapLeavesOutTheChecksThatReadIt` is the dependent counterpart. G367b:
     `DependencyResolutionTest.EachIndependentGraphFailureIsReported` (five failures, a failed node's reference left out) and
-    `CheckServiceTest.EachIndependentDependencyFailureIsReported` (two records in product and test checks; one before).
+    `CheckServiceTest.EachIndependentDependencyFailureIsReported` (two records in product and test checks; one before). Review:
+    `AnInvalidPackagedSupplyLeavesTheOtherMergesChecked` (two records; one before), `EachRequirementOfAPackagedSupplyIsReported`
+    (three; two before), `AFailedProjectReachedTwiceIsReportedOnce` (one failure; two before).
