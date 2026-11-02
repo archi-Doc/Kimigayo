@@ -189,7 +189,12 @@ public sealed partial class Binding
 
             if (this.KindOf(node) == PartKind.Join)
             {
-                this.CompleteJoinCases(flow, scope);
+                this.CompleteJoinResults(flow, scope);
+            }
+
+            if (this.resultContexts.ContainsKey(flow))
+            {
+                this.ReportHeldConflicts(flow); // Rule W: a held join's own Conflict is reported; nothing rests on it.
             }
 
             return;
@@ -216,17 +221,15 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2: each waiting Case result of a Join a call completes none of, completed on its own (its payloads bound alone).
-    private void CompleteJoinCases(Koto join, BindingScope scope)
+    // SPEC 23.1.2: each result of a Join a call completes none of, completed as an argument part is (CompleteUnselectedPart): a Tuple's
+    // or array's parts, and a waiting Case's payloads bound alone, at any depth (U1.6 fix C: n13b's `(.Some(undefinedName), 3)`).
+    private void CompleteJoinResults(Koto join, BindingScope scope)
     {
         var start = this.positionParts.Count;
         this.AddResults(join);
         for (var i = start; i < this.positionParts.Count; i++)
         {
-            if (this.KindOf(this.positionParts[i]) == PartKind.Case)
-            {
-                this.CompleteUnselectedPart(this.positionParts[i], scope);
-            }
+            this.CompleteUnselectedPart(this.positionParts[i], scope);
         }
 
         this.ClosePosition(start);

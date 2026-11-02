@@ -24,7 +24,9 @@ namespace Kimi.Compiler;
 //   it constructs, writing nothing; an anonymous function among its results waits for the call, which completes it (TakeWaiting) and
 //   then decides the join part by part, the sources holding it waiting until then (BoundSince, DecideTaken); (5) the join's one
 //   outcome (ResultContext.Outcome, DECISIONS BU-43), written once where it becomes true: Waiting; Conflict, its own record;
-//   Dependent, resting on its first failed part or on the join it waited for (Cause), with no record (SPEC 23.1.2); Decided. A part's
+//   Dependent, resting on its first failed part or on the join it waited for (Cause), with no record (SPEC 23.1.2), written only at the
+//   join's verdict (DecideRest; U1.6h: a recorded cause decides nothing before, so a failed source takes no part in its join's kind);
+//   Decided. A part's
 //   failure is read from who decides it (PartFailed). A join tree (a join holding nested joins through its sources, the forms that
 //   deliver them and Tuple, array and Dictionary literals, none supplying a candidate) is judged once, at its root, each conflict
 //   with one owner: a conflict among a join's own typed parts (bound parts, functions its call completed, shapes), fixed when the
@@ -177,7 +179,8 @@ public sealed partial class Binding
     private Awaiting PartAwaits(Koto part) => ReferenceEquals(part.BoundType, BoundType.Never) ? Awaiting.Never : this.AwaitsFor(part);
 
     // A result target awaits when it delivers a value and each of its value sources awaits, has Type Never, or waited and holds only
-    // parts bound since (BoundSince), which await nothing but the join's decision.
+    // parts bound since (BoundSince), which await nothing but the join's decision. A failed source takes no part (U1.6h site 2): the join
+    // rests on it at its verdict (DecideRest).
     private Awaiting SourcesAwait(ResultContext context)
     {
         var awaiting = Awaiting.None;
@@ -186,6 +189,11 @@ public sealed partial class Binding
             if (context.SourceNodes[i] is not { } source)
             {
                 return Awaiting.None;
+            }
+
+            if (context.Sources[i] is null && this.PartFailed(source))
+            {
+                continue;
             }
 
             if (context.Sources[i] is null)
@@ -331,7 +339,8 @@ public sealed partial class Binding
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
     // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
     // delivers one, an aggregate each of whose parts at least one (CallableParts) was, or a waiting result target each of whose waited
-    // sources was. Position waiting (Deferred), not a call relation: it holds before any selection.
+    // sources was, a failed one taking no part (U1.6h site 2). Position waiting (Deferred), not a call relation: it holds before any
+    // selection.
     private bool BoundSince(Koto source)
     {
         if (DeliveredOperand(source) is { } operand)
@@ -346,7 +355,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.BoundSince(waited))
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } waited && !this.PartFailed(waited) && !this.BoundSince(waited))
             {
                 return false;
             }
@@ -394,6 +403,7 @@ public sealed partial class Binding
             this.resultContexts.TryGetValue(position, out var target) && target.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
             context.RestOn(target.Outcome == JoinOutcome.Conflict ? position : target.Cause!);
+            context.DecideRest();
         }
 
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
@@ -421,8 +431,9 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2 (DECISIONS BU-43): a join none of whose value sources supplies a candidate. Its tree is judged first
     // (JudgeNested), then its own formation (JudgeOwn): a conflict among its typed parts fails it at once (Conflict, its own record, on
-    // which an outer join rests), and a failed part leaves it Dependent on that part's record (SPEC 23.1.2). Clean, it waits for its
-    // position's Type (true) when a source waited for its Type and that Type is decided later (DecidedLater), or when it is a call's
+    // which an outer join rests), and a failed part is recorded as its cause (RestOn), on which it rests at its verdict (DecideRest;
+    // SPEC 23.1.2). Clean, it waits for its position's Type (true) when a source waited for its Type and that Type is decided later
+    // (DecidedLater), or when it is a call's
     // control-flow argument whose results are not Dictionaries: its call classifies it (ClassifiedByCall, SPEC 10.5.1) and completes
     // it at the selected candidate's Type. Otherwise it is the root of its tree: a conflict among the literal defaults of the flattened
     // tree is its own record (step 3); else the formed Type is the join's one candidate, at which its waited sources are bound
@@ -474,8 +485,8 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
     // by its late Type (BindWaitedSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
-    // a failed source (PartFailed), unbound or typed, leaves the join Dependent on it and is no candidate (SPEC 23.1.2), and any other
-    // unbound source makes the join pending. Returns whether a source awaits.
+    // a failed source (PartFailed), unbound or typed, is no candidate and is the join's cause, on which it rests at its verdict (SPEC
+    // 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Returns whether a source awaits.
     private bool ResultCandidates(ResultContext context, List<BoundType> types)
     {
         var awaiting = false;
@@ -587,6 +598,11 @@ public sealed partial class Binding
 
             context.Sources[i] = this.SuppliedType(source);
             context.Pending |= context.Sources[i] is null;
+            if (waited && context.Sources[i] is null && this.PartFailed(source))
+            {
+                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause.
+            }
+
             failed ??= fits ? null : context.Sources[i];
         }
 

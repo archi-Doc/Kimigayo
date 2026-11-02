@@ -357,6 +357,7 @@ public sealed partial class Binding
                 : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
+        context.DecideRest();
         if (context.Outcome == JoinOutcome.Dependent)
         {
             return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
@@ -457,13 +458,22 @@ public sealed partial class Binding
         // Records the join's own conflict, whose record it writes; it prevails over a dependence (RestOn).
         internal void Conflict() => this.Outcome = JoinOutcome.Conflict;
 
-        // Records that the join rests on a failure it did not find (SPEC 23.1.2), the first such cause, unless it found a conflict.
+        // Records the first failure the join did not find and will rest on (SPEC 23.1.2), unless it found a conflict. U1.6h: a failed source
+        // takes no part in its join's kind, so recording it decides nothing; the join rests on it at its verdict (DecideRest).
         internal void RestOn(Koto cause)
         {
             if (this.Outcome != JoinOutcome.Conflict)
             {
-                this.Outcome = JoinOutcome.Dependent;
                 this.Cause ??= cause;
+            }
+        }
+
+        // U1.6h: the verdict, the one writer of Dependent: when the join decides, it rests on its recorded cause unless it found a conflict.
+        internal void DecideRest()
+        {
+            if (this.Outcome != JoinOutcome.Conflict && this.Cause is not null)
+            {
+                this.Outcome = JoinOutcome.Dependent;
             }
         }
     }

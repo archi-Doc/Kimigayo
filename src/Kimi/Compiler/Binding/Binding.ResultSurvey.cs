@@ -35,15 +35,24 @@ public sealed partial class Binding
         return node is IfKoto or MatchKoto or LoopKoto or DoKoto ? node : null;
     }
 
-    // SPEC 14.9.1: the target to which the expression is a result source, as a single-item body's value or a transfer's operand, or
-    // null; the inverse of FindResultEvidence's sources.
-    private static Koto? ResultTarget(Koto source)
+    // SPEC 14.9.1: the outermost form that delivers a result source to its target, through parentheses and a single-item body: the
+    // result-source walk's delivery chain, which ResultTarget and an unselected call's completion (ReportHeldConflicts) read.
+    private static Koto ResultSourceForm(Koto source)
     {
         var node = source;
         while (node.Parent is ParenthesizedKoto || (node.Parent is CodeBlockKoto { IsExpressionBody: true } block && ReferenceEquals(block.Items[0], node)))
         {
             node = node.Parent;
         }
+
+        return node;
+    }
+
+    // SPEC 14.9.1: the target to which the expression is a result source, as a single-item body's value or a transfer's operand, or
+    // null; the inverse of FindResultEvidence's sources.
+    private static Koto? ResultTarget(Koto source)
+    {
+        var node = ResultSourceForm(source);
 
         return node.Parent switch
         {

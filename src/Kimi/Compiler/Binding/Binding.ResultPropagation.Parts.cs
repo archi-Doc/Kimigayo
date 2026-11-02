@@ -9,8 +9,9 @@ namespace Kimi.Compiler;
 // - Responsibility: the parts at one position of a join, a range of positionParts (Binding.ArgumentKinds.Positions.cs): its sources
 //   other than Never, through the forms that deliver them and the selections, `do` and `loop` none of whose sources supplies a
 //   candidate (AddResultPart); the parts a child Type of Tuple, array, fill or Dictionary literals is formed from, by element (an
-//   array's every element at its one element position), key and value (AddPartsAt); the common Type of a position's typed parts (PositionType); the common Type formed part by part
-//   (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its root's judgement of its tree (JudgeNested).
+//   array's every element at its one element position), key and value (AddPartsAt); the common Type of a position's typed parts
+//   (PositionType); the common Type formed part by part (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its
+//   root's judgement of its tree (JudgeNested).
 // - Inputs: the parts' bound Types, the literals still waiting unbound, the results' recorded sources (ResultContext).
 // - Outputs: the formed Type, or none with the conflict that prevents it (PartsConflict); a judged join's outcome (Conflict, Dependent).
 // - Invariants: a part of Type Never is no part; a failed part is no part either (the join rests on it); the walk binds nothing and
@@ -99,7 +100,7 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2, 23.1.2 (DECISIONS BU-43): a join's own judgement, by one formation over its own results (CommonTypeByParts),
     // nested joins flattened where they are clean and one failed part each where they are not. A conflict among its typed parts or
     // shapes is its own, found at any position (Conflict), unless under a call's argument probe it waits for its call (ConflictWaits,
-    // U1.6g); else a failed part leaves it Dependent on the first (RestOn). A conflict among
+    // U1.6g); else its first failed part is its cause (RestOn), on which it rests at its verdict (DecideRest). A conflict among
     // literal defaults is reported (`defaults`), not judged: a literal result is not fixed before outer constraints (step 3), so it is
     // the root's (AwaitsWithoutCandidate). Idempotent: called at the join's own decision and again by its root (JudgeNested). Returns
     // the Type formed over the parts that are no conflict and no failure, null when none; `shape` is the first aggregate part.
@@ -136,6 +137,64 @@ public sealed partial class Binding
             if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
             {
                 this.JudgeHeld(source);
+            }
+        }
+    }
+
+    // Rule W (DECISIONS BU-79; SPEC 23.1.2, 14.9.2): an unselected call's waiting join reports what its tree judged on its own. A held
+    // join whose formation judged it Conflict (JudgeOwn) writes its own record, once, as DecideWaiting does; nothing else is written,
+    // rested or bound. The walk is JudgeHeld's: the forms that deliver a source (from the outermost, ResultSourceForm), Tuple, array and
+    // Dictionary literals, and a held join's waited sources.
+    private void ReportHeldConflicts(Koto part)
+    {
+        if (DeliveredOperand(part) is { } operand)
+        {
+            this.ReportHeldConflicts(operand);
+            return;
+        }
+
+        switch (part)
+        {
+            case TupleLiteralKoto tuple:
+                foreach (var element in tuple.Elements)
+                {
+                    this.ReportHeldConflicts(element);
+                }
+
+                return;
+            case ArrayLiteralKoto array:
+                foreach (var element in array.Elements)
+                {
+                    this.ReportHeldConflicts(element);
+                }
+
+                return;
+            case DictionaryLiteralKoto dictionary:
+                foreach (var entry in dictionary.Entries)
+                {
+                    this.ReportHeldConflicts(entry.Key);
+                    this.ReportHeldConflicts(entry.Value);
+                }
+
+                return;
+        }
+
+        if (!DeliversResult(part) || part.BoundType is not null || !this.resultContexts.TryGetValue(part, out var context) ||
+            context.Outcome is not (JoinOutcome.Conflict or JoinOutcome.Waiting))
+        {
+            return;
+        }
+
+        if (context.Outcome == JoinOutcome.Conflict && part.BindingFailure == BindingFailure.None)
+        {
+            this.Fail(part, BindingFailure.TypeMismatch);
+        }
+
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
+            {
+                this.ReportHeldConflicts(ResultSourceForm(source));
             }
         }
     }

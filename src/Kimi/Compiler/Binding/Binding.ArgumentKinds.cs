@@ -49,6 +49,9 @@ namespace Kimi.Compiler;
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
 //   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
 //   selected candidate; a Never-typed part is no evidence (SPEC 10.8).
+//   Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part is a wildcard: it fits every candidate and is no evidence; only a node's own
+//   verdict over a failed child is suppressed (a join's DecideRest, its position and kind, CompleteJoinResults), and every other
+//   record of the call is reported: Ambiguous, UnboundTypeArgument, NoApplicable and an unselected call's part records.
 // - Prohibitions: a consumer reads a part's kind from KindOf and whether it awaits its call from AwaitsCall, and tells only the forms
 //   of one kind apart to fit them; whether a part waits for its position, not its call, is ResultPropagation's position waiting
 //   (Deferred, AwaitsFor; SPEC 14.9.2, 4.3); the call, element, Case-payload and value-call paths keep no evidence or fit dispatch of
@@ -228,7 +231,8 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
     // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
-    // (`shape`, its first aggregate part), or one whose results hold a part awaiting its call (AwaitsCall), is Join: its results are
+    // (`shape`, its first aggregate part), one whose results hold a part awaiting its call (AwaitsCall), or one its survey left
+    // unclassified (no Literal record: a failed or unknown source beside its literals; U1.6h site 4) is Join: its results are
     // classified position by position (Binding.ArgumentKinds.Positions.cs); a scalar one of literals keeps the kind its survey gave it.
     private bool ClassifiedByCall(Koto join, Koto? shape)
     {
@@ -237,7 +241,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsPartAwaitingCall(join))
+        if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsPartAwaitingCall(join) || this.RecordedPart(probe).Kind != PartKind.Literal)
         {
             this.RecordPart(probe, PartKind.Join);
         }
@@ -430,7 +434,8 @@ public sealed partial class Binding
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
     // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
     // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another, and a slot
-    // still unbound is the inference boundary. False when the call is complete: waiting or failed.
+    // still unbound is the inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or
+    // failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
