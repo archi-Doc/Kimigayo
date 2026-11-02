@@ -9224,7 +9224,8 @@ resumed by R4-M86 (2026-10-20).
     default's misfit (`CompleteDependent(call, misfit)`), a failed part, or else the inference boundary. FailUnboundSlots only forms
     the boundary's record.
   - Readers (U1.6h-2): BindCallCore's Ambiguous outcome. The call rests on a failed part, its waiting parts resting on the call as
-    FailWaitingSelection rests them, when two kept candidates' patterns differ there (C16, `AmbiguityRestingPart`).
+    FailWaitingSelection rests them, when two kept candidates' patterns differ there (C16, `AmbiguityRestingPart`). Superseded by
+    "the U1.6h-2 reader superseded" below.
     - "Differ" is structural. Each candidate's own Type and length slots are paired one-to-one in order of first occurrence, across all
       the failed parts the pair met. Origin bindings are not read (10.4 step 2).
     - The paired slots' Constraints must be equal: each candidate's clauses that name a paired slot, in order, agree pairwise.
@@ -9237,6 +9238,21 @@ resumed by R4-M86 (2026-10-20).
       unsolved slot (g028, h7, h8; the implementer's unit-1 stop).
     - A Binding-wide list keyed by function, the prototype. Its entries outlived their call, so another call's independent
       UnboundTypeArgument_Kd was lost (R4's s1, s2, s4), and its linear search over the whole list was quadratic.
+  - **The U1.6h-2 reader superseded** (2026-11-02, the owner's 「3件とも推奨どおり」; PLAN dev 0721c3eec; design `u16-cert-design.md`).
+    C16's structural comparison modulo own slots is replaced.
+    - The reason that no longer holds: C16 assumed that a structural difference at the failed part means a Type of the part could
+      separate the candidates. Slots fixed elsewhere break it: in pe1, y fixes T = i64, so `Option<T>` against `Option<i64>` is
+      independent; so do clause-only slots fixed by evidence (c7_chain, c9_mixed) and an undecided pairing (sel3_swap). A comparison of
+      patterns cannot be certain of dependence, and SPEC 23.1.2 never allows losing an independent record.
+    - The rule: the ambiguity rests only on a certain mismatch (`CertainMismatch`): a head mismatch outside every own slot (OwnSlot; a
+      length slot by its BoundLength parameter, `IsOwnLength`) and every Function Type, which the adaptation rules
+      (`ExpectedAdaptation`, without recording a plan) bridge in neither direction. Every other case is reported; clauses are not
+      compared.
+    - Precondition (R4's C29): the certainty relies on parameter shapes forbidding layer differences at a position. ExpectedAdaptation on
+      a pattern with an own slot below the mismatch could depend on the instance (`ref/T` against `i64`); today that is unreachable
+      (ParameterShapeMismatch_Kd, MissingOriginBinding_Kd, and no adaptation inside Option).
+    - Rejected: (4) and B7, renaming plus clause-set matching, which cannot see evidence-fixed slots; (2), a slot correspondence in
+      SignatureEquals.
 
 - **BU-78 A failed source takes no part in its join: its join rests on it at its verdict, and a failed part makes its position wait**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design `u16h-design.md` revision 4, triage `u16h-3t.md`; R4's ACCEPT; the

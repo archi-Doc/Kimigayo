@@ -30,6 +30,70 @@ public partial class OriginRelationDiagnosticTest
 
     private const string GOptionArray = "func g<T>(x: Array<Option<T>>) -> i32 => 0\n";
 
+    private const string GTargetPairs = "func g<s/T>(x: T, y: Option<i64>) -> i32 => 0\nfunc g<r/U>(x: U, y: Option<bool>) -> i32 => 1\n";
+
+    private const string GPairWholes = "func g<s/T>(x: s/T, y: Option<i64>) -> i32 => 0\nfunc g<r/U>(x: r/U, y: Option<bool>) -> i32 => 1\n";
+
+    private const string GEquatables = "func g<T>(x: T, y: Option<i64>) -> i32\n    T is Equatable\n    return 0\nfunc g<U>(x: U, y: Option<bool>) -> i32\n    U is Equatable\n    return 1\n";
+
+    private const string GAddables = "func g<T>(x: T, y: Option<i64>) -> i32\n    T is Addable<T>\n    return 0\nfunc g<U>(x: U, y: Option<bool>) -> i32\n    U is Addable<U>\n    return 1\n";
+
+    private const string GEquatableAddable = "func g<T>(x: T, y: Option<i64>) -> i32\n    T is Equatable\n    T is Addable<T>\n    return 0\n";
+
+    private const string GClauseSlots = "func g<T, X>(x: T, y: Option<X>, z: Option<i64>) -> i32\n    T is Addable<X>\n    return 0\nfunc g<U, W>(x: U, y: Option<W>, z: Option<bool>) -> i32\n    U is Addable<W>\n    return 1\n";
+
+    private const string GDuplicateHeads = "func g<T, X, Y>(x: T, y: Option<i64>) -> i32\n    T is Addable<X>\n    T is Addable<Y>\n    return 0\nfunc g<U, W, Z>(x: U, y: Option<bool>) -> i32\n    U is Addable<W>\n    U is Addable<Z>\n    return 1\n";
+
+    private const string GDifferentClauses = "func g<T>(x: T, y: Option<i64>) -> i32\n    T is Equatable\n    return 0\nfunc g<U>(x: U, y: Option<bool>) -> i32\n    U is Addable<U>\n    return 1\n";
+
+    private const string GPermuted = "func g<T, U>(x: U, y: T) -> i32 => 0\nfunc g<V>(x: V, y: bool) -> i32 => 1\n";
+
+    private const string GIncPairs = "func g<T>(x: (T, T), y: Option<i64>) -> i32 => 0\nfunc g<V, W>(x: (V, W), y: Option<bool>) -> i32 => 1\n";
+
+    private const string GCounts = "func g<T>(x: T, y: Option<i64>) -> i32 => 0\nfunc g(x: i64, y: Option<bool>) -> i32 => 1\n";
+
+    private const string GSelectorA = "func g<s/T, U>(x: (U, T), y: Option<i64>) -> i32 => 0\n";
+
+    private const string GNameCall = KHead + "    return g(if c => undefinedName else => identity(3), .None)\n";
+
+    private const string GTwinCall = KHead + "    return g(if c => identity(4) else => identity(3), .None)\n";
+
+    private const string GNameAmbiguous = "AmbiguousBinding_Kd g(if c => undefinedName else => identity(3), .None); UnresolvedBinding_Kd undefinedName";
+
+    private const string GTwinAmbiguous = "AmbiguousBinding_Kd g(if c => identity(4) else => identity(3), .None)";
+
+    private const string GChain = "func g<T, X>(x: T, y: Option<X>, z: Option<i64>) -> i32\n    T is Addable<X>\n    X is Equatable\n    return 0\n";
+
+    private const string GChainB = "func g<U, W>(x: U, y: Option<W>, z: Option<bool>) -> i32\n    U is Addable<W>\n    W is Equatable\n    return 1\n";
+
+    private const string GMixed = "func g<T, X>(x: T, y: Option<X>, z: Option<i64>) -> i32\n    T is Equatable\n    T is Addable<X>\n    X is Copy\n    return 0\nfunc g<U, W>(x: U, y: Option<W>, z: Option<bool>) -> i32\n    U is Addable<W>\n    U is Equatable\n    return 1\n";
+
+    private const string GSlotsNameCall = KHead + "    return g(if c => undefinedName else => identity(3), .Some(identity(5)), .None)\n";
+
+    private const string GSlotsTwinCall = KHead + "    return g(if c => identity(4) else => identity(3), .Some(identity(5)), .None)\n";
+
+    private const string GSlotsNameAmbiguous = "AmbiguousBinding_Kd g(if c => undefinedName else => identity(3), .Some(identity(5)), .None); UnresolvedBinding_Kd undefinedName";
+
+    private const string GSlotsTwinAmbiguous = "AmbiguousBinding_Kd g(if c => identity(4) else => identity(3), .Some(identity(5)), .None)";
+
+    private const string GPairSlots = "func g<s/T, r/U>(x: (U, T), y: Option<i64>) -> i32 => 0\nfunc g<p/V, q/W>(x: (V, W), y: Option<bool>) -> i32 => 1\n";
+
+    private const string GPairSlotRecords = "OwnershipCaseLimit_Kd g<p/V, q/W>(x: (V, W), y: Option<bool>) -> i32; OwnershipCaseLimit_Kd g<s/T, r/U>(x: (U, T), y: Option<i64>) -> i32; UnprovenConstraint_Kd T; UnprovenConstraint_Kd U; UnprovenConstraint_Kd V; UnprovenConstraint_Kd W";
+
+    private const string GWholeSelector = "func g<s/T, U>(x: (U, s/T), y: Option<i64>) -> i32 => 0\n";
+
+    private const string KM = "func k(c: bool, m: i64) -> i32\n";
+
+    private const string GEvidenceFixed = "func g<T>(x: Option<T>, y: T, z: Option<i64>) -> i32 => 0\n";
+
+    private const string KV = "func k(c: bool, v: i64) -> i32\n";
+
+    private const string FFunctions = "func idg<T>(v: T) -> T => v@move\nfunc f(x: (i64) -> i64, y: Option<i64>) -> i32 => 0\nfunc f(x: (bool) -> bool, y: Option<bool>) -> i32 => 1\n";
+
+    private const string GHeads = "func g<T>(x: Option<T>, y: Option<i64>) -> i32 => 0\nfunc g<U>(x: Array<U>, y: Option<bool>) -> i32 => 1\n";
+
+    private const string GLengths = "func g(x: [2 of i64], y: Option<i64>) -> i32 => 0\nfunc g(x: [3 of i64], y: Option<bool>) -> i32 => 1\n";
+
     // U1.6h-1 (SPEC 23.1.2, 10.8; R4's C15, C22): the selected candidate's unsolved slots rest on a failed part only when every one occurs
     // in the candidate's pattern at a failed part, whose Type could have bound it. So `T` at the name's position is no record (g028, and
     // the first call of s1, s2 and s4), while a slot no failed part sits at keeps it: `T` at `Option<T>` beside the name at i64 (h4b; h4,
@@ -41,7 +105,8 @@ public partial class OriginRelationDiagnosticTest
     // which an unselected call completes as its argument parts (CompleteJoinResults, U1.6 fix C), the name keeps its record in a Tuple
     // (n13b, n13b_deep nested, n13b_match) and an array (n13c) beside an independent UnboundTypeArgument_Kd: a context-typed Case waits
     // for its call's expectation (SPEC 10.5.1), so it is no evidence for `T` with a typed payload either, which the typed twins pin
-    // (n13b_v, n13b_deep_v, n13b_match_v, n13c_v).
+    // (n13b_v, n13b_deep_v, n13b_match_v, n13c_v). A slot that only a nested join's failed part sits at rests too (n2_nested_slot, R4's
+    // Q4).
     [Theory]
     [InlineData("U1.6h-1", "g028", IdentityT + "func g<T>(x: (T, i32)) -> i32 => 0\n" + KD + "    return g((if c => .None else if d => undefinedName else => identity(.Some(3)), 3))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-5", "h4", "func h<T>(x: i64, y: Option<T>) -> i32 => 0\n" + KHead + "    return h(if c => undefinedName else => 3, .None)\n", "UnboundTypeArgument_Kd h(if c => undefinedName else => 3, .None); UnresolvedBinding_Kd undefinedName")]
@@ -53,6 +118,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6h-1", "s2", IdentityT + HTx + KHead + "    let a = h(if c => undefinedName else => identity(3), 1)\n    return 0\nfunc m() -> i32\n    return h(identity(4), 2)\n", "UnboundTypeArgument_Kd h(identity(4), 2); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-1", "s3", IdentityT + HTx + "func g<U>(x: i32, y: Option<U>) -> i32 => 0\n" + KHead + "    return g(h(if c => undefinedName else => identity(3), 1), .None)\n", "UnboundTypeArgument_Kd g(h(if c => undefinedName else => identity(3), 1), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-5", "n13", GOptionTuple + KHead + "    return g((.Some(undefinedName), 3))\n", "UnboundTypeArgument_Kd g((.Some(undefinedName), 3)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-1", "n2_nested_slot", IdentityT + "func first<T>(value: (T, i64)) -> () => ()\nfunc k(c: bool, d: bool, x: i64) -> ()\n    first(if c => ((if d => undefinedName else => identity(3)), x) else => (identity(4), x))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-1", "s4", IdentityT + "func h<T>(x: T, y: Option<T>) -> i32 => 0\n" + KHead + "    let a = h(if c => undefinedName else => identity(3), .None)\n    let b = h(identity(4), .None)\n    return a\n", "UnboundTypeArgument_Kd h(identity(4), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 fix C", "n13b", GOptionTuple + KHead + "    return g(if c => (.Some(undefinedName), 3) else => (.None, 4))\n", "UnboundTypeArgument_Kd g(if c => (.Some(undefinedName), 3) else => (.None, 4)); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 fix C", "n13b_v", GOptionTuple + KX + "    return g(if c => (.Some(x), 3) else => (.None, 4))\n", "UnboundTypeArgument_Kd g(if c => (.Some(x), 3) else => (.None, 4))")]
@@ -65,13 +131,17 @@ public partial class OriginRelationDiagnosticTest
     public void AnUnsolvedSlotRestsOnlyWhereEveryOneIsAtAFailedPart(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
-    // U1.6h-2 (SPEC 23.1.2, 10.4; R4's C16): an ambiguity rests on a failed part only where the kept candidates' patterns there differ,
-    // structurally and modulo their own slots, so that a Type of the part could have separated them: i64 against bool at the join's
-    // position (n1_ov), as an element (f2_ov) and at a child position (e3_ov), Option<i64> against Option<bool> in a nested join (g238,
-    // and R4's g238g). Where they agree, no Type of the part separates them and the ambiguity is independent: i64 against i64 (h3e, and
-    // its twin without the name h3e_t), T against U, each its candidate's own slot (h8, h8_t), and literal-only joins (b3f). A literal
-    // beside the name: i64 against i64 is independent (h3, h3b, from U1.6h-5's site 4, which classifies the join), and i64 against bool
-    // rests (h3c).
+    // U1.6h-2 (SPEC 23.1.2, 10.4; the owner's rule of 2026-11-02, superseding C16): an ambiguity rests on a failed part only where the
+    // kept candidates' patterns there mismatch with certainty, a head mismatch outside every own slot and Function Type that the
+    // adaptation rules bridge in neither direction: i64 against bool at the join's position (n1_ov), as an element (f2_ov) and at a
+    // child position (e3_ov), Option<i64> against Option<bool> in a nested join (g238, g238g), Option<T> against Array<U> (rh_head) and
+    // [2 of i64] against [3 of i64] (rl_len), whose typed twins are valid. Every other ambiguity is reported: i64 against i64 (h3e,
+    // h3, h3b), own slots (h8, perm, p1, p2, sel3_order, sel3_swap, sel6), an evidence-fixed slot (pe1: y fixes T, so the name cannot
+    // separate them; pe3), clauses, which are not compared (c1-c4, c7_chain, c9_mixed), and a Function Type, whose value's own header
+    // decides its fit (fe: a generic reference fits both); literal-only joins (b3f) too. Each twin is Ambiguous. Toward reporting, a
+    // dependent record SPEC 23.1.2 allows: Equatable against Addable (c6), own slots that meet (inc_pair, c5, sel2_order) and c3_same,
+    // c7_same and c8_order_chain, as dev gives. The selector rows keep their declarations' records, as p2's do; two pair slots per
+    // function hit OwnershipCaseLimit_Kd (sel2_order), so no wholly valid selector form exists.
     [Theory]
     [InlineData("U1.6h-2", "n1_ov", IdentityT + FScalars + KHead + "    return f(if c => undefinedName else => identity(1))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-2", "f2_ov", IdentityT + FTuples + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
@@ -86,6 +156,55 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6h-5", "h3", GOptionPairs + KHead + "    return g(if c => undefinedName else => 3, .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => 3, .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-5", "h3b", "func g(x: (i64, Option<i64>)) -> i32 => 0\nfunc g(x: (i64, Option<bool>)) -> i32 => 1\n" + KHead + "    return g((if c => undefinedName else => 3, .None))\n", "AmbiguousBinding_Kd g((if c => undefinedName else => 3, .None)); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-2", "h3c", "func g(x: i64, y: Option<i64>) -> i32 => 0\nfunc g(x: bool, y: Option<bool>) -> i32 => 1\n" + KHead + "    return g(if c => undefinedName else => 3, .None)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "perm", IdentityT + GPermuted + KHead + "    return g(if c => undefinedName else => identity(3), true)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => identity(3), true); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "perm_t", IdentityT + GPermuted + KHead + "    return g(if c => identity(4) else => identity(3), true)\n", "AmbiguousBinding_Kd g(if c => identity(4) else => identity(3), true)")]
+    [InlineData("U1.6 cert", "p2", IdentityT + GTargetPairs + GNameCall, "AmbiguousBinding_Kd g(if c => undefinedName else => identity(3), .None); UnprovenConstraint_Kd T; UnprovenConstraint_Kd U; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "p2_t", IdentityT + GTargetPairs + GTwinCall, GTwinAmbiguous + "; UnprovenConstraint_Kd T; UnprovenConstraint_Kd U")]
+    [InlineData("U1.6 cert", "p1", IdentityT + GPairWholes + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "p1_t", IdentityT + GPairWholes + GTwinCall, GTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c1", IdentityT + GEquatables + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "c1_t", IdentityT + GEquatables + GTwinCall, GTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c2", IdentityT + GAddables + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "c2_t", IdentityT + GAddables + GTwinCall, GTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c3_order", IdentityT + GEquatableAddable + "func g<U>(x: U, y: Option<bool>) -> i32\n    U is Addable<U>\n    U is Equatable\n    return 1\n" + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "c3_t", IdentityT + GEquatableAddable + "func g<U>(x: U, y: Option<bool>) -> i32\n    U is Addable<U>\n    U is Equatable\n    return 1\n" + GTwinCall, GTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c3_same", IdentityT + GEquatableAddable + "func g<U>(x: U, y: Option<bool>) -> i32\n    U is Equatable\n    U is Addable<U>\n    return 1\n" + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "c4", IdentityT + GClauseSlots + GSlotsNameCall, GSlotsNameAmbiguous)]
+    [InlineData("U1.6 cert", "c4_t", IdentityT + GClauseSlots + GSlotsTwinCall, GSlotsTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c7_chain", IdentityT + GChain + "func g<U, W>(x: U, y: Option<W>, z: Option<bool>) -> i32\n    U is Addable<W>\n    return 1\n" + GSlotsNameCall, GSlotsNameAmbiguous)]
+    [InlineData("U1.6 cert", "c7_t", IdentityT + GChain + "func g<U, W>(x: U, y: Option<W>, z: Option<bool>) -> i32\n    U is Addable<W>\n    return 1\n" + GSlotsTwinCall, GSlotsTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c7_same", IdentityT + GChain + GChainB + GSlotsNameCall, GSlotsNameAmbiguous)]
+    [InlineData("U1.6 cert", "c8_order_chain", IdentityT + "func g<T, X>(x: T, y: Option<X>, z: Option<i64>) -> i32\n    X is Equatable\n    T is Addable<X>\n    return 0\n" + GChainB + GSlotsNameCall, GSlotsNameAmbiguous)]
+    [InlineData("U1.6 cert", "c9_mixed", IdentityT + GMixed + GSlotsNameCall, GSlotsNameAmbiguous)]
+    [InlineData("U1.6 cert", "c9_t", IdentityT + GMixed + GSlotsTwinCall, GSlotsTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c5", IdentityT + GDuplicateHeads + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "c5_t", IdentityT + GDuplicateHeads + GTwinCall, GTwinAmbiguous)]
+    [InlineData("U1.6 cert", "c6", IdentityT + GDifferentClauses + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "c6_t", IdentityT + GDifferentClauses + GTwinCall, GTwinAmbiguous)]
+    [InlineData("U1.6 cert", "sel3_order", IdentityT + GSelectorA + "func g<V, p/W>(x: (V, W), y: Option<bool>) -> i32 => 1\n" + KHead + "    return g(if c => undefinedName else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), identity(4)), .None); UnprovenConstraint_Kd T; UnprovenConstraint_Kd W; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "sel3_t", IdentityT + GSelectorA + "func g<V, p/W>(x: (V, W), y: Option<bool>) -> i32 => 1\n" + KHead + "    return g(if c => (identity(5), identity(6)) else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => (identity(5), identity(6)) else => (identity(3), identity(4)), .None); UnprovenConstraint_Kd T; UnprovenConstraint_Kd W")]
+    [InlineData("U1.6 cert", "sel3_swap", IdentityT + GSelectorA + "func g<V, p/W>(x: (W, V), y: Option<bool>) -> i32 => 1\n" + KHead + "    return g(if c => undefinedName else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), identity(4)), .None); UnprovenConstraint_Kd T; UnprovenConstraint_Kd W; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "sel3_swap_t", IdentityT + GSelectorA + "func g<V, p/W>(x: (W, V), y: Option<bool>) -> i32 => 1\n" + KHead + "    return g((identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g((identity(3), identity(4)), .None); UnprovenConstraint_Kd T; UnprovenConstraint_Kd W")]
+    [InlineData("U1.6 cert", "sel2_order", IdentityT + GPairSlots + KHead + "    return g(if c => undefinedName else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), identity(4)), .None); " + GPairSlotRecords + "; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "sel2_t", IdentityT + GPairSlots + KHead + "    return g(if c => (identity(5), identity(6)) else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => (identity(5), identity(6)) else => (identity(3), identity(4)), .None); " + GPairSlotRecords)]
+    [InlineData("U1.6 cert", "sel6_whole_join", IdentityT + GWholeSelector + "func g<V, p/W>(x: (V, p/W), y: Option<bool>) -> i32 => 1\n" + KM + "    return g(if c => undefinedName else => (identity(3), m), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), m), .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "sel6_swap", IdentityT + GWholeSelector + "func g<p/W, V>(x: (p/W, V), y: Option<bool>) -> i32 => 1\n" + KM + "    return g(if c => undefinedName else => (identity(3), m), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), m), .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "sel6_t", IdentityT + GWholeSelector + "func g<V, p/W>(x: (V, p/W), y: Option<bool>) -> i32 => 1\n" + KM + "    return g(if c => (identity(4), m) else => (identity(3), m), .None)\n", "AmbiguousBinding_Kd g(if c => (identity(4), m) else => (identity(3), m), .None)")]
+    [InlineData("U1.6 cert", "pe1", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + KV + "    return g(if c => undefinedName else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => .None, v, .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "pe1_t", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + "func k(c: bool, v: i64, w: Option<i64>) -> i32\n    return g(if c => w else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => w else => .None, v, .None)")]
+    [InlineData("U1.6 cert", "pe1_d", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + "func k(c: bool, v: i64, w: Option<bool>) -> i32\n    return g(if c => w else => .None, v, .None)\n", "NoApplicableOverload_Kd g(if c => w else => .None, v, .None)")]
+    [InlineData("U1.6 cert", "pe3", GEvidenceFixed + "func g<U>(x: Option<U>, y: U, z: Option<bool>) -> i32 => 1\n" + KV + "    return g(if c => undefinedName else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => .None, v, .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "pe3_t", GEvidenceFixed + "func g<U>(x: Option<U>, y: U, z: Option<bool>) -> i32 => 1\n" + "func k(c: bool, v: i64, w: Option<i64>) -> i32\n    return g(if c => w else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => w else => .None, v, .None)")]
+    [InlineData("U1.6 cert", "fe", IdentityT + FFunctions + KHead + "    return f(if c => undefinedName else => idg, .None)\n", "AmbiguousBinding_Kd f(if c => undefinedName else => idg, .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "fe_t", IdentityT + FFunctions + KHead + "    return f(if c => idg else => idg, .None)\n", "AmbiguousBinding_Kd f(if c => idg else => idg, .None)")]
+    [InlineData("U1.6 cert", "rh_head", IdentityT + GHeads + KHead + "    return g(if c => undefinedName else => identity(.None), .None)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "rh_head_t", IdentityT + GHeads + "func k(c: bool, o: Option<i64>) -> i32\n    return g(if c => o else => identity(.None), .None)\n", "")]
+    [InlineData("U1.6 cert", "rl_len", IdentityT + GLengths + KHead + "    return g(if c => undefinedName else => identity([1, 2]), .None)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "rl_len_t", IdentityT + GLengths + "func k(c: bool, a: [2 of i64]) -> i32\n    return g(if c => a else => identity([1, 2]), .None)\n", "")]
+    [InlineData("U1.6 cert", "inc_pair", IdentityT + GIncPairs + KHead + "    return g(if c => undefinedName else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), identity(4)), .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "inc_pair_t", IdentityT + GIncPairs + KHead + "    return g((3, true), .None)\n", "")]
+    [InlineData("U1.6 cert", "cnt", IdentityT + GCounts + GNameCall, "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "cnt_t", IdentityT + GCounts + KHead + "    return g(true, .None)\n", "")]
     public void AnAmbiguityRestsOnlyWhereTheKeptCandidatesDifferAtAFailedPart(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
