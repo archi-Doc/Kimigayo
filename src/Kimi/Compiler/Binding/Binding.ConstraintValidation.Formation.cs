@@ -75,7 +75,8 @@ public sealed partial class Binding
         }
 
         this.BeginProof();
-        var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
+        var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
+            ConstraintProof.Unknown : ConstraintProof.Proven;
         return CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
     }
 
@@ -142,7 +143,10 @@ public sealed partial class Binding
         var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope) : ConstraintProof.Unknown;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckDeclaredTypeConstraints(parameter, scope) : ConstraintProof.Unknown, true);
+            proof = CombineProof(
+                proof,
+                function.Parameters[i].Type.BoundType is { } parameter ? this.CheckDeclaredTypeConstraints(parameter, scope) : ConstraintProof.Unknown,
+                true);
         }
 
         return proof;

@@ -6106,6 +6106,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - nin (`f: (Box<Array<i32>>) -> i32` under `T is Copy`): the declaration's `UnsatisfiedConstraint_Kd` records stay; the call's
     re-proof `NoApplicableOverload_Kd` goes; the selected call's instantiated input and the Closure's parameter add
     `UnsatisfiedConstraint_Kd` (+2). All dependent on the declaration's record (Q13).
+  - Acceptance moves (named under Q13; the review's N2): valid nested signatures are accepted at the three uses (call, function
+    reference, contract matching), which the re-proof of a nested Function Type's input rejected with `UnprovenConstraint_Kd`;
+    ResultPremiseTest pins them as b2valid, refvalid and ctrvalid.
   - Rejected: G375's published-verdict column (a function's signature verdict as SourceStates' row). One publication before the
     bodies does not cover two kinds of reader: inferred stored Types' initializers, which bind before the first
     `ValidateConformances`, and nested named functions, whose headers bind with their enclosing body. U1 STOP (held, not landed);
