@@ -14814,6 +14814,13 @@ structure is recorded here by the unit that first implements it.
     `C/Emission`); and the reduction plan's table (`WindowsProfile` to `src/Kimi/Build` at R9). For the target half only: their reason,
     nothing moves twice, holds for the toolchain identity, which R9 still moves with the toolchain, and not for the target profile, which
     P2-P12 read and R9's move cannot take.
+  - Amended (PLAN G363, 2026-11-02): the known duplicate is gone; the layout has one copy, `WindowsProfile.DataLayout`. `IrTarget`
+    publishes the pointer width only (`IrTarget(int PointerWidth)`): its port of `Triple::computeDataLayout`, the triple parts only that
+    port read (vendor, object format, component names, nine predicates and `OsMajorVersion`) and `CoreModelTest`'s tie are deleted. The
+    emptiness check stood for one fact, that an architecture without an LLVM backend (AMDIL, HSAIL and their 64-bit forms, Kalimba,
+    SHAVE, RenderScript32/64) has no IR target; that fact is now `IrTarget.Create`'s pointer width 0 (it was 32 or 64 for them),
+    `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s one check. Each width is an explicit row per architecture; an
+    unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, R5;
   design `draft/Sketches/R5/LN-design.md` revision 2, accepted by design review 3; the owner's 「両レーンで GO！」) IMPL 20.1 names a source by
   its project-relative path with `/` separators. Five copies disagreed on the base (the root's or the source's own project), the
@@ -15007,3 +15014,19 @@ structure is recorded here by the unit that first implements it.
     before), `EachRepeatedSettingIsALoadFailure` (five notes, the invalid PackageId included; one `TinyhandException` before), `DependencyConfigurationTest.
     EachGraphFailureIsReported` (two settings and three supply records; one before), `CheckServiceTest.EachTestSettingFailureIsReported`
     (three records; one before).
+- **R5-M178 The built-in Conditions `os` and `arch` by IMPL 20.2.1's table: `TargetTriple.OsFamily` and `ArchFamily` (PLAN G370)**
+  (2026-11-02, R5; G363's review) Major.
+  - Cause: `Compilation.Prepare` derived `os` from LLVM's OS classification (`OsType`: two switch arms, any other OS its enum name)
+    and `arch` from the `Architecture` enum's name, so `darwin` gave `darwin`, `freebsd13.2` `freebsd`, `armv7` `arm` and `x86_64h`
+    `x86_64`, where IMPL 20.2.1 gives `macos`, `unknown`, `unknown` and `unknown`.
+  - Rule: `TargetTriple` publishes `OsFamily` and `ArchFamily` from one table of IMPL 20.2.1's rows, a row per spelling: the OS
+    component without its version suffix (digits and dots) and the architecture component exactly; any other spelling, or no OS
+    component, is `unknown`. `Compilation.Prepare` reads them; `windows`, `linux` and `macos` stay `os == ...` (SPEC 19.2.1). A new
+    spelling adds a row. Windows triples keep their values.
+  - Replaces: Compilation's switch and enum-name lowering, and `TargetTriple.Os` with LLVM's OS parse (`ParseOs`) and `OsType`, whose
+    one reader was that switch. `Arch` (LLVM's architecture with its aliases) stays for the pointer width (R5-M174): another contract.
+  - IMPL's `x86` row is unreachable: the LLVM architecture parse does not know `x86`, so an `x86-...` triple has no IR target
+    (`UnsupportedTarget_Kd`). LLVM's aliases outside the table (`x86_64h`, `i786`, `arm64e`, `arm64ec`) are `unknown`.
+  - Rejected: keying the table on `OsType` and `Architecture` (LLVM's prefix and alias matches would give `linuxfoo`, `x86_64h` or
+    `arm64e` a family IMPL does not list, and keep a 320-line OS parse for one Condition); a switch per form in Compilation (a
+    consumer deciding what the triple's owner publishes).

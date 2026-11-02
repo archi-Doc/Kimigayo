@@ -270,6 +270,10 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **LN (R5; batches 86 and 87; DECISIONS R5-M175; design `draft/Sketches/R5/LN-design.md`):** one owner of a source's logical name: Kotonoha stores each module's base with explicit change points and answers `LogicalName`; `CodeContext.SourceName` is every reader's one path (through `SourceModule`); hover names live; `Kotonoha.CheckNames` reports each non-NFC name and each simple-case-fold group (Unicode 15.0.0 data, `GenerateNameUnicode.ps1`); with G289 (3) and G346. Follow-ups: G364, G367.
 <a id="g364"></a>
 - **G364 (R5; batch 88; DECISIONS R5-M176):** a module's sources are parsed in SPEC 6.2.1's logical declaration order: `Kotonoha.AddSources` sorts each call's documents by logical name under `UnicodeNameHelper.ScalarOrder` (UTF-8 byte order on UTF-16), `Project` gives each module one call (product, TestSources and in-memory documents together), and the test catalog and fragment documentation read the same order. Before, TestSources came last and names were ordered as UTF-16. SPEC 23.2.3's unit order, not yet built, is to use the same comparer.
+<a id="g363"></a>
+- **G363 (R5; batch 89; DECISIONS R5-M174's amendment):** `IrTarget` publishes the pointer width only: the unread LLVM data-layout port and the `TargetTriple` parts only it read are gone (about 1,000 lines); the eight architectures without an LLVM backend keep their rejection as width 0, and the 64-bit architectures are listed (no silent default). A differential probe over 2.1 M triple strings kept every accepted triple, width and diagnostic.
+<a id="g370"></a>
+- **G370 (R5; batch 89; DECISIONS R5-M178):** the built-in Conditions `os` and `arch` follow IMPL 20.2.1's table (`TargetTriple.OsFamily` and `ArchFamily`; darwin and macosx give `macos`, any other OS or architecture `unknown`); before, they were the triple's enum names. Windows values are unchanged; `ParseOs` and `OsType` are gone.
 
 ## Retired audit records
 
