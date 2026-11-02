@@ -132,13 +132,20 @@ public sealed partial class Binding
 
     // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument) and completed at its
     // known parameter Type with no selection probe, since a value call has one candidate: a Typed part keeps its own Type, which the
-    // call adapts; every other part is bound at the parameter Type, a Literal at its literal input Type. Null when it fails.
-    private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
+    // call adapts; every other part is bound at the parameter Type, a Literal at its literal input Type. Null when it fails. Revision B
+    // (BU-80; SPEC 10.1, 10.5.1): the one signature applies only when the part fits it as at a named call (FitArgument), its argument
+    // sources one by one; a part that does not leaves the call no candidate.
+    private BoundType? CompleteValueCallPart(InvocationKoto call, Koto part, BoundType parameter, BindingScope scope)
     {
         var literal = IsUnfittedLiteral(part);
         if (!this.PrepareArgument(part, scope, null, callableContext: true))
         {
             return null;
+        }
+
+        if (this.FitArgument(part, parameter, scope, call, out _) == CandidateApplicability.Inapplicable)
+        {
+            return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
         if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)

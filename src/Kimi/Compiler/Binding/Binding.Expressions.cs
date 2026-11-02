@@ -210,7 +210,7 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected))
+        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected, scope))
         {
             return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later, a result for its call.
         }

@@ -272,6 +272,23 @@ public sealed partial class Binding
             {
                 case PartKind.Aggregate:
                     return this.InferComposite(pattern, start, end, late);
+                case PartKind.Join:
+                    // SPEC 10.5.1, 10.8 (revision B, BU-80): each source is evidence as an argument at the position, all agreeing; a failed
+                    // one is a wildcard. A position the solution already fixes takes no evidence: each source is fitted there (FitsPosition).
+                    if (binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null)
+                    {
+                        return true;
+                    }
+
+                    for (var i = start; i < end; i++)
+                    {
+                        if (!binding.PartFailed(binding.positionParts[i]) && !this.InferArgument(pattern, binding.positionParts[i], late))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
@@ -473,6 +490,14 @@ public sealed partial class Binding
                     return misfit;
                 case PartKind.Aggregate:
                     return this.DefaultChildren(start, end, pattern, unsolved, ref applied);
+                case PartKind.Join: // Revision B (BU-80): each source's Literal leaves take their own defaults.
+                    Koto? leaf = null;
+                    for (var i = start; i < end; i++)
+                    {
+                        leaf = this.DefaultPart(binding.positionParts[i], pattern, unsolved, ref applied) ?? leaf;
+                    }
+
+                    return leaf;
                 default:
                     return null;
             }

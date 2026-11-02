@@ -16,13 +16,12 @@ namespace Kimi.Compiler;
 //   position (14.9.2 step 2, AddPartsAt). AddResultPart forms every part of a child position (Never dropped, the forms that deliver it
 //   passed, a waiting join flattened). A position of several parts has one kind (PositionKind), typed first
 //   (SPEC 14.9.2 step 2): Typed at its typed parts' common Type (one evidence) whatever else it holds, its literals and the parts
-//   awaiting their call beside them taking it (step 3); a position whose typed parts have no common Type waits (Call; U1.6g (a)), and
-//   one with no typed part, and so no candidate, waits (Call) when a part awaits its call; then Aggregate when its parts are
-//   aggregates, Literal when only literals remain; with no part (Never in every source, or only failed parts) it is Typed with no
-//   Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2 U3's D6). A failed part (PartFailed) makes its
-//   position Call, Waiting under 10.5.1 (U1.6h site 3; DECISIONS BU-78): it is no evidence and fits every candidate (SPEC 23.1.2), and
-//   its siblings are checked at the selected candidate's Type. Every
-//   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
+//   awaiting their call beside them taking it (step 3); argument sources with no common kind (revision B, DECISIONS BU-80) are Join,
+//   each source an argument at the position: typed parts with no common Type, parts awaiting their call beside a literal or an
+//   aggregate, and any position with a failed part (PartFailed), which fits every candidate and is no evidence (SPEC 23.1.2, rule W);
+//   parts that all await their call wait (Call); then Aggregate when its parts are aggregates, Literal when only literals remain; with
+//   no part (Never in every source) it is Typed with no Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2
+//   U3's D6). Every reader (the evidence, the defaults, IndependentPositionType, the fit, step 3) takes the kind from it.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
 //   positions and the parameter Type at each; ChildAt, an aggregate part's parts at a child position, which the held-part walk
 //   (AddHeldParts) shares; PositionKind.
@@ -144,10 +143,9 @@ public sealed partial class Binding
         => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
 
     // The kind of a position of several parts, a join's, typed first (SPEC 14.9.2 step 2): Typed at the common Type of its typed parts,
-    // whatever else it holds, or with no Type when it has no part; Call when its typed parts have no common Type (U1.6g (a)) or, with
-    // no typed part, when a part awaits its call
-    // (AwaitsCall), then Aggregate when its parts are aggregates, then Literal when only literals remain. A failed part (PartFailed)
-    // makes the position Call (U1.6h site 3; SPEC 10.5.1, 23.1.2): it fixes no complete Type, so the position waits for its call.
+    // whatever else it holds, or with no Type when it has no part; Join (revision B, BU-80; SPEC 10.5.1) for sources fitted one by one:
+    // a failed part among them (rule W), typed parts with no common Type, or parts awaiting their call (AwaitsCall) beside a literal or
+    // an aggregate; Call when its parts all await their call; then Aggregate when its parts are aggregates, then Literal.
     private PartKind PositionKind(int start, int end, out BoundType? type)
     {
         type = null;
@@ -173,7 +171,7 @@ public sealed partial class Binding
 
         if (failed)
         {
-            return PartKind.Call; // U1.6h site 3: Waiting under 10.5.1.
+            return PartKind.Join; // SPEC 23.1.2 (rule W, BU-79): a wildcard among sources fitted one by one.
         }
 
         if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), out var typed)) is not null)
@@ -181,14 +179,11 @@ public sealed partial class Binding
             return PartKind.Typed;
         }
 
-        // SPEC 10.5.1, 14.9.2 step 2 (U1.6g (a)): typed parts with no common Type fix no Type without the call: the position waits.
-        return (waits || typed, literal) switch
-        {
-            (true, _) => PartKind.Call,
-            _ when this.PartsShape(start, end) is not null => PartKind.Aggregate,
-            (_, true) => PartKind.Literal,
-            _ => PartKind.Typed,
-        };
+        // SPEC 10.5.1 (revision B, BU-80): argument sources with no common kind are fitted one by one, each at the position: typed parts
+        // with no common Type, or parts that await their call beside a literal or an aggregate. Parts that all await their call wait.
+        var shape = this.PartsShape(start, end) is not null;
+        return typed || (waits && (literal || shape)) ? PartKind.Join : waits ? PartKind.Call : shape ? PartKind.Aggregate :
+            literal ? PartKind.Literal : PartKind.Typed;
     }
 
     // The first literal part of [start, end), whose default a Literal position takes (SPEC 10.5.1, 10.2.1).

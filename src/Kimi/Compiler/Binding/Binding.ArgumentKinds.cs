@@ -43,7 +43,7 @@ namespace Kimi.Compiler;
 //   row (every kind awaits but Literal), TakeArgument the one writer of Taken, and a writer of another column keeps the rest of the
 //   relation (RecordPart keeps Taken; SlotSolution.Default records a Literal's default through RecordPart); a record TakeArgument
 //   creates reads as an absent one; a producer records every part that awaits its call and a Literal control-flow part: P1
-//   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function or Case result (AwaitsCallAtResult) or a Reference one
+//   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function, Case or array literal result (AwaitsCallAtResult) or a Reference one
 //   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
@@ -151,7 +151,10 @@ public sealed partial class Binding
     // SPEC 10.5.1 (DECISIONS BU-43), P2: whether an anonymous function or a contextual Case reached without an expected Type is a result
     // of a call's control-flow argument at a position its call completes (CallableTarget): it then awaits that call, its kind recorded
     // once, and the call completes it as a waiting argument (TakeWaiting).
-    private bool AwaitsCallAtResult(Koto node, BoundType? expected)
+    // Revision B (BU-80; SPEC 4.3.1, 10.5.1): so does an array literal there, an argument source fitted per candidate, since an
+    // established Array is never retyped (4.4.1). Its elements are bound as its join's sources are, a literal or a nested join among
+    // them waiting for its position, so the position walk takes their parts (AddResultPart); a fill's length is bound with them.
+    private bool AwaitsCallAtResult(Koto node, BoundType? expected, BindingScope scope)
     {
         if (expected is not null || node.BindingState != BindingState.Unvisited)
         {
@@ -159,12 +162,26 @@ public sealed partial class Binding
         }
 
         var kind = ClassifyPart(node);
-        if (kind is not (PartKind.Function or PartKind.Case) || CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target))
+        if ((kind is not (PartKind.Function or PartKind.Case) && node is not ArrayLiteralKoto) || CallableTarget(node) is not { } target ||
+            !this.UnderArgumentProbe(target))
         {
             return false;
         }
 
         this.RecordPart(node, kind);
+        if (node is ArrayLiteralKoto array)
+        {
+            if (array.FillLength is { } length)
+            {
+                array.FillCount = this.BindLength(length, scope);
+            }
+
+            foreach (var element in array.Elements)
+            {
+                _ = this.BindNode(element, scope); // An element's failure is its own record.
+            }
+        }
+
         return true;
     }
 
@@ -228,6 +245,11 @@ public sealed partial class Binding
     private bool WaitsForCall(Koto target)
         => this.argumentProbe is { } probe && this.RecordedPart(probe).Kind is PartKind.Literal or PartKind.Call or PartKind.Join &&
             this.UnderArgumentProbe(target);
+
+    // SPEC 10.5.1, 14.9.2 step 2 (revision B, BU-80): whether a join is the argument probe's control flow before its call has taken it:
+    // its sources are argument sources, which its call fits per candidate, so it has no common-Type search before selection.
+    private bool IsArgumentJoin(Koto join)
+        => this.argumentProbe is { } probe && ReferenceEquals(ControlFlowExpression(probe), join) && !this.TakenByCall(probe);
 
     // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
     // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results

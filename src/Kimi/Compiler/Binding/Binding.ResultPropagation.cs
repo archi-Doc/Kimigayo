@@ -146,6 +146,7 @@ public sealed partial class Binding
         return node switch
         {
             TupleLiteralKoto tuple => this.PartsAwait(tuple.Elements),
+            ArrayLiteralKoto array when this.AwaitsCall(array) => Awaiting.Call, // An argument source (P2, revision B): its call fits it.
             ArrayLiteralKoto array => this.PartsAwait(array.Elements),
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) ? this.SourcesAwait(context) : Awaiting.None,
@@ -529,7 +530,11 @@ public sealed partial class Binding
             var held = waited && this.HoldsWaitedResult(source);
             var awaits = !waited && type is not null && this.AwaitsPosition(source);
             var fit = default(ComparisonFailure);
-            if (waited ? !held && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node, out fit)))
+
+            // A waited source that step 3 bound above (BindStepThree), a part its call completes beside a typed one at a position of an
+            // argument source (revision B), is taken at its Type as a deferred one is.
+            var taken = waited && source.BindingState == BindingState.Resolved && !this.PartFailed(source);
+            if (waited ? !held && !taken && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node, out fit)))
             {
                 continue;
             }
@@ -590,8 +595,8 @@ public sealed partial class Binding
     // array results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take its typed parts' common Type, with no
     // call; at depth 0 that is DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no
     // part (Never or failed parts only), and a waiting part there is a broken contract. Aggregate: each child position at its element of
-    // `target`. The sources are then bound at `target` as wholes (BindWaitedSources), each aggregate adapting its bound parts to its
-    // element Type (7.7.4, per element).
+    // `target`. Join (revision B): each source as its own position. The sources are then bound at `target` as wholes (BindWaitedSources),
+    // each aggregate adapting its bound parts to its element Type (7.7.4, per element).
     private void BindStepThree(int start, int end, BoundType? target)
     {
         switch (this.PositionKind(start, end, out var common))
@@ -616,12 +621,24 @@ public sealed partial class Binding
                 }
 
                 return;
+            case PartKind.Join: // Revision B (BU-80): each source as its own position; a failed one takes no part.
+                for (var i = start; i < end; i++)
+                {
+                    if (!this.PartFailed(this.positionParts[i]))
+                    {
+                        var own = this.OpenPosition(this.positionParts[i]);
+                        this.BindStepThree(own, this.positionParts.Count, target);
+                        this.ClosePosition(own);
+                    }
+                }
+
+                return;
             case PartKind.Aggregate: // A Dictionary, taken whole (BU-43): its source's binding at `target`, BindWaitedSources' loop.
             case PartKind.Literal: // Its literals take `target` with their sources, BindWaitedSources' loop.
             case PartKind.Call: // Its parts await the call, which binds them at its candidate's Type (CompleteArguments, the loop).
                 return;
             default:
-                throw new InvalidOperationException("A position is Typed, Aggregate, Literal or Call (PositionKind).");
+                throw new InvalidOperationException("A position is Typed, Join, Aggregate, Literal or Call (PositionKind).");
         }
     }
 

@@ -166,6 +166,21 @@ public sealed partial class Binding
     {
         var end = this.positionParts.Count;
         var kind = this.PositionKind(start, end, out _);
+        if (kind == PartKind.Join)
+        {
+            // SPEC 10.5.1 (revision B, BU-80): each source fits as an argument at the position; a failed one fits every candidate.
+            for (var i = start; i < end; i++)
+            {
+                var part = this.positionParts[i];
+                if (!this.PartFailed(part) && this.FitArgument(part, type, this.ConstraintScope(part), part, out _) == CandidateApplicability.Inapplicable)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
