@@ -290,6 +290,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G371 (R5; batch 92; R5-M172's amendment):** the release kinds (`RuntimeAbi.StaticReleaseKind`, `HeapReleaseKind`) and `__kimi_free`'s bound (`WindowsProfile.UnmappedBound`) reach the runtime templates, the test runtime included, through `RuntimeAbi.Expand`'s one table; the arithmetic encodings are checked by a test; every expanded text byte-identical.
 <a id="g237"></a>
 - **G237 (R5; batch 92; DECISIONS R5-M180):** every location the language server sends names a document as the client spelled it (`LspSession.UriOf`), diagnostics, related locations, code actions and hover links alike; one canonical file-URI builder (`SourceIdentity.ToUri`, which no longer unescapes `%41` into another file); a closed document's list is cleared under the spelling it was sent with.
+<a id="g372"></a>
+- **G372 (R5; batch 93; R5-M60's amendment):** every Function value's drop glue is one item (the collector keys Function Types by `() -> ()`: the body reads only the FunctionHandle row; a closure environment keeps its own glue): 35 duplicates gone from 31 fixtures. An outer handle over a shared one does not exist (SPEC 3.3, 8.7.3); sharing aggregate glues of one shape was rejected (a new key representation for about 3 KB of duplicates).
 
 ## Retired audit records
 
