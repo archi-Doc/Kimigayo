@@ -46,7 +46,8 @@ public sealed partial class Binding
     {
         // F1 (R4-M164): each argument's contribution by its part's kind (PartContribution), once the expected result has filled the
         // slots no evidence bound (`unbound`, which keeps those it solved); a Signature position whose parameter Type names such a slot
-        // is a Result position, which the contributor of the expected result proves (SPEC 10.3).
+        // is a Result position, which the contributor of the expected result proves (SPEC 10.3). A Case construction's is the same
+        // rule over its payloads (ContributePayloads).
         internal readonly void Contribute(int[] mapping, ref SlotSet unbound)
         {
             for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
@@ -59,9 +60,16 @@ public sealed partial class Binding
 
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
-                var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
-                this.Contributions[i] = contribution == Contribution.Signature && this.Function.Parameters[mapping[i]].Type.BoundType is { } pattern &&
-                    MentionsSlots(pattern, this.SlotOwner, unbound) ? Contribution.Result : contribution;
+                this.Contributions[i] = this.ContributionAt(i, this.Function.Parameters[mapping[i]].Type.BoundType, unbound);
+            }
+        }
+
+        // F1 of a Case construction (R4-M164 U4): each payload's contribution, `solved` holding the slots its expected Type fixed.
+        internal readonly void ContributePayloads(ReadOnlySpan<Koto> payload, SlotSet solved)
+        {
+            for (var i = 0; i < payload.Length; i++)
+            {
+                this.Contributions[i] = this.ContributionAt(i, payload[i].BoundType, solved);
             }
         }
 
@@ -215,6 +223,15 @@ public sealed partial class Binding
             }
 
             return misfit;
+        }
+
+        // The i-th argument's contribution at a position whose parameter Type is `pattern`; `solved` holds the slots the expected result
+        // solved.
+        private readonly Contribution ContributionAt(int i, BoundType? pattern, SlotSet solved)
+        {
+            var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
+            return contribution == Contribution.Signature && pattern is not null && MentionsSlots(pattern, this.SlotOwner, solved)
+                ? Contribution.Result : contribution;
         }
 
         // SPEC 10.8: the evidence of the parts at a position (Binding.ArgumentKinds.Positions.cs) for the slots of its pattern.

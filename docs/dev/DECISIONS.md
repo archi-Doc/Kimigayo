@@ -6162,6 +6162,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     part, argument part) beside which it is met consecutively: the pattern-identical forms are linear (an Evidence input whose argument
     Type is its instantiated parameter, TypeDagScalingTest's `ref` row: unfinished after 60 s on 15405315f, 0.15 s after), while
     argument parts that diverge and alternate beside a shared pattern part can still cost 2^n, as before U1e (an open issue).
+  - U4 (C4; cx2, cx5): a Case construction is a call. Its F1 is the call's rule over its payloads (`ContributionAt`, which
+    `Contribute` and `ContributePayloads` share); a slot its expected Type fixes, which a bare qualifier takes, is one the expected
+    result solved. Where the expected Type leaves its Origins open, the call's solve fixes them (`SolveConstructionOrigins`:
+    SolveLate's bounds, each Signature payload's premises over its instantiated payload Type, then `SolveOriginInference`, which
+    adds the enum's clauses), so a clause is judged after the meet (cx5 valid, cx1's `s` the meet). After completion each payload
+    takes the call's walk, `RequireInputPremises` by its contribution, published as a call's (cx2: `UnsatisfiedOriginRelation_Kd
+    .None`). Payload operations keep no AdaptedType (HIR and MIR read it): the walk reads the adapted Types from a scratch buffer.
+    Kept: CompletePayloads' fit and `CompleteEnumAcquisitions`' Type-formation check. Open: SolveLate's and the value call's loops
+    (outside U4's files) are not yet one walk with the construction's.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
