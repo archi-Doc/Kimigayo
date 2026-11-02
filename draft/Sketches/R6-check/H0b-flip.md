@@ -4,7 +4,7 @@ Status: H0's design part b (plan §4.10 rows H0, H1, H3b, H4, H5; PD29, PD12, PD
 record, not authority: what it decides becomes authority only through H0's DEC entry after OQ11's approval (DECISIONS R5-M1), and its
 owner items only by the owner's answers.
 
-Working time (WORKFLOW "Working-time limit", DECISIONS Q12): 2026-11-02 18:01–18:58, one session, within the one-hour limit.
+Working time (WORKFLOW "Working-time limit", DECISIONS Q12): 2026-11-02 18:01–18:24 (about 23 minutes), one session, within the one-hour limit.
 
 Standing request: the owner approved R6-check's division of work on 2026-11-02 (R5 leads H0, H3b, H5's Core side and the windows; R4
 owns the MIR side: H3's publication in `MirReport`, H4, asks A-4/A-5, MIR false rejections; BU owns the Binding side: H1, H7, H11, the
