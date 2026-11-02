@@ -133,11 +133,17 @@ public sealed partial class Binding
         this.EndProof(ConstraintProof.Proven);
     }
 
-    // A read of a declaration's published state (a bound Contract reference reads its declaration's) in its own proof scope, as the check
-    // it replaces was.
+    // A read of a declaration's published state (a bound Contract reference reads its declaration's): inside a proof scope it joins that
+    // scope directly, which is what a scope of its own would hand on (EndProof); outside every scope it settles in its own, as the check it
+    // replaces did.
     private ConstraintProof ReadSourceState(BindingSymbol symbol)
     {
         var declaration = ((DeclarationContainerKoto)symbol.Declaration).BoundSymbol!;
+        if (this.proofNesting != 0)
+        {
+            return this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact);
+        }
+
         this.BeginProof();
         return this.EndProof(this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact));
     }
