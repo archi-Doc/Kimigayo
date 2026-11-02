@@ -369,7 +369,7 @@ public sealed partial class Binding
                                     // SPEC 10.8: every other piece of evidence is in, so a slot of S that is still unbound stays unsolved; the
                                     // candidate stays applicable on its other checks, and the header parts it writes were matched by
                                     // InferClosureHeader. Anything else S lacks keeps the candidate pending.
-                                    if (!MentionsSlots(required, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                                    if (!MentionsSlots(required, CallSlotOwner(function), UnboundSlots(function, arguments, lengths, ref unboundSlots)))
                                     {
                                         return CandidateApplicability.Pending;
                                     }
@@ -394,7 +394,7 @@ public sealed partial class Binding
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
                             if (this.KindOf(argument) != PartKind.Literal &&
-                                MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                                MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, arguments, lengths, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
@@ -432,7 +432,7 @@ public sealed partial class Binding
                         type = solution.Type(pattern);
                         if (type is null)
                         {
-                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, arguments, lengths, ref unboundSlots)))
                             {
                                 // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
                                 open.Add(i);
@@ -478,17 +478,16 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
-            // open position closed by a later literal default still keeps the candidate pending.
-            this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
-            unrepresentable |= this.environmentEvidence;
+            // SPEC 10.8: required structural slots, lengths included, remain rankable. Environment evidence, or an open position closed by
+            // a later literal default, keeps the candidate pending.
+            this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots);
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
-                (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
+                (this.environmentEvidence || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
                 return CandidateApplicability.Pending;
             }
 
-            if (unrepresentable)
+            if (this.environmentEvidence)
             {
                 unsolvedSlots.Clear();
             }
@@ -563,7 +562,7 @@ public sealed partial class Binding
             {
                 // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve an outer input/result slot,
                 // even if its inferred signature would happen to provide that Type: such a slot is unsolved (SPEC 10.8).
-                if (unrepresentable)
+                if (this.environmentEvidence)
                 {
                     return CandidateApplicability.Pending;
                 }

@@ -254,7 +254,8 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     // after selection it is the inference boundary (lp_def1, z2, z3, z5_elem_let, z8_join_let, m_elemN, m_tupN). A nested call whose
     // result holds an unbound length defers under its probe, so the selected parameter, element, join position or Tuple element fixes it
     // (z1, z5_elem, z6_join, z7_tuple); a `[N of i64]` result never fits Unit (z4_ret_inf). The typed twins are valid, conflicting
-    // evidence is NoApplicable (lp_bad), and a literal source binds after selection (lp_one, lp_after).
+    // evidence is NoApplicable (lp_bad), and an array literal source's count is length evidence (lp_after; 4.4.1), beside a failed
+    // source too (lp_one; B2b).
     [Theory]
     [InlineData("lp_def1", LengthG + "func k(c: bool) -> i32\n    return g(if c => identity([3, 4]) else => identity([1, 2]))\n", "UnboundTypeArgument_Kd g(if c => identity([3, 4]) else => identity([1, 2]))")]
     [InlineData("lp_one", LengthG + "func k(c: bool) -> i32\n    return g(if c => undefinedName else => [1, 2])\n", "UnresolvedBinding_Kd undefinedName")]
@@ -278,7 +279,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("m_elemN", Zeros + "func takeAN<length M>(x: [2 of [M of i64]]) -> i32 => 0\nfunc k() -> i32\n    return takeAN([zeros(), zeros()])\n", "UnboundTypeArgument_Kd takeAN([zeros(), zeros()])")]
     [InlineData("m_tupN", Zeros + "func takeTN<length M>(x: ([M of i64], i32)) -> i32 => 0\nfunc k() -> i32\n    return takeTN((zeros(), 1))\n", "UnboundTypeArgument_Kd takeTN((zeros(), 1))")]
     public void AnUnboundLengthIsASlotLikeATypeSlot(string form, string body, string records)
-        => OriginRelationDiagnosticTest.AssertRecords($"{form} [B2a]", body, records, null);
+        => OriginRelationDiagnosticTest.AssertRecords($"{form} [BU-80]", body, records, null);
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
 }

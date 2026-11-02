@@ -97,7 +97,7 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 10.5.1 (D4): whether the result holds a Type or Semantics slot that neither evidence nor a waiting callable fixes with
+        // SPEC 10.5.1 (D4): whether the result holds a Type, Semantics or length slot that neither evidence nor a waiting callable fixes with
         // no outer expectation (OpenWaitingSlots), as a construction's does (HoldsOpenSlot); a constructor's result holds all its slots.
         // Origin slots are not counted.
         internal readonly bool ResultHoldsUnsolved(int[] mapping)
@@ -105,7 +105,7 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
@@ -271,13 +271,13 @@ public sealed partial class Binding
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
-        // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
-        // because it is unsolved.
+        // A slot's own validity: a bound length is Proven and a bound Type slot is checked; an unbound slot, a length or a Type slot, is
+        // Proven only because it is unsolved (SPEC 10.8: Constraints needing it are not judged).
         private readonly ConstraintProof SlotProof(ReadOnlySpan<BoundType?> slots, int slot, SlotSet unbound)
         {
             if (CallOwnSlots(this.Function)[slot] is LengthParameterKoto)
             {
-                return this.Lengths[slot] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown;
+                return this.Lengths[slot] is not null || unbound.Contains(slot) ? ConstraintProof.Proven : ConstraintProof.Unknown;
             }
 
             if (slots[slot] is { } argument)

@@ -9811,6 +9811,23 @@ resumed by R4-M86 (2026-10-20).
     AmbiguityRestingPart, CertainMismatch); PublishJudged, RestJudged, RestOnVerdict, HasOwnCause and FailJudged; IsOwnLength.
   - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
     record blocks; dependent records added or removed are counted by class.
+- **BU-80 Argument sources: a call argument's leaves, found through Tuple and array literals, fills and control-flow expressions, are
+  fitted per candidate; a length is a slot** (2026-11-02; SPEC revision B, the owner's 「1進めて下さい 2(b) 3お願いします」 on the draft
+  `C:\Users\bwff1\AppData\Local\Temp\claude\bu\spec-b\draft.md` with Q1 (b), after 「(a) この方針を採る。SPEC 改訂として、上の境界も
+  含めて扱います。にしましょう。」; PLAN dev c2103f353; units B0-B3 on `claude/bu104-specb`)
+  - Opened by B2a, the part the current text already covers; B2b adds the rule.
+  - **A length is a slot** (SPEC 10.8 collects length constraints with the others). An unbound length is no mismatch, and the
+    Constraints that need it are not judged (SlotProof proves it as an unbound Type slot); after selection it is the inference
+    boundary, UnboundTypeArgument_Kd. The old "an unresolved length remains pending" (UnsolvedSlots' `unrepresentable`) contradicted
+    10.8: it gave fact-less UnprovenConstraint_Kd records (G354's census L418, L443 and L531 (a)) and rejected `takes3(zeros())`.
+    - One own-slot walk: OwnSlot owns the kinds, with one overload per part form (BoundType, BoundLength). MentionsSlots walks
+      Components, the length expression and the length arguments (LengthMentions). UnboundSlots, lengths included, replaces
+      UnboundTypeSlots in TryCandidate's open-position rows. UnsolvedSlots lists an unbound length as unsolved; its `unrepresentable`
+      output is deleted, and environment evidence is read directly.
+  - Supersedes, as decided by B: the U1.6 step 2 length unit's revision-3 STOP (reading A against reading B; design
+    `g216a-p1\u16-len-design.md`, held `held/bu87-len` 3234a728e, which B2a lands without its CertainMismatch part, deleted by BU-79),
+    and the N3 class of G216 (a)'s landing (`landing\b2-classes.md` class 8: under reading A a typed array source typed its join as
+    `Array<T>`, so n3 and n3_v had no candidate). Neither was recorded in DECISIONS.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

@@ -21,8 +21,16 @@ public sealed partial class Binding
         => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
             type.Symbol is { } symbol ? ContainerSlot(function, symbol) : -1;
 
-    // Whether `type` names one of the callee's Type slots in `slots`, directly, as the selector of an `s/U` application or as the target
-    // projection of a pair slot.
+    // The callee's own length slot a length part names itself (its length parameter), -1 for none: OwnSlot at a length part.
+    private static int OwnSlot(BoundLength length, Koto function) => length.Parameter is { } parameter ? ContainerSlot(function, parameter) : -1;
+
+    // Whether a length expression names one of the callee's slots in `slots` (OwnSlot at each length part).
+    private static bool LengthMentions(BoundLength? length, Koto function, SlotSet slots)
+        => length is not null && ((OwnSlot(length, function) is >= 0 and var slot && slots.Contains(slot)) ||
+            LengthMentions(length.Left, function, slots) || LengthMentions(length.Right, function, slots));
+
+    // The one own-slot walk: whether `type` names one of the callee's slots in `slots`, a Type slot directly, as the selector of an `s/U`
+    // application or as the target projection of a pair slot (OwnSlot), or a length slot in its lengths (LengthMentions).
     private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots, int depth = 0)
     {
         if (slots.IsEmpty || depth > 64)
@@ -30,9 +38,17 @@ public sealed partial class Binding
             return false;
         }
 
-        if (OwnSlot(type, function) is >= 0 and var slot && slots.Contains(slot))
+        if ((OwnSlot(type, function) is >= 0 and var slot && slots.Contains(slot)) || LengthMentions(type.LengthExpression, function, slots))
         {
             return true;
+        }
+
+        for (var i = 0; i < type.LengthArguments.Length; i++)
+        {
+            if (LengthMentions(type.LengthArguments[i], function, slots))
+            {
+                return true;
+            }
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -46,13 +62,14 @@ public sealed partial class Binding
         return false;
     }
 
-    // The callee's Type slots that are still unbound.
-    private static SlotSet UnboundTypeSlots(FunctionKoto function, BoundType?[] arguments, ref SlotSet slots)
+    // The callee's own slots that are still unbound, its length slots included (SPEC 10.8: a length is a slot).
+    private static SlotSet UnboundSlots(FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, ref SlotSet slots)
     {
         slots.Clear();
         for (var g = 0; g < CallOwnSlots(function).Count; g++)
         {
-            if (CallOwnSlots(function)[g] is GenericParameterKoto && arguments[g] is null)
+            var own = CallOwnSlots(function)[g];
+            if (own is LengthParameterKoto ? lengths[g] is null : own is GenericParameterKoto && arguments[g] is null)
             {
                 slots.Add(g);
             }
@@ -70,20 +87,15 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8: the required structural slots that no evidence binds, other than an F that a waiting argument binds (SPEC 10.5).
-    // An unresolved length remains pending; structural slots have no fixed-width limit.
-    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
+    // A length slot is a slot like a Type slot (SPEC 10.8); structural slots have no fixed-width limit.
+    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved)
     {
-        unrepresentable = false;
         unsolved.Clear();
         for (var g = 0; g < CallOwnSlots(function).Count; g++)
         {
-            if (CallOwnSlots(function)[g] is LengthParameterKoto)
+            if (CallOwnSlots(function)[g] is LengthParameterKoto ? lengths[g] is null : arguments[g] is null)
             {
-                unrepresentable |= lengths[g] is null;
-            }
-            else if (arguments[g] is null)
-            {
-                unsolved.Add(g);
+                unsolved.Add(g); // SPEC 10.8: an unbound length is a slot like a Type slot.
             }
         }
 
@@ -156,7 +168,7 @@ public sealed partial class Binding
     private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
-        this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved, out _);
+        this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved);
         var firstSlot = this.RentSlotSet(CallSlotCount(selected));
         try
         {
