@@ -159,8 +159,11 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        this.issues.Add(new(obligation.Use, OwnershipRequirement.UnprovenOrigin, Obligation: obligation));
-        return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
+        // DECISIONS BU-85: under complete Binding, the only Binding read here, Binding's Final check leaves every obligation other than
+        // an Origin relation with both ends judged; one here is a broken contract, and it stops the analysis.
+        var relation = obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
+        this.issues.Add(new(obligation.Use, relation ? OwnershipRequirement.UnprovenOrigin : OwnershipRequirement.Internal, Obligation: obligation));
+        return !relation;
     }
 
     // SPEC 3.4: each branch below is one Place route (raw, stored reference, subscript element, Reborrow, object payload, sequence

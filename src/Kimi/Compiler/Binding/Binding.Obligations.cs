@@ -1,13 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // Binding's obligations (DECISIONS BU-85). Responsibility: record each obligation a rule requires (AddObligation), one entry per
 // distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length
 // and call rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at the
 // obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one fails at its use); a Definition
-// obligation still recorded at Final fails its use; a length obligation is verified unless its use failed or no Function scope
-// proves it. Prohibitions: no consumer decides an obligation's verdict from its own reading; it reads Binding's.
+// obligation still recorded at Final fails its use; any other obligation but an Origin relation with both ends is proven or
+// discharged by Final unless it rests on a failed part, and one that is not fails its use as InternalInvariant_Kd. Prohibitions: no
+// consumer decides an obligation's verdict from its own reading; it reads Binding's.
 public sealed partial class Binding
 {
     internal bool IsVerifiedLengthObligation(BindingObligation obligation)
@@ -22,18 +25,50 @@ public sealed partial class Binding
         return (function is not null && IsSignatureLength(obligation.Use, function)) || this.ProveLength(length, function);
     }
 
-    // SPEC 8.1.1, 8.1.2, 23.1.2: the Final pass's verdict on the obligations still recorded; a Definition obligation's use fails with
-    // its Language cause (FailTypeRole).
+    // Whether the local whose Type or initializer holds `use` bound both, so that BindVariableCore discharged the inferences of the
+    // Origins its Type omits (ResolveInitializerOrigins, InferLocalOrigins; SPEC 15.3.6, 15.4.4).
+    private static bool LocalBound(Koto use)
+    {
+        for (var current = use.Parent; current is not null; current = current.Parent)
+        {
+            if (current is VariableKoto local)
+            {
+                return local.InitializerKoto?.BindingState == BindingState.Resolved && local.TypeKoto?.BindingState is null or BindingState.Resolved;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 8.1.1, 8.1.2, 23.1.2: the Final pass's verdict on the obligations still recorded. A Definition obligation's use fails with
+    // its Language cause (FailTypeRole); an Origin relation with both ends is the Origin judgment's. Any other obligation is proven
+    // where it forms or discharged when its local binds, so one left over parts that bound is a broken contract at its use
+    // (InternalInvariant_Kd); over a failed part it rests on that failure (rule W, BU-79).
     private void JudgeObligations()
     {
         for (var i = 0; i < this.obligations.Count; i++)
         {
-            if (this.obligations[i].Deadline == BindingDeadline.Definition)
+            var obligation = this.obligations[i];
+            if (obligation.Deadline == BindingDeadline.Definition)
             {
-                this.FailTypeRole(this.obligations[i]);
+                this.FailTypeRole(obligation);
+            }
+            else if (this.IsUnjudged(obligation))
+            {
+                this.Fail(obligation.Use, BindingFailure.Internal);
             }
         }
     }
+
+    // DECISIONS BU-85: a length not proven at its resolved use, an Origin inference unresolved although its local bound, or any form
+    // other than an Origin relation with both ends.
+    private bool IsUnjudged(in BindingObligation obligation) => obligation switch
+    {
+        { Discharge: OriginDischarge.CallBorrows } or { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null } => false,
+        { Length: not null } => obligation.Use.BindingState == BindingState.Resolved && !this.IsVerifiedLengthObligation(obligation),
+        { Kind: BindingObligationKind.OriginInference } => LocalBound(obligation.Use) && !this.IsVerifiedOriginObligation(obligation),
+        _ => true,
+    };
 
     private void AddObligation(BindingObligation obligation)
     {

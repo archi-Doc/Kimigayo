@@ -3386,6 +3386,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
     for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
     (R4-M4) needs the row; it goes with the old reporter at R6-check.
+    - Amended (R6-check H1b-3, BU-85, 2026-11-03; R4, the ledger table's owner, and R5 agree): row :51 (UnprovenOrigin,
+      UnprovenConstraint_Kd, A5) dropped at H1b-3: no producer on either side (BU's H1b census); supersedes the kept-row sentence.
   - Ledger (mir Functional with `KIMI_MIR_DIFF`, base b26710690 and head): rows 2,953 -> 2,958, open blocking 180 -> 182: c8c1f3f534b0's
     `UnprovenConstraint_Kd` row leaves; the new tests add three `both` `ComparisonLoanConflict_Kd` rows (the capture stores) and three
     old-only A5 rows, open (b) until F4 lands (`a5-old-origins`): the o4/o5 pair's `UnsatisfiedOriginRelation_Kd` and the clause's
@@ -9978,6 +9980,17 @@ resumed by R4-M86 (2026-10-20).
     existing code, `InvalidTypeFormation` (`InvalidTypeFormation_Kd`). Such a program already carries the Parse error
     `MisplacedSyntax_Kd`, so the record is a dependent one added on a rejected program (Q13). The Final check can then never fire
     on a parse-error program.
+  - H1b-3: `JudgeObligations` checks the contract. Every obligation other than a Definition obligation and an Origin relation with
+    both ends is judged by Final:
+    - a length is proven where it forms (H1b-2);
+    - an `OriginInference` is discharged when its local's Type and initializer bind (`ResolveInitializerOrigins`,
+      `InferLocalOrigins`);
+    - no other form is produced.
+
+    One left over bound parts fails its use with `Internal` (`InternalInvariant_Kd`). One over a failed part rests on that failure
+    (rule W, BU-79): the census found all 30 such programs failing at the local's initializer. The old reporter's non-relation
+    branch becomes the same contract (`OwnershipRequirement.Internal`). `UnprovenOrigin` then always names a relation, so
+    `OwnershipIssue.Code` gives it 2 codes, and ledger row :51 is dropped (R4-M112's amendment).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

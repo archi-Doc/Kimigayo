@@ -386,7 +386,7 @@ public sealed class PipelineSwitchTest
         }
 
         Assert.Equal(4, images[OwnershipRequirement.ComparisonLoanConflict].Count);
-        Assert.Equal(3, images[OwnershipRequirement.UnprovenOrigin].Count);
+        Assert.Equal(2, images[OwnershipRequirement.UnprovenOrigin].Count); // DECISIONS BU-85: an unjudged non-relation is Internal.
     }
 
     /// <summary>Lists the code <see cref="OwnershipIssue.Code"/> gives each failure under every combination of the issue's other facts:

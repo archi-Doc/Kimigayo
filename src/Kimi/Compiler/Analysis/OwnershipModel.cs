@@ -202,9 +202,9 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement F
         OwnershipRequirement.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
         OwnershipRequirement.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
         OwnershipRequirement.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-        OwnershipRequirement.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
-            ? Binding.RefutesOriginRelation(longer, shorter, this.Obligation.Value.Body) ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd
-            : DiagnosticCode.UnprovenConstraint_Kd,
+        OwnershipRequirement.UnprovenOrigin => this.Obligation is { Longer: { } longer, Shorter: { } shorter } &&
+            Binding.RefutesOriginRelation(longer, shorter, this.Obligation.Value.Body)
+            ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd,
         OwnershipRequirement.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipRequirement.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipRequirement.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,

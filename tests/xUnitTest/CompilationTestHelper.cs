@@ -85,5 +85,5 @@ internal static class CompilationTestHelper
 
     // The problem codes of an unproven Origin obligation: what is unproven decides the code (OwnershipIssue.Code).
     internal static bool IsUnprovenOrigin(this DiagnosticCode code)
-        => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd or DiagnosticCode.UnprovenConstraint_Kd;
+        => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd;
 }
