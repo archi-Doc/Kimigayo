@@ -5971,6 +5971,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     each.
   - Known: a Field's Function Type result also keeps the Field formation's `UnprovenConstraint_Kd` (that check enters Function Types,
     their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A).
+  - Lost records (BU's review B1): the signature record is a Binding-level relation record, so an independent record elsewhere in
+    the compilation is lost on both pipelines (z1nmv: z1n's `k` beside a double move; indep: the double move in a caller; dev's
+    `MovedPlace_Kd`). Legacy: the old ownership analysis stops beside it, PLAN G56's owner-accepted limit (「G216 (a): (i)」,
+    2026-10-27), until H11. MIR: A1/A5 problems stay unpublished until H3 (DECISIONS R4-M1, R5-M156) and acceptance and records
+    come from the old path, so the same records are lost. Precedents: BU-45's limit ("lost on both pipelines until R6-check and
+    H3") and dev's named result (resmv). Removal condition: H11 and H3. ResultPremiseTest pins z1nmv.
   - Numbering: R4-M162 (dev's highest is R4-M160; `claude/a5-g216a-u21` holds R4-M161).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
