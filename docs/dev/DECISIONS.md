@@ -5778,14 +5778,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (2026-11-02, U2.1 d-revert): the result half is judged where it is written; `RequireNestedResult`, the anonymous result premise
     and TypeOrigins' Result exemption are deleted. The input half (R4-M137) stays.
   - The implementation's own well-formedness (`FailedSignatureWellFormedness`, the owner's (a)) is judged after selection by the
-    selected candidate's fit, never before selection. Every pre-selection fit reads the structural part alone through one entry,
-    `FitsStructuralPartAt` (every Origin binding equal, inside Function Types too): the expected-result filters, the argument and
-    receiver fits, acquisition and adaptation (round 2: the census `r4-notes\g216a-u21\b1r-census.md`), and slot solving through the
-    static `FitsStructuralPart` (`IsStructuralSubtype` deleted). This also takes dev's member-Origin drops (pre1b, apre) out
+    selected candidate's fit, never before selection. Every pre-selection fit of a call's candidates reads the structural part alone
+    through one entry, `FitsStructuralPartAt` (every Origin binding equal, inside Function Types too): the expected-result filters, the
+    argument and receiver fits, acquisition, adaptation and a Closure's or Function Item's erasure (`ErasureSignatureFits`; its Origins
+    and an Item's conditions are `ErasesToFunction`'s after selection) (the census `r4-notes\g216a-u21\b1r-census.md`), and slot
+    solving through the static `FitsStructuralPart` (`IsStructuralSubtype` deleted). This also takes dev's member-Origin drops (pre1b, apre) out
     (SPEC 10.1, 10.3, 15.6.1; landing review B1 and its re-check, 2026-11-02). After selection the call judges each argument's and
     the receiver's whole contract where it collects their fits (`CollectFitBounds`) and records a failure at the argument, where dev
-    gave the call's NoApplicableOverload_Kd (t1d_n). Open: a Callable constraint's proof (SPEC 10.7) is unchanged; no receiver form
-    was found whose required Type differs from the supplied one only in a Function Type's Origins.
+    gave the call's NoApplicableOverload_Kd (t1d_n). Open: a Callable constraint's proof (SPEC 10.7) and a function reference's own
+    candidate selection (`FunctionReferenceApplicability`, by `ContractFits`) are unchanged; an erasure's Origins are judged without the
+    use's premises (`CallableSubtype`, clselctl1); no receiver form was found whose required Type differs from the supplied one only in a
+    Function Type's Origins.
   - Staged: PLAN G351 (a reference's Refuted, fact-less and pending constraint outcomes still record through `referenceConstraints`;
     removal: they route through RequireConstraint, then that record path is deleted). `OriginFitSearch`'s early return for a
     Function component (removal: G216 (a) U2.2 removes the search).

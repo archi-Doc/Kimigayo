@@ -118,6 +118,14 @@ public partial class CallableOriginForwardingTest
 
     private const string HPre = "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\n";
 
+    private const string HStatic = "func h(x: (ref/i32 during static) -> i32, n: i64, b: ref/i32) -> i32 => 1\n";
+
+    private const string KCl = "func k(b: ref/i32, c: ref/i32) -> i32\n    origin c outlives b\n";
+
+    private const string LetCl = "    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n";
+
+    private const string FuncIt = "    func it(x: ref/i32 during c) -> i32 => 0\n";
+
     private const string KPre = "func k(b: ref/i32, c: ref/i32, f: (ref/i32 during c) -> i32) -> i32\n    origin c outlives b\n    return h(f@move, 1, b)\n";
 
     private const string CallableApply = "func apply<F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> Option<ref/(ref/i32)>>\n    return 0\nfunc k(s: ref/i32) -> i32\n";
@@ -157,7 +165,7 @@ public partial class CallableOriginForwardingTest
     // give the relation (t1j_n, t1p_n, cz11, cz12, cz14_n; a header that differs from the target only in its Origins is judged by its
     // erasure, SPEC 7.7.4, design-r2 Amendment 3: cz14) or convert under `origin r outlives q` alone (c2b, c2d, c2e, c2f; inside a tuple or array
     // literal the conversion's own record at the converted value, c2, c4). A conversion at a call argument is the selected
-    // candidate's comparison record at the argument after selection (t1d_n; dev: NoApplicableOverload_Kd; landing review B1). A head
+    // candidate's comparison record at the argument after selection (t1d_n, an Item e1a_n; dev: NoApplicableOverload_Kd; B1). A head
     // whose result relates Origins no clause relates (WeakerHead, LoneInputs) is also its declaration's record (R4-M162); its
     // well-formed form is the valid twin (c2b_c, t1j).
     [Theory]
@@ -176,7 +184,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("e1", LeakX + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
     [InlineData("e1n", LeakX + "func k(q: ref/i32) -> i32\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1")]
     [InlineData("e1a", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    origin q outlives static\n    return use(q, leak1)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
-    [InlineData("e1a_n", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    return use(q, leak1)\n", "NoApplicableOverload_Kd use(q, leak1); UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
+    [InlineData("e1a_n", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    return use(q, leak1)\n", "UnprovenOriginContract_Kd leak1; UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
     [InlineData("e1f", StaticValue + "i32\n    origin q outlives static\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("e1fn", StaticValue + "i32\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("e1r", StaticValue + UseTarget + "\n    origin q outlives static\n    return f@move\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
@@ -269,7 +277,9 @@ public partial class CallableOriginForwardingTest
     // ambiguous, as their controls sel2ctl, sel2cba and aselcba; a lone candidate (sel2one, asel1, aselw1, apre1) and the strictly best
     // i32 candidate (sel4run, as dev selects it) are selected and their comparison is the record; pre1b and apre, a Function Type's member
     // Origin, are ambiguous (dev accepted them); two Function values at one slot (slot1) differ only in Origins, so T takes the first and
-    // the second's comparison is the record, and with `b outlives a` it holds (slot1cba; dev rejected it).
+    // the second's comparison is the record, and with `b outlives a` it holds (slot1cba; dev rejected it). A Closure's or a Function Item's
+    // erasure is fitted by its structure alone (ErasureSignatureFits), so clsel and itsel are ambiguous as the Function value clfv is (dev
+    // accepted them), and a lone candidate's erasure is the record at the argument (clselctl1, itselctl1; dev: NoApplicableOverload_Kd).
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -287,6 +297,11 @@ public partial class CallableOriginForwardingTest
     [InlineData("apre1", HPre + KPre, "UnprovenOriginContract_Kd f@move")]
     [InlineData("slot1", PairFG + CB + "    return pair(f@move, g@move)\n", "UnprovenOriginContract_Kd g@move")]
     [InlineData("slot1cba", PairFG + CBA + "    return pair(f@move, g@move)\n", "")]
+    [InlineData("clsel", HPre + HStatic + KCl + LetCl + "    return h(cl@move, 1, b)\n", "AmbiguousBinding_Kd h(cl@move, 1, b)")]
+    [InlineData("clfv", HPre + HStatic + KCl + LetCl + "    let fv: (ref/i32 during c) -> i32 = cl@move\n    return h(fv@move, 1, b)\n", "AmbiguousBinding_Kd h(fv@move, 1, b)")]
+    [InlineData("clselctl1", HPre + KCl + "    origin b outlives c\n" + LetCl + "    return h(cl@move, 1, b)\n", "UnprovenOriginContract_Kd cl@move")]
+    [InlineData("itsel", HPre + HStatic + KCl + FuncIt + "    return h(it, 1, b)\n", "AmbiguousBinding_Kd h(it, 1, b)")]
+    [InlineData("itselctl1", HPre + KCl + "    origin b outlives c\n" + FuncIt + "    return h(it, 1, b)\n", "UnprovenOriginContract_Kd it")]
     public void ApplicabilityJudgesOnlyTheStructuralPart(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

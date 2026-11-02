@@ -148,7 +148,7 @@ public sealed partial class Binding
 
         // SPEC 7.7.4, 10.5, 10.7: a Closure or Function Item completed at a Function Type is converted to it, as at a named call: its
         // signature is the call's applicability, a misfit left to the call's adaptation, and the rest is judged after selection (ErasePart).
-        if (typed.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || !this.ErasureSignatureFits(typed, parameter, part, out _))
+        if (typed.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || !this.ErasureSignatureFits(typed, parameter, part))
         {
             return typed;
         }
