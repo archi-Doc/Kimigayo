@@ -123,6 +123,10 @@ public class ResultPremiseTest
 
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd) + "|";
 
+    private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
+
+    private const string Mismatch = nameof(DiagnosticCode.TypeMismatch_Kd) + "|";
+
     // SPEC 15.6.5: pickRelated is valid and runs; the call's result keeps the Loans of both borrows, so writing either referent while
     // it lives is a Loan conflict.
     [Fact]
@@ -500,6 +504,9 @@ public class ResultPremiseTest
     [InlineData("func k(q: ref/i32, r: ref/i32, fs: Array<() -> Option<ref/(ref/i32 during q) during r>>) -> i32\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // arr
     [InlineData(ClauseType + ClauseResult, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7
     [InlineData(ClauseResult + ClauseType, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7, the Type declared after
+    [InlineData(ClauseType + ClauseResult + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Constraint + "k(a@ref, func [] () => 5)|", Mismatch + "5|expected Option<T>, found integer literal")] // n1a: a call keeps judging its Closure argument
+    [InlineData(ClauseType + ClauseResult + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1s: and adds no call record
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Constraint + "k(s, func [] (t) => true)|")] // b2in, dev's records: an input's clause still fails the call's signature formation and hides the argument's TypeMismatch_Kd (pre-existing since R4-M137, an open issue)
     [InlineData(ClauseType + "func k(q: ref/i32) -> i32\n    let c = func [] (f: () -> Option<T during q>) -> i32 => 0\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a Closure parameter
     [InlineData(ClauseType + "func k(q: ref/i32, h: () -> Option<T during static>) -> i32\n    let g: () -> Option<T during q> = h@move\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a local annotation
     [InlineData(SelfReturning, Unproven + "Option<R during q>|requires q outlives static, which is not proven")] // a Type whose Field returns itself

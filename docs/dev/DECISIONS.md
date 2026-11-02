@@ -5959,7 +5959,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     discharged by its own premise (the circular discharge); `ExtractOriginPremises` reads a `FunctionTypeKoto` as a signature, so its
     inputs remain premises there. `AddReceiverPremises` and associated formations reach it through `AddTypePremises`. `BindFunctionType`
     adds the result's Types' own clauses (SPEC 15.3.3, `AddTypeClauseObligations`) at the result's occurrence, in a parameter, receiver,
-    Type argument, Closure parameter, local annotation or Field at any depth; inputs add none.
+    Type argument, Closure parameter, local annotation or Field at any depth; inputs add none. A call does not re-prove a nested
+    signature's result: the callee's signature formation at a call (`CheckSignatureTypeConstraints`) does not enter it, since the
+    clauses the call proves make the instantiated result well-formed (SPEC 15.6.4 step 3); one owner, the declaration (review 2's
+    B2: n1a, n1s kept their Closure argument's `TypeMismatch_Kd`).
   - Evidence: the study's z1, z1n, r3, lpok and arr gain the declaration record, z1d is refuted at its call, z1t, cap, inwf and lpfix
     stay valid, ann2 and loc are unchanged; 49 classes passed 3,603/3,603 on both pipelines with the premise stop; 0 programs change in
     the library, SPEC/IMPL examples, milestones, `tests/mir`, the Benchmark corpus and `docs/examples`.
@@ -5967,10 +5970,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     during q)>`); the outlives-outer direction is written with a fixed input (lpfix, `(ref/i32 during static) -> …`).
   - Rejected: the limited form (per-call relations kept as an implementation premise and a value-call obligation; keeps r3 writable and
     U2.1's value-call result proof).
-  - Net size: Binding +15/−11 (comments included), tests +76, SPEC two sentences and one example, DECISIONS and STATUS one entry
+  - Net size: Binding +28/−20 (comments included; B2's fix +13/−9), tests +86, SPEC two sentences and one example, DECISIONS and STATUS one entry
     each.
   - Known: a Field's Function Type result also keeps the Field formation's `UnprovenConstraint_Kd` (that check enters Function Types,
-    their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A).
+    their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A). Open,
+    pre-existing since R4-M137 (b2in): a nested signature's input clause still fails the call's signature formation, so the call
+    gets `UnprovenConstraint_Kd` and its Closure argument's own records are lost; inputs are outside this unit.
   - Lost records (BU's review B1): the signature record is a Binding-level relation record, so an independent record elsewhere in
     the compilation is lost on both pipelines (z1nmv: z1n's `k` beside a double move; indep: the double move in a caller; dev's
     `MovedPlace_Kd`). Legacy: the old ownership analysis stops beside it, PLAN G56's owner-accepted limit (「G216 (a): (i)」,

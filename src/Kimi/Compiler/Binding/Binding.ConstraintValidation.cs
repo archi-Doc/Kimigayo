@@ -174,9 +174,11 @@ public sealed partial class Binding
     // its arguments. A part's proof and the cause it rests on depend on the part alone in one query (its scope fixed), so each distinct
     // part is proven once (FormedPart; DECISIONS BU-19, BU-55).
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
-        => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion));
+        => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion), false);
 
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query)
+    // `signature`: `type` is a Type of the scope's own declaration signature. A nested Function Type's result there is judged once,
+    // where it occurs, by that declaration (BindFunctionType; SPEC 15.3.4, 15.6.4 step 3; DECISIONS R4-M162), so it is not entered.
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, bool signature)
     {
         if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
@@ -186,9 +188,11 @@ public sealed partial class Binding
         var outer = this.BeginProof();
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
         proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
-        for (var i = 0; i < type.Components.Count; i++)
+        // A Function Type's components are its inputs and its result.
+        var count = signature && type.Kind == BoundTypeKind.Function ? 1 : type.Components.Count;
+        for (var i = 0; i < count; i++)
         {
-            proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query), true);
+            proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query, signature), true);
         }
 
         if (type is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } &&
@@ -206,17 +210,17 @@ public sealed partial class Binding
     // A component's formation (CheckTypeConstraints), each distinct one with components proven once per query: its proof and the cause it
     // rests on are read again into its own proof scope (ReadVerdict) where it recurs, as EndProof reads a recomputation; a leaf is cheaper
     // to prove again than to record.
-    private ConstraintProof FormedPart(BoundType part, BindingScope scope, uint query)
+    private ConstraintProof FormedPart(BoundType part, BindingScope scope, uint query, bool signature)
     {
         if (part.Components.Count == 0)
         {
-            return this.CheckTypeConstraints(part, scope, query);
+            return this.CheckTypeConstraints(part, scope, query, signature);
         }
 
         var outer = this.BeginProof();
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var proof = this.CheckTypeConstraints(part, scope, query);
+            var proof = this.CheckTypeConstraints(part, scope, query, signature);
             known = (proof, this.ProofCause(proof));
             this.formedParts.Set(part, query, known);
         }
@@ -227,10 +231,10 @@ public sealed partial class Binding
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
     {
         var scope = this.scopes[function];
-        var proof = function.BoundSymbol?.Type is { } result ? this.CheckTypeConstraints(result, scope) : ConstraintProof.Unknown;
+        var proof = function.BoundSymbol?.Type is { } result ? this.CheckTypeConstraints(result, scope, this.formedParts.Begin(this.storageVersion), true) : ConstraintProof.Unknown;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckTypeConstraints(parameter, scope) : ConstraintProof.Unknown, true);
+            proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckTypeConstraints(parameter, scope, this.formedParts.Begin(this.storageVersion), true) : ConstraintProof.Unknown, true);
         }
 
         return proof;
