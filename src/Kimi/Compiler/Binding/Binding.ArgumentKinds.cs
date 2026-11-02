@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 //   literal (SPEC 12.3), or control flow whose result sources other than Never are all such, at least one (SPEC 14.9.1). Aggregate: a
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
-//   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs), and one whose typed parts have no common Type (ConflictWaits, U1.6g). Function: an anonymous
+//   hold a part awaiting its call (RecordArgumentJoin; DECISIONS BU-43), whose results are classified position by position
+//   (Binding.ArgumentKinds.Positions.cs), and an argument join whose typed parts have no common Type (IsArgumentJoin, U1.6g). Function: an anonymous
 //   function. Reference: a function reference that needs S, at a call argument (P1) or at a result of the probe's control flow (P2);
 //   a name there that needs none is bound as its Function Item, a typed part (SPEC 10.5.3, 14.9.2 step 2; the owner's reading).
 //   Case: a contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or construction the argument probe
@@ -46,7 +46,7 @@ namespace Kimi.Compiler;
 //   relation (RecordPart keeps Taken; SlotSolution.Default records a Literal's default through RecordPart); a record TakeArgument
 //   creates reads as an absent one; a producer records every part that awaits its call and a Literal control-flow part: P1
 //   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function, Case or array literal result (AwaitsCallAtResult) or a Reference one
-//   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
+//   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (RecordArgumentJoin) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
 //   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
@@ -196,8 +196,8 @@ public sealed partial class Binding
         => this.RecordedPart(part) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
-    // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
-    // every recorded kind awaits its call but Literal. It keeps Taken, since ClassifiedByCall and DeferNestedCall re-record the probe
+    // DeferNestedCall, P4 RecordArgumentJoin), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one
+    // row: every recorded kind awaits its call but Literal. It keeps Taken, since RecordArgumentJoin and DeferNestedCall re-record the probe
     // while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
     private ref ArgumentPart RecordPart(Koto part, PartKind kind)
     {
@@ -249,46 +249,32 @@ public sealed partial class Binding
         => this.argumentProbe is { } probe && this.RecordedPart(probe).Kind is PartKind.Literal or PartKind.Call or PartKind.Join &&
             this.UnderArgumentProbe(target);
 
-    // SPEC 10.5.1, 14.9.2 step 2 (revision B, BU-80): whether a join is the argument probe's control flow before its call has taken it:
-    // its sources are argument sources, which its call fits per candidate, so it has no common-Type search before selection.
+    // SPEC 10.5.1, 14.9.2 step 2 (revision B, BU-80; B3a): whether a join is classified by its call: an argument source of the argument
+    // probe before its call has taken it, the probe's control flow or one its argument-source walk enters (UnderArgumentProbe: results,
+    // Tuple and array elements, nested joins). Its sources are argument sources, which its call fits per candidate, so a conflict among
+    // them is its call's (SPEC 10.8; U1.6g (a)): the join waits and its call completes it at the selected candidate's Type. The probe's
+    // own join has no common-Type search before selection (IsProbeJoin); a clean nested one keeps its own formation until G383 B3c.
+    // Once its call has selected and taken the argument (TakenByCall), as when DecideTaken decides it again, no expectation is left to
+    // wait for (the owner's answer, 2026-10-31: (i)): the conflict is the join's own record, as outside a call argument.
     private bool IsArgumentJoin(Koto join)
-        => this.argumentProbe is { } probe && ReferenceEquals(ControlFlowExpression(probe), join) && !this.TakenByCall(probe);
+        => this.argumentProbe is { } probe && !this.TakenByCall(probe) && ControlFlowExpression(join) is not null && this.UnderArgumentProbe(join);
 
-    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
-    // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
-    // (`shape`, its first aggregate part), one whose results hold a part awaiting its call (AwaitsCall), or one its survey left
-    // unclassified (no Literal record: a failed or unknown source beside its literals; U1.6h site 4) is Join: its results are
-    // classified position by position (Binding.ArgumentKinds.Positions.cs); a scalar one of literals keeps the kind its survey gave it.
-    private bool ClassifiedByCall(Koto join, Koto? shape)
+    // Whether an argument join (IsArgumentJoin) is the probe's own control flow.
+    private bool IsProbeJoin(Koto join)
+        => this.argumentProbe is { } probe && ReferenceEquals(ControlFlowExpression(probe), join) && this.IsArgumentJoin(join);
+
+    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): P4, the record of the probe's own argument join, written
+    // once where it waits for its call (IsProbeJoin, AwaitsWithoutCandidate) and never at its completion: Join, its results classified
+    // position by position; a scalar join of literals (no Tuple or array results, `shape`, and no part awaiting its call) keeps the
+    // Literal its survey gave it (a failed or unknown source beside its literals leaves none, U1.6h site 4; G383 B3b). A Join record
+    // names the root join only: a waiting nested join is a waiting source through WaitingResult (U2j reads it through ComposedJoin).
+    private void RecordArgumentJoin(Koto join, Koto? shape)
     {
-        if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))
-        {
-            return false;
-        }
-
+        var probe = this.argumentProbe!;
         if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsPartAwaitingCall(join) || this.RecordedPart(probe).Kind != PartKind.Literal)
         {
             this.RecordPart(probe, PartKind.Join);
         }
-
-        return true;
-    }
-
-    // SPEC 10.5.1, 14.9.2 step 2 (U1.6g (a); supersedes BU-43's "fails it at once" for call arguments): a join under the argument probe
-    // that classifies its call's argument, whose typed parts have no common Type, fixes no complete Type without its call's expectation,
-    // so it waits: P4 records it as a Join, which its call completes at the selected candidate's Type, an enclosing join holding it as
-    // a waiting source. Once its call has selected and taken the argument (TakenByCall), as when DecideTaken decides it again, no
-    // expectation is left to wait for (the owner's answer, 2026-10-31: (i)); there, as outside a call argument, the conflict is the
-    // join's own record. A part a nested join's step 3 bound (SPEC 14.9.2: no call involved) leaves the argument untaken.
-    private bool ConflictWaits(Koto join)
-    {
-        if (!this.UnderArgumentProbe(join) || this.TakenByCall(this.argumentProbe!))
-        {
-            return false;
-        }
-
-        this.RecordPart(join, PartKind.Join);
-        return true;
     }
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other
@@ -447,9 +433,9 @@ public sealed partial class Binding
         }
 
         this.RecordPart(call, PartKind.Call);
-        if (this.argumentProbe is { } probe && this.UnderArgumentProbe(call))
+        if (this.argumentProbe is { } probe && ReferenceEquals(PartCore(probe), call))
         {
-            this.RecordPart(probe, ReferenceEquals(PartCore(probe), call) ? PartKind.Call : PartKind.Join); // SPEC 14.9.2: its join waits with it.
+            this.RecordPart(probe, PartKind.Call);
         }
 
         return true;

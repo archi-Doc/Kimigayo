@@ -412,7 +412,7 @@ public sealed partial class Binding
     // which an outer join rests), and a failed part is recorded as its cause (RestOn), on which it rests at its verdict (DecideRest;
     // SPEC 23.1.2). Clean, it waits for its position's Type (true) when a source waited for its Type and that Type is decided later
     // (DecidedLater), or when it is a call's
-    // control-flow argument whose results are not Dictionaries: its call classifies it (ClassifiedByCall, SPEC 10.5.1) and completes
+    // control-flow argument whose results are not Dictionaries (IsProbeJoin, SPEC 10.5.1): its call classifies it and completes
     // it at the selected candidate's Type. Otherwise it is the root of its tree: a conflict among the literal defaults of the flattened
     // tree is its own record (step 3); else the formed Type is the join's one candidate, at which its waited sources are bound
     // (DecideResult, BindWaitedSources); failed or forming nothing, it binds them with no Type.
@@ -433,8 +433,13 @@ public sealed partial class Binding
         }
 
         var common = this.JudgeOwn(node, context, out var shape, out var defaults);
-        if (context.Outcome == JoinOutcome.Undecided && (later || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
+        if (context.Outcome == JoinOutcome.Undecided && (later || (shape is not DictionaryLiteralKoto && this.IsProbeJoin(node))))
         {
+            if (!later)
+            {
+                this.RecordArgumentJoin(node, shape);
+            }
+
             context.Outcome = JoinOutcome.Waiting;
             return true;
         }
@@ -776,7 +781,7 @@ public sealed partial class Binding
         return adapted;
     }
 
-    // Records the write of a late Type to a bound node; a waiting one, which a call's waiting join holds (ClassifiedByCall), is bound at
+    // Records the write of a late Type to a bound node; a waiting one, which a call's waiting join holds (IsArgumentJoin), is bound at
     // its join's decision instead.
     private BoundType? LateWrite(Koto node, BoundType? late)
     {

@@ -10070,6 +10070,20 @@ resumed by R4-M86 (2026-10-20).
   - **Fix-C** (the group review's B5): warm Bind with publication allocated 104 B on a reference join argument
     (`see(if flag => a@ref else => b@ref, n)`); Fix-A's Typed row (evidence as a typed argument's) removed it (1f65242a8 allocates,
     83dfb46e9 does not); the regression is ORDT's AWarmRebindOfAReferenceJoinArgumentAllocatesNothing.
+  - **B3a** (PLAN G383; main's narrowing, 2026-11-03): IsArgumentJoin is the one decider of "classified by its call": an argument
+    source of the probe before its call takes it, the probe's own join or one its argument-source walk enters (UnderArgumentProbe:
+    results, Tuple and array elements, nested joins). A conflict among such a join's sources is its call's (U1.6g (a)), so the join
+    waits; ConflictWaits is deleted. The probe's own join (IsProbeJoin) has no common-Type search before selection; ClassifiedByCall
+    is deleted, its record now RecordArgumentJoin's one condition (a scalar Literal keeps its survey kind until B3b). The published
+    fact U2j reads (through ComposedJoin and PartContribution): `RecordedPart(PartCore(p)).Kind == Join` names the probe's own (root)
+    argument join only, (1) written once, where IsProbeJoin decides that it waits (DeferNestedCall no longer records the probe's join),
+    (2) never rewritten at its completion, (3) never on a nested join (ConflictWaits' record is gone; a waiting nested join is a
+    waiting source through WaitingResult); ORDT OnlyTheRootArgumentJoinIsRecordedJoin pins it. B3c publishes the same row for the
+    nested argument joins the selected candidate completes. A clean nested
+    join keeps its own formation, which OneFormation makes the same Types: making it wait left it uncompleted at the selected Type
+    (CallRelation g236, g254, g090, g038ms, g090m and q1h PrerequisiteUnavailable_Kd, g161 InternalInvariant_Kd, the held trial), so
+    B3c also owns "a selected candidate completes clean nested argument joins". Moves: none (records unchanged); those rows stay valid
+    as guards. `g((if c => x else => b, 1))` stays UnboundTypeArgument_Kd, with p48 (whole-slot evidence of an aggregate source).
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's

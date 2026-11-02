@@ -141,7 +141,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.IsArgumentJoin(target))
+        if (this.IsProbeJoin(target))
         {
             // SPEC 14.9.2 step 2, 10.5.1 (revision B, BU-80): a call's control-flow argument has no survey candidate before selection;
             // its sources are argument sources, which its call fits per candidate, so a conflict among them is no conflict of its own.

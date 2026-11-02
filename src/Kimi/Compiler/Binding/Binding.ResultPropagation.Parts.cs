@@ -103,8 +103,8 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2, 23.1.2 (DECISIONS BU-43): a join's own judgement, by one formation over its own results (CommonTypeByParts),
     // nested joins flattened where they are clean and one failed part each where they are not. A conflict among its typed parts or
-    // shapes is its own, found at any position (Conflict), unless under a call's argument probe it waits for its call (ConflictWaits,
-    // U1.6g); else its first failed part is its cause (RestOn), on which it rests at its verdict (DecideRest). A conflict among
+    // shapes is its own, found at any position (Conflict), unless it is an argument join, whose conflict is its call's (IsArgumentJoin,
+    // U1.6g, B3a); else its first failed part is its cause (RestOn), on which it rests at its verdict (DecideRest). A conflict among
     // literal defaults is reported (`defaults`), not judged: a literal result is not fixed before outer constraints (step 3), so it is
     // the root's (AwaitsWithoutCandidate). Idempotent: called at the join's own decision and again by its root (JudgeNested). Returns
     // the Type formed over the parts that are no conflict and no failure, null when none; `shape` is the first aggregate part.
@@ -118,7 +118,7 @@ public sealed partial class Binding
         shape = this.PartsShape(start, this.positionParts.Count);
         this.ClosePosition(start);
         defaults = (conflict & PartsConflict.Defaults) != 0;
-        if ((conflict & PartsConflict.Typed) != 0 && !this.ConflictWaits(join))
+        if ((conflict & PartsConflict.Typed) != 0 && !this.IsArgumentJoin(join))
         {
             context.Conflict();
         }

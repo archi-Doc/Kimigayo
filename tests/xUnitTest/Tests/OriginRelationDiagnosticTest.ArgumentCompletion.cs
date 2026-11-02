@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -471,6 +473,25 @@ public partial class OriginRelationDiagnosticTest
                 AssertRecords($"{form} d={depth} [{unit}]", body, string.Empty, null);
             }
         }
+    }
+
+    // SPEC 10.5.1 (B3a, DECISIONS BU-80; U2j reads the record through ComposedJoin and PartContribution): the producer record of an
+    // argument join is Join for the probe's own join only, written where IsArgumentJoin decides that it waits and kept after its call
+    // completes it (`one(if c => identity(1) else => 2)`); a nested join that waits on a conflict among its sources, whose conflict is its
+    // call's, is a waiting source through WaitingResult and has no record (`fo(if c => (if d => x else => b) else => x)`).
+    [Fact]
+    public void OnlyTheRootArgumentJoinIsRecordedJoin()
+    {
+        var recorded = typeof(Binding).GetMethod("RecordedPart", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        object Record(Compilation c, string join) => recorded.Invoke(
+            c.Binding, [KotoTree.Walk(c.SourceModules[0].RootKoto).OfType<IfKoto>().Single(x => x.ToString().StartsWith(join, StringComparison.Ordinal))])!;
+        var valid = MirBuildTest.Compile(IdentityT + "func one(x: i64) -> i32 => 0\nfunc k(c: bool) -> i32\n    return one(if c => identity(1) else => 2)\n" + Main);
+        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid)); // Its call completed it.
+        var root = Record(valid, "if c => identity(1)");
+        Assert.Equal("Join", root.GetType().GetProperty("Kind")!.GetValue(root)!.ToString());
+        var conflict = MirBuildTest.Compile("func fo(x: i64) -> i32 => 0\nfunc fo(x: bool) -> i32 => 1\n" +
+            "func k(c: bool, d: bool, x: i64, b: bool) -> i32\n    return fo(if c => (if d => x else => b) else => x)\n" + Main);
+        Assert.Equal(Activator.CreateInstance(recorded.ReturnType), Record(conflict, "if d => x")); // No record.
     }
 
     // SPEC revision B (the group review's B5): a warm rebind of a reference join at a call argument, whose sources revision B fits one

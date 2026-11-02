@@ -299,7 +299,7 @@ public sealed partial class Binding
         var awaiting = this.ResultCandidates(context, types);
         // SPEC 14.9.2 step 2, 10.5.1 (revision B, BU-80): a call's control-flow argument has no common-Type search before selection; its
         // sources are argument sources, which its call fits per candidate.
-        if (context.Expected is null && ((types.Count == 0 && awaiting) || this.IsArgumentJoin(node)) && this.AwaitsWithoutCandidate(node, context, types))
+        if (context.Expected is null && ((types.Count == 0 && awaiting) || this.IsProbeJoin(node)) && this.AwaitsWithoutCandidate(node, context, types))
         {
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
         }
@@ -316,7 +316,7 @@ public sealed partial class Binding
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            if (conflict && this.ConflictWaits(node))
+            if (conflict && this.IsArgumentJoin(node))
             {
                 context.Outcome = JoinOutcome.Waiting;
                 return Complete(node, null); // SPEC 10.5.1: no complete Type without its call's expectation; its call decides it.

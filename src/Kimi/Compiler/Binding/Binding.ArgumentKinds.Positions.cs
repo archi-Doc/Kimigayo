@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // slot (IndependentPositionType) recurse into.
 // - Responsibility: a position is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
-//   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
+//   and a control-flow part its call classifies by element (RecordArgumentJoin; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
 //   child positions are its aggregate parts' by index (SPEC 10.5.1: an array result's too, at every number of sources, each index
 //   holding the elements of the sources that have it; the owner, 2026-10-31), while its Type is formed with an array's one element
@@ -137,7 +137,7 @@ public sealed partial class Binding
         }
     }
 
-    // The join of a control-flow part its call completes by its results: a Join (ClassifiedByCall), or a nested join that waits for its
+    // The join of a control-flow part its call completes by its results: a Join (RecordArgumentJoin), or a nested join that waits for its
     // position (WaitingResult), walked as a result source's is (AddResultPart); null otherwise.
     private Koto? ComposedJoin(Koto part)
         => this.KindOf(part) == PartKind.Join || this.WaitingResult(PartCore(part)) is not null ? ControlFlowExpression(part) : null;
