@@ -67,6 +67,28 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         Assert.Equal(0, cleared.GetProperty("diagnostics").GetArrayLength());
     }
 
+    // DECISIONS R5-M180: a related location into another document is resent under the client's spelling once the client opens that
+    // document, also while the payload placed for the reporting document is unchanged.
+    [Fact]
+    public async Task ARelatedLocationIsRespelledWhenItsDocumentOpens()
+    {
+        const string Text = "public struct Sample\n    public var x: i32 = 0\n"; // b.kimi's x is declared again, related to a.kimi's.
+        this.WriteProject("App", ("a.kimi", Text));
+        File.WriteAllText(this.PathOf("App", "b.kimi"), Text);
+        var first = this.PathOf("App", "a.kimi");
+        var second = this.PathOf("App", "b.kimi");
+        var spelling = LspTestClient.OtherSpelling(first, shortName: false)!;
+        await using var client = new LspTestClient();
+        await client.InitializeAsync(capabilities: Related);
+        await client.OpenAsync(second, Text);
+        var related = (await client.PublishAsync(second))[0].GetProperty("relatedInformation")[0].GetProperty("location");
+        Assert.Equal(LspTestClient.Uri(first), related.GetProperty("uri").GetString());
+
+        await client.OpenUriAsync(spelling, Text); // The disk text: the placed payload is unchanged.
+        related = (await client.PublishAsync(second))[0].GetProperty("relatedInformation")[0].GetProperty("location");
+        Assert.Equal(spelling, related.GetProperty("uri").GetString());
+    }
+
     // DECISIONS R5-M180: a document the client never named is sent under its path's file URI (SourceIdentity.ToUri), the same in a
     // publication and in a hover link, also when its name holds a percent sign that a URI would read as an escape.
     [Theory]

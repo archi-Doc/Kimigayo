@@ -9,19 +9,19 @@ internal sealed record HoverPlacement(string? Root, KeyValuePair<string, string?
 {
     internal static readonly HoverPlacement Unsupported = new(null, []);
 
-    // Each mapped file's identity, taken where the placement is built, so mapping a link reads no path.
+    // Each mapped file's identity, taken where the placement is built, so a mapped file's link normalizes no path when it is resolved.
     private readonly SourceIdentity?[] documents = Array.ConvertAll(
         Files, static x => x.Value is { } path && SourceIdentity.TryFromPath(path, out var document) ? document : (SourceIdentity?)null);
 
-    /// <summary>Gets the URIs of a host without a client: each document's own (<see cref="SourceIdentity.ToUri"/>).</summary>
-    internal static Func<SourceIdentity, string> Canonical { get; } = static document => document.ToUri();
+    /// <summary>Gets the URIs of a host without a client: each document's own (<see cref="SourceIdentity.TryToUri"/>).</summary>
+    internal static Func<SourceIdentity, string?> Canonical { get; } = static document => document.TryToUri(out var uri) ? uri : null;
 
     /// <summary>Maps a logical target to the URI of its physical file, which the host spells (<c>LspSession.UriOf</c>; DECISIONS
     /// R5-M180).</summary>
     /// <param name="target">The target.</param>
-    /// <param name="uriOf">The host's URI of a document.</param>
-    /// <returns>The URI, or null without a placement.</returns>
-    internal string? Map(DocumentationLinkTarget target, Func<SourceIdentity, string> uriOf)
+    /// <param name="uriOf">The host's URI of a document, or null for a path no URI spells.</param>
+    /// <returns>The URI, or null without a placement or a URI (the link is shown as text).</returns>
+    internal string? Map(DocumentationLinkTarget target, Func<SourceIdentity, string?> uriOf)
     {
         var low = 0;
         var high = this.Files.Length - 1;

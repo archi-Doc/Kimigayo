@@ -31,8 +31,12 @@ internal sealed partial class LspSession
         return diagnostics;
     }
 
-    private string UriOf(SourceIdentity document)
-        => this.documents.GetValueOrDefault(document)?.Uri ?? document.ToUri();
+    // Null for a path no URI spells (a device path): a hover link to it is shown as text, and sending it throws, as ToUri did.
+    private string? UriOf(SourceIdentity document)
+        => this.documents.GetValueOrDefault(document)?.Uri ?? (document.TryToUri(out var uri) ? uri : null);
+
+    private string SentUri(SourceIdentity document)
+        => this.UriOf(document) ?? throw new UriFormatException("No URI spells the path " + document.Value + ".");
 
     // An open or a close changes UriOf: payloads are spelled again when next reconsidered, and Hover renderings are forgotten.
     private void Respell()
@@ -46,12 +50,12 @@ internal sealed partial class LspSession
 
     // SPEC 23.4: a document's payload is sent unless it equals what was last sent for it; a document never sent counts as sent empty.
     // A list sent under another spelling of the document (opened or closed since) is cleared there first. An unchanged placed payload
-    // under unchanged spellings keeps what was sent, so only a payload that may be sent is spelled.
+    // under unchanged spellings keeps what was sent and the URI it went under, so only a payload that may be sent is spelled.
     private void Publish(SourceIdentity document, LspDiagnostic[] payload)
     {
         var version = this.documents.GetValueOrDefault(document)?.Version;
-        var uri = this.UriOf(document);
         var known = this.sent.Remove(document, out var last);
+        var uri = known && last.Spelling == this.spelling ? last.Uri : this.SentUri(document);
         if (known && last.Uri != uri)
         {
             this.Notify(last.Uri, null, []);
@@ -95,6 +99,6 @@ internal sealed partial class LspSession
     private LspDiagnostic Spell(LspDiagnostic diagnostic)
         => diagnostic.RelatedInformation is not { } related ? diagnostic : diagnostic with
         {
-            RelatedInformation = Array.ConvertAll(related, x => x with { Location = x.Location with { Uri = this.UriOf(x.Location.Document) } }),
+            RelatedInformation = Array.ConvertAll(related, x => x with { Location = x.Location with { Uri = this.SentUri(x.Location.Document) } }),
         };
 }

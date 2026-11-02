@@ -15109,20 +15109,22 @@ structure is recorded here by the unit that first implements it.
     naming another file, where `HoverPlacement.FileUri` escaped it.
   - Rule: `LspSession`, which maps a client URI to its document (`FindOpen`), alone maps a document's identity to the URI it sends,
     `UriOf`: the URI the client opened the document with (the first while it is open; two spellings stay one document), else the
-    canonical `SourceIdentity.ToUri()`, the one builder: a built-in identifier's own URI, a path's `file:` URI with `%`, `#`, `?` (and a
-    non-Windows `\`) escaped as path data (`FileUri` deleted). Every location is spelled when it is sent: a publication's URI and
-    related locations (`Publish`, `Spell`), a code action's diagnostics, and hover links (`HoverState` and `HoverRenderer` take
-    `UriOf`, which `HoverPlacement.Map` calls with the identity it took for each mapped file where the placement was built, so mapping
-    reads no path).
+    canonical URI of `SourceIdentity.TryToUri`, the one builder: a built-in identifier's own URI, a path's `file:` URI with `%`, `#`,
+    `?` (and a non-Windows `\`) escaped as path data (`FileUri` deleted); none for a path no URI spells (a device path, `\\?\` or
+    `\\.\`), whose hover link is shown as text as before, and which a send cannot name (`SentUri` throws, as `ToUri` always did). Every
+    location is spelled when it is sent: a publication's URI and related locations (`Publish`, `Spell`), a code action's diagnostics,
+    and hover links (`HoverState` and `HoverRenderer` take `UriOf`, which `HoverPlacement.Map` calls with the identity it took for each
+    mapped file where the placement was built, so such a link normalizes no path; a link resolved against the project root normalizes
+    its path once, as `GetFullPath` did before).
   - Representation: `LspLocation` names its document by identity (`Document`, not serialized) and carries the URI the state owner
     gives it (`Uri`); the worker places identity and range only, so a reused result never carries a stale spelling. A diagnostic
     reaching the sender with an unspelled location is a broken contract (`Spelled`, the one check before both sends, throws
     `UnreachableException`): the JSON context omits a null URI, so it would otherwise be sent silently.
   - Publication: `sent` keeps the placed payload, the spelled one, the version, the URI and the spelling generation, which an open or a
     close advances (`Respell`, which also forgets every HoverState's renderings: a result released unchanged keeps its HoverState). An
-    unchanged placed payload under the same generation reuses what was sent without spelling (no allocation); otherwise it is
-    spelled, and sent unless equal to what was sent. A list sent under another spelling (the document opened or closed since) is
-    cleared there first.
+    unchanged placed payload under the same generation reuses what was sent and its URI, without spelling or `ToUri` (no allocation);
+    otherwise it is spelled, and sent unless equal to what was sent. A list sent under another spelling (the document opened or closed
+    since) is cleared there first.
   - Rejected: spelling in the worker from the base's open URIs (reused results and later opens keep a stale spelling); parsing the
     canonical URI back to an identity when sending (a second parse path, an allocation per location); a JSON converter (it cannot see
     the open documents, and repeat suppression would compare unspelled payloads); discarding HoverStates on an open or a close (no
@@ -15134,5 +15136,8 @@ structure is recorded here by the unit that first implements it.
     short name (skipped where the volume has none); `LspProjectDiagnosticTest.ANeverNamedDocumentIsSentUnderItsPathsUri` (`a%41.kimi`,
     `a%2e%2e.kimi`: the published URI names the file and the hover link is that URI; `aA.kimi` and `a...kimi` before);
     `LspCodeActionTest.AQuickFixsDiagnosticSpellsItsRelatedLocationsAsPublished` (the quick fix's related locations equal the
-    published ones; without `Spell` there, they lack their URI).
-  - Unverified: non-Windows hosts (the `\` escape and `ToUri` there).
+    published ones; without `Spell` there, they lack their URI);
+    `LspProjectDiagnosticTest.ARelatedLocationIsRespelledWhenItsDocumentOpens` (a related location into another document is resent
+    under the spelling it is opened with; none is resent without `Respell`'s generation); `HoverLinkTest.ADevicePathHasNoLink` (no
+    link, where `ToUri` threw out of the Hover).
+  - Unverified: non-Windows hosts (the `\` escape and `TryToUri` there).

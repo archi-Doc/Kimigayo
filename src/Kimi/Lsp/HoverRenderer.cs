@@ -13,7 +13,7 @@ namespace Kimi.Lsp;
 internal readonly record struct HoverRendering(string? Body, string? Reason = null, bool Cacheable = true);
 
 // Links name their documents by the host's URIs (uriOf: LspSession.UriOf).
-internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string> uriOf)
+internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string?> uriOf)
 {
     internal const string PreviousNotice = "Previous analysis: update pending";
     private const int NoticeReserve = 256;
@@ -31,7 +31,7 @@ internal sealed class HoverRenderer(bool markdown, Func<SourceIdentity, string> 
     private int parameterAt;
     private int parameterStart = -1;
 
-    internal static HoverRendering Render(HoverInfo info, bool markdown, Func<SourceIdentity, string> uriOf)
+    internal static HoverRendering Render(HoverInfo info, bool markdown, Func<SourceIdentity, string?> uriOf)
         => new HoverRenderer(markdown, uriOf).Render(info);
 
     private HoverRendering Render(HoverInfo info)
