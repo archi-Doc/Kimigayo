@@ -77,6 +77,10 @@ public sealed partial class Binding
 
         internal List<CapabilityPart>? Parts { get; private set; }
 
+        // The limit site its own judgment answers where a Closure's signature is unreadable (CallSignature), its Use the literal (DECISIONS
+        // BU-73); kept across passes, so a warm rebind allocates nothing.
+        internal ComponentSite? Site { get; set; }
+
         internal List<CapabilityWork> Dependents { get; } = new();
 
         internal void Reset()
@@ -109,7 +113,8 @@ public sealed partial class Binding
                 : ConstraintProof.Unknown;
     }
 
-    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1) and Origin.
+    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; a Closure's
+    // call signature is member Components.Count, which the erasure, judging the environment alone, never reads) and Origin.
     private readonly record struct CapabilityPart(int Member, BoundOrigin? Origin);
 
     // An Owned query's subject rest (ProveOwned): whether a work judged it, and the parts it found not Proven.

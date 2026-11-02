@@ -177,6 +177,30 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 15.2.3 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a Function
+    // Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its literal, which
+    // every Closure Type names (ClosureType). A Closure's signature is unreadable, none, where BU-60's view withholds its held instance (an
+    // Origin position closed in no instance, PLAN G300) or its literal's header did not bind (the Type BindConcreteClosure starts with).
+    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
+    {
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            return OwnFunctionBinder(type, type) is { } binder ? (type, binder) : null;
+        }
+
+        if (type.Kind != BoundTypeKind.Closure)
+        {
+            return null;
+        }
+
+        if (type.Symbol?.Declaration is not FunctionKoto definition)
+        {
+            throw new InvalidOperationException($"Closure Type `{type}` names no literal (InternalInvariant; BU-73).");
+        }
+
+        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
+    }
+
     private void ResetCapabilities(BindingMode mode)
     {
         this.capabilitiesReady = false;
@@ -428,23 +452,12 @@ public sealed partial class Binding
 
     private ConstraintProof StructuralCapability(CapabilityWork work)
     {
-        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Kind == BoundTypeKind.Function &&
-            OwnFunctionBinder(work.Type, work.Type) is { } binder)
+        // A Function Type is its call signature: only its own quantified Origins are closed, so querying a component separately still
+        // observes its free lifetime dependency.
+        var call = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.CallSignature(work.Type) : null;
+        if (call is { Signature: { } own, Binder: var binder } && ReferenceEquals(own, work.Type))
         {
-            // Only this signature's own quantified Origins are closed. Querying a
-            // component separately must still observe its free lifetime dependency.
-            var count = InputOriginCount(binder);
-            var inputs = this.originScratch.Rent(count);
-            try
-            {
-                inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
-                var closed = this.SubstituteStoredOrigins(work.Type, binder, [], inputs.AsSpan(0, count));
-                return this.RequestCapability(closed, work.Intrinsic, work.Scope);
-            }
-            finally
-            {
-                this.originScratch.Return(inputs, clearArray: true);
-            }
+            return this.SignatureCapability(work, own, binder);
         }
 
         if (work.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
@@ -483,6 +496,18 @@ public sealed partial class Binding
             this.originRead = work.Part(parts.Member, proof, this.originRead, saved);
         }
 
+        // A Closure's call signature is a part after its captures, member Components.Count; an unreadable one (CallSignature) answers
+        // BU-22's limit with its literal as the site, on which a failed literal's use rests (DECISIONS BU-73).
+        if (call is { } closure)
+        {
+            var saved = this.originRead;
+            this.originRead = null;
+            var proof = closure.Signature is { } signature ? this.SignatureCapability(work, signature, closure.Binder)
+                : this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = closure.Binder }, null);
+            result = CombineProof(result, proof, true);
+            this.originRead = work.Part(work.Type.Components.Count, proof, this.originRead, saved);
+        }
+
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
@@ -496,6 +521,24 @@ public sealed partial class Binding
         }
 
         return result;
+    }
+
+    // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
+    // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed.
+    private ConstraintProof SignatureCapability(CapabilityWork work, BoundType signature, Koto binder)
+    {
+        var count = InputOriginCount(binder);
+        var inputs = this.originScratch.Rent(count);
+        try
+        {
+            inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
+            var images = new PerCallImages(inputs.AsSpan(0, count), BoundOrigin.Static, BoundOrigin.Static);
+            return this.RequestCapability(this.SubstituteStoredOrigins(signature, binder, [], images), work.Intrinsic, work.Scope);
+        }
+        finally
+        {
+            this.originScratch.Return(inputs, clearArray: true);
+        }
     }
 
     // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.

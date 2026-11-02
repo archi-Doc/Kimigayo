@@ -132,6 +132,13 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 23.1.2 (DECISIONS BU-73): a use of a Property its header refused consults the refusal and completes without a Type.
+        if (symbol.Property?.Refusal is { } refusal)
+        {
+            this.Consulted(refusal);
+            return Complete(node, null);
+        }
+
         if (symbol.Kind == BindingSymbolKind.Storage && symbol.Scope.Owner is PropertyAccessorKoto storageAccessor)
         {
             this.BindStorageProjection(node, Accessor(storageAccessor));

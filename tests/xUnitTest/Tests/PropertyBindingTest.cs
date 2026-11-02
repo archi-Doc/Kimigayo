@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class PropertyBindingTest
+public partial class PropertyBindingTest
 {
     // A custom `get` of a projection-typed Field with the standard `set` (AnUpdateReadsItsStandardSideAsTheBodyReadsTheField).
     private const string OutputGetter = """
