@@ -9898,6 +9898,21 @@ resumed by R4-M86 (2026-10-20).
   - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
     record blocks; dependent records added or removed are counted by class.
 
+- **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
+  the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
+  division, R5-M182) Refines R2b-D2 ("lazily, at most once per Binding pass").
+  - `Binding.Check` (`Binding.Check.cs`) is three steps: the failure producers (the Final prologue: definition obligations,
+    specification links, needed conformance paths and capability sites, derived uses; per node: a failed called declaration, the
+    call and runtime-test Constraint checks, the part prerequisites, Unvisited to Unresolved; then the sites the loop's checks needed),
+    in a Final pass the publication of every module with the library (`PublishPass`), then the counting of states and issues.
+    `CheckBound` runs the same steps. `PublishHir()` after a Final pass returns its version without work; after another pass it
+    publishes once, as before.
+  - The reason that no longer holds: lazy publication kept Bind-only callers from paying for the columns, but H1 judges the published
+    columns inside the Final pass before the counting (Q8 D8). After G2 every Analyze publishes anyway, so production pays nothing new;
+    Bind-only callers (tests, hover without analysis) pay one publication per Final pass.
+  - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
+    and counts each such Use once, as it does the prologue's.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
