@@ -15627,3 +15627,12 @@ structure is recorded here by the unit that first implements it.
     at H5.
   - O-1 (the owner's 「はい」): COMPILER_ARCHITECTURE's D5 freeze lists R4-M159's G273 exception (recorded with this entry). Open: R4's answers
     R4-1..R4-13 and BU-2 (H0 §8); BU answered BU-1, BU-3, BU-4, BU-5.
+  - Amended (revision 2, 2026-11-02; R4's answers R4-1..R4-11 and review ACCEPT, BU's answers BU-1..BU-5; draft/Sketches/R6-check/ on dev
+    bbc545b61): H3-1 lands in R4's chain before 2g-1, its folded records with their own body value `MirProblem.Records`; `MirReport.Records`
+    exposes its member problems, is computed once per version and emits the cross-body disagreement as its own record (R4-M71's amendment at
+    H3-2); the `Incomplete` contract lands first as R4's unit IC; H4 gives the seven Kimi-bodied Array 'None' operations rows (four new
+    KimiDeclarationId members), other families body-composed, no premise mode; H3-2 lands with a null `FailureCauses` as
+    `InternalInvariant_Kd` after 2g-1 sites every Binding cause at its failed node; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met);
+    R4-M108's H11 list joins H11. R4-12 and R4-13 (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)):
+    `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private composition (an owner-approved postponed
+    removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.

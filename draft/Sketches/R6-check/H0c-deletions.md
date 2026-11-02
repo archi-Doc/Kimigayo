@@ -88,7 +88,7 @@ reader an earlier unit (or itself) removed.
 | 4 | H8c | R5 (R4 reviews MIR rewrites) | The 16 Analysis-declared enums (`OwnershipOperationKind` 48, `CleanupAction` 31, `OwnershipPlaceKind` 23, `PlaceState` 20, …) in 10 test files, and the 22 old-type names in 9 test files (`OwnershipStorageLimitTest` 5, `SharedEngineTotalityTest` 5, `MirInitTest` 1, …): rewrite as MIR assertions or delete with their classes (`OwnershipAnalysisTest`, `EnumOwnershipTest`, `MatchOwnershipTest`, `BorrowDependencyStorageTest`, `CallableRegionScalingTest` → a MIR scaling check) | H8b (D-c3's order), H5's sweep (review N1) | Comp | ≈ −1,100 t | G:check-tests |
 | 5 | H9 | R5 | §3 | H5's sweep; after H8c (D-c3) | Bench: slnx build, `--compiler-pipeline-check` | ≈ −350, +30 | G:check-del |
 | 7 | H10b | R5 | Delete `C/Analysis/` (50 files, 16,180), `Compilation.Ownership` (private from H5, re-review 3)/`AnalyzeControlFlow`, the transitional entry `Compilation.AnalyzeLegacyOwnership()` (review B3; `:73`'s call and `:84` left `Analyze`/`ReportAnalysis` at H5, ruling R2), `ElementAccess.cs:102, 142`, `Binding.Lints.cs:81-139`'s `LintErrors` and `LintErrorRecords` (`FallthroughKey` went at H5, ruling R4), `DeferredExpansionLimit_Kd`; the `.Ownership.*` and control-flow rows of `ArchitectureRulesTest` → zero-reference rows (D-c4); the ARCH structure-limit exemption of the old Analysis ends | H8a–c, H9, H10a | Comp: Session with milestones | ≈ −16,300 | G:check-del |
-| 8 | H11 | BU (R4 reviews R4-M108's list) | §1's H11 table, R4-M108's H11 list included (answer R4-4); the `src/Kimi` zero-reference row (D-c4) | H10b, Q-c2 (owner answer pending, R4-12) | Comp; snapshot (A3's gates) | ≈ −700 | G:check-del |
+| 8 | H11 | BU (R4 reviews R4-M108's list) | §1's H11 table, R4-M108's H11 list included (answer R4-4); the `src/Kimi` zero-reference row (D-c4) | H10b, Q-c2 (answered, R4-12) | Comp; snapshot (A3's gates) | ≈ −700 | G:check-del |
 | 9 | H12 | R5 | §4.2 | H10a, H10b | Tool + Comp | ≈ −600 | G:check-del |
 | 10 | H14 | R5 (BU reviews) | §4.4 | H10b, H11 | Comp; snapshots equal | ≈ −150 | G:check-del |
 | any, after H5's sweep (review N1) | H7 | BU | Delete Binding's wide-division gate `Binding.Operators.cs:331-334` (A3b's `Capability.WideDivision` owns it) | H5's sweep, K9a, G157 (1)'s fix (R5's collector; answer BU-4: the gate stays until then; if G157 (1) slips past R6-check's exit, H7 is retagged with the owner's approval) | Comp: i128 tests, A3b tests; snapshot | −4 | G:check-del |
@@ -173,7 +173,7 @@ zero-reference row; the 37 forwarding declarations (`Koto.cs` 10, `BinaryKoto.cs
 | `Binding.IsTwinRecord` | 1 R6 | H10a (D-c2; tag says H11) |
 | `Binding.Lints` `LintErrors`, `LintErrorRecords`, `FallthroughKey` | 3 R6 | H10b; `FallthroughKey` at H5 (ruling R4) |
 | `Binding.ComparisonPlan(CallPlan)`, `DictionaryComparison` | 2 R6 | H11 (D-c8) |
-| `Binding.RequirementImplementation` | 1 R6 | retag R7 with its one reader, the R7-tagged private composition; owner approval pending in R4's dialog (answer R4-12) |
+| `Binding.RequirementImplementation` | 1 R6 | retag R7 with its one reader, the R7-tagged private composition (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158); answer R4-12) |
 | `OwnershipAnalysis` stops and gate (`:27, 173, 192, 207`; R4-M152, R4-M159) | 4 R6-check | H10b |
 | R4-M152 gate in Binding (`ValueCallGate.cs:29, 33, 37, 65`, `CallPlan.cs:58, 358, 366`) | 7 R6-check | H11 |
 | `Binding.ContainsOrigin(BoundType, …)` (BU-63) | 1 R6-check | H11 |
@@ -251,7 +251,7 @@ review" (R5-M11).
 | Q-c1 | BU | Answered (answer BU-4): keep the gate until G157 (1) is fixed; G157 (1) is H7's prerequisite, owned by R5. |
 | Q-c2 | R4 | Answered (answer R4-12): A-12 does not land before H11; R4 recommends retagging `RequirementImplementation` to R7 with its one reader, the R7-tagged private composition (`Binding.ComparisonPlans.cs:68`); the owner's approval is pending in R4's dialog. |
 | Q-c3 | the owner | Answered 「はい」 (R5-M182): recorded in ARCH's D5 list. R4's optional precision for the next ARCH edit: the stop is "where `SupportsType` refuses a Type for Origin arguments its symbol does not declare". |
-| Q-c4 | R4 | Answered (answer R4-13): not fixed before H5; a named class-5 row; the owner's decision is pending in R4's dialog (R4 recommends accepting it until G121's construct design). |
+| Q-c4 | R4 | Answered (answer R4-13): not fixed before H5; a named class-5 row; accepted until G121's construct design (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)). |
 
 ## 10. Not done
 

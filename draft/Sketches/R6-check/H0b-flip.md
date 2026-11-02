@@ -289,7 +289,7 @@ Known rows, named in advance (H where unverified):
 | G165, G177, G211, G217, G268, G299 (default unsound acceptances the MIR rejects) | 1r | PLAN rows; clauses 15.6.2, 3.6, 15.6, 15.6.7, 15.6, 15.6 |
 | G124, G228, G313, G160's default verdicts, G186's old walk | 1 or 3 | per row at the run (H0c §5.3) |
 | G218, G291 (old false errors; A5 accepts) | 1a (H) | SPEC 3.4.3; 7.5, 3.5 |
-| G121's lost `do` fallthrough record (2x-P10) | 5, named | the owner's decision is pending in R4's dialog; R4 recommends accepting it until G121's construct design (answer R4-13; R4-M88) |
+| G121's lost `do` fallthrough record (2x-P10) | 5, named | accepted until G121's construct design (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158); answer R4-13; R4-M88) |
 | Milestone 42's first diagnostic (old analysis's `Unsupported_Kd`) | 3 if MIR's first record differs; 2 never (it stays rejected, P42) | re-baseline named |
 
 ### 5.5 Who classifies, the table's form and the stop rule

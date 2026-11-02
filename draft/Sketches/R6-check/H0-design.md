@@ -164,8 +164,8 @@ and applied). Revision 2 adds no contradiction: each answer and R4 review findin
 | R4-9 | R4 | Yes, already R4-exit conditions; missing families F7, F8, F10 |
 | R4-10 | R4 | Yes: Q19 with R5 at R4's exit, before H3b |
 | R4-11 | R4 | BU implements Q8-3; R4 reviews it (single review) |
-| R4-12 | owner (R4's dialog) | Pending: R4 recommends retagging `RequirementImplementation` to R7 with its R7-tagged reader (A-12 does not land before H11) |
-| R4-13 | owner (R4's dialog) | Pending: R4 recommends G121's lost `do` record as a named class-5 row, accepted until G121's construct design |
+| R4-12 | owner (R4's dialog) | Answered (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)): A-12 does not land before H11; `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private composition (`Binding.ComparisonPlans.cs:68`), an owner-approved postponed removal |
+| R4-13 | owner (R4's dialog) | Answered (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)): G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design |
 | BU-1 | BU | Yes: H1a and Q8-6 (±60–70 each) before H3-2; Q14 before H1's code; queued after G216 (a) |
 | BU-2 | BU | Stable when no Bind or edit runs between `Analyze` and `ReportAnalysis` (`Project.cs:538-551`); null `FailureCauses` at four resolved-site shapes: 2g-1 sites causes at the failed node; H3-2 probes them and lands with null → `InternalInvariant_Kd` (R4 r2 N1) |
 | BU-3 | BU | Yes: BU authors H5's Binding hunk (≈ −1,830) with R5's review and reviews H4's Binding edits |
@@ -197,4 +197,4 @@ Amendment line for R5-M182, to record at the next DECISIONS edit: "Revision 2 (2
 H3-1 lands in R4's chain before 2g-1, its records with their own body `Records`; `MirReport.Records` exposes members, computed once,
 with its own disagreement record (R4-1 resolved); the `Incomplete` contract lands first as R4's unit IC; H4 gives the seven Kimi-bodied
 Array 'None' operations rows (four new ids), other families body-composed, no premise mode; a null `FailureCauses` is internal; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met); R4-M108's H11 list joins H11;
-R4-12 and R4-13 await the owner in R4's dialog."
+R4-12 and R4-13 answered by the owner (「2つとも、推奨どおりでお願いいたす」): `RequirementImplementation` retagged to R7; G121's lost `do` record a named class-5 row accepted until G121's construct design."
