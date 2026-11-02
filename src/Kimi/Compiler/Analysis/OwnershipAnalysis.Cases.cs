@@ -32,26 +32,6 @@ public sealed partial class OwnershipAnalysis
         return null;
     }
 
-    // Whether a code's catalog row carries the `case` Reason fact as its last evidence fact (SPEC 23.1.2).
-    private static bool HasCaseEvidence(DiagnosticCode code)
-    {
-        if (!DiagnosticEntries.TryGet(code, out var entry))
-        {
-            return false;
-        }
-
-        var alternatives = entry.EvidenceAlternatives;
-        for (var i = 0; i < alternatives.Length; i++)
-        {
-            if (alternatives[i].Length > 0 && alternatives[i][^1].Name == "case")
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static FunctionKoto? EnclosingFunction(Koto node)
     {
         for (var current = node; current is not null; current = current.Parent)
@@ -64,9 +44,6 @@ public sealed partial class OwnershipAnalysis
 
         return null;
     }
-
-    // The name a pair binder is declared with (`s` of `s/T`).
-    private static string BinderName(in PairBinder binder) => binder.Target.Pair?.Name ?? binder.Target.Name;
 
     // Resolves the cases of a definition: the product of the admitted sets of the resolved binders in scope (SPEC 8.15). False
     // when there is none, so the body is analyzed once with its declared Types.
@@ -196,7 +173,8 @@ public sealed partial class OwnershipAnalysis
     // SPEC 23.1.2: the text of the cases a problem was found under, or null for a problem of every case or of no case run. The
     // found set is factored per binder when it is a product ("s = uniq"; "s = ref or uniq, t = uniq"), each binder found under
     // all its admitted cases omitted; otherwise each case is listed ("s = uniq, t = owner; s = owner, t = uniq"). The binders
-    // named are left in namedBinders for the related declarations. Formatted only for a published record.
+    // named are left in namedBinders for the related declarations. Formatted only for a published record, by Binding's Semantics-case
+    // renderer (R6-check Q8-6), which this Analysis and its record callers use until H10b deletes them.
     private string? CaseFact(in OwnershipIssue issue, out bool single)
     {
         single = false;
@@ -257,8 +235,7 @@ public sealed partial class OwnershipAnalysis
                 if (found[j] != this.caseBinders[b].Admitted)
                 {
                     this.namedBinders.Add(this.caseBinders[b]);
-                    text.Append(text.Length == 0 ? string.Empty : ", ").Append(BinderName(this.caseBinders[b])).Append(" = ");
-                    Binding.AppendSemantics(text, found[j], " or ");
+                    Binding.AppendCaseBinder(text.Append(text.Length == 0 ? string.Empty : ", "), Binding.BinderName(this.caseBinders[b].Target), found[j]);
                 }
 
                 j++;
@@ -285,7 +262,7 @@ public sealed partial class OwnershipAnalysis
                 text.Append(text.Length == 0 ? string.Empty : "; ");
                 for (var j = 0; j < resolved; j++)
                 {
-                    text.Append(j == 0 ? string.Empty : ", ").Append(BinderName(this.namedBinders[j])).Append(" = ").Append(digits[j].ToText());
+                    Binding.AppendCaseBinder(text.Append(j == 0 ? string.Empty : ", "), Binding.BinderName(this.namedBinders[j].Target), digits[j].ToMask());
                 }
             }
         }
@@ -315,23 +292,5 @@ public sealed partial class OwnershipAnalysis
 
             digits[j--] = semantics;
         }
-    }
-
-    // The related declarations of a case fact: the Semantics bindings it names (SPEC 23.1.2).
-    private (string Role, Koto At, string? Label)[]? WithCaseDeclarations((string Role, Koto At, string? Label)[]? related, string? found)
-    {
-        if (found is null || this.namedBinders.Count == 0)
-        {
-            return related;
-        }
-
-        var locations = new (string Role, Koto At, string? Label)[(related?.Length ?? 0) + this.namedBinders.Count];
-        related?.CopyTo(locations, 0);
-        for (var i = 0; i < this.namedBinders.Count; i++)
-        {
-            locations[(related?.Length ?? 0) + i] = ("declaration", this.namedBinders[i].Target.Declaration, "the Semantics binding " + BinderName(this.namedBinders[i]));
-        }
-
-        return locations;
     }
 }
