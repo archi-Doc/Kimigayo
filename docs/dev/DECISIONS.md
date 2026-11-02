@@ -6181,13 +6181,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
       that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
       its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
       `FormedApplication`, then `SolveLate`; the review's N2): done in U2b, with i01_n.
-    - cs1_ty and ea1, U1d (the planning session's ruling, 2026-11-03, extending u1's, expl's and boxe's to annotations): an annotation
-      that contributes the expected result proves the Result position at its written Type, the old analysis's body obligation, and the
-      call adds no Binding record at the argument (D-3's second record), beside which that record would vanish (G56); the rows pin the
-      annotation's record until H11.
+    - cs1_ty and ea1, U1d (the planning session's ruling, 2026-11-03, extending u1's, expl's and boxe's to annotations): where the
+      Result position's instantiated Type is the annotation's written Type or a part of it (ea1's `id<T>(x: T)`, cs1_ty), the written
+      Type's record, the old analysis's body obligation, proves it, and the call adds no Binding record at the argument (D-3's second
+      record), beside which that record would vanish (G56); the rows pin the annotation's record until H11. Where the callee's
+      parameter adds its own layers around the slot (mk2: `mk2<T>(w: Option<ref/T during static>) -> T` under
+      `let y: ref/i32 during q = mk2(.None)`), nothing judges the Result position, on dev and after U1d alike: pre-existing, PLAN G388.
     - h4_n (C7), U1d, cause reported (design §8; the row stays on the T2 branch): the well-formedness row reaches region inference
       on both pipelines, but the solve gives r = meet(keep, short) and a row through a meet carries no Loan into its destination,
-      as before U2.2 (a declared `origin q outlives r`, h6; another destination, h9; R4's `r4-notes/g216a-u22-impl/state-u1d.md`).
+      as before U2.2 (a declared `origin q outlives r`, h6; another destination, h9; R4's `r4-notes/g216a-u22-impl/state-u1d.md`); PLAN G389.
     - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
   - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
     written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
