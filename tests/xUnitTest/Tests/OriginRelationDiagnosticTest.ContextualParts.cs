@@ -89,6 +89,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("d04", WrapFunc + OwnH + LocalUse + "    let x = h(a, b, wrap(Option.None))\n    return 0\n", "")]
     [InlineData("d04_n", ImpliedStore + WrapFunc + ShortBody + "    put2(p, sr, wrap(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd wrap(Option.None)")]
     [InlineData("i01", LayerBox + "func h3(q: ref/i32, r: ref/i32, x: Box<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h3(a, b, Box.init(item: Option.None))\n    return 0\n", "")]
+    [InlineData("i01_n", LayerBox + PutBox + ShortBody + "    putBox(p, sr, Box.init(item: Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd Box.init(item: Option.None)")]
     [InlineData("i02", PassStruct + OwnH + LocalUse + "    let s = S.init()\n    let x = h(a, b, s.pass(Option.None))\n    return 0\n", "")]
     [InlineData("i02_n", PassStruct + ImpliedStore + ShortBody + "    let s = S.init()\n    put2(p, sr, s.pass(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd s.pass(Option.None)")]
     [InlineData("q10b", "func h(q: ref/i32, r: ref/i32, x: (Option<ref/(ref/i32 during q) during r>, i32)) -> ref/i32 during r\n    return q\n" + PairFunc + LocalUse + "    let x = h(a, b, pair(Option.None))\n    return 0\n", "")]

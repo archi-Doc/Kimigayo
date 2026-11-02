@@ -6158,14 +6158,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
     B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
     Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
+  - U2b (i01_n, N2; R4 planning's brief, 2026-11-03): the fact "this position's Type comes through a slot the expected result
+    solved" is F1's Result itself, recorded in the candidate's `Contributions` slice. Its writer is `Contribute` in the
+    candidate's first run, where the expected result solves the slots. `EvaluateCallCandidate` empties the slice before that run,
+    because the pooled buffer is not cleared on return. Its readers are the selected candidate's later runs (`CheckDefaulted`,
+    the re-run after `CompleteWaiting`), which fix those slots from the construction's Type: they keep a recorded Result and
+    never rewrite it as Signature. No slot-set buffer is added. The fixed-construction re-check keeps its own zeroed buffer;
+    the selected call reads the first evaluation's. N2: `InferAdapted` collects input premises for Evidence parts only
+    (`PartContribution`), so a completed Signature part's premises have one path, `SolveLate`'s, over the instantiated
+    parameter Type. i01_n gives only its outer record.
   - Staged rows, each with its unit and condition (U1c; the review's B2):
-    - i01_n, U2b: `Contribute` recomputes "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
+    - i01_n, done in U2b: `Contribute` recomputed "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
       re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
       Result position as Signature: one more record at `.None` beside the outer call's, never one fewer. Cure: the solve publishes
       once, per candidate, the slots its expected result solved, and `Contribute` reads them; every `TryCandidate` solution carries
       that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
       its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
-      `FormedApplication`, then `SolveLate`; the review's N2): U2b, with i01_n.
+      `FormedApplication`, then `SolveLate`; the review's N2): done in U2b, with i01_n.
     - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
     - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
     - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
