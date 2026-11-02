@@ -150,10 +150,11 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 (DECISIONS BU-43), P2: whether an anonymous function or a contextual Case reached without an expected Type is a result
     // of a call's control-flow argument at a position its call completes (CallableTarget): it then awaits that call, its kind recorded
-    // once, and the call completes it as a waiting argument (TakeWaiting).
+    // once, and the call completes it as a waiting argument (TakeWaiting). Only under an argument probe (UnderArgumentProbe), which is
+    // asked first: BindNode asks this of every node, and outside a probe no form is classified.
     private bool AwaitsCallAtResult(Koto node, BoundType? expected)
     {
-        if (expected is not null || node.BindingState != BindingState.Unvisited)
+        if (expected is not null || this.argumentProbe is null || node.BindingState != BindingState.Unvisited)
         {
             return false;
         }
