@@ -244,6 +244,22 @@ public sealed partial class HirFormsTest
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
     }
 
+    // SPEC 13.5.6 (R6-check Q14 (b); DECISIONS R4-M142): a case adaptation's operand is used as the builder's Adapt reads it, a Place in
+    // place and a value through a Temporary, never acquired by Move.
+    [Fact]
+    public void ACaseAdaptationUsesItsOperandInPlace()
+    {
+        var c = MinimalEmissionTest.Analyze("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
+            "func widen<s/T>(value: s/Derived) -> s/Base\n    s is object\n    return value@move@s/Base\n" +
+            "func inspect<s/T>(value: s/Derived) -> i32\n    s is object\n    let view = value@objref/Base\n    return view.value\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var operands = Reachable(c.Kotonoha).OfType<ConversionKoto>().Where(static x => x.ToString()!.EndsWith("/Base", StringComparison.Ordinal))
+            .Select(static x => $"{x.Left} {HirTables.AdjustOf(x.Left).Acquire}/{HirTables.AdjustOf(x.Left).Adaptation}");
+        Assert.Equal(["value@move Temporary/None", "value None/None"], operands);
+    }
+
     // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
     // ConstIndex and a runtime one an Index, a user index designates the referent of its selected call's reference, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.
