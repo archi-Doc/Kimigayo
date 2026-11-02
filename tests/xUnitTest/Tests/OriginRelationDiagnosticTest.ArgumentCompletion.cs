@@ -178,7 +178,10 @@ public partial class OriginRelationDiagnosticTest
     // the waiting `identity(1)` beside `x` takes it (SPEC 14.9.2 steps 2-3), at a join's child position (d2, its `match` d2_m, d2_lit3)
     // as at its root (d2_root) and as an element (d2_elem); so it is evidence for a slot (d2_g; d2_g_t writes it), and with no candidate
     // of that Type the call has none (d2_n). U1.6g (a): typed parts that conflict at a position fix no Type without the call, so the
-    // position waits and no candidate is best (e4; SPEC 10.5.1, 10.4; it was the join's own record under BU-43, U1.6).
+    // position waits and no candidate is best (e4; SPEC 10.5.1, 10.4; it was the join's own record under BU-43, U1.6). BU's landing B2
+    // rows: a part-by-part join is fitted per position and its typed part is evidence (e11, t3x; SPEC 10.5.1), and a reference that needs
+    // S waits while the typed source selects (e6b; SPEC 10.5.3, 10.5.1); a typed `o` beside `.None` selects (e1) and binds T (e2); SPEC
+    // 10.5.1's example at a bare slot (w1); a typed Function value binds T, at which the anonymous function is checked (e5g; 10.8, 10.5.4).
     [Theory]
     [InlineData("U1.5", "d2", IdentityT + FTuples + KX + "    return f" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_m", IdentityT + FTuples + KX + "    return f(match c\n        true => (identity(1), 2)\n        false => (x, 3)\n    )\n", "")]
@@ -189,6 +192,13 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "d2_g_t", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g<i64>" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
     [InlineData("U1.6g", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "AmbiguousBinding_Kd f(match c")]
+    [InlineData("U1.2", "e11", IdentityT + FTuples + KX + "    return f(if c => (identity(1), 2) else => (if c => (x, 3) else => (identity(4), 5)))\n", "")]
+    [InlineData("U1.2", "t3x", IdentityT + "func f(x: ((i64, i32), i32)) -> i32 => 0\nfunc f(x: ((bool, i32), i32)) -> i32 => 1\n" + KX + "    return f(if c => ((identity(1), 2), 3) else => ((x, 3), 4))\n", "")]
+    [InlineData("U1.3", "e6b", "func one(x: i64) -> i64 => x\nfunc one(x: bool) -> bool => x\nfunc f(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc f(x: ((bool) -> bool, i32)) -> i32 => 1\nfunc k(c: bool, gv: (i64) -> i64) -> i32\n    return f(if c => (one, 1) else => (gv@move, 2))\n", "")]
+    [InlineData("U1.2", "e1", FOptionTuples + "func k(c: bool, o: Option<i64>) -> i32\n    return f(if c => (.None, 1) else => (o, 2))\n", "")]
+    [InlineData("U1.5", "e2", "func g<T>(t: (Option<T>, i32)) -> i32 => 0\nfunc k(c: bool, o: Option<i64>) -> i32\n    return g(if c => (.None, 1) else => (o, 2))\n", "")]
+    [InlineData("U1.5", "w1", "func identity<U>(x: U) -> U => x@move\nfunc g<T>(t: T) -> i32 => 0\n" + KX + "    return g(if c => (identity(1), 2) else => (x, 3))\n", "")]
+    [InlineData("U1.5", "e5g", "func g<T>(t: ((T) -> T, i32)) -> i32 => 0\nfunc k(c: bool, gv: (i64) -> i64) -> i32\n    return g(if c => (func [] (v) => v, 1) else => (gv@move, 2))\n", "")]
     public void ATypedPartGivesItsPositionItsType(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
@@ -263,7 +273,9 @@ public partial class OriginRelationDiagnosticTest
     // wj_tup_m; wj_arr moved to U1.6f's rows). With one candidate the sources get their own records, as `g(identity(1))` and `g(2)` do (wj_one_n, wj_pick_n,
     // wj_ctor_n, wj_tup_n, and wj_one_v at a value call). U1.6 (BU's U1.5 review B1): every part of a child position is formed alike
     // (AddResultPart), so a nested waiting join in the Tuple result of a join with one source beside Never is flattened as with two
-    // (sg1; sg1b), and its one candidate gives the sources' records (sg1n).
+    // (sg1; sg1b), and its one candidate gives the sources' records (sg1n). BU's landing B2 rows: a slot only waiting parts sit at stays
+    // unbound, since a waiting argument is never evidence for an outer slot (SPEC 10.5.1): a deferred call beside Never (g125) or beside
+    // another at a Tuple's child position (n2_flat).
     [Theory]
     [InlineData("U1.5", "wj_ov", IdentityT + FPairs + KHead + "    return f(" + WJoin + ", 3)\n", "AmbiguousBinding_Kd f(" + WJoin + ", 3)")]
     [InlineData("U1.5", "pw8", IdentityT + FScalars + KHead + "    return f(" + WJoin + ")\n", "AmbiguousBinding_Kd f(" + WJoin + ")")]
@@ -280,13 +292,19 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6", "sg1", IdentityT + Stop + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => stop())\n", "AmbiguousBinding_Kd f(if c => (" + SgJoin + ", 3) else => stop())")]
     [InlineData("U1.6", "sg1b", IdentityT + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => (" + SgJoin + ", 3))\n", "AmbiguousBinding_Kd f(if c => (" + SgJoin + ", 3) else => (" + SgJoin + ", 3))")]
     [InlineData("U1.6", "sg1n", IdentityT + Stop + "func g(x: (bool, i32)) -> i32 => 0\n" + KD + "    return g(if c => (" + SgJoin + ", 3) else => stop())\n", WSources)]
+    [InlineData("U1.3", "g125", IdentityT + Stop + "func g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n    return g(label lp: if c2 => (if c1 => stop() else => identity(2)) else => stop())\n", "UnboundTypeArgument_Kd g(label lp: if c2 => (if c1 => stop() else => identity(2)) else => stop())")]
+    [InlineData("U1.3", "n2_flat", IdentityT + "func first<T>(value: (T, i64)) -> () => ()\nfunc k(c: bool, d: bool, e: bool, x: i64) -> ()\n    first(if c => (identity(5), x) else => (identity(4), x))\n", "UnboundTypeArgument_Kd first(if c => (identity(5), x) else => (identity(4), x))")]
     public void AWaitingJoinPositionTakesNoPartInApplicability(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B1's valid twins: the candidate that the other positions or arguments fix completes the waiting position (wj_pick, wj_ctor_exp at
     // its expected Type, wj_nest, wj_fn, pw13, pw19, wj_tup_ok, and wj_ov_v at a value call); a literal position still selects
     // (wj_tup_lit), and a waiting anonymous function's header selects at the join's position (wj_fnh) as at a child position (wj_tup_fn;
-    // SPEC 10.5.4). U1.6: a typed part types a child position of a join with one source beside Never (sg3).
+    // SPEC 10.5.4). U1.6: a typed part types a child position of a join with one source beside Never (sg3). BU's landing B2 rows: a
+    // waiting position is checked at the selected candidate (nd4; SPEC 10.5.1); Never supplies no candidate (SPEC 14.9.2 step 2), so a
+    // Case beside it waits for the one candidate (g240) or an explicit Type argument (g199); the expected result fills a generic callee's
+    // T (10.8) for a Case join (g126) and an array literal's waiting element (g065); references that need S wait (10.5.3) for the one
+    // candidate (fs_root_refS_refS_fi) or the one an anonymous function's header selects (fs_root_refS_anonHeader_fov; 10.5.4).
     [Theory]
     [InlineData("U1.5", "wj_pick", IdentityT + Pick + "func k(c: bool, v: i64) -> i64\n    return pick(" + WJoin + ", v)\n")]
     [InlineData("U1.5", "wj_ctor_exp", IdentityT + BoxInit + KHead + "    let b: Box<i64> = Box.init(" + WJoin + ")\n    return 0\n")]
@@ -300,6 +318,13 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "wj_fnh", "func run(action: () -> ()) -> i32 => 0\nfunc run(action: () -> i32) -> i32 => 1\n" + KHead + "    return run(if c => func () -> i32 => 1 else => func () -> i32 => 2)\n")]
     [InlineData("U1.5", "wj_tup_fn", "func f(x: (() -> (), i32)) -> i32 => 0\nfunc f(x: (() -> i32, i32)) -> i32 => 1\n" + KHead + "    return f(if c => (func () -> i32 => 1, 2) else => (func () -> i32 => 2, 3))\n")]
     [InlineData("U1.6", "sg3", IdentityT + Stop + FTuples + "func k(c: bool, d: bool, x: i64) -> i32\n    return f(if c => (if d => identity(1) else => x, 3) else => stop())\n")]
+    [InlineData("U1.5", "nd4", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n    return f(if c => (if d => identity(1) else => identity(2), 3) else => (identity(4), 5))\n")]
+    [InlineData("U1.2", "g240", Stop + "func f(x: Option<i64>) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n    return f((if c2 => (if c1 => stop() else => .None) else => stop()))\n")]
+    [InlineData("U1.3", "g199", Stop + "func g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n    return g<Option<i64>>(label lp: if c2 => stop() else => (if c1 => .None else => stop()))\n")]
+    [InlineData("U1.2", "g126", IdentityT + "func k(c1: bool) -> i32\n    let v: Option<i64> = identity(if c1 => .None else => .Some(2))\n    return 0\n")]
+    [InlineData("U1.2", "g065", IdentityT + Stop + "func k(c1: bool, c2: bool) -> i32\n    let v: [2 of Option<i64>] = identity([if c1 => stop() else if c2 => identity(.Some(3)) else => .None, .None])\n    return 0\n")]
+    [InlineData("U1.3", "fs_root_refS_refS_fi", Twice + Thrice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\n" + KHead + "    return f(if c => idg else => idg)\n")]
+    [InlineData("U1.3", "fs_root_refS_anonHeader_fov", Twice + Thrice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc f(x: (bool) -> bool) -> i32 => 1\n" + KHead + "    return f(if c => idg else => func [] (v: i64) -> i64 => v)\n")]
     public void AWaitingJoinPositionIsCompletedByTheSelectedCandidate(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 

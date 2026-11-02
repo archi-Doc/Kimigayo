@@ -49,7 +49,9 @@ public partial class OriginRelationDiagnosticTest
     // P2 (SPEC 10.5.3, 14.9.2 step 2; the owner's reading): a function name at a join source that needs no S is its Function Item, a
     // typed part, so the join is typed at its Type and a waiting part beside it takes that Type (step 3), failing at itself when it does
     // not fit: an anonymous function (fs1, fs2, fs3, fs9, g180, c6, v1f) or `idg`, which needs S (fs6, fs7, v1, v1n), at a named call,
-    // overloaded or not, and at a value call `h` (the fs rows at h, g036, g064, g189, g203: errors under (i)).
+    // overloaded or not, and at a value call `h` (the fs rows at h, g036, g064, g189, g203: errors under (i)). BU's landing B2 row, the
+    // valid twin: twice's Item at a child position is erased only at `(i64) -> i64` (7.7.4), so that candidate is selected
+    // (fs_joinChildTuple_refNoS_refNoS_fov).
     [Theory]
     [InlineData("U1.6g3b", "fs1", Twice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc f(x: (bool) -> bool) -> i32 => 1\nfunc k(c: bool) -> i32\n    return f(if c => func [] (v: i64) -> i64 => v else => twice)\n", "TypeMismatch_Kd func [] (v: i64) -> i64 => v")]
     [InlineData("U1.6g3b", "fs2", Twice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc f(x: (bool) -> bool) -> i32 => 1\nfunc k(c: bool) -> i32\n    return f(if c => func [] (v) => v else => twice)\n", "TypeMismatch_Kd func [] (v) => v")]
@@ -84,6 +86,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6g3b", "fs_joinChildTuple_refNoS2_anonHeader_h", Twice + Thrice + Idg + "func fh(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc k(c: bool) -> i32\n    let h = fh\n    return h(if c => (thrice, 3) else => (func [] (v: i64) -> i64 => v, 4))\n", "TypeMismatch_Kd func [] (v: i64) -> i64 => v")]
     [InlineData("U1.6g3b", "fs_joinChildTuple_refNoS2_anonOmitted_h", Twice + Thrice + Idg + "func fh(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc k(c: bool) -> i32\n    let h = fh\n    return h(if c => (thrice, 3) else => (func [] (v) => v, 4))\n", "TypeMismatch_Kd func [] (v) => v")]
     [InlineData("U1.6g3b", "fs_joinChildTuple_refNoS2_refS_h", Twice + Thrice + Idg + "func fh(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc k(c: bool) -> i32\n    let h = fh\n    return h(if c => (thrice, 3) else => (idg, 4))\n", "UnboundTypeArgument_Kd idg")]
+    [InlineData("U1.6g3b", "fs_joinChildTuple_refNoS_refNoS_fov", Twice + Thrice + Idg + "func f(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc f(x: ((bool) -> bool, i32)) -> i32 => 1\n" + KHead + "    return f(if c => (twice, 3) else => (twice, 4))\n", "")]
     public void ANoSFunctionNameAtAJoinSourceIsItsFunctionItem(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 }
