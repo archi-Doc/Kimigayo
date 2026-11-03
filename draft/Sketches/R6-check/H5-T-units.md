@@ -276,3 +276,10 @@ units of an hour or less. Amendments:
   waited for U-A2 alone start now: T-15, then T-16, and T-17 to T-21. T-22 still waits for G409. T-15 and T-16's file
   (`CallableOriginForwardingTest.Conversions.cs`) also holds T36's row, which becomes an (e) re-point naming G216 (b). The units that read
   `MirOriginsTest` get no U-A2 rows.
+- **Rulings from the first reviews.**
+  - T-01: ContentUpdate's Loop row pins `PlacementActivationConflict_Kd` at `a@follow += 1` (R4's per-row verdict; SPEC 13.7.2; the
+    ledger's `a5-replace-loop` row). §3's ContentUpdate line, which names `ComparisonLoanConflict_Kd` for all five rows, reads this way.
+  - T-05: ten of T11's 17 rows are **1x, not 1a**: `AStaticsElementIsWritableAsItsField` ×6, nest, ta, bare and storage_static. The old
+    write record is gone, but the collector's StaticStorage `Unsupported_Kd` at the non-scalar statics keeps these programs rejected
+    before and after the flip. That is the existing P42 limit (R5-M82, R5-M156), so the owner's 1a acceptance does not apply. Each row
+    pins the collector's records and the absent old record.
