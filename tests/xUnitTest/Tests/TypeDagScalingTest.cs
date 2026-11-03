@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
@@ -148,23 +149,30 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // SPEC 15.6.6: a part shared at depth 0 and 60 or 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later
-    // write conflicts with the Loan the bound retains, at 60 it does not. At 70 each Tuple more than 64 levels high is also a layout depth
-    // record at check, one per erased Type (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+    // SPEC 15.6.6: a part shared at depth 0 and 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later write
+    // meets A5's depth bound, a located OwnershipDepthLimit_Kd at `let d` (DECISIONS R4-M153), where the old analysis's bound retained the
+    // Loan and the write conflicted with it (R6-check H5; H3b T48, class 3); without the write there is none. At 70 each Tuple more than
+    // 64 levels high is also a layout depth record at check, one per erased Type (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
     [Theory]
-    [InlineData(60, false, true, "")]
-    [InlineData(60, true, true, "")]
     [InlineData(70, false, false, "")]
-    [InlineData(70, false, true, "ComparisonLoanConflict_Kd")]
-    [InlineData(70, true, true, "ComparisonLoanConflict_Kd")]
+    [InlineData(70, false, true, "OwnershipDepthLimit_Kd")]
+    [InlineData(70, true, true, "OwnershipDepthLimit_Kd")]
     public void ADeepSharedPartKeepsTheBoundsVerdict(int depth, bool shallowFirst, bool written, string code)
-    {
-        var deep = $"    let d = {Nest(depth)}\n";
-        var shallow = $"    let s = {Nest(10)}\n";
-        var source = "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code).Concat(Enumerable.Repeat("GenerationResourceLimit_Kd", Math.Max(0, depth - 64))), Problems(Checked(source)));
+        => Assert.Equal(Codes(code).Concat(Enumerable.Repeat("GenerationResourceLimit_Kd", Math.Max(0, depth - 64))), Problems(Checked(DeepShared(depth, shallowFirst, written))));
 
-        static string Nest(int levels) => new string('(', levels) + "value@ref" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    // H3b T31d: at 60 the later write is valid (SPEC 15.6.6, 16.3.1: a Tuple of references destroys nothing that observes), but A5's depth
+    // bound is 32 (the old analysis's was 64, Binding's storage height, BU-12), so the MIR refuses it with a located OwnershipDepthLimit_Kd
+    // at `let d` (DECISIONS R4-M153). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): U-B5 (A5's bound 32 -> 64, after
+    // PLAN G349's units) restores the acceptance and moves the rows back to ADeepSharedPartKeepsTheBoundsVerdict.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ADeepSharedPartPastTheMirsBoundIsRefusedPendingUB5(bool shallowFirst)
+    {
+        var c = Checked(DeepShared(60, shallowFirst, written: true));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.OwnershipDepthLimit_Kd, new SyntaxLocation("let d = " + DeepNest(60))));
     }
 
     // SPEC 16.3.1: the drop of a struct shared in a Tuple observes its Loans, so a later write conflicts; without a drop it does not.
@@ -211,18 +219,21 @@ public partial class TypeDagScalingTest
         Assert.Empty(DiagnosticCorpus.Check(source.ToString()).Diagnostics);
     }
 
-    // A ring through a handle reaches the bound, which retains the Loan; a closed instance whose Field is a projection is checked in its
-    // Place's context.
+    // A ring through a handle beside a shared borrow in a Tuple: the old analysis's bound retained the Loan, so a later write conflicted.
+    // Since the MIR decides acceptance (R6-check H5; H3b T62, 1a, the owner 2026-11-03), `t` is unused after the write and Node's
+    // destruction observes nothing (SPEC 15.6.3, 15.6.6, 16.3.3): check accepts the program with no record, and a Library build generates
+    // main.
     [Theory]
-    [InlineData(false, "")]
-    [InlineData(true, "ComparisonLoanConflict_Kd")]
-    public void ARingThroughAHandleRetainsTheLoan(bool written, string code)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARingThroughAHandleKeepsNoLoanPastItsLastUse(bool written)
     {
         var source = "struct Node\n    public var x: i32\n    public var next: Option<rc/Node>\n    public init(x: i32)\n        self.x = x\n        self.next = .None\n" +
             "public func main() -> ()\n    var value = 42\n    let n = Node.init(x: 1)\n    let t = ((n@move, value@ref), 3)\n" + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), Problems(Checked(source)));
+        Assert.Contains("main", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
     }
 
+    // A closed instance whose Field is a projection is checked in its Place's context.
     [Fact]
     public void AnInstanceWithAProjectionFieldChecks()
     {
@@ -324,6 +335,14 @@ public partial class TypeDagScalingTest
     }
 
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
+
+    // A main sharing `value@ref` at depth 0 of a Tuple 10 levels high and of one `depth` levels high, in either order, then maybe writing it.
+    private static string DeepShared(int depth, bool shallowFirst, bool written)
+    {
+        var deep = $"    let d = {DeepNest(depth)}\n";
+        var shallow = $"    let s = {DeepNest(10)}\n";
+        return "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
+    }
 
     // A checked compilation: the old analysis's rows judge its walks, the checked set's records publish at check (DECISIONS R5-M156), and
     // the chain shapes generate through MIR code generation, the old generator's instance analyses having left with its selection at G4
