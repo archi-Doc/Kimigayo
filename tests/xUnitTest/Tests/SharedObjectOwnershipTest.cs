@@ -109,13 +109,14 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // SPEC 3.6, 8.15: a generic definition is judged with the temporary handle's Loan before any instance exists.
+    // SPEC 3.6, 8.15: a generic definition is judged with the temporary handle's Loan before any instance exists; the record is at the
+    // temporary (the MIR's span, H5).
     [Fact]
     public void GenericDefinitionsKeepTheTemporaryHandleLoan()
     {
         const string Source = "struct Item\n    public var id: i32 = 7\nfunc keep<T>(make: () -> rc/T) -> ()\n    T is ObjectPayload\n    let r = make()@objref\n    let s = r\n()";
         var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let r = make()@objref"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "make()"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     // SPEC 3.6: an iteration source's temporaries, a value or a handle, last for the loop, as a match Subject's do.
@@ -158,29 +159,29 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     }
 
     // SPEC 13.5.5, 13.6.2, 16.2.2: a payload follow, a Field borrow and a receiver-borrow result keep a Loan on the handle,
-    // and a handle whose payload borrows a local keeps that local's Loan wherever it goes.
+    // and a handle whose payload borrows a local keeps that local's Loan wherever it goes. Each row: the records in result order, by
+    // code and text. The MIR's conflict is at the access statement or the destroyed root's declaration (H5, the flip); a returned
+    // handle's relation is Binding's record with A5's twin at `return X` (H0b §5.4, twins until H11).
     [Theory]
-    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet moved = owner@move\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
-    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nsink(owner@move)\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
-    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nowner = Kimi.Intrinsics.makeRc(Item.init())\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner = Kimi.Intrinsics.makeRc(Item.init())", 0)]
-    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet slot = owner@uniq\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@uniq", 5)]
-    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet field = owner.value@ref\nlet moved = owner@move\nrequire field == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
-    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet result = owner.view()\nlet moved = owner@move\nrequire result == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
-    [InlineData("let kept = label out: do\n    let owner = Kimi.Intrinsics.makeRc(Item.init())\n    exit to out owner@follow@ref\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "exit to out owner@follow@ref", 0)]
-    [InlineData("let kept = label out: do\n    let n = 7\n    exit to out Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "exit to out Kimi.Intrinsics.makeRc(View.init(n@ref))", 0)]
-    [InlineData("let kept = label out: do\n    let n = 7\n    let local = Kimi.Intrinsics.makeRc(View.init(n@ref))\n    exit to out Kimi.Intrinsics.clone(local@ref)\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "exit to out Kimi.Intrinsics.clone(local@ref)", 0)]
-    [InlineData("let m = 1\nvar slot = Kimi.Intrinsics.makeRc(View.init(m@ref))\ndo\n    let n = 7\n    slot = Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire slot.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "let n = 7\n    slot = Kimi.Intrinsics.makeRc(View.init(n@ref))", 0)]
-    [InlineData("func leak() -> rc/View\n    let n = 7\n    return Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire leak().value == 7 else => $abort(\"live\")", "UnsatisfiedOriginRelation_Kd", "Kimi.Intrinsics.makeRc(View.init(n@ref))", 0)]
-    public void HandlesKeepTheLoansOfTheirBorrowsAndPayloads(string use, string code, string target, int length)
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet moved = owner@move\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner")]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nsink(owner@move)\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner")]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nowner = Kimi.Intrinsics.makeRc(Item.init())\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner = Kimi.Intrinsics.makeRc(Item.init())")]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet slot = owner@uniq\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner@uniq")]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet field = owner.value@ref\nlet moved = owner@move\nrequire field == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner")]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet result = owner.view()\nlet moved = owner@move\nrequire result == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner")]
+    [InlineData("let kept = label out: do\n    let owner = Kimi.Intrinsics.makeRc(Item.init())\n    exit to out owner@follow@ref\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let owner = Kimi.Intrinsics.makeRc(Item.init())")]
+    [InlineData("let kept = label out: do\n    let n = 7\n    exit to out Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let n = 7")]
+    [InlineData("let kept = label out: do\n    let n = 7\n    let local = Kimi.Intrinsics.makeRc(View.init(n@ref))\n    exit to out Kimi.Intrinsics.clone(local@ref)\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let n = 7")]
+    [InlineData("let m = 1\nvar slot = Kimi.Intrinsics.makeRc(View.init(m@ref))\ndo\n    let n = 7\n    slot = Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire slot.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let n = 7")]
+    [InlineData("func leak() -> rc/View\n    let n = 7\n    return Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire leak().value == 7 else => $abort(\"live\")", "UnsatisfiedOriginRelation_Kd return Kimi.Intrinsics.makeRc(View.init(n@ref))|UnsatisfiedOriginRelation_Kd Kimi.Intrinsics.makeRc(View.init(n@ref))")]
+    public void HandlesKeepTheLoansOfTheirBorrowsAndPayloads(string use, string records)
     {
         foreach (var atomic in new[] { false, true })
         {
             var source = View + Item + "    public func view(self: ref/Self) -> ref/i32 during self => self.value@ref\nfunc sink(handle: rc/Item) => ()\n" + use;
             source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
-            target = atomic ? SharedObjectRuntimeTest.ArcSource(target) : target;
-            var error = Assert.Single(Diagnose(source).Diagnostics);
-            Assert.Equal(code, error.Code);
-            Assert.Equal(target[..(length == 0 ? target.Length : length)], source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            var expected = atomic ? SharedObjectRuntimeTest.ArcSource(records) : records;
+            Assert.Equal(expected, string.Join("|", Diagnose(source).Diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}")));
         }
     }
 
