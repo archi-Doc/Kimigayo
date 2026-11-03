@@ -409,8 +409,9 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2 (DECISIONS BU-43): a join none of whose value sources supplies a candidate. Its tree is judged first
     // (JudgeNested), then its own formation (JudgeOwn): a conflict among its typed parts fails it at once (Conflict, its own record, on
-    // which an outer join rests), and a failed part is recorded as its cause (RestOn), on which it rests at its verdict (DecideRest;
-    // SPEC 23.1.2). Clean, it waits for its position's Type (true) when a source waited for its Type and that Type is decided later
+    // which an outer join rests) unless its call owns it, when it waits (CallOwnsConflict, true, whatever its results' shape), and a
+    // failed part is recorded as its cause (RestOn), on which it rests at its verdict (DecideRest; SPEC 23.1.2). Clean, it waits for its
+    // position's Type (true) when a source waited for its Type and that Type is decided later
     // (DecidedLater), or when it is a call's
     // control-flow argument whose results are not Dictionaries (IsProbeJoin, SPEC 10.5.1): its call classifies it and completes
     // it at the selected candidate's Type. Otherwise it is the root of its tree: a conflict among the literal defaults of the flattened
@@ -441,7 +442,11 @@ public sealed partial class Binding
             }
 
             context.Outcome = JoinOutcome.Waiting;
-            return true;
+        }
+
+        if (context.Outcome == JoinOutcome.Waiting)
+        {
+            return true; // Its call owns a conflict among its parts (JudgeOwn, CallOwnsConflict) or classifies it.
         }
 
         if (defaults)

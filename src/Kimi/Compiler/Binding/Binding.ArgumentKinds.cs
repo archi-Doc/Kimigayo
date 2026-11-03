@@ -200,8 +200,9 @@ public sealed partial class Binding
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 RecordArgumentJoin), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one
-    // row: every recorded kind awaits its call but Literal. It drops Root and keeps Taken, since RecordArgumentJoin and DeferNestedCall
-    // re-record the probe while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
+    // row: every recorded kind awaits its call but Literal. It drops Root and keeps Taken, since DeferNestedCall re-records a call probe
+    // while DecideTaken decides it again; RecordArgumentJoin never re-records a taken probe (IsArgumentJoin). SlotSolution.Default
+    // records a Literal through it and adds its default.
     private ref ArgumentPart RecordPart(Koto part, PartKind kind)
     {
         ref var record = ref this.PartRecord(part);
@@ -255,7 +256,8 @@ public sealed partial class Binding
     // SPEC 10.5.1, 14.9.2 step 2 (revision B, BU-80; B3a): whether a join is classified by its call: an argument source of the argument
     // probe before its call has taken it, the probe's control flow or one its argument-source walk enters (UnderArgumentProbe: results,
     // Tuple and array elements, nested joins). Its sources are argument sources, which its call fits per candidate, so a conflict among
-    // them is its call's (SPEC 10.8; U1.6g (a)): the join waits and its call completes it at the selected candidate's Type. The probe's
+    // them is its call's (SPEC 10.8; U1.6g (a); CallOwnsConflict): the join waits and its call completes it at the selected candidate's
+    // Type. The probe's
     // own join has no common-Type search before selection (IsProbeJoin); a clean nested one keeps its own formation until G383 B3c.
     // Once its call has selected and taken the argument (TakenByCall), as when DecideTaken decides it again, no expectation is left to
     // wait for (the owner's answer, 2026-10-31: (i)): the conflict is the join's own record, as outside a call argument.
@@ -267,11 +269,12 @@ public sealed partial class Binding
         => this.argumentProbe is { } probe && ReferenceEquals(ControlFlowExpression(probe), join) && this.IsArgumentJoin(join);
 
     // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43, BU-80 B3a): P4, the record of an argument join that waits
-    // for its call, written once where it is decided to wait and never at its completion. The probe's own join (IsProbeJoin,
-    // AwaitsWithoutCandidate) is Join and Root, its results classified position by position; a scalar join of literals (no Tuple or
-    // array results, `shape`, and no part awaiting its call) keeps the Literal its survey gave it (a failed or unknown source beside its
-    // literals leaves none, U1.6h site 4; G383 B3b). A nested one waits only on a conflict among its sources (DecideResult), which is
-    // its call's: Join without Root, which an enclosing aggregate argument completes through AwaitsCall (g046, g122) until G383 B3c.
+    // for its call, written once where it is decided to wait and never at its completion. The probe's own join (IsProbeJoin: classified
+    // by its call, AwaitsWithoutCandidate, or its conflict its call's, CallOwnsConflict) is Join and Root, for every result shape, its
+    // results classified position by position; a scalar join of literals (no Tuple or array results, `shape`, and no part awaiting its
+    // call) keeps the Literal its survey gave it (a failed or unknown source beside its literals leaves none, U1.6h site 4; G383 B3b). A
+    // nested one waits only when its call owns a conflict among its sources (CallOwnsConflict): Join without Root, which an enclosing
+    // aggregate argument completes through AwaitsCall (g046, g122) until G383 B3c.
     private void RecordArgumentJoin(Koto join, Koto? shape)
     {
         var probe = this.argumentProbe!;
@@ -286,9 +289,26 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.8, 14.9.2 step 2 (U1.6g (a); DECISIONS BU-80 B3a): the one decision for a typed conflict among a join's sources, at either
+    // formation that finds it (JudgeOwn over its parts, DecideResult over its candidates), for every result shape. An argument join's
+    // (IsArgumentJoin) is its call's, which fits its sources per candidate: the join waits for its call, recorded (RecordArgumentJoin),
+    // and the conflict is not the join's (true). Any other is the join's own (false), as once its call has taken the argument.
+    private bool CallOwnsConflict(Koto join, ResultContext context, Koto? shape)
+    {
+        if (!this.IsArgumentJoin(join))
+        {
+            return false;
+        }
+
+        this.RecordArgumentJoin(join, shape);
+        context.Outcome = JoinOutcome.Waiting;
+        return true;
+    }
+
     // SPEC 10.5.1 (DECISIONS BU-80 B3a): the one root test, whether the part is its call's root argument join: its record holds Root,
     // which RecordArgumentJoin writes on the probe's record where IsProbeJoin decides that its join waits, and which any later record
-    // drops. It reads that record alone; a nested argument join's Join record (a conflict wait) never makes it true.
+    // drops. It reads that record alone; a nested argument join's Join record (a conflict wait) never makes it true. A waiting root join
+    // of literals keeps its Literal record without Root until G383 B3b, so the test is false for it.
     private bool IsRootArgumentJoin(Koto part) => (this.RecordedPart(part).Relation & CallRelation.Root) != 0;
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other

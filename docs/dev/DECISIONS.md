@@ -10078,8 +10078,13 @@ resumed by R4-M86 (2026-10-20).
     (BU and R4, 2026-11-03; it replaces condition (3), "never on a nested join", which the gate refuted: g046 and g122, a conflicting
     join inside an array or Tuple argument, complete only through its Join record): RecordArgumentJoin is P4's one writer, (1) of the
     root's Join record once, where IsProbeJoin decides that it waits (DeferNestedCall no longer records the probe's join), (2) never
-    rewritten at its completion, and (3') of a nested join's Join record only when it waits on a conflict among its sources
-    (DecideResult). (4) The one root test U2j's readers (ComposedJoin, PartContribution) call is ArgumentKinds' `IsRootArgumentJoin(p)`:
+    rewritten at its completion, and (3') of a nested join's Join record only when it waits on a conflict among its sources. The
+    review's B1 (a probe join with Dictionary results whose sources conflict had its conflict suppressed but neither waited nor was
+    recorded: `fdf(if c => [1: gv@move] else => [2: twice])` PrerequisiteUnavailable_Kd): "a typed conflict is its call's" is one
+    decision, `CallOwnsConflict` (ArgumentKinds), which both formations that find a conflict call (JudgeOwn over parts, DecideResult
+    over candidates), for every result shape: an argument join's conflict suppresses its own record, and the join waits, recorded by
+    RecordArgumentJoin; the probe's own join is then Join and Root whatever its shape, Dictionary included (BU's decision). (4) The one
+    root test U2j's readers (ComposedJoin, PartContribution) call is ArgumentKinds' `IsRootArgumentJoin(p)`:
     it reads only the record's new bit `CallRelation.Root`, which RecordArgumentJoin writes with the root's Join record and any later
     RecordPart drops; never `argumentProbe`, KindOf, BoundType or syntax, and never `Kind == Join`, which a nested conflict wait also
     holds. ORDT OnlyTheRootArgumentJoinPassesTheRootTest pins it (true for the root, false for a conflicting nested waiting join with
@@ -10087,8 +10092,10 @@ resumed by R4-M86 (2026-10-20).
     (G390, U2j-b after B3c). B3c publishes the same row for the nested argument joins the selected candidate completes. A clean nested
     join keeps its own formation, which OneFormation makes the same Types: making it wait left it uncompleted at the selected Type
     (CallRelation g236, g254, g090, g038ms, g090m and q1h PrerequisiteUnavailable_Kd, g161 InternalInvariant_Kd, the held trial), so
-    B3c also owns "a selected candidate completes clean nested argument joins". Moves: none (records unchanged); those rows stay valid
-    as guards. `g((if c => x else => b, 1))` stays UnboundTypeArgument_Kd, with p48 (whole-slot evidence of an aggregate source).
+    B3c also owns "a selected candidate completes clean nested argument joins". Moves against d7f69e006, records only: a nested join
+    whose flattened parts conflict and that supplies no candidate now waits (CallOwnsConflict at JudgeOwn), so the call's record
+    replaces the join's TypeMismatch_Kd (`f(if c => (if d => (if e => x else => b) else => identity(1)) else => x)`, ORDT n0f, and its
+    Tuple form), as at two levels; the other rows stay valid as guards. `g((if c => x else => b, 1))` stays UnboundTypeArgument_Kd, with p48 (whole-slot evidence of an aggregate source).
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's

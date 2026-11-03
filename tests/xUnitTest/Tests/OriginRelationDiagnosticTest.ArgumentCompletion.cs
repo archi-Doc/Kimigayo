@@ -59,6 +59,12 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Pick = "func pick<T>(x: T, y: T) -> T => x@move\n";
 
+    private const string FDicts = "func fd(x: Dictionary<i64, i64>) -> i32 => 0\nfunc fd(x: Dictionary<i64, bool>) -> i32 => 1\n";
+
+    private const string FDictFn = "func fdf(x: Dictionary<i64, (i64) -> i64>) -> i32 => 0\n";
+
+    private const string KXB3 = "func k(c: bool, d: bool, e: bool, x: i64, b: bool) -> i32\n";
+
     private const string BoxInit = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n";
 
     private const string WJoin = "if c => identity(1) else => 2";
@@ -291,7 +297,10 @@ public partial class OriginRelationDiagnosticTest
     // sources fitted per candidate (SPEC 10.5.1), as typed array elements are, so no candidate admits both: with two candidates (sc_ov,
     // the Tuple results sc_tov) and with one, at a named call (sc_fi, sc_elem, sc_tfi) and a value call (sc_h), the record is
     // NoApplicableOverload_Kd at the call, as a typed join's is (d1h). Tuple results of another length fit no candidate (sc_len; 10.5.1).
-    // Outside a call argument the conflict is the join's (sc_let).
+    // Outside a call argument the conflict is the join's (sc_let). B3a's review B1: a probe join with Dictionary results whose sources
+    // conflict waits for its call as any other shape does, so the call keeps its records (d06: the one candidate's; n08: two candidates
+    // both fit, as on d7f69e006). The fix moves n0f: its middle join, whose flattened parts conflict, now waits, and the call's record
+    // replaces the join's own TypeMismatch_Kd, as at two levels (B3a design, class (2)).
     [Theory]
     [InlineData("B2b", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
     [InlineData("B2b", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
@@ -301,6 +310,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("B2b", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
     [InlineData("U1.6g", "sc_let", KXB + "    let v = if c => x else => b\n    return 0\n", "TypeMismatch_Kd if c => x else => b")]
+    [InlineData("B3a", "d06", "func fdi(x: Dictionary<i64, i64>) -> i32 => 0\nfunc k(c: bool, x: i64, y: i32) -> i32\n    return fdi(if c => [1: x] else => [2: y])\n", "TypeMismatch_Kd y")]
+    [InlineData("B3a", "n08", FDicts + KXB + "    return fd(if c => [1: x] else => [2: b])\n", "AmbiguousBinding_Kd fd(if c => [1: x] else => [2: b])")]
+    [InlineData("B3a", "n0f", IdentityT + FScalars + KXB3 + "    return f(if c => (if d => (if e => x else => b) else => identity(1)) else => x)\n", "NoApplicableOverload_Kd f(if c => (if d => (if e => x else => b) else => identity(1)) else => x)")]
     public void TypedSourcesInConflictAtACallArgumentFitNoCandidate(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
@@ -388,7 +400,8 @@ public partial class OriginRelationDiagnosticTest
     // SPEC revision B (DECISIONS BU-80; the owner's "Accept as is", 2026-11-02): g050, class (1)'s erasure form: `twice` and `gv1`
     // fit only `Array<(i64) -> i64>`, which is selected.
     // B3a (DECISIONS BU-80): a nested join inside an array (g046) or Tuple (g122) argument whose sources conflict waits for its call,
-    // which completes it through its Join record.
+    // which completes it through its Join record. B3a's review B1: so does a probe join with Dictionary results whose sources conflict
+    // (d01, its parenthesized form t0b).
     [Theory]
     [InlineData("U1.5", "wj_pick", IdentityT + Pick + "func k(c: bool, v: i64) -> i64\n    return pick(" + WJoin + ", v)\n")]
     [InlineData("U1.5", "wj_ctor_exp", IdentityT + BoxInit + KHead + "    let b: Box<i64> = Box.init(" + WJoin + ")\n    return 0\n")]
@@ -412,6 +425,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("B2b-1", "g050", Twice + Idg + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool) -> i32\n    return f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])\n")]
     [InlineData("B3a", "g046", Twice + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool, c4: bool, c5: bool, gv6: (i64) -> i64, c7: bool, c8: bool) -> i32\n    return f([if c7 => func [] (v) => v else if c8 => (if c4 => (if c2 => gv1@move else if c3 => func [] (v: i64) -> i64 => v else => twice) else if c5 => func [] (v) => v else => func [] (v: i64) -> i64 => v) else => gv6@move, func [] (v) => v])\n")]
     [InlineData("B3a", "g122", Twice + Idg + FFnPair + "func k(gv1: (i64) -> i64, c2: bool, c3: bool, c4: bool, c5: bool) -> i32\n    return f((if c4 => idg else if c5 => (if c2 => twice else if c3 => idg else => gv1@move) else => func [] (v) => v, 3))\n")]
+    [InlineData("B3a", "d01", Twice + FDictFn + "func k(c: bool, gv: (i64) -> i64) -> i32\n    return fdf(if c => [1: gv@move] else => [2: twice])\n")]
+    [InlineData("B3a", "t0b", Twice + FDictFn + "func k(c: bool, gv: (i64) -> i64) -> i32\n    return fdf((if c => [1: gv@move] else => [2: twice]))\n")]
     public void AWaitingJoinPositionIsCompletedByTheSelectedCandidate(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 
@@ -484,6 +499,7 @@ public partial class OriginRelationDiagnosticTest
     // (`one(if c => identity(1) else => 2)`, `fo(if c => (if d => x else => y) else => x)`); false for a clean nested join, which has no
     // record, and for a nested join that waits on a conflict among its sources, whose conflict is its call's, though it holds a Join
     // record (`fo(if c => (if d => x else => b) else => x)`). The BU/R4 decision (2026-11-03, option (a)) replaced "no nested Join record".
+    // It reads private members because no public layer observes the root test yet: U2j-a's observable rows replace this reflective pin.
     [Fact]
     public void OnlyTheRootArgumentJoinPassesTheRootTest()
     {
