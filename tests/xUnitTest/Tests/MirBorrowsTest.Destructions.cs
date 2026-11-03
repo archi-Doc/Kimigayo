@@ -645,7 +645,7 @@ public sealed partial class MirBorrowsTest
     // SPEC 4.9.6, 15.6.4, 16.3.3: a published destroying call composes the destruction its row lists at the call, after its own rows,
     // over the pre-call state: `clear` of an Array, `replace`'s old target, `insertOrReplace`'s unused key (keyParamBad: a parameter's
     // Dictionary, so 4.9.6's key dependencies also reach storage the body does not own); `truncate` and `removeAll` have their Bad rows in
-    // ATruncateOrRemoveAllComposesItsElementsDestruction. Each Bad errs at `y = 5` through the composition (DECISIONS R4-M150; before it,
+    // ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW. Each Bad errs at `y = 5` through the composition (DECISIONS R4-M150; before it,
     // R4-M143's referent guard) or the key's dependencies; each null twin (the destroyed element's q is null, so its drop stores nothing
     // that carries y) is valid, so the composition adds no Loan the drop does not store.
     [Theory]

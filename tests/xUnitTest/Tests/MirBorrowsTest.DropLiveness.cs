@@ -154,16 +154,14 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["value = 99 ComparisonLoanConflict_Kd"], DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
     }
 
-    // SPEC 23.1.1, 23.1.2, 16.3.3, 15.6.4 (R4-M147, R4-M153's revision 3, implementation review 3's B3 (ii); R4-M150): at a referent
-    // store whose referent's destruction holds an abstract part not proven Copy and a part past the bound, `a.clear()` composes the
-    // abstract part's erased destruction (BU-47's `0 Content store 0`), which may store y's Loan past it (the owner's Q1 (a)), so `y = 5`
-    // errs, with no other record (no depth limit, no Unsupported_Kd), at depth 40 and 10 and for the abstract part alone, as clearGenOk
-    // (AReferentsDestructionIsComposedAtItsCall).
+    // SPEC 23.1.1, 23.1.2 (R4-M147, R4-M153's revision 3, implementation review 3's B3 (ii)): at a referent store whose referent's
+    // destruction holds an abstract part not proven Copy (Limit) and a part past the bound (Deep), the one answer is Limit, so `a.clear()`
+    // is the located Unsupported_Kd, as at depth 10 and for clearGenOk (the abstract part alone; ADestructionAReferentMayObserveKeepsW).
     [Theory]
     [InlineData("deep", 40)]
     [InlineData("deep", 10)]
     [InlineData("alone", 0)]
-    public void AnAbstractPartBesideAPartPastTheBoundIsComposedAtAReferentStore(string form, int depth)
+    public void AnAbstractPartBesideAPartPastTheBoundIsUnsupportedAtAReferentStore(string form, int depth)
     {
         var (element, value) = form == "deep"
             ? ($"(T, {NestedType(depth)})", $"(T.make(p: slot@raw, q: w@raw@raw/u8), {Nested("0", depth)})")
@@ -171,7 +169,7 @@ public sealed partial class MirBorrowsTest
         var c = CompileDepthForm(Prelude + RawShapes + ReferentShapes + "func clearGen<T>()\n    T is MakeW\n    var y: i32 = 1\n" +
             $"    var w: ref/i32 = y@ref\n    var slot: raw/u8 = null\n    var a: Array<{element}> = []\n    a.append({value})\n    a.clear()\n" +
             "    consume(a@move)\n    usep(slot)\n    y = 5\n");
-        Assert.Equal(["y = 5 ComparisonLoanConflict_Kd"], DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
+        Assert.Equal(["a.clear() Unsupported_Kd"], DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
     }
 
     // SPEC 23.1.2 (R4-M153's revision 3, implementation review 3's N1): a limit record is one failure's, so independent checks at one

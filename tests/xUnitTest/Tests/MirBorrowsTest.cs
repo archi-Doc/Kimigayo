@@ -1528,9 +1528,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
     // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
     // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s abstract iterator passes the guard (an abstract part may
-    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is; its
-    // erased destruction (16.3.3, BU-47's `0 Content store 0`), composed as a uniq/Self call (R4-M150), may store past `it` into storage
-    // the body does not own what `it` carries, its own Loan after `it.next()`'s self-row (R4-M154), so `it`'s storage end errs too.
+    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is.
     [Fact]
     public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
     {
@@ -1578,7 +1576,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """);
         Assert.Equal(
-            ["hold: local = second@move", "hold: var it = local.iterate()", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 

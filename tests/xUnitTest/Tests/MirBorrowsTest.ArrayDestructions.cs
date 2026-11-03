@@ -9,7 +9,8 @@ namespace XunitTest;
 /// <summary>The shared acceptance tests of PLAN G264 U0′ (WORKFLOW Q11; written from the problem statement before either candidate):
 /// A5's records at Array <c>truncate</c> and <c>removeAll</c> calls whose elements' destruction stores through a raw layer (SPEC 4.9.6,
 /// 15.6.4, 16.3.1). U0′ published the two rows; A5 composes the destruction each row lists at the call (G264 U1, DECISIONS R4-M150,
-/// which removed R4-M143's referent guard), and every row here holds before and after it.</summary>
+/// which removed R4-M143's referent guard), an abstract element's excepted (the owner's staging), and every row here holds before and
+/// after it.</summary>
 public sealed partial class MirBorrowsTest
 {
     // The problem statement's prelude: a Writer whose drop stores its q through its raw slot p (SPEC 15.6.4's example), a maker of one
@@ -310,19 +311,19 @@ public sealed partial class MirBorrowsTest
 
         """;
 
-    // SPEC 4.9.6, 15.6.4, 16.3.1 (PLAN G264 U0′ and U1; DECISIONS R4-M147, R4-M150): a `truncate` or `removeAll` call composes the
-    // destruction of the elements it removes: each Bad form errs at `y = 5` (SPEC's verdict: slot may retain q, which addresses w, which
-    // carries y's Loan), and each Ok twin errs there too, whichever argument form, a Closure, a function item (Item) or a capturing Closure
-    // (Cap, whose Bad is b's Loan), and whatever the length argument (truncateFull: the row names no count); `clear`'s twins are the
-    // comparison. Over an abstract `T` not proven Copy (Gen), the element's erased destruction (16.3.3, BU-47's `0 Content store 0`) may
-    // store y's Loan past it (an abstract part may be an exclusive reference, the owner's Q1 (a)), so Bad and Ok err at `y = 5`, as
-    // clearGen's (no longer the located Unsupported_Kd at the call).
+    // SPEC 4.9.6, 15.6.4, 16.3.1 (PLAN G264 U0′; DECISIONS R4-M143, R4-M147): at a `truncate` or `removeAll` call whose referent may
+    // observe a destruction, A5 composes the destruction's retention at the call (R4-M150): each Bad form errs at
+    // `y = 5` (SPEC's verdict: slot may retain q, which addresses w, which carries y's Loan), and each Ok twin errs there too, whichever
+    // argument form, a Closure, a function item (Item) or a capturing Closure (Cap, whose Bad is b's Loan), and whatever the length
+    // argument (truncateFull: the row names no count); `clear`'s twins are the comparison. Over an abstract `T` not proven Copy (Gen), the
+    // call is the located Unsupported_Kd and Bad keeps its true `y = 5` (R4-M147's abstract-referent rule, as clearGen's).
     // Every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok, removeAllItemOk, removeAllCapOk), once
     // R4-M143's known false errors, is a correct error under SPEC 15.6's whole-holder text (DECISIONS BU-67, R4-M143's note; the Array
     // holding x is consumed, as consumeDrop2Ok's x). removeAllElemBad's second record, its MIR-only `y = 5` beside the activation
-    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline does not report it.
+    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline does not report it. Guards: U0′ changes no A5 verdict,
+    // so each row holds today and must hold after.
     [Fact]
-    public void ATruncateOrRemoveAllComposesItsElementsDestruction()
+    public void ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW()
     {
         var c = MirBuildTest.Compile(DestructionShapes + Forms);
         Assert.Equal(
@@ -330,7 +331,9 @@ public sealed partial class MirBorrowsTest
                 "removeAllDrop2Bad: y = 5", "removeAllDrop2Ok: y = 5", "truncateDrop3Bad: y = 5", "truncateDrop3Ok: y = 5",
                 "truncateFullBad: y = 5", "truncateFullOk: y = 5", "clearDrop2Bad: y = 5", "clearDrop2Ok: y = 5",
                 "removeAllItemBad: y = 5", "removeAllItemOk: y = 5", "removeAllCapBad: y = 5", "removeAllCapOk: y = 5",
-                "truncateGenBad: y = 5", "truncateGenOk: y = 5", "removeAllGenBad: y = 5", "removeAllGenOk: y = 5",
+                "truncateGenBad: a.truncate(0) Unsupported_Kd", "truncateGenBad: y = 5", "truncateGenOk: a.truncate(0) Unsupported_Kd",
+                "removeAllGenBad: a.removeAll(matching: func (v) => true) Unsupported_Kd", "removeAllGenBad: y = 5",
+                "removeAllGenOk: a.removeAll(matching: func (v) => true) Unsupported_Kd",
                 "removeAllCapPlainBad: y = 5", "removeAllCapArrBad: a.removeAll(matching: func [v](e) => v@follow.length > 0) CallActivationConflict_Kd",
                 "removeAllElemBad: a.removeAll(matching: func (v) => true) CallActivationConflict_Kd", "removeAllElemBad: y = 5",
             ],
