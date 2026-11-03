@@ -270,15 +270,17 @@ public class AbstractCallReachTest
             x.Span.Start >= start && x.Span.End <= start + write.Length);
     }
 
-    // A lending item keeps the receiver borrow itself; the existing activation check reports it once.
+    // A lending item keeps the receiver borrow itself; the second receiver Borrow meets it once (the MIR's ComparisonLoanConflict_Kd at
+    // the second `source`, H5).
     [Fact]
-    public void ALendingItemKeepsItsActivationDiagnostic()
+    public void ALendingItemKeepsItsReceiverConflict()
     {
         var c = MinimalEmissionTest.Analyze(LendingTwice + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(LendingTwice.IndexOf("second = source", StringComparison.Ordinal) + "second = ".Length, "source".Length), error.Span);
     }
 
     // SPEC 8.15.1, 15.3.7 (L1 of the adopted proposal Abstract Calls Reach by Paths, its 4.1): a generic body is checked at least as

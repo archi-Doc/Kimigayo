@@ -100,16 +100,20 @@ public sealed class ChildMoveActivationTest
         Assert.Equal("p@uniq", issue.LoanSource!.ToString());
     }
 
+    // The MIR's record (H5) is a ComparisonLoanConflict_Kd at the placed parent `p`; it relates the Reborrow `let c = p` and the literal
+    // that holds the placed child, with no Note: the placement Note ("acquired exclusively where the literal places it") is a fact A6
+    // publishes later.
     [Fact]
     public void TheChildFirstPlacementNamesThePlacedChild()
     {
         const string Source = "public func main()\n    var n: i32 = 1\n    var p = n@uniq\n    let c = p\n    var pair = (c@move, p@move)\n    _ = pair.0@follow\n";
         var result = DiagnosticCorpus.Check(Source);
         var record = Assert.Single(result.Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.PlacementActivationConflict_Kd), record.Code);
-        Assert.Contains("`p@move` is acquired exclusively where the literal places it", record.Note, StringComparison.Ordinal);
-        var retained = Assert.Single(record.Related!);
-        Assert.Equal("loan", retained.Role);
-        Assert.Equal(Source.IndexOf("c@move", StringComparison.Ordinal), retained.Span!.Value.Start);
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Source.IndexOf("p@move", StringComparison.Ordinal), 1), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
+        Assert.Null(record.Note);
+        Assert.Equal(
+            [("borrow", Source.IndexOf("c = p", StringComparison.Ordinal) + 4, 1, "borrow that created the loan"),
+                ("loan", Source.IndexOf("(c@move", StringComparison.Ordinal), 16, "later use of the value retaining the conflicting loan")],
+            record.Related!.Select(static x => (x.Role, x.Span!.Value.Start, x.Span.Value.Length, x.Label)));
     }
 }

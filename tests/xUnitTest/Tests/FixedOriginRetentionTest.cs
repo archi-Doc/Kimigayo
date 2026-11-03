@@ -207,7 +207,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var source = FixedCall(true, false).Replace("    r@follow = 42\n    return z@follow", "    func read(b: uniq/i32 during x) -> ref/i32 during x => b@follow@ref\n    let child = read(r)\n    let seen = r@follow\n    return child@follow + seen", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "r");
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "r@follow"); // the MIR's record (H5)
     }
 
     [Theory]
@@ -377,11 +377,15 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-        Assert.Equal("z", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+
+        // The MIR's record (H5) is at the write through the parent and relates the borrow of `z` and the retained child's later use.
+        Assert.Equal(form == "local" ? "z@follow = 41" : "z@follow = 42", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal("This operation conflicts with an active loan", error.Message);
-        var retained = Assert.Single(error.Related!);
-        Assert.Equal("loan", retained.Role);
-        Assert.Contains(form == "local" ? "y" : "r", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+        Assert.Equal(
+            [("borrow", source.IndexOf(form == "local" ? "= z\n" : "pass(z)", StringComparison.Ordinal) + (form == "local" ? 2 : 5), "z", "borrow that created the loan"),
+                ("loan", source.IndexOf(form == "local" ? "return y@follow" : "return r@follow", StringComparison.Ordinal) + 7, form == "local" ? "y@follow" : "r@follow",
+                    "later use of the value retaining the conflicting loan")],
+            error.Related!.Select(x => (x.Role, x.Span!.Value.Start, source.Substring(x.Span.Value.Start, x.Span.Value.Length), x.Label)));
         var json = System.Text.Json.JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Contains("\"code\":\"ComparisonLoanConflict_Kd\"", json, StringComparison.Ordinal);
         Assert.Contains("\"role\":\"loan\"", json, StringComparison.Ordinal);
@@ -396,7 +400,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             Assert.Equal(error.Display!.Range, sent.Range);
             if (related)
             {
-                Assert.Equal(retained.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+                Assert.Equal(error.Related!.Select(static x => x.Range!.Value), sent.RelatedInformation!.Select(static x => x.Location.Range));
             }
             else
             {

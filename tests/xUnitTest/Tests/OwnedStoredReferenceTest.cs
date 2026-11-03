@@ -137,9 +137,10 @@ public class OwnedStoredReferenceTest
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("item@ref")));
     }
 
+    // The record is the MIR's (H5), at the write through the parent.
     [Theory]
-    [InlineData("var items = [(value@move, 7)]\n    for item in items@move\n        let child = item.0@follow@uniq\n        item.0@follow = 5\n        child@follow = 1", "item.0")]
-    [InlineData("let first = (value@follow@uniq, 1)\n    value@follow = 5\n    first.0@follow = 99", "value")]
+    [InlineData("var items = [(value@move, 7)]\n    for item in items@move\n        let child = item.0@follow@uniq\n        item.0@follow = 5\n        child@follow = 1", "item.0@follow = 5")]
+    [InlineData("let first = (value@follow@uniq, 1)\n    value@follow = 5\n    first.0@follow = 99", "value@follow = 5")]
     public void ChildrenOfTheItemStillSuspendItsParent(string body, string conflict)
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    " + body);
@@ -163,13 +164,14 @@ public class OwnedStoredReferenceTest
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(mir, subject)));
     }
 
+    // The MIR's MovedPlace_Kd is at the write through the moved root (H5).
     [Fact]
     public void AMovedRootNoLongerLends()
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 7)\nlet moved = item@move\nitem.0@follow = 99");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd && c.SyntaxOf(x.Subject).ToString() == "item.0");
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd && c.SyntaxOf(x.Subject).ToString() == "item.0@follow = 99");
     }
 
     [Fact]
@@ -222,12 +224,13 @@ public class OwnedStoredReferenceTest
     public void SharedBorrowsOfAnExclusiveReferenceSlotCoexist(string name, string body)
         => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceSharedSlot" + name, "var value = 1\n" + body, string.Empty);
 
+    // The MIR's record (H5): at the write or the exclusive Reborrow, at a read of `value` its operand.
     [Theory]
     [InlineData("let p = value@uniq\nlet r = p@ref\nvalue = 5\nrequire r == 1 else => $abort(\"read\")", "value = 5")]
-    [InlineData("let p = value@uniq\nlet r = p@ref\np@follow = 5\nrequire r == 1 else => $abort(\"read\")", "p")]
-    [InlineData("let p = value@uniq\nlet r = p@ref\nlet w = p@follow@uniq\nw@follow = 3\nrequire r == 1 else => $abort(\"read\")", "p")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\np@follow = 5\nrequire r == 1 else => $abort(\"read\")", "p@follow = 5")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nlet w = p@follow@uniq\nw@follow = 3\nrequire r == 1 else => $abort(\"read\")", "p@follow@uniq")]
     [InlineData("let p = value@uniq\nlet r = p@ref\nlet x: i32 = value\nrequire r == 1 else => $abort(\"read\")", "value")]
-    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@ref\nt.0@follow = 7\nrequire r == 1 else => $abort(\"read\")", "t.0")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@ref\nt.0@follow = 7\nrequire r == 1 else => $abort(\"read\")", "t.0@follow = 7")]
     public void ASharedSlotBorrowStillFreezesItsReference(string body, string conflict)
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);

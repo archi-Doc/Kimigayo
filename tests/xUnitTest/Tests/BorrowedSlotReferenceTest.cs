@@ -45,8 +45,9 @@ public class BorrowedSlotReferenceTest
         Assert.Equal("p.item@ref", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
     }
 
+    // The record is the MIR's (H5): at the exclusive borrow `t@uniq`, or at the write.
     [Theory]
-    [InlineData("var t = (value@ref, 2)\nlet r = pick(t@ref)\nlet w = t@uniq\nrequire r == 1 else => $abort(\"slot\")", "t")]
+    [InlineData("var t = (value@ref, 2)\nlet r = pick(t@ref)\nlet w = t@uniq\nrequire r == 1 else => $abort(\"slot\")", "t@uniq")]
     [InlineData("var t = (value@ref, 2)\nlet r = pick(t@ref)\nt.1 = 9\nrequire r == 1 else => $abort(\"slot\")", "t.1 = 9")]
     public void TheCallerKeepsTheRootLoan(string body, string conflict)
     {

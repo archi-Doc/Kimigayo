@@ -26,15 +26,16 @@ public class FollowedReferentFieldTest(ITestOutputHelper output)
     public void AFollowedReferentFieldIsReachedThroughItsReference(string name, string body)
         => ScalarEmissionTest.EmitFixture("FollowedReferentField" + name, S + body, string.Empty);
 
+    // Each row's one record is the MIR's (H5): at the write statement, the update (a PlacementActivationConflict_Kd), or the borrow.
     [Theory]
-    [InlineData("    let view = p@follow.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x")]
-    [InlineData("    let view = p@follow.x@ref\n    p.x = 3\n    return view", "p.x")]
-    [InlineData("    let view = p.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x")]
-    [InlineData("    let view = p@follow.inner.0@ref\n    p@follow.inner.0 += 1\n    return view", "p@follow.inner.0")]
-    [InlineData("    let view = p@follow.inner@ref\n    p@follow.inner.0 += 1\n    return view.0", "p@follow.inner.0")]
-    [InlineData("    let u = p@follow.x@uniq\n    let r = p@follow.x@ref\n    u@follow = 1\n    return r", "p")]
+    [InlineData("    let view = p@follow.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x = 3")]
+    [InlineData("    let view = p@follow.x@ref\n    p.x = 3\n    return view", "p.x = 3")]
+    [InlineData("    let view = p.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x = 3")]
+    [InlineData("    let view = p@follow.inner.0@ref\n    p@follow.inner.0 += 1\n    return view", "p@follow.inner.0 += 1", nameof(DiagnosticCode.PlacementActivationConflict_Kd))]
+    [InlineData("    let view = p@follow.inner@ref\n    p@follow.inner.0 += 1\n    return view.0", "p@follow.inner.0 += 1", nameof(DiagnosticCode.PlacementActivationConflict_Kd))]
+    [InlineData("    let u = p@follow.x@uniq\n    let r = p@follow.x@ref\n    u@follow = 1\n    return r", "p@follow.x@ref")]
     [InlineData("    let u = p@follow.x@uniq\n    let v = p.x\n    u@follow = 1\n    return v", "p.x")]
-    public void AWriteWhileAFollowedFieldIsBorrowedConflicts(string body, string conflict)
+    public void AWriteWhileAFollowedFieldIsBorrowedConflicts(string body, string conflict, string code = nameof(DiagnosticCode.ComparisonLoanConflict_Kd))
     {
         var source = S + "func f(p: uniq/S) -> i32\n" + body + "\npublic func main() => ()";
         var path = Path.GetFullPath("followed-field-update.kimi");
@@ -50,7 +51,7 @@ public class FollowedReferentFieldTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         var error = Assert.Single(result.Diagnostics);
-        Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
+        Assert.Equal(code, error.Code);
         Assert.Equal(conflict, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         var identity = SourceIdentity.FromPath(path);
         var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
