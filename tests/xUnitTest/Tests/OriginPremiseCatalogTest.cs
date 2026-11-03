@@ -126,17 +126,29 @@ public class OriginPremiseCatalogTest
     [InlineData(Box + Peek + "func outer<t/U>(b: ref/Box<t/U>) -> ref/U\n    t is ref or uniq\n    return peek(b)\n", null)]
     [InlineData(Box + Peek + "func outer<t/U>(b: ref/Box<t/U>, q: ref/i32) -> ref/U during q\n    t is ref or uniq\n    return peek(b)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + Pick, null)]
-    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
+    // Since H5 the Problems that Check reads also hold A5's ComparisonLoanConflict_Kd at `m`'s declaration (`derived`, code and subject):
+    // `m@ref`'s Loan reaches the result only through the call, so it is derived under SPEC 15.6.5 rule W. It is a dependent record,
+    // published under the Unsat's cause and not as an Error (SPEC 23.1.2), counted under DECISIONS Q13 (R6-check H5; H3b T51).
+    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "ComparisonLoanConflict_Kd let m: i32 = 5")]
     [InlineData(Box + Leak, null)]
     [InlineData(Box + Leak + "func g(q: ref/i32) -> i32\n    let m: i32 = 5\n    let pair = leak(q, m@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a}\n    s is owner\n    public let b: ref/Box<s/T> during a\n", null)]
     [InlineData(Box + "struct View<s/T> {a}\n    s is ref\n    public let b: ref/Box<s/T> during a\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a}\n    s is owner or ref\n    public let b: ref/Box<s/T> during a\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a, q}\n    s is ref\n    origin q outlives a\n    public let b: ref/Box<s/T during q> during a\n", null)]
-    public void TheImplicitOuterOriginIsAPremiseBelowABorrowLayer(string body, string? code)
+    public void TheImplicitOuterOriginIsAPremiseBelowABorrowLayer(string body, string? code, string? derived = null)
     {
-        var codes = Check(body + Main).Codes;
-        Assert.Equal(code is null ? [] : [code], codes);
+        var source = body + Main;
+        var codes = Check(source).Codes;
+        if (derived is null)
+        {
+            Assert.Equal(code is null ? [] : [code], codes);
+        }
+        else
+        {
+            Assert.Equal([code!, derived[..derived.IndexOf(' ', StringComparison.Ordinal)]], codes);
+            Assert.EndsWith(" | " + derived, MinimalEmissionTest.Problems(MinimalEmissionTest.Analyze(source)), StringComparison.Ordinal);
+        }
     }
 
     // SPEC 11.4, 11.5, 15.6.1 (DECISIONS BU-26): a computed Property's header is its getter's result, so a use in it has the getter's
