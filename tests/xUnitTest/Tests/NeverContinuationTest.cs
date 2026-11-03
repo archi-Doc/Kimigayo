@@ -191,16 +191,17 @@ public class NeverContinuationTest
     }
 
     // The bare consume of that theory (`let x = a[(return 42)]`) is Binding's TransferRequired_Kd at the element (R6-check H1, DECISIONS
-    // BU-84). H5 restores the old analysis's Unsupported_Kd at the element path beside it (PD29): until then the old analysis skips a
-    // program whose Binding is incomplete, so the expectation is read without that record.
+    // BU-84), its one published record: the MIR adds none. The old analysis's Unsupported_Kd at the element path beside it is not
+    // restored (1x: the old analysis's limit record, withdrawn at H3b round 0; DECISIONS Q13, R5-M185).
     [Fact]
     public void ABareConsumeBelowADivergingKeyIsBindingsRecord()
     {
         var c = MinimalEmissionTest.Analyze(Elements + "let x = a[(return 42)]\n    return 0\n");
         c.Binding.ReportDiagnostics();
-        string[] expected = [nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.Unsupported_Kd)];
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
         Assert.Equal(
-            expected.Where(static x => x != nameof(DiagnosticCode.Unsupported_Kd)).Select(static x => (x, (string?)"a[(return 42)]")),
+            [(nameof(DiagnosticCode.TransferRequired_Kd), (string?)"a[(return 42)]")],
             TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
     }
 

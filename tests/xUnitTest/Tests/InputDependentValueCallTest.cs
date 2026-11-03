@@ -58,8 +58,8 @@ public class InputDependentValueCallTest
     // SPEC 15.4.3, 15.6.4: a result whose Origins are all static substitutes nothing, whatever the per-call inputs. In the Callable row
     // `apply(none)` borrows the Function Item temporary `none` for `f: ref/F` and SPEC 15.4.3 (1) binds the result to `f`, but the result
     // can hold neither `f`'s value nor a borrow formed through it (`none`'s item has no parts), so it keeps only `f`'s Content (the
-    // owner's 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154) and `match r` keeps no Loan on the temporary SPEC 3.6 ends: valid on
-    // both pipelines (dev's A5 rejected it, a class (a) row of R4-M136; the default pipeline keeps D5's Function Item boundary).
+    // owner's 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154) and `match r` keeps no Loan on the temporary SPEC 3.6 ends: valid,
+    // as the MIR decides (R6-check H5, DECISIONS R5-M185; dev's A5 rejected it, a class (a) row of R4-M136).
     [Theory]
     [InlineData("Item", None + "let e = none\nlet r = e()" + IsNone)]
     [InlineData("Erased", None + "let e: () -> Option<ref/i32> = none\nlet r = e()" + IsNone)]

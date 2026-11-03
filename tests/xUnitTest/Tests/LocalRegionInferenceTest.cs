@@ -141,7 +141,7 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     }
 
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each
-    // program is valid on both pipelines (DECISIONS R4-M112): an initializer's call qualifier slot outside the local's Type, a variable
+    // program is valid (DECISIONS R4-M112): an initializer's call qualifier slot outside the local's Type, a variable
     // bounded only by variables, and a contravariant slot with no principal lower bound, whose bounds hold through the region's one
     // source, the call's argument.
     [Theory]
