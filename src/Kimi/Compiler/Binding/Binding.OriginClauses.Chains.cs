@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // one component and deletes this file.
 // - Responsibility: every declaration row of the pass whose ends hold an Unbound atom (unboundRows; JudgeDeclarationRows judges a row
 //   with two Fixed ends at once, the rule's Fixed -> Fixed edge, and hands every other to this rule unjudged). An Unbound atom, or a meet
-//   with one, is a Dependent node; any other end a declaration row can have (static, a parameter, an input, a meet of them; DeclarationAtom)
-//   is Fixed. Nodes are the view's canonical Origins. Each row is an edge Longer -> Shorter, and back for an equality, a meet expanded by
+//   with one, is a Dependent node; any other end a declaration row can have, fixed in the declaration judge's frame (static, a parameter,
+//   an input, an enclosing body's Origin the declaration names, a meet of them; DeclarationAtom, DECISIONS BU-89), is Fixed. Nodes are the view's canonical Origins. Each row is an edge Longer -> Shorter, and back for an equality, a meet expanded by
 //   MeetNode's rule (A5's Relate): at the longer end an edge from each operand and, unless Fixed, the meet's own; a Dependent meet at the
 //   shorter end is reached from each operand.
 // - Outputs: an edge between two Fixed nodes is judged at once by the position judge. Every edge from a Dependent node into a Fixed node X

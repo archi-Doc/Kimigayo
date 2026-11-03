@@ -2977,6 +2977,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Definition` deadline in R4 (G210 is BU's); `ResultFit` windows now.
   - Amendment (2026-11-03, R4-M168; PLAN G215): E4's recorded limit is located, no longer silent: A5 reports `Unsupported_Kd` at each
     row of a layer no constructor body's slice includes, until the layer has a body of its own.
+  - (2026-11-03) E2's declaration atom is superseded in part by BU-89 (T60, PLAN G409; R4's consent, board C-10): an end of a
+    declaration's row may also be an enclosing body's Origin the declaration names, fixed in the declaration judge's frame
+    (`ExecutableBody.Declarations`, SPEC 15.3.4), so Binding's judge consumes such a row; E2's validation of a foreign body's atom
+    returns with G230 (A)'s declaring body.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b for C4a's gate step 2, PD12 and package C
   §3.8; R4's rulings of 2026-10-22 and its choice (b): R5 implements under a temporary hold of `MirInit.cs`, `MirDrops.cs` and
   `MirDropTest` (PLAN 26d48164), and R4 signs off before the merge)
@@ -7279,7 +7283,8 @@ resumed by R4-M86 (2026-10-20).
   an accessor storage witness; R4 restores row 6's Closure case), the effect rule's witnesses being `MirBorrowsTest.Rooted`'s.
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
 - **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed"; superseded in
-  part by R4-M155: a nested Function Type part's result well-formedness for an owner without a named declaration (the owner's (A)))
+  part by R4-M155: a nested Function Type part's result well-formedness for an owner without a named declaration (the owner's (A));
+  superseded in part by BU-89: its E2 test "whose resolved ends are declaration atoms")
   (2026-10-22;
   the BU planning session after the full process: designs A and B, the design review's merge M, R4
   agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
@@ -9181,7 +9186,8 @@ resumed by R4-M86 (2026-10-20).
   `DependentConstraint` an instance member) `ClosedClause` became an instance member too. U1's entry states the states, the writer, B1's rule and the readers.
 
 - **BU-56 A declaration's written Origin that names a body local's written Type and selects a body local's atom is a located
-  `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its
+  `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (superseded in part by BU-89: its removal condition's E2 item; the
+  declaring body and the name link remain) (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its
   stopped design, the planning session's decision, R4 agreeing; fix round 1 after review 1) SPEC 15.3.4, 23.1.1, 23.1.2.
   - SPEC reading: a named nested function's signature may name visible Origins of enclosing functions, each a fixed Origin of it, and a
     local set is visible in the following scope, so SPEC decides the forms: d6 (a store of `put`'s own input through `during x.s` of an
@@ -10279,6 +10285,45 @@ resumed by R4-M86 (2026-10-20).
   - Removed: the re-walk of held Waiting joins and `BoundSince`'s walk over a Waiting join's waited sources (G335's "Completed").
     No removal condition: the fact is canonical. AwaitsFor's other rows (literal parts, AwaitsCall, an Unvisited literal) stay
     structural per-node answers; a column for them would be a second representation.
+
+- **BU-89 A declaration's row may name an enclosing body's Origin, a fixed Origin of it, in the declaration judge's frame** (2026-11-03;
+  PLAN G409, H3b row T60; BU's design `bu\r6check\t60\T60-design.md` Revision 1, review 1 REVISE (B1) and its re-check ACCEPT, the
+  planning session's rulings OQ1-OQ5; R4's consent to the R4-M101 E2 part, board C-10) SPEC 15.3.4, 15.3.6, 15.6.1, 15.6.5.
+  Supersedes in part R4-M101 E2 (its end list), BU-26's E2 test ("whose resolved ends are declaration atoms") and BU-56's removal
+  condition (its E2 item).
+  - Reason no longer holding: R4-M101 E2 took a row formed with no body to name only its declaration's own atoms, any other end a
+    broken contract. SPEC 15.3.4 lets a named nested or root function's signature name a visible Origin of an enclosing function as a
+    fixed Origin of it, and BU-56 left the unannotated value class (d6u) to judgment, so such a row is a declaration row with a fixed
+    end. Dev left it unjudged: the view's finding, `InternalInvariant_Kd` NoBody in the MIR build (T60 at the flip head), and the old
+    walk's verdict on the default pipeline.
+  - Rule: `ExecutableBody.Declarations` is the declaration judge's frame, no body and distinct from the default value. Only
+    `JudgeDeclarationRows` enters it, around its Fixed -> Fixed judgments, `JudgeChains` and `PublishCallRelations`; nothing is formed
+    or stamped in it and it is never a MIR key. The class rule's row 6 (`EnclosingAtom`) gives it its meaning: every atom an executable
+    body formed is enclosing, so fixed there. E2's test is `DeclarationAtom` = Unbound or `FixedIn(_, Declarations)`; the kind list
+    goes (`FixedOrigin` is that list). So the judge consumes an input row its published premise entails (T60) and a nested Function
+    Type's result its inputs entail, and an unentailed row is `UnprovenOriginRelation_Kd` at its use (fixed-fixed Unknown).
+  - Unchanged: the default value and every reader of it, BU-28's no-body readers included (`VerifiedRegionOutlives` through
+    `FitsVerifiedTypeAt`; a throwaway counter over 48 ownership and borrow classes and the family: 0 of 73 rechecked uses change).
+    A judgment made while a header is bound runs in the forming body's frame and keeps dev's classes: an enclosing body's atom is not
+    fixed there, so such a relation is left to this judge as a row. A decision made directly there is pre-existing and G230 (A)'s.
+  - Moves (the generated family's 22 of 83 programs, all of the unannotated class; legacy and mir identical): 19 findings removed (13
+    programs whose verdict is unchanged, T60 among them); 1r, accepted -> `UnprovenOriginRelation_Kd` at the nested result, 2
+    (`ft_enc_bad` and its reversed twin `ft_enc_ok`, misnamed in the family: a relation of the local's Origin with an enclosing
+    Origin, either way, needs the declaration's clause); the code at
+    the same site, Unsatisfied -> Unproven, 1 (`root_ft_bad`); the record's owner, the old walk -> Binding with G56's stop of the old
+    analysis, 3 (`ft_res_bad`, `nn_ft_bad`, `clbody_ft_bad`); counted additions on valid programs dev already rejects, +3
+    `UnprovenOriginRelation_Kd` (`nf_res`, `nf_res_call`, `ft_enc_clause`; record selection, Q13). The result-side twins (U-O3's
+    r1loc and r1locok as `cl_res_bad`/`cl_res_ok`, the `fl_res_*` forms) keep dev's records.
+  - Ledger (`-Pipeline mir -TestPurpose Functional` against shared-base c6e5d73f5): only the two `b-g230-e2` signatures leave (`new`
+    and `acceptance`, 1 row each, ClosureEnvironmentOriginTest's d6u program; 275 -> 273 signatures, open (b) 158 -> 156), so their
+    `classification.tsv` rows go.
+  - Refinement (temporary breadth): `Declarations` reads every body's atom as enclosing, an over-approximation of the declaring
+    body's chain, so E2 no longer validates a foreign body's atom in a declaration row (no census or family program has one). Removal
+    condition: PLAN G230 (A) records the declaring body and stamps the row; the judge enters that frame and `Declarations` goes.
+  - Rejected: the reading on the default value (review 1's B1: it also changed BU-28's readers, 24 rechecks flipping in 48 classes);
+    E2's test alone (unentailed rows re-enter as no-body rows through `BodyChain` and stay findings); the declaring frame now (a row
+    stamp and `EvaluatingBody` for named functions, which moves the nested function's own body verdicts: G230 (A)); an
+    Inference-only test (one kind of an open family).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
