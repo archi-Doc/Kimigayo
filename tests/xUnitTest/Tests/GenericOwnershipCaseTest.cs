@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
-using Kimi.Compiler;
+using Kimi;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -52,6 +52,8 @@ public class GenericOwnershipCaseTest
         }
     }
 
+    // The MIR decides (DECISIONS R5-M185): a rejected case is its published record at the stated operation, whose loan location is a use
+    // of the stated Loan holder.
     [Theory]
     [MemberData(nameof(Judged))]
     public void JudgesEveryCaseAtDefinition(string name)
@@ -59,6 +61,8 @@ public class GenericOwnershipCaseTest
         var row = Rows.Value[name];
         var c = MinimalEmissionTest.Analyze(row.Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        c.ReportAnalysis();
+        var records = c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission).Diagnostics;
         var rejected = false;
         foreach (var expected in row.Expected.Values)
         {
@@ -68,9 +72,9 @@ public class GenericOwnershipCaseTest
             }
 
             rejected = true;
-            var (at, loan) = Locate(row.Source, expected);
-            Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
-                LineAt(row.Source, x.Source.Span.Start) == at && x.LoanSource is { } holder && Text(holder).Contains(loan, StringComparison.Ordinal));
+            var (at, holder) = Locate(row.Source, expected);
+            Assert.Contains(records, x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd) && x.Span is { } span &&
+                LineAt(row.Source, span.Start) == at && (x.Related ?? []).Any(r => r.Role == "loan" && r.Span is { } use && Leading(row.Source[use.Start..]) == holder));
         }
 
         if (!rejected)
@@ -88,17 +92,19 @@ public class GenericOwnershipCaseTest
         ScalarEmissionTest.EmitFixture("GenericCase" + name.Replace("-", string.Empty, StringComparison.Ordinal), run.Source, run.Stdout);
     }
 
-    // A rejection's zero-based operation line and Loan holder text, both found in the source.
-    private static (int Line, string Loan) Locate(string source, JsonElement rejection)
+    // A rejection's zero-based operation line and Loan holder, the name that the `let` or `var` line holding the Loan text declares.
+    private static (int Line, string Holder) Locate(string source, JsonElement rejection)
     {
         Assert.Equal("ComparisonLoanConflict_Kd", rejection.GetProperty("Code").GetString());
         var line = LineOf(source, rejection.GetProperty("Line").GetString()!);
-        var loan = rejection.GetProperty("Loan").GetString()!;
-        Assert.True(line >= 0 && source.Contains(loan, StringComparison.Ordinal), rejection.GetRawText());
-        return (line, loan);
+        var loan = LineOf(source, rejection.GetProperty("Loan").GetString()!);
+        var declaration = loan < 0 ? string.Empty : source.Split('\n')[loan].TrimStart();
+        Assert.True(line >= 0 && declaration.Length > 4 && declaration[..4] is "let " or "var ", rejection.GetRawText());
+        return (line, Leading(declaration[4..]));
     }
 
-    private static string Text(Kimi.Compiler.Parsing.Koto node) => node.ToString().Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
+    // The identifier a text begins with.
+    private static string Leading(string text) => new([.. text.TakeWhile(static x => char.IsLetterOrDigit(x) || x == '_')]);
 
     // The zero-based line of the first source line containing the text.
     private static int LineOf(string source, string text)
