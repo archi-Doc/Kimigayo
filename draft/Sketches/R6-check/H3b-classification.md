@@ -189,3 +189,16 @@ the plan: `r4-notes\post-exit\g264-s-plan-owner.md`, which says 「S0 → S1 →
 
 H5 therefore waits for these four units, beside R4's U-B1, U-A3, U-B2 and R6-1, and BU's G409. S3 (c80) is a separate unit after H5.
 R5 proposed to R4 that S0 and GXS's 15.6.4 revision be one revision with one review, or at least sequenced. Round 2 runs after S4.
+
+### Round-2 family F-a goes on the (e) list (the owner, 2026-11-03)
+
+The T-units stopped eleven rows of family F-a:
+- T-15's `ANestedSignaturesPerCall` d1, d1_cw, ln, ln_okw, ann2 and ann2_n;
+- T-19's `ResultPremiseTest` g216b-ann, g216b-cl, AConversion premise, ann2 and cl1.
+
+In each, an invalid nested-signature program stays rejected, but by A5's located `Unsupported_Kd` instead of the old analysis's
+`UnprovenOriginRelation_Kd`. R4 identified the cause as G216 (b)'s row-9 limit. The fix is U-O3 (BU's R7-O3): the result row with a
+per-call end becomes the signature's declaration row, so Binding records the Language error at the same site.
+
+The owner answered board O-2, verbatim 「一覧に加える」. F-a joins H5's (e) list under G216 (b), beside F13 and T36, until U-O3. Its rows
+are re-pointed by the G216 (b) (e) unit, which pins the located record and names this decision and U-O3.

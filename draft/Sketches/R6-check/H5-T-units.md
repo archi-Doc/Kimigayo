@@ -297,3 +297,5 @@ units of an hour or less. Amendments:
     verdicts and T-01's 1r forms.
   - T-21 (S and spec-cases) runs now. S0's spec-cases rows are merged into it when the branch merges dev.
   - F8 leaves T-26's (e) list once S1 lands.
+- **F-a's eleven rows are (e) rows under G216 (b)** (the owner, 「一覧に加える」, board O-2). The G216 (b) (e) unit re-points them
+  after T-16 and T-19 land in their files. It also takes F13 and T32a (G220), as planned. T36 landed with T-15.
