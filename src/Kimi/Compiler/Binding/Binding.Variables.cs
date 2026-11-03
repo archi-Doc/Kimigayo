@@ -104,7 +104,7 @@ public sealed partial class Binding
 
         if (symbol.Kind == BindingSymbolKind.Local && declared is not null && variable.TypeKoto is { } occurrence)
         {
-            this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
+            this.AddTypeClauseObligations(declared, occurrence, null); // SPEC 15.3.3: the Type's clauses at this use.
         }
 
         if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is null && declared is null && inferred is not null)

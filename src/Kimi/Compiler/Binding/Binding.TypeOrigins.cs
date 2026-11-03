@@ -195,7 +195,8 @@ public sealed partial class Binding
                 var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
                     (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
-                this.RetainInnerOutlives(type.Components[0], origin, use, discharge, RequiredCondition(this.PairSlotCondition(type, use)));
+                var signature = context is { Position: TypePosition.Result, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto } ? context.Owner : null;
+                this.RetainInnerOutlives(type.Components[0], origin, use, signature, discharge, RequiredCondition(this.PairSlotCondition(type, use)));
             }
         }
         else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
@@ -303,8 +304,8 @@ public sealed partial class Binding
 
     // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged. `condition` is the Semantics
     // case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in
-    // its binder's borrow cases (SPEC 15.6.5).
-    private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use, OriginDischarge discharge = OriginDischarge.Judgment, ulong condition = 0)
+    // its binder's borrow cases (SPEC 15.6.5). `signature` is the nested signature whose result holds the layer, or null (AddResultRow).
+    private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use, Koto? signature, OriginDischarge discharge = OriginDischarge.Judgment, ulong condition = 0)
     {
         if (!inner.StoresOrigin)
         {
@@ -313,7 +314,7 @@ public sealed partial class Binding
 
         if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
+            this.AddResultRow(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)), signature);
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
@@ -321,13 +322,42 @@ public sealed partial class Binding
             var argument = inner.OriginArguments[i];
             if (!OriginOutlives(argument, outer))
             {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge, Condition: condition));
+                this.AddResultRow(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge, Condition: condition), signature);
             }
         }
 
         for (var i = 0; i < inner.Components.Count; i++)
         {
-            this.RetainInnerOutlives(inner.Components[i], outer, use, condition: condition);
+            this.RetainInnerOutlives(inner.Components[i], outer, use, signature, condition: condition);
+        }
+    }
+
+    // SPEC 15.3.4, 15.6.1 (DECISIONS R4-M169, R4-M137's mirror): a relation of a nested signature's result with an end that is that
+    // signature's per-call Origin must follow from its inputs, so it is the signature's declaration row, formed with no executable body for
+    // BU-26's judge (JudgeDeclarationRows), as a named signature's is; a relation among the enclosing Origins stays the evaluating body's.
+    private void AddResultRow(BindingObligation row, Koto? signature)
+    {
+        var saved = this.EnterBody(PerCallEnd(row.Longer!, signature) || PerCallEnd(row.Shorter!, signature) ? default : this.formingBody);
+        try
+        {
+            this.AddObligation(row);
+        }
+        finally
+        {
+            this.formingBody = saved;
+        }
+
+        static bool PerCallEnd(BoundOrigin end, Koto? signature)
+        {
+            for (var i = 0; i < end.Operands.Count; i++)
+            {
+                if (PerCallEnd(end.Operands[i], signature))
+                {
+                    return true;
+                }
+            }
+
+            return signature is not null && end.Kind == OriginKind.Input && ReferenceEquals(end.Binder, signature);
         }
     }
 

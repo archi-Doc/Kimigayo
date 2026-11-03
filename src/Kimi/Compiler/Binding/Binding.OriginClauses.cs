@@ -42,6 +42,11 @@ public sealed partial class Binding
         return true;
     }
 
+    // R4-M101 E2 (R4-M169): an end of a declaration's row, a declaration atom, or a body local's Origin opposite a nested signature's
+    // per-call end, a fixed name of that signature (SPEC 15.3.4: "fixed by a complete Type or an outer Origin expression").
+    private static bool DeclarationEnd(BoundOrigin end, BoundOrigin other)
+        => DeclarationAtom(end) || (LocalAtom(end) && other is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto });
+
     // The first Unbound atom of an end, an Origin its declaration left pending at its binder, the Type occurrence that omits it.
     private static BoundOrigin? UnboundAtom(BoundOrigin origin)
     {
@@ -138,7 +143,7 @@ public sealed partial class Binding
         {
             var obligation = this.obligations[i];
             if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Body.IsBody: false, Longer: { } longer, Shorter: { } shorter } ||
-                !DeclarationAtom(longer = this.OriginAtUse(longer, obligation.Use)) || !DeclarationAtom(shorter = this.OriginAtUse(shorter, obligation.Use)))
+                !DeclarationEnd(longer = this.OriginAtUse(longer, obligation.Use), shorter = this.OriginAtUse(shorter, obligation.Use)) || !DeclarationEnd(shorter, longer))
             {
                 this.obligations[remaining++] = obligation;
                 continue;

@@ -505,7 +505,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            this.AddTypeClauseObligations(result, function.ReturnType);
+            this.AddTypeClauseObligations(result, function.ReturnType, function);
             return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
         }
         finally

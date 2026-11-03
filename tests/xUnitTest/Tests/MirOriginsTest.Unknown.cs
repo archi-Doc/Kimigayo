@@ -71,6 +71,10 @@ public sealed partial class MirOriginsTest
 
     private const string LayerBody = LayerHead + LayerInit + "        let k: Option<ref/(ref/i32 during a) during b> = Util.none()\n";
 
+    // A Closure's or local Function Type's result relating only the enclosing `q` and `r` (G216 (b)'s r3enc and r6ft): the containing
+    // declaration's relation, an `origin` clause, judged by the body's oracle (SPEC 15.3.4; DECISIONS R4-M162, R4-M169).
+    private const string EnclosingResult = "func k(q: ref/i32, r: ref/i32) -> i32\n";
+
     // SPEC 15.6.5: a chain or edge between fixed Origins that the premises do not derive is Unknown at its last edge's site, Reason (fixed
     // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
@@ -92,6 +96,9 @@ public sealed partial class MirOriginsTest
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     [InlineData("struct Pair {a, b}\n" + PairInit + InitP, "ref/(ref/i32 during b) during a: b > a")]
+    [InlineData(EnclosingResult + "    let h = func [] () -> Option<ref/(ref/i32 during q) during r> => Option.None\n    let o = h()\n    return 0\n", "ref/(ref/i32 during q) during r: in0 > in1")]
+    [InlineData(EnclosingResult + "    var f: () -> Option<ref/(ref/i32 during q) during r> = func () => Option.None\n    let o = f()\n    return 0\n", "ref/(ref/i32 during q) during r: in0 > in1")]
+    [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n    let h = func [] (p: ref/(ref/i32 during a)) -> i32 => p@follow@follow\n    return h(s)\n", "s: b > in0")]
     public void AChainBetweenFixedOriginsThePremisesDoNotDeriveIsUnknown(string source, params string[] expected)
         => Assert.Equal(expected, Unknowns(MirBuildTest.Compile(source + Main)));
 
@@ -106,6 +113,8 @@ public sealed partial class MirOriginsTest
     [InlineData("func cut(r: uniq/(ref/(uniq/i32 during a) during b) during c) -> ref/i32 during b\n    return r@follow@follow@follow@ref\n")]
     [InlineData("func f<s/T>(x: ref/i32, y: ref/i32) -> i32\n    s is owner or ref\n    origin x outlives y\n    let k: Option<s/(ref/i32 during x) during y> = .None\n    return 0\n")]
     [InlineData(LayerBody)]
+    [InlineData(EnclosingResult + "    origin q outlives r\n    let h = func [] () -> Option<ref/(ref/i32 during q) during r> => Option.None\n    let o = h()\n    return 0\n")]
+    [InlineData(EnclosingResult + "    origin q outlives r\n    var f: () -> Option<ref/(ref/i32 during q) during r> = func () => Option.None\n    let o = f()\n    return 0\n")]
     public void ARelationThePremisesDeriveHasNoUnknown(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -118,8 +127,14 @@ public sealed partial class MirOriginsTest
     // case), n-pass, x-skip (an Iterator's item Reborrowed through `self`), p1's direct form and r7-subst's call. So is a relation formed over a
     // Closure's pending receiver atoms that Binding judges once the Closure is classified, fixed there (DECISIONS R4-M126 §2.5 (b), F3): its
     // obligation leaves as one judged at binding time forms none, Binding's one record on each pipeline (rv/env-store; g65a annotated and
-    // returned; g6b).
+    // returned; g6b). So is a Closure's or local Function Type's result relating a per-call Origin to `q`, a parameter's or a local's, or
+    // through a clause, that its input does not give: that signature's declaration row, judged by Binding where it is written (SPEC
+    // 15.3.4; DECISIONS R4-M169; G216 (b)'s r1, r2, r1loc and r4chain).
     [Theory]
+    [InlineData("func k(q: ref/i32) -> i32\n    let n = 1\n    let h = func [q] (p: ref/i32" + NestedResult + "    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
+    [InlineData("func k(q: ref/i32) -> i32\n    let n = 1\n    var f: (ref/i32" + NestedFunctionType + "    let o = f(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
+    [InlineData(LocalQ + "    let n = 1\n    let h = func [q] (p: ref/i32" + NestedResult + "    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> i32\n    origin r outlives q\n    let h = func [] (p: ref/(ref/i32 during r)" + NestedResult + "    let o = h(r@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    let r = x\n    return r\n", "return r")]
     [InlineData("struct Box<E>\n    public let item: E\nfunc pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner or ref\n    return x\n", "return x")]
     [InlineData("struct UniqView<T> {source}\n    let data: uniq/T during source\n    func detach(self: uniq/Self) -> uniq/T during self.source\n        return self.data\n", "return self.data")]

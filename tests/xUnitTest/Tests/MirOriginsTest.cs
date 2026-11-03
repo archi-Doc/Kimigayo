@@ -38,6 +38,15 @@ public sealed partial class MirOriginsTest
     // A Closure header with an omitted inner Origin (PLAN G216's form), called in its evaluating body.
     private const string ClosureHeader = "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n";
 
+    // G216 (b): a Closure's result and a local Function Type's (NestedFunctionType) relate `q` to the per-call Origin of the input written
+    // before them, valid only where that input gives the relation (SPEC 15.3.4); each is called.
+    private const string NestedResult = ") -> Option<ref/(ref/i32 during q)> => Option.None\n";
+
+    private const string NestedFunctionType = ") -> Option<ref/(ref/i32 during q)> = func (p) => Option.None\n";
+
+    // A local `q`, a Borrow of `x`, named by such a result (G216 (b)'s r1loc).
+    private const string LocalQ = "func k() -> i32\n    let x = 5\n    let q = x@ref\n";
+
     // A holder of one shared reference and a callee whose result meets its two arguments' Origins (the 2a-1c design review's m7).
     private const string Held = "struct C {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
         "func pick(x: ref/i32 during s, y: ref/i32 during s) -> ref/i32 during s => x\n";
@@ -262,8 +271,16 @@ public sealed partial class MirOriginsTest
     // `during static` parameter (row 7', Inferred; SPEC 11.8), which the default pipeline rejects (PLAN G197's residual, ledger (a)),
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
-    // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215).
+    // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);
+    // a Closure's or local Function Type's result relating a per-call Origin to `q`, a parameter's or a local's, or through a clause, that
+    // its input gives: that signature's declaration row, which Binding proves (R4-M169); and a value call's per-call Origin shortened by
+    // its input's well-formedness (SPEC 15.6.4 steps 1, 3; p4, the Closure twin of PLAN G216's p3).
     [Theory]
+    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [q] (p: ref/(ref/i32 during q)" + NestedResult + "    let o = h(q@ref)\n    return 0\n")]
+    [InlineData("func k(q: ref/i32) -> i32\n    var f: (ref/(ref/i32 during q)" + NestedFunctionType + "    let o = f(q@ref)\n    return 0\n")]
+    [InlineData(LocalQ + "    let h = func [q] (p: ref/(ref/i32 during q)" + NestedResult + "    let o = h(q@ref)\n    return 0\n")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> i32\n    origin q outlives r\n    let h = func [] (p: ref/(ref/i32 during r)" + NestedResult + "    let o = h(r@ref)\n    return 0\n")]
+    [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n    origin b outlives a\n    let h = func [] (p: ref/(ref/i32 during a)) -> i32 => p@follow@follow\n    return h(s)\n")]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
     [InlineData("func shallow(x: ref/(ref/i32 during a)) -> ref/i32 during a\n    return x@follow\n")]

@@ -512,8 +512,8 @@ public sealed partial class Binding
     // proves them substituted with the Origins its Type binds, also for a Type nested in it. Each is an obligation at the Type
     // occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is never a premise of
     // the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered;
-    // its result is judged at its own occurrence (BindFunctionType; DECISIONS R4-M162).
-    private void AddTypeClauseObligations(BoundType type, Koto occurrence, int depth = 0)
+    // its result is judged at its own occurrence (BindFunctionType, its `signature`, AddResultRow; DECISIONS R4-M162, R4-M169).
+    private void AddTypeClauseObligations(BoundType type, Koto occurrence, Koto? signature, int depth = 0)
     {
         if (depth > 64)
         {
@@ -529,7 +529,7 @@ public sealed partial class Binding
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 if (!ReferenceEquals(a, b))
                 {
-                    this.AddObligation(new(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax));
+                    this.AddResultRow(new(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax), signature);
                 }
             }
         }
@@ -541,7 +541,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddTypeClauseObligations(type.Components[i], occurrence, depth + 1);
+            this.AddTypeClauseObligations(type.Components[i], occurrence, signature, depth + 1);
         }
     }
 
