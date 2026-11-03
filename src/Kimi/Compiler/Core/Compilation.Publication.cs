@@ -18,10 +18,10 @@
 // Ordinal as the condition; KeyOf is the key either form records, so a Cause names its problem's record; a problem with Cause facts is
 // PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding cause's (-1) Binding's; a located problem with a
 // fact, a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts, InternalInvariant_Kd at
-// the subject. The fact table has one arm per MirFactKind: a site fact is a related location with DIAGNOSTICS' A6 role and wording, a
-// Relation fact Binding.OriginRelationFacts' evidence and locations, Required, Limit and Table OwnershipStorageLimit_Kd's arguments and
-// table; the case text is Binding.CaseFact's over the members' masked views, only when every member gives the same (Binding renders it).
-// Publish has no production caller until H5.
+// the subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per MirFactKind: a site fact is a related
+// location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations, Required, Limit
+// and Table OwnershipStorageLimit_Kd's arguments and table; the case text is Binding.CaseFact's over the members' masked views, only when
+// every member gives the same (Binding renders it). Publish has no production caller until H5.
 // Must not: be steered by a pipeline mode, flag or optional parameter, or publish a MIR record any other way.
 
 using Kimi.Compiler.Parsing;
@@ -31,6 +31,9 @@ namespace Kimi.Compiler;
 
 public partial class Compilation
 {
+    // The requirement of the publisher's broken-contract records, as of MirReport's (Ownership.Internal).
+    private static readonly DiagnosticRequirement Defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+
     private readonly List<PairBinder> caseBinders = []; // The binders the first member's case text names.
     private readonly List<PairBinder> memberBinders = []; // Another member's.
 
@@ -46,7 +49,7 @@ public partial class Compilation
         if (Located(problem))
         {
             // ReportLocation takes no fact, so a located problem has none (design 3.2, N3).
-            this.Locate(problem.Requirement, facts.IsEmpty ? problem.Code : DiagnosticCode.InternalInvariant_Kd, problem.Subject);
+            this.Locate(facts.IsEmpty ? problem.Requirement : Defect, facts.IsEmpty ? problem.Code : DiagnosticCode.InternalInvariant_Kd, problem.Subject);
             return;
         }
 
@@ -94,7 +97,7 @@ public partial class Compilation
                 case Mir.MirFactKind.Cause: // A Binding cause at a node Binding resolved.
                 case Mir.MirFactKind.Inlined: // MirReport.Add drops its problem.
                 default: // A kind without a row.
-                    this.Locate(problem.Requirement, DiagnosticCode.InternalInvariant_Kd, problem.Subject);
+                    this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject);
                     return;
             }
         }
@@ -121,14 +124,14 @@ public partial class Compilation
     // The related location of a fact naming a site (design 3.3; DIAGNOSTICS' A6 fact tables): its role and wording.
     private static (string Role, string Label) RelatedRole(Mir.MirFactKind kind) => kind switch
     {
-        Mir.MirFactKind.Anchor => ("loan", "borrow that created the loan"),
-        Mir.MirFactKind.Use => ("use", "later use of the value retaining the loan"),
-        Mir.MirFactKind.Store => ("store", "store that keeps the loan"),
+        Mir.MirFactKind.Anchor => ("borrow", "borrow that created the loan"),
+        Mir.MirFactKind.Use => ("loan", "later use of the value retaining the conflicting loan"),
+        Mir.MirFactKind.Store => ("loan", "value retaining the conflicting loan"),
         Mir.MirFactKind.Reservation => ("reservation", "conflicting exclusive call reservation"),
         Mir.MirFactKind.Evaluated => ("default", "the default this call omits, evaluated here, does this"),
-        Mir.MirFactKind.EffectRead => ("static", "the call or destruction may read this static"),
-        Mir.MirFactKind.EffectWrite => ("static", "the call or destruction may write this static"),
-        Mir.MirFactKind.EffectUnknown => ("static", "the call's or destruction's effects are unknown, so they may access this static"),
+        Mir.MirFactKind.EffectRead => ("declaration", "the call or destruction may read this static"),
+        Mir.MirFactKind.EffectWrite => ("declaration", "the call or destruction may write this static"),
+        Mir.MirFactKind.EffectUnknown => ("declaration", "the call's or destruction's effects are unknown, so they may access this static"),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -159,7 +162,7 @@ public partial class Compilation
         for (var i = 0; i < members.Length; i++)
         {
             var member = program.Problems.All[members[i]];
-            if (member.Body < 0)
+            if (member.Body == Mir.MirProblem.NoBody)
             {
                 return null;
             }
@@ -187,7 +190,7 @@ public partial class Compilation
     private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related)? Relation(
         Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, Mir.MirFact fact)
     {
-        if (body < 0 || problem.Reason is not { Longer: { } longer, Shorter: { } shorter, Equality: var equality })
+        if (body == Mir.MirProblem.NoBody || problem.Reason is not { Longer: { } longer, Shorter: { } shorter, Equality: var equality })
         {
             return null;
         }
