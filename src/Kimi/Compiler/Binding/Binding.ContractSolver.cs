@@ -185,9 +185,8 @@ public sealed partial class Binding
 
             if (ancestor >= 0)
             {
-                // The ancestor A is the clause `Self is A`, instantiated as the other clauses are (ContractConstraint; PLAN G180).
-                var clause = this.InternConstraint(new(ConstraintKind.Contract, this.ContractSelfType(shape.Symbol), contract: shape.Ancestors[ancestor]));
-                this.AddConstraintFact(environment, this.ContractConstraint(clause, scope, self, normalize: false), shape.Symbol);
+                var inherited = this.InternConstraint(new(ConstraintKind.Contract, self, contract: declaration.Symbol));
+                this.AddConstraintFact(environment, inherited, shape.Symbol);
             }
 
             this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
@@ -195,10 +194,11 @@ public sealed partial class Binding
     }
 
     // SPEC 8.3.2: what a Contract premise `self is shape` supplies from its declarations, the one enumeration of it, in the order
-    // AddContractPremises adds it: the Contract, then each ancestor (Ancestor: -1, then the ancestor's index), each first as itself
-    // (Premise null: its own facts, an ancestor's `self is A` and the arithmetic premises, AddContractPremises'), then each of its clause
-    // constraints that depends on the Contract's Self (DependentConstraint) as `self` and `scope` make it (ContractConstraint, not
-    // normalized), evaluated when reached. Read by AddContractPremises and by retention's handed signatures (HandedContract).
+    // AddContractPremises adds it: the Contract, then each ancestor of its declaration (Ancestor: -1, then the ancestor's index there) as
+    // `self` and the shape make it (InstantiatedContract: the declaration's Self is `self`, the shape's arguments keep theirs; G180), each
+    // first as itself (Premise null: its own facts, an ancestor's `self is A` and the arithmetic premises, AddContractPremises'), then each
+    // of its clause constraints that depends on the Contract's Self (DependentConstraint) as `self`, `scope` and that reference make it
+    // (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises and by retention's HandedContract.
     private ref struct ContractSupply(Binding binding, BoundContract shape, BoundType self, BindingScope scope)
     {
         private int ancestor = -1;
@@ -206,19 +206,24 @@ public sealed partial class Binding
 
         public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise) Current { get; private set; }
 
+        // The shape's declaration, whose ancestors are written in its own terms.
+        private readonly BoundContract Origin => shape.Symbol.Declaration.BoundSymbol?.Contract ?? shape;
+
         public readonly ContractSupply GetEnumerator() => this;
 
         public bool MoveNext()
         {
-            for (; this.ancestor < shape.Ancestors.Count; (this.ancestor, this.next) = (this.ancestor + 1, 0))
+            for (; this.ancestor < this.Origin.Ancestors.Count; (this.ancestor, this.next) = (this.ancestor + 1, 0))
             {
-                var declaration = this.ancestor < 0 ? shape : shape.Ancestors[this.ancestor].Contract!;
                 if (this.next == 0)
                 {
-                    (this.next, this.Current) = (1, (this.ancestor, declaration, null));
+                    var instantiated = this.ancestor < 0 ? shape
+                        : binding.InstantiatedContract(this.Origin.Ancestors[this.ancestor], scope, self, normalize: false, shape.Symbol).Contract!;
+                    (this.next, this.Current) = (1, (this.ancestor, instantiated, null));
                     return true;
                 }
 
+                var declaration = this.Current.Declaration;
                 for (; this.next <= declaration.ClauseStorage.Count; this.next++)
                 {
                     if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint &&

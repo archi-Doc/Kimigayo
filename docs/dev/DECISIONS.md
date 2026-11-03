@@ -6246,19 +6246,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G147 (2) (BU), G160's remainder, G263; G216 (a)'s unjudged forms and record sites (G388-G392, U3), G216 (b), G215; the
     ledger's per-row closure; X-5's non-blocking findings.
   - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
-- **R4-M166 A clause's Contract reference is instantiated as its Types (G180)** (2026-11-03; the owner, verbatim 「2すべてa」 and
-  「3案の通り」: option (a), now, not waiting for G170's C3; R4's planning session's GO for the design one level above the supply,
-  BU reviewing)
-  - SPEC 8.4: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type. `ContractConstraint`, the one
-    instantiation of a Contract clause for a conforming Type, rewrites the clause's bound Contract reference as it rewrites the
-    clause's Types (the declaring reference's substitution, then ContractType with `self`). The premise supply reads it for each
-    clause and, as the clause `Self is A`, for each ancestor A (`AddContractPremises`); conformance verification reads it too, so a
-    valid concrete conformance whose clause names `D<Self>` now binds.
-  - Rejected: re-mapping the premise inside the supply only (a second copy of the instantiation rule, leaving verification with the
-    same cause).
-  - Limits: a concrete Type's ancestor path is still keyed by the written `D<Self>` (PLAN G397, the identity unit after C3); inside a
-    Contract's own scope, where facts name that Contract's Self, ContractType still maps every Contract's Self in the substituted
-    reference arguments to the expansion's subject, as it did for the clause's Types (no verdict difference found).
+- **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
+  「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; R4's planning session's GO for the design one level above
+  the supply; BU's review REVISE B1, the fix round under the owner's 「GO」)
+  - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
+    the Self the declaration writes: a Self a bound reference's argument carries from the premise's context stays the context's.
+    `InstantiatedContract` (Binding.ContractTypes) rewrites a clause's or an ancestor's bound reference so: with the supply's
+    reference, the declaration's Self first, then the reference's arguments; without one, as ContractType rewrites the clause's Types.
+    `ContractConstraint` uses it for a clause's Contract; the premise supply (ContractSupply) instantiates each ancestor of the shape's
+    declaration through the shape, supplies `self is A` and reads A's clauses through it (no second Self on a bound reference).
+  - Moves (valid, twins still rejected): the supply's clause, ancestor, refinement and expansion forms; conformance verification of a
+    concrete Type (`associate X is D<Self>`, `D2<Self, U>`, `D<E<Self>>`); implementation matching of `T is C2<Self>`; an ancestor
+    naming both Selfs (`contract C2<U>: D2<Self, U>` under `T is C2<Self>` in a Contract).
+  - Rejected: re-mapping the premise inside the supply only (a second copy of the rule); the declaration-first order for the clause's
+    Types too: it newly accepts invalid Contract declarations whose clause's requirement only its own expansion supplies (`associate X
+    is D<Self.Y>` with `contract D<U>: U is E` and no `Self.Y is E`), since an expansion's facts take the expanded Contract's
+    availability, not that of the fact expanded.
+  - Limits: a concrete Type's ancestor path is still keyed by the written `D<Self>` (PLAN G397, the identity unit after C3); a clause's
+    Types keep the earlier order, so inside a Contract's own scope an argument-dependent clause's subject is still mapped to the
+    expansion's subject (valid forms such as `T.(C2<Self>).X.(D<Self>).N` stay rejected); removed with the availability gap above.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

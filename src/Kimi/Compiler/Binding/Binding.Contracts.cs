@@ -533,10 +533,7 @@ public sealed partial class Binding
             return this.InternConstraint(new(constraint.Kind, left: this.ContractConstraint(constraint.Left!, scope, self, normalize, reference), right: this.ContractConstraint(constraint.Right!, scope, self, normalize, reference)));
         }
 
-        // SPEC 8.4: a bound Contract reference's Type arguments are instantiated as the clause's Types, Self included (PLAN G180).
-        var contract = constraint.Contract is { } written && IsBoundContractReference(written) && Instantiate(written.Type!) is var image &&
-            !ReferenceEquals(image, written.Type) ? this.BoundContractReference(image) : constraint.Contract;
-
+        var contract = constraint.Contract is { } written ? this.InstantiatedContract(written, scope, self, normalize, reference) : null;
         return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
 
         BoundType Instantiate(BoundType type)

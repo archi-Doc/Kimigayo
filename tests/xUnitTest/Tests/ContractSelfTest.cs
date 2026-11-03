@@ -15,6 +15,9 @@ public class ContractSelfTest
     private const string Clause = Generic + "contract C\n    associate X is D<Self>\n";
     private const string Ancestor = Generic + "contract C: D<Self>\n";
     private const string Concrete = "struct S\n    Self is C\n    associate C.X is XI\nstruct XI\n    associate D.N is i32\n    Self is D<";
+    private const string Refined = Generic + "contract C2<U>: D<U>\ncontract C\n";
+    private const string Inner = Refined + "    func f<T>(value: T.(D<Self>).N) -> ()\n        T is C2<Self>\n";
+    private const string Pair = "contract D2<U, W>\n    associate N\ncontract C2<U>: D2<Self, U>\ncontract C\n    func f<T>(value: T.(D2<T, ";
 
     private const string Argument = "contract E\ncontract D<U>\n    U is E\n" +
         "contract C\n    associate Y is E\n    associate Z is E\n    associate X is D<Self.Y>\n";
@@ -84,6 +87,21 @@ public class ContractSelfTest
     [InlineData(Expansion + "T>(value)", "UnprovenConstraint_Kd")]
     [InlineData(Clause + Concrete + "S>", "")]
     [InlineData(Clause + Concrete + "i32>", "UnsatisfiedConstraint_Kd")]
+
+    // Inside a Contract, `T is C2<Self>` supplies C2's ancestors with T for C2's Self only; the enclosing Contract's Self, an argument, stays
+    // (SPEC 8.3.2's refinement row), for a parameter, a clause, an associated Type and an ancestor naming both, and in implementation matching.
+    [InlineData(Inner, "")]
+    [InlineData(Refined + "    func f<T>(value: T.(D<T>).N) -> ()\n        T is C2<Self>\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData(Refined + "    func f<T>(value: T) -> ()\n        T is C2<Self>\n        T.(D<Self>).N is i32\n", "")]
+    [InlineData(Refined + "    func f<T>(value: T) -> ()\n        T is C2<Self>\n        T.(D<T>).N is i32\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData(Refined + "    associate X is C2<Self>\n    Self.X.(D<Self>).N is i32\n", "")]
+    [InlineData(Refined + "    associate X is C2<Self>\n    Self.X.(D<Self.X>).N is i32\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData(Pair + "Self>).N) -> ()\n        T is C2<Self>\n", "")]
+    [InlineData(Pair + "T>).N) -> ()\n        T is C2<Self>\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData(Inner + "struct S\n    Self is C\n    public func f<T>(value: T.(D<S>).N) -> ()\n        T is C2<S>\n        ()", "")]
+    [InlineData(
+        Inner + "struct S\n    Self is C\n    public func f<T>(value: T.(D<S>).N) -> ()\n        T is C2<i32>\n        ()",
+        "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
 
     // Not G180: a concrete Type's ancestor path is keyed by the written `D<Self>` (PLAN G397, the identity unit after G170's C3).
     [InlineData(
