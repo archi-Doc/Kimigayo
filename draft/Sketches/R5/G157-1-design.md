@@ -114,9 +114,9 @@ this.origins.Findings(program.Problems); // unchanged: Binding's view, no MIR bo
   through `Met` and `Destroying`: `MirEffects.Outcome` maps it to None and `Decided` reads only keys and `Unknown` (`MirBorrows.Effects`'
   header invariant, R4-M10) (F3; rule W's `Derived` in `MirBorrows.Causes` is a candidate test, not this path).
 - A5 reads another body's summary once more, in the initialization proof (`Proved`, `MirBorrows.Effects.cs:179-215`, over
-  `effects.Summary(initializer, view)`). Skipping such an initializer would read it as "produces nothing" and let `Met` (`:125`) or
+  `effects.Summary(initializer, view)`). Skipping such an initializer would read it as "produces nothing" and let `Met` (`:124-125`) or
   `Destroying` (`:167`) report a `ComparisonLoanConflict_Kd` resting on it; treating it as proving would fire their `Limit`
-  (`Unsupported_Kd`, `:121`, `:162`), also resting on it (F2). Decided in one place, the proof's result:
+  (`Unsupported_Kd`, `:120`, `:162`), also resting on it (F2). Decided in one place, the proof's result:
   - `Proved` returns `bool?`: true where an initializer without a finding proves the effect; else null where an initializer it consults
     (one that holds a candidate and may be first-accessed) has the fact; else false. The test sits before the view loop, so
     `MirCases.Count` of such a body is never read; immutable statics are covered, since they always pass the first-access test.
@@ -124,8 +124,8 @@ this.origins.Findings(program.Problems); // unchanged: Binding's view, no MIR bo
     `Proved` consults do not depend on the fact kind (only on `Holds` and the first-access test), so within one `Unproved` call the
     proofs are all in {true, null} or all in {true, false}: "the first null gives `Rests`, else the first unproved kind" equals "the
     first kind not proved decides" (write, `Unknown`, read), else none.
-  - `Met` reads the proof only in its first block (`:117-128`: the conflict record at `:125` or the Limit at `:121`): when `Rests`,
-    that block makes no record and `Met` falls through to its second block (`:129-142`), which reads A4's Limit and Deep classes
+  - `Met` reads the proof only in its first block (`:114-127`: the conflict record at `:124-125` or the Limit at `:120`): when `Rests`,
+    that block makes no record and `Met` falls through to its second block (`:129-143`), which reads A4's Limit and Deep classes
     (`Outcome(classes)`, then a Limit where a Loan a write would meet has no key), not the proof, so its record is independent and stays
     (AGENTS Diagnostics; SPEC 23.1.2; Q13). `Destroying` reads the proof for its whole decision, so it makes no record when `Rests`.
     No parameter steers either. `Effect` (`:258`) reads only an initializer's `Source`.
@@ -199,12 +199,13 @@ Two units now (the analyses' part grew with B1 and F2, so one unit no longer fit
   names R4's consent and states the analyses' rule for U2. U1 alone meets H7's prerequisite (A3b's records survive). `MirAnalysis`
   keeps its all-or-nothing gate until U2 (removal condition: U2; recorded in PLAN).
 - **U2 (R4's files, after R4 consents to §4's hunk, about 45 minutes):** the driver, `MirDrops.Exclude`, A4's `Views`, A5's proof
-  result, `MirAnalysisTest`'s four rows; then the mir ledger before review.
+  result, `MirAnalysisTest`'s five rows (row 5 written from the code, not probed: if U2 finds it unreachable, its commit says why and
+  its reviewer checks that claim against the code); then the mir ledger before review.
 
 Unit checks: the named classes plus `MirBuildTest`. The `Check` extraction (`MirValidator.Validate`'s body moved into a private
 member) follows AGENTS "Separate commits" (the planning session's decision): it is a behavior-preserving commit before the behavior
-change. The coordinator placed it in U2; the extraction lives in `MirValidator.cs`, which U1 changes, so it opens U1 unless the planning
-session moves the wrapper to U2.
+change. It lives in `MirValidator.cs`, which U1 changes for the wrapper, so it is U1's first commit (the planning session's decision
+after review 2).
 
 ## 10. Questions
 
@@ -221,7 +222,10 @@ R4's consents (recorded, review 2): §4 for U2 with `Met`'s fall-through; `MirBu
 the split (U1 alone first, U2 next, `MirAnalysis` keeping its gate until U2; U2's mir ledger before its review; U2's landing needs no
 R4 window); W1 hold files `MirBody.cs` and `MirValidator*.cs` for U1.
 
-Open: where the `Check` extraction's behavior-preserving commit goes (U1, where its file is, or U2 as placed; §9).
+Decided (the planning session, after review 2): the `Check` extraction's behavior-preserving commit is U1's first commit (§9).
+
+Review 3 (ebe9682ef): ACCEPT; its non-blocking text findings (§9's placement and row count, `Met`'s line numbers) are fixed in the
+commit after it.
 
 ## Revision 1 (review 1, REVISE)
 
