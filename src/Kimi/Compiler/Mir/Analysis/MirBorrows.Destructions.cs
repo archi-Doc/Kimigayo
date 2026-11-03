@@ -116,14 +116,17 @@ internal sealed partial class MirBorrows
 
     // A part the destruction walk reports (SPEC 16.3): a declared drop over its layer, then the struct's parts (16.3.2); a Sealed handle's
     // payload walked on; an erased destruction where the walk cannot see the drop (a Function value, a handle whose payload is not proven
-    // Sealed; an abstract part, also as a payload, composes nothing, below). A string's or a sequence's own release runs none; its elements are parts of their own.
+    // Sealed; an abstract part composes nothing, below). A string's or a sequence's own release runs none; its elements are parts of their own.
     private bool Composing(ref Composer composer, BoundType type, int depth)
     {
         var definition = this.body.Key.Decl;
         BoundType? erased = null;
         if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
         {
-            erased = type.Kind == BoundTypeKind.Function || !types.Copy(definition, type) ? type : null;
+            // An abstract part composes nothing (the owner, 2026-11-03: 「(A)pf を入れ、抽象部分の破棄の合成だけは Drop で当面行わない」;
+            // DECISIONS R4-M150), at every site, as on dev, until an owner SPEC revision bounds what an erased destruction may store (E
+            // receives no Loan bounded by Self's own Origins or by a per-call Origin; SPEC 22.2.1's `step`); then it is composed.
+            erased = type.Kind == BoundTypeKind.Function ? type : null;
         }
         else if (type.Kind == BoundTypeKind.Semantics)
         {
@@ -142,11 +145,7 @@ internal sealed partial class MirBorrows
             return MirTypes.Parts(type, ref composer, depth);
         }
 
-        // An abstract part composes nothing, met directly or as a handle's payload (the owner, 2026-11-03: 「(A)pf を入れ、抽象部分の破棄の
-        // 合成だけは Drop で当面行わない」, as the planning session reads it; DECISIONS R4-M150), at either site, as on dev, until an owner
-        // SPEC revision bounds what an erased destruction may store (E receives no Loan bounded by Self's own Origins or by a per-call
-        // Origin; SPEC 22.2.1's `step`); then it is composed.
-        if (erased is { IsAbstract: false })
+        if (erased is not null)
         {
             this.Work++;
             this.dropRows.Add(types.RetainsErasedDestruction(erased, definition));

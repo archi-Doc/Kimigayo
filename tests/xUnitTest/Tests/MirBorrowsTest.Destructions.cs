@@ -682,47 +682,6 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(Rows(expected), DepthRecords(c, Analyze(c), form).Select(static x => $"{x.Line} {x.Code}"));
     }
 
-    // SPEC 16.3.3, 15.6.4 (DECISIONS R4-M150, the owner's staging as the planning session reads it): a handle's payload that is an
-    // abstract part composes nothing, as on dev: rcGen's `rc/T` holds what `T.make` returns from slot's and w's addresses (w carries y's
-    // Loan), and its destruction at the `do` end stores nothing, so `y = 5` after `usep(slot)` is valid (composed, T's erased
-    // destruction could store w's address into slot or storage the body does not own, as clearGenOk's). A payload that is no abstract part stays composed: a runtime
-    // Contract view cannot be formed in this revision (SPEC 8.12), so the twin is a handle to an open base (baseLateBad, `obj/EBase`
-    // over ELeaf, destroyed at its `do` end, whose erased destruction may store y's Loan into slot), erring at `y = 5` as erasedLateBad does.
-    [Theory]
-    [InlineData("rcGen", "")]
-    [InlineData("baseLateBad", "baseLateBad: y = 5")]
-    public void AnAbstractPayloadIsStagedAndAnotherPayloadComposed(string form, string expected)
-    {
-        const string Forms = """
-            contract MakeR
-                func make(p: raw/(raw/u8), q: raw/u8) -> Self
-            func rcGen<T>()
-                T is MakeR
-                T is ObjectPayload
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var slot: raw/u8 = null
-                do
-                    let h = Kimi.Intrinsics.makeRc(T.make(p: slot@raw, q: w@raw@raw/u8))
-                usep(slot)
-                y = 5
-            func baseLateBad()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var slot: raw/u8 = null
-                do
-                    var o: obj/ELeaf = Kimi.Intrinsics.makeObj<ELeaf>(ELeaf.init(q: null))
-                    o.q = w@raw@raw/u8
-                    o.p = slot@raw
-                    let h = o@move@obj/EBase
-                y = 5
-                usep(slot)
-
-            """;
-        var c = MirBuildTest.Compile(DropShapes + Forms);
-        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Where(x => x.StartsWith($"{form}:", StringComparison.Ordinal)))}]");
-    }
-
     // V16 (the design's §5.7; the owner's 「A) 原因を先に直す」 of 2026-10-31, with G342's rows): N locals whose drops store a parameter
     // referent's Loan through their raw slot, each destroyed by a reassignment (N = 8, 16, 32; SPEC 15.6.4's valid shape). Each Loan stays
     // live until `usep(slot)` (15.6.4's example), so the output is quadratic: the work grows at most 5 times as much from 16 to 32 as from 8

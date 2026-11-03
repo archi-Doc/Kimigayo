@@ -5268,12 +5268,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and value locals errors at their storage ends (`var it = S.start(...)`, `var it = local.iterate()`, `var value = input@move`).
     Removal condition: an owner SPEC revision bounding what an erased destruction may store (E receives no Loan bounded by Self's own
     Origins or by a per-call Origin; SPEC 22.2.1's `step`); then the part is composed. Declared drops, Function values and handles whose
-    payload is not proven Sealed are composed. The staging covers an abstract part wherever the destruction reaches it, directly or as a
-    handle's payload (`rc/T`, `arc/T`, `obj/T`, `owner/T` with T a Type parameter or an associated projection not proven Copy): one test
-    on the erased Type in `Composing` (the planning session's reading of the owner's words, after BU's review N1). A runtime Contract
-    view's payload is no abstract part, its destruction the view's row, so it stays composed (no such view can be formed in this
-    revision, SPEC 8.12), as a handle to an open base does. Pinned: `MirBorrowsTest.AnAbstractPayloadIsStagedAndAnotherPayloadComposed`
-    (rcGen over `rc/T` valid, as on dev; baseLateBad over `obj/EBase` errs at `y = 5`).
+    payload is not proven Sealed are composed. The staging is the abstract part the walk visits (`type.IsAbstract`), not a handle's
+    payload: an `obj`, `rc` or `arc` handle whose payload is abstract and not proven Sealed (`rc/T`) composes `RetainsErasedDestruction(T)`
+    as any non-Sealed payload, and one whose abstract payload is proven Sealed is walked on, where the abstract part composes nothing.
   - Removed: R4-M143's destruction guard (Keep's destruction test and root-record union, its W past refs(S)); R4-M147's abstract-referent
     rule moves from Keep to `Destroying` unchanged in effect.
   - Records (the planning session's decisions): c80's four new records, the storage ends of slot2, slot, z and x (an rc payload's drop at
