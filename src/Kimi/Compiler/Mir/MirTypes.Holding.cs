@@ -14,9 +14,14 @@ internal enum MirWrites : byte
     /// <summary>Nothing past it: no exclusive reference to storage that may hold a Loan.</summary>
     None,
 
+    /// <summary>No part gives the write fact, and an abstract part in the value's own storage writes by provenance (SPEC 15.6.4; DECISIONS
+    /// R4-M170): past it only the holders its exclusive Loans and addresses name, and E where its state carries Φ_W (MirBorrows' named
+    /// step).</summary>
+    Named,
+
     /// <summary>Some part gives the write fact (decided): past no shared layer, an exclusive reference to storage that may hold a Loan (a
-    /// raw layer whose step lets a call write past it counting as one), an abstract part, or a Function value, which may be one (the
-    /// guard); a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
+    /// raw layer whose step lets a call write past it counting as one), an abstract part past an exclusive reference, a pair layer, or a
+    /// Function value, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
     Through,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not publish (a Type
@@ -80,8 +85,9 @@ internal static partial class MirTypes
     /// them, IMPL 21.1.2; DECISIONS R4-M148), an owning handle's payload, and a Type argument, which its
     /// storage may hold behind a raw pointer (a library collection, its iterators) or as a Loan or a Weak (SPEC 3.2.2, 15.3.5); a function
     /// item holds none. The same walk gives what a call may write past the value (A3 E16): its guard, whether it may hold, past no shared
-    /// layer, an exclusive reference (a pair layer's exclusive case and an abstract part counting, as does a Function value) to storage that
-    /// may hold a Loan, a part past the bound there being the walk's Deep fact, never the write fact (DECISIONS R4-M153); a struct's or
+    /// layer, an exclusive reference (a pair layer's exclusive case and an abstract part past an exclusive reference counting, as does a
+    /// Function value) to storage that may hold a Loan, an abstract part in the value's own storage giving the named fact instead (SPEC
+    /// 15.6.4, DECISIONS R4-M170), a part past the bound there being the walk's Deep fact, never the write fact (DECISIONS R4-M153); a struct's or
     /// enum's Type argument, which has no address and grants no access
     /// (SPEC 15.3.5), adds only whether the value may hold one. A struct's or enum's own storage is its stored parts as the holding value's
     /// substitution makes them, raw Origins kept (TyCtxt.StoredParts, DECISIONS BU-41), so a raw layer below the holder is read on the
@@ -122,7 +128,7 @@ internal static partial class MirTypes
             }
         }
 
-        writes = found.Loan ? Guard(found.Writes) : MirWrites.None;
+        writes = found.Loan ? Guard(found) : MirWrites.None;
         return found.Loan;
     }
 
@@ -130,9 +136,11 @@ internal static partial class MirTypes
     // write fact. The modes are Own, Exclusive and Own|LoanOnly (LoanOnly's value), the slots of MirModeDepths.
     private static Facts Beyond(int mode) => new((mode & ~LoanOnly) == Own, (mode & LoanOnly) == 0 ? MirOutcome.Deep : MirOutcome.None);
 
-    // The guard rule W reads, read off the walk's answer: decided is the write fact (Through), and Limit and Deep leave it undecided.
-    private static MirWrites Guard(MirOutcome writes)
+    // The guard rule W reads, read off the walk's answer: decided is the write fact (Through), Limit and Deep leave it undecided, else the
+    // named fact (Named) where an abstract part gave it. Deep's step check compares W's full step, which covers the named one.
+    private static MirWrites Guard(Facts found)
     {
+        var writes = found.Writes;
         if (writes.IsDecided)
         {
             return MirWrites.Through;
@@ -143,7 +151,7 @@ internal static partial class MirTypes
             return MirWrites.Limit;
         }
 
-        return writes.IsDeep ? MirWrites.Deep : MirWrites.None;
+        return writes.IsDeep ? MirWrites.Deep : found.Named ? MirWrites.Named : MirWrites.None;
     }
 
     // HoldsRaw's walk: a Type seen before adds nothing; its components, a struct's Fields and base and an enum's payload Tuples.
@@ -205,8 +213,10 @@ internal static partial class MirTypes
         // writes nothing there (WrittenAt null, and null below) its Type in a stored part. A part that may hold a Loan (a borrow, pair or
         // raw layer, a Slice, a Function value, an abstract part) gives Loan in the value's own storage, and the write fact (decided) past
         // an exclusive reference from it, but in a LoanOnly mode. In the value's own storage an exclusive reference, a UniqSlice's
-        // elements, a pair layer's exclusive case and what lies past a raw layer by its step (Past) are walked past, and an abstract part
-        // (the owner's Q1 (a)) and a callable may be such a reference; a struct's or enum's Type arguments are walked LoanOnly. Parts
+        // elements, a pair layer's exclusive case and what lies past a raw layer by its step (Past) are walked past, and a callable and a
+        // pair layer (`s/T`) may be such a reference; an abstract Type's value there gives the named fact (SPEC 15.6.4: it writes by
+        // provenance, the holders its holder's exclusive Loans and addresses name; DECISIONS R4-M170, overriding the owner's Q1 (a)); a
+        // struct's or enum's Type arguments are walked LoanOnly. Parts
         // compose by Join, and a mode's walk stops only once it has the facts no other part changes (the write fact being the outcome's
         // top), so a part past the bound it skips adds nothing the answer lacks.
         internal Facts Holds(BoundType? type, int mode, int depth)
@@ -240,9 +250,14 @@ internal static partial class MirTypes
                 return default;
             }
 
+            if (type.IsAbstract && !type.ContainsPairLayer)
+            {
+                return own && writes ? new(true, MirOutcome.None, named: true) : met; // SPEC 15.6.4's reach rule (DECISIONS R4-M170).
+            }
+
             if (type.Kind == BoundTypeKind.Function || type.IsAbstract)
             {
-                return new(own, exclusive);
+                return new(own, exclusive); // A callable, or a pair layer (`s/T`), whose exclusive case is one.
             }
 
             if (TyCtxt.Layer(type, out var below, out _) == HirPlaceKind.PairLayer)
@@ -378,15 +393,17 @@ internal static partial class MirTypes
         }
     }
 
-    // What the holding walk finds in a part: Loan (in the value's own storage) and the guard's outcome where the mode reads the write
-    // fact, composed only by Join (MirOutcome's).
-    private readonly struct Facts(bool loan, MirOutcome writes)
+    // What the holding walk finds in a part: Loan (in the value's own storage), the guard's outcome where the mode reads the write fact,
+    // and Named, an abstract part in the value's own storage there (SPEC 15.6.4), composed only by Join (MirOutcome's).
+    private readonly struct Facts(bool loan, MirOutcome writes, bool named = false)
     {
         internal bool Loan => loan;
 
         internal MirOutcome Writes => writes;
 
-        internal Facts Join(Facts other) => new(loan || other.Loan, writes.Join(other.Writes));
+        internal bool Named => named;
+
+        internal Facts Join(Facts other) => new(loan || other.Loan, writes.Join(other.Writes), named || other.Named);
 
         // Whether these facts include `done`'s: Loan, and the write fact (the outcome's top) where `done` has it.
         internal bool Covers(Facts done) => (loan || !done.Loan) && (writes.IsDecided || !done.Writes.IsDecided);
