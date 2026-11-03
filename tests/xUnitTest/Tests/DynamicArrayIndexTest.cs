@@ -32,11 +32,9 @@ public class DynamicArrayIndexTest
         var records = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start).ToArray();
         (string Code, string Text)[] expected = [("UninitializedPlace_Kd", "number"), ("TransferRequired_Kd", "values[0]")];
 
-        // H5 restores the independent UninitializedPlace_Kd (PD29): until then the old analysis skips a program whose Binding is
-        // incomplete (R6-check H1), so the expectation is read without that record.
-        Assert.Equal(
-            expected.Where(static x => x.Code != "UninitializedPlace_Kd"),
-            records.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
+        // H5 restored the independent UninitializedPlace_Kd (PD29): the MIR's record is published on a program whose Binding is
+        // incomplete (R6-check H1; DECISIONS R5-M184; H3b T51, class 4).
+        Assert.Equal(expected, records.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     [Fact]

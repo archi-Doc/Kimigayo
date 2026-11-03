@@ -126,11 +126,9 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
         var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span!.Value.Start).ToArray();
         (string Code, string Text)[] expected = [("UninitializedPlace_Kd", "number"), ("TransferRequired_Kd", "values[1]")];
 
-        // The bare read is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84). H5 restores the independent UninitializedPlace_Kd
-        // (PD29): until then the old analysis skips a program whose Binding is incomplete, so the expectation is read without that record.
-        Assert.Equal(
-            expected.Where(static x => x.Code != "UninitializedPlace_Kd"),
-            errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
+        // The bare read is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84). H5 restored the independent UninitializedPlace_Kd
+        // (PD29): the MIR's record is published on a program whose Binding is incomplete (DECISIONS R5-M184; H3b T51, class 4).
+        Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
         Assert.False(c.Analysis.IsVerified);
         Assert.False(c.Generate(TextWriter.Null));
     }

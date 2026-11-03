@@ -150,19 +150,18 @@ public class CaptureDiagnosticTest
 
     // SPEC 7.7.2, 23.1.2: an omitted capture list captures only by Copy, so the rejected capture of a Non-Copy binding is read as
     // that Copy and moves nothing; a later use of the binding reports only its own problems (it was a MovedPlace_Kd cascade), while an
-    // independent Move still is.
+    // independent Move still is. H5 restored the independent MovedPlace_Kd (PD29): the MIR's record is published on a program whose
+    // Binding is incomplete (R6-check H1; DECISIONS R5-M184; H3b T51, class 4).
     [Theory]
     [InlineData("", new[] { nameof(DiagnosticCode.TransferRequired_Kd) })]
-    // H5 restores the independent MovedPlace_Kd (PD29): until then the old analysis skips a program whose Binding is incomplete
-    // (R6-check H1), so the expectation is read without that record.
-    [InlineData("    let moved = text@move\n    Console.writeLine(moved)\n", new[] { nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.MovedPlace_Kd) }, nameof(DiagnosticCode.MovedPlace_Kd))]
-    public void ARejectedOmittedCaptureMovesNothing(string between, string[] codes, string? untilH5 = null)
+    [InlineData("    let moved = text@move\n    Console.writeLine(moved)\n", new[] { nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.MovedPlace_Kd) })]
+    public void ARejectedOmittedCaptureMovesNothing(string between, string[] codes)
     {
         var source = Inspect + "public func main() -> ()\n    let text = \"abc\"\n    let outer = func () -> i32\n        let inner = func [text@move] () => inspect(text@ref)\n        return inner()\n    Console.writeLine(\"\\(outer@move())\")\n" + between + "    Console.writeLine(text)\n";
         var output = DiagnosticCorpus.Check(source);
-        Assert.Equal(codes.Where(x => x != untilH5), output.Diagnostics.Select(static x => x.Code));
+        Assert.Equal(codes, output.Diagnostics.Select(static x => x.Code));
         Assert.Equal("The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow", output.Diagnostics[0].Note);
-        if (codes.Length == 2 && untilH5 is null)
+        if (codes.Length == 2)
         {
             Assert.Equal(source.LastIndexOf("(text)", StringComparison.Ordinal) + 1, output.Diagnostics[1].Span!.Value.Start);
         }
