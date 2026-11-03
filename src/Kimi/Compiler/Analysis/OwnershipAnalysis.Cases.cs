@@ -89,8 +89,9 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Builds every case: the first into the listed body, the others into pooled side bodies; the listed body is verified only when
-    // every case is (SPEC 8.15). Its problems are published after the last case, with the cases each was found under, and a problem
-    // every case found shows no case (SPEC 23.1.2). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
+    // every case is (SPEC 8.15). Its problems join the result after the last case, with the cases each was found under, and a problem
+    // every case found shows no case (SPEC 23.1.2); only the legacy entry's readers read the result, which nothing publishes since
+    // R6-check H5 (DECISIONS R5-M185; until H10b). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
     private void BuildCases(FunctionKoto function, int declarationDefault)
     {
         this.caseBodyCount = 0;
@@ -126,8 +127,8 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // Appends the built body's problems to the result. In a case run the listed body publishes after the last case (BuildCases)
-    // and a side body's problems merge into it (SPEC 23.1.2).
+    // Appends the built body's problems to the result. In a case run the listed body's problems join it after the last case
+    // (BuildCases) and a side body's problems merge into it (SPEC 23.1.2).
     private void AppendIssues()
     {
         var storage = this.body.IssueStorage;

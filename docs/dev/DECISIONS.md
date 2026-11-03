@@ -676,6 +676,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   per program version after build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); MIR problems stay
   unpublished on `MirProgram` until R6 unit a; an analysis exception fails the test. Rejected: MIR deciding codes in R4
   (duplicate records and test churn twice).
+  - Superseded in part by R5-M185 (2026-11-04, H5): the MIR decides acceptance on every pipeline; the old path runs only for the
+    transitional entry's readers until H10b.
 - **R4-M2** Layout: `Mir/Analysis/` in namespace `Kimi.Compiler.Mir`: `MirAnalysis` (driver), `MirDataflow`,
   `MirMoveData`, `MirInit` (A1), `MirDrops` (A2), `MirLints` (A3), `MirEffects` (A4), `MirBorrows` with `.Regions`,
   `.Conflicts` and `.Origins` (A5), `MirReport` (A6). The first unit creates all of them as stubs, so parallel units never
@@ -15345,6 +15347,8 @@ structure is recorded here by the unit that first implements it.
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
   - Amended by R5-M160 (G4): `KIMI_CODEGEN=legacy`'s rollback and the kept `C-frame.tsv` are deleted; the depth test's 64-level
     half kept until G4 moved to MIR code generation.
+  - Superseded in part by R5-M185 (2026-11-04, H5): `MirRecords` is gone, and `PublishMirRecords` publishes every merged problem
+    (`MirReport.Merged`: the records and the analyses' problems) and the validator findings; the MIR decides acceptance.
 - **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, R6-gen; plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and
   OI-3 as applied, with the planning session's rulings Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
   - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's

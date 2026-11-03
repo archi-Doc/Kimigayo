@@ -3,7 +3,8 @@
 // Owns MIR bodies by definition key, the validator's findings, the drop table the analyses find, and the version's MirReport: the records
 // of construction and collection (MirRecordClass; R6-check H3-1) and the analyses' problems.
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
-// a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records), their one path.
+// a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records, which MirDump, tests and
+// benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
 // One key identifies one body; warm rebuilding reuses body storage; Clear resets the report with the bodies.
 // Must not re-bind definitions or maintain a second body map in a consumer.
 
@@ -30,9 +31,9 @@ internal sealed class MirProgram
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
     internal List<MirFinding> Findings { get; } = [];
 
-    /// <summary>Gets the records and problems of this version: the construction and collection records (<see cref="Report"/>), which
-    /// Compilation publishes through <see cref="Records"/>, and the problems the analyses found (R4: unpublished, compared by the difference
-    /// ledger); <see cref="Clear"/> resets them with the bodies.</summary>
+    /// <summary>Gets the records and problems of this version: the construction and collection records (<see cref="Report"/>) and the
+    /// problems the analyses found, which Compilation publishes from <c>MirReport.Merged</c>, records included, and whose Errors decide
+    /// acceptance (DECISIONS R5-M185); <see cref="Clear"/> resets them with the bodies.</summary>
     internal MirReport Problems { get; } = new();
 
     /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a); only

@@ -53,9 +53,10 @@ public partial class Compilation
     /// <param name="writer">The caller-owned output, written only when generation succeeds.</param>
     /// <returns>Whether the module was written.</returns>
     /// <remarks>A program check did not accept adds no record (check reported why); an accepted one without its MIR, its checked set or its
-    /// output roots, or a module neither written nor explained by a record, is a broken contract. A record is a code without facts
-    /// (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, or InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS 4.1): the
-    /// records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are one problem.</remarks>
+    /// output roots, or a module neither written nor explained by a record, is a broken contract. A record is InternalInvariant_Kd, a code
+    /// without facts and the only generation record since R6-check H5's unit G (DECISIONS R5-M96's amendment), so its location is its
+    /// subject (DIAGNOSTICS 4.1): the records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are
+    /// one problem.</remarks>
     internal bool Generate(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission); // The partition is the latest request's (DECISIONS R5-M165).

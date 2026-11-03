@@ -58,8 +58,8 @@
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A5's Loan stratum (design A3, R4 shadow: the old path still decides): <see cref="Run"/> checks a body under the selected
-/// view.</summary>
+/// <summary>A5's Loan stratum (design A3; its problems decide acceptance, DECISIONS R5-M185): <see cref="Run"/> checks a body under the
+/// selected view.</summary>
 /// <param name="types">The Type context, whose retention and published rows calls read.</param>
 /// <param name="flow">The dataflow, begun with the body.</param>
 /// <param name="moves">The move paths, built for the body.</param>

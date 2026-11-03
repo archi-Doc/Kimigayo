@@ -25,8 +25,8 @@
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The driver of the MIR analyses (plan P7–P9, R4 shadow: the old path still decides): <see cref="Run"/> analyzes a program
-/// version once; a repeated run of the same version keeps its problems.</summary>
+/// <summary>The driver of the MIR analyses (plan P7–P9), whose problems decide acceptance (DECISIONS R5-M185): <see cref="Run"/>
+/// analyzes a program version once; a repeated run of the same version keeps its problems.</summary>
 internal sealed class MirAnalysis
 {
     private readonly MirCases cases;

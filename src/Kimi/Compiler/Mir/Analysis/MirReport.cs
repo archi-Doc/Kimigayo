@@ -30,10 +30,10 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The problems of one program version, one per code, subject, body and Reason: its construction and collection records, which
-/// Compilation publishes (MirProgram.Records), and the analyses' problems (unpublished until R6-check H5, compared by the difference
-/// ledger): a problem added again ORs its views into the first, whose requirement it must name; <see cref="Merged"/> merges them across
-/// bodies for publication.</summary>
+/// <summary>The problems of one program version, one per code, subject, body and Reason: its construction and collection records and the
+/// analyses' problems, which Compilation publishes from <see cref="Merged"/> (PublishMirRecords) and whose Errors decide acceptance
+/// (DECISIONS R5-M185): a problem added again ORs its views into the first, whose requirement it must name; <see cref="Merged"/> merges
+/// them across bodies for publication.</summary>
 internal sealed partial class MirReport
 {
     private readonly Dictionary<(DiagnosticCode Code, SourceRef Subject, int Body, MirReason Reason), int> index = new(); // The problem of each key.
