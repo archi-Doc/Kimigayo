@@ -120,6 +120,15 @@ internal static partial class MirTypes
         return !destructor && !AdtDef.IsInlineStorage(type) && Parts(type, ref visitor, depth);
     }
 
+    /// <summary>Gets whether a walk enters a handle's payload: one proven Sealed, whose own destruction runs (SPEC 16.3.3), or an abstract
+    /// one, a part its instance decides, judged as an abstract part met directly (the staged class, DECISIONS R4-M150); otherwise the
+    /// payload's destruction is erased.</summary>
+    /// <param name="types">The Type context, whose Sealed proofs Binding publishes.</param>
+    /// <param name="definition">The definition whose premises prove Sealed.</param>
+    /// <param name="payload">The handle's payload.</param>
+    /// <returns>Whether the walk enters it.</returns>
+    internal static bool EntersPayload(TyCtxt types, BindingSymbol? definition, BoundType payload) => payload.IsAbstract || types.Sealed(definition, payload);
+
     /// <summary>Walks the parts a value of a Type destroys after its own release (SPEC 16.3.2): a Tuple's, fixed array's, Closure's, Array's
     /// or Dictionary's components, a struct's Fields and base and an enum's Case payloads, each by <see cref="Destruction"/> one level
     /// deeper. <see cref="Destruction"/> walks them past every part but a struct that declares a drop, whose destructor body destroys them
@@ -190,7 +199,7 @@ internal static partial class MirTypes
             }
 
             var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
-            return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : Destruction(payload, ref this, depth + 1));
+            return payload is not null && (EntersPayload(types, definition, payload) ? Destruction(payload, ref this, depth + 1) : this.Decide());
         }
 
         public readonly bool Deep(BoundType type)

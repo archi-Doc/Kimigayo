@@ -63,11 +63,13 @@ internal sealed partial class MirBorrows
         {
             var position = MirCallee.Position(symbol, row.Destroys);
             var (input, receiver) = (call with { Count = 0, Operand = this.body.Operands[call.Start + position] }, this.argValues[position]);
+            var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position); // Compose resets the call's referent stores.
             this.Compose(state, input, receiver, type, checks);
 
-            // Where only an abstract part not proven Copy observes, which Composing leaves out, the store stays undecided as on dev
-            // (R4-M147): one that would add a Loan or an address past the receiver's referents is the located Unsupported_Kd at the call.
-            this.limit |= checks && this.Destruction(type, out var unproven) == AccessKind.Observe && unproven &&
+            // Where only abstract parts observe (directly or as a payload, MirTypes.EntersPayload), which Composing leaves out, a referent
+            // store stays undecided as on dev (R4-M147): one that would add a Loan or an address past the receiver's referents is the
+            // located Unsupported_Kd at the call.
+            this.limit |= checks && stored && this.Destruction(type, out var unproven) == AccessKind.Observe && unproven &&
                 this.sets.Elements(this.Content(state, receiver)) is [.., var last] && last >= this.loanBase;
         }
     }
@@ -128,7 +130,7 @@ internal sealed partial class MirBorrows
         else if (type.Kind == BoundTypeKind.Semantics)
         {
             var payload = type.Components[0];
-            if (types.Sealed(definition, payload))
+            if (MirTypes.EntersPayload(types, definition, payload))
             {
                 return MirTypes.Destruction(payload, ref composer, depth + 1);
             }
