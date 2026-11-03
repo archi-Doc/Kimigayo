@@ -267,8 +267,8 @@ internal sealed partial class MirBorrows
     // location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147),
     // and whether, at W's fixed point, the step from a holder whose guard is Deep would change what W writes (Changes, R4-M153; that step
     // is left out, and a Deep holder whose step changes nothing decides nothing). Every store path (a Call's rows, its untied stores
-    // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent store
-    // whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
+    // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent store,
+    // which takes refs(S) alone, its row's destruction composed at the call (Referents; MirBorrows.Destructions; DECISIONS R4-M150).
     private (bool Limit, bool Deep) Writes(ulong[] state, int set)
     {
         this.Write(set, ViaRoot); // The kinds of refs(S)'s holders, which Referents put in the targets.

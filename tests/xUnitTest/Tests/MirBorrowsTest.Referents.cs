@@ -340,20 +340,20 @@ public sealed partial class MirBorrowsTest
                     inspect(n)
                 """));
 
-    // The destruction guard (DECISIONS R4-M143; PLAN G264): where a referent store's referent may observe a destruction, which the row
-    // leaves to its callers (SPEC 4.9.6, 16.3), W stays. clear over an object whose leaf's destruction stores through its raw slot, held
-    // through its base's handle (whose payload is not proven Sealed), errs at `y = 5` (clearObjBad), as its twin does where the slot is
-    // used before (clearObjOk, a correct error by SPEC 15.6, the owner's 「(B)」: the payload holds `WLeaf.init`'s result, which reaches
-    // storage the body does not own, so `clear`'s erased destruction may store y's Loan there); a destruction a struct, an Option, a
-    // Tuple, a nested Array or a Dictionary runs keeps its error (clearLeafBad, clearWrapBad, clearOptBad, clearTupBad, clearArrBad,
-    // dictClearBad, dictReplaceBad); over an abstract `T` not proven Copy, whose instance decides, W past refs(S) is undecided where it
-    // would store a Loan or an address (R4-M147): `a.clear()`, whose receiver holds the element's addresses, is the located
-    // Unsupported_Kd and stores into refs(S) alone, so clearGenOk reports nothing else and clearGenBad its true `y = 5` (append met an
-    // empty Array); where it would store only Φ_E, W stays and changes nothing (reversedGen, Array.appendAll's form, valid). The
-    // classifier answers per definition: one generic struct's element Type destroys shallowly in a method proving it Copy (copied, valid)
-    // and not in one that does not (kept: the record, and the true `y = 5` its Array's later drop causes).
+    // A referent store's destruction is composed at its call (SPEC 4.9.6, 15.6.4, 16.3.3; DECISIONS R4-M150, which removed R4-M143's
+    // destruction guard): the store reaches refs(S) alone, and the destruction its row lists retains as a call of each drop it runs over a
+    // uniq/Self receiver. clear over an object whose leaf's destruction stores through its raw slot, held through its base's handle (whose
+    // payload is not proven Sealed), errs at `y = 5` (clearObjBad), as its twin does where the slot is used before (clearObjOk, a correct
+    // error by SPEC 15.6, the owner's 「(B)」: the payload holds `WLeaf.init`'s result, which reaches storage the body does not own, so
+    // `clear`'s erased destruction may store y's Loan there); a destruction a struct, an Option, a Tuple, a nested Array or a Dictionary
+    // runs keeps its error (clearLeafBad, clearWrapBad, clearOptBad, clearTupBad, clearArrBad, dictClearBad, dictReplaceBad). Over an
+    // abstract `T` not proven Copy, the element's destruction is erased (16.3.3; BU-47's `0 Content store 0`) and an abstract part may be
+    // an exclusive reference (R4-M147, the owner's Q1 (a)), so it may store y's Loan past the element: clearGenBad and clearGenOk err at
+    // `y = 5` (no longer the located Unsupported_Kd at `a.clear()`), and reversedGen (Array.appendAll's form, whose store carries only
+    // Φ_E) stays valid. The classifier answers per definition: one generic struct's element Type destroys shallowly in a method proving
+    // it Copy (copied, valid) and not in one that does not (kept: `y = 5`).
     [Fact]
-    public void ADestructionAReferentMayObserveKeepsW()
+    public void AReferentsDestructionIsComposedAtItsCall()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + ReferentShapes + """
             func clearObjBad()
@@ -520,9 +520,8 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "kept: a.clear() Unsupported_Kd", "kept: y = 5", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5",
-                "clearOptBad: y = 5", "clearTupBad: y = 5", "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5",
-                "clearGenBad: a.clear() Unsupported_Kd", "clearGenBad: y = 5", "clearGenOk: a.clear() Unsupported_Kd",
+                "kept: y = 5", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5", "clearOptBad: y = 5",
+                "clearTupBad: y = 5", "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5", "clearGenBad: y = 5", "clearGenOk: y = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

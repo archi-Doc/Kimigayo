@@ -20,8 +20,10 @@ public sealed partial class MirBorrowsTest
     // read of `w`: `Loan.init(w@uniq)`'s instantiated signature admits a callee storing a reborrow through its argument's layers into the
     // argument's own referent, whose two local regions may coincide (DECISIONS R4-M154, Revision 4), a self-row returning a route's Loan
     // to its holder, SPEC's letter (R4-M147's no-loss class); rustc's acceptance is PLAN G148 (2)'s open question (GXS). An abstract
-    // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs; a live iterator keeps the append's
-    // activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
+    // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs, and its erased destruction (16.3.3,
+    // BU-47's `0 Content store 0`; R4-M150) may store what it carries, its own Loan after `next()`'s self-row (R4-M154), into storage the
+    // body does not own, so the loop's hidden iterator errs at its storage end (a location with no function) and at `for _ in items` (the
+    // same class, G148 (2)'s); a live iterator keeps the append's activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
     // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
     // literal is no call (DECISIONS R5-M129, as litPairOk), so PLAN G147 (8i)'s self-store row of a call taking the pair carrier by value
     // (TyCtxt.Retains, `i Value -> i`) does not reach it.
@@ -172,7 +174,8 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", "count: S", "seedRoute: w@follow@follow@ref", "cleanRoute: xs.append(b) CallActivationConflict_Kd", // count's at its parameter's Type (BU-48 (a)).
+                "dd3: t = 2", ": $for.iterator", "count: for _ in items", "count: S", "seedRoute: w@follow@follow@ref", // count's S at its parameter's Type (BU-48 (a)).
+                "cleanRoute: xs.append(b) CallActivationConflict_Kd",
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

@@ -553,7 +553,10 @@ public sealed partial class MirBorrowsTest
     // Move, exchange or swap ends none; an obj handle's replacement ends its payload's children, an rc one's release may run a drop that
     // writes through them. Replacing a Field of an obj handle's payload ends none (75, an error against round 10's verdict, by the owner's
     // decision of 2026-10-18): a Loan ends only where a Move Path is destroyed in place (SPEC 15.6.3), and a Move Path takes no own step
-    // (15.1.3), which the payload step is (15.6.2).
+    // (15.1.3), which the payload step is (15.6.2). c80's release may be final (16.3.3), so HRD's drop retains as a uniq/Self call (15.6.4,
+    // BU-47's `0 Content store 0`; DECISIONS R4-M150): the payload, makeRc's result, reaches storage the body does not own (15.6), where
+    // a stored value may be used after every point, so slot2's, slot's, z's and x's storage ends err too (PLAN G264's SPEC gap: no
+    // exception for a payload the final release frees).
     [Fact]
     public void TheOuterReplacementCasesKeepTheirVerdicts()
         => Assert.Equal(
@@ -565,7 +568,8 @@ public sealed partial class MirBorrowsTest
                 "c69: arr[j]", "c69: arr[0]@follow@follow = 7", "c70: arr[j]", "c70: arr[i]", "c70: arr[i]@follow@follow = 7", "c72: m[i]",
                 "c72: m[i][0]@follow@follow = 7", "c74: p.pa@follow@follow = 7", "c75: h@follow.r@follow@follow = 7",
                 "c77: slot@follow = 5", "c79: slot@follow = 5",
-                "c80: h = Kimi.Intrinsics.makeRc(HRD.init(r: slot2@uniq))", "c81: q@follow@follow = 5", "c84: rr = slot2@uniq CallReservationConflict_Kd",
+                "c80: h = Kimi.Intrinsics.makeRc(HRD.init(r: slot2@uniq))", "c80: var slot2 = z@uniq", "c80: var slot = x@uniq", "c80: var z = 3",
+                "c80: var x = 1", "c81: q@follow@follow = 5", "c84: rr = slot2@uniq CallReservationConflict_Kd",
                 "c85: rr = slot2@uniq CallReservationConflict_Kd", "c86: c@follow = 1", "c87: slot@follow = 5", "c88: arr[j]", "c88: arr[j]@follow = 7",
                 "c90: slot@follow = 5", "c91: t = TTD.init(r: slot2@uniq, c: t.r@follow@follow@uniq)", "c94: slot@follow@uniq"
             ],

@@ -645,9 +645,9 @@ public sealed partial class MirBorrowsTest
     // SPEC 4.9.6, 15.6.4, 16.3.3: a published destroying call composes the destruction its row lists at the call, after its own rows,
     // over the pre-call state: `clear` of an Array, `replace`'s old target, `insertOrReplace`'s unused key (keyParamBad: a parameter's
     // Dictionary, so 4.9.6's key dependencies also reach storage the body does not own); `truncate` and `removeAll` have their Bad rows in
-    // ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW. Each Bad errs at `y = 5` today through the referent guard (DECISIONS R4-M143) or
-    // the key's dependencies, and must after through the composition; each null twin (the destroyed element's q is null, so its drop
-    // stores nothing that carries y) is valid, so no guard or composition may add a Loan the drop does not store.
+    // ATruncateOrRemoveAllComposesItsElementsDestruction. Each Bad errs at `y = 5` through the composition (DECISIONS R4-M150; before it,
+    // R4-M143's referent guard) or the key's dependencies; each null twin (the destroyed element's q is null, so its drop stores nothing
+    // that carries y) is valid, so the composition adds no Loan the drop does not store.
     [Theory]
     [InlineData("arrClearBad", "arrClearBad: y = 5")]
     [InlineData("clearNullOk", "")]
@@ -663,18 +663,19 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]))}]");
     }
 
-    // V16 (the design's §5.7): N locals whose drops store a parameter referent's Loan through their raw slot, each destroyed by a
-    // reassignment (N = 8, 16, 32; SPEC 15.6.4's valid shape). Each destruction composes its drop's rows once, so the work grows at most
-    // 3 times as much from 16 to 32 as from 8 to 16 (dev, which composes none: 102,043, 106,611, 116,179, a factor 2.09; quadratic is 4).
+    // V16 (the design's §5.7; the owner's 「A) 原因を先に直す」 of 2026-10-31, with G342's rows): N locals whose drops store a parameter
+    // referent's Loan through their raw slot, each destroyed by a reassignment (N = 8, 16, 32; SPEC 15.6.4's valid shape). Each Loan stays
+    // live until `usep(slot)` (15.6.4's example), so the output is quadratic: the work grows at most 5 times as much from 16 to 32 as from 8
+    // to 16, the class's precedent for values whose Loans are live together (MirBorrowsTest.Unowned's G342 rows; DECISIONS R4-M160).
     [Fact]
-    public void DestructionsWorkStaysLinearInTheirNumber()
+    public void DestructionsWorkStaysWithinTheirLiveLoans()
     {
         const string Shape = "func shape(y: uniq/i32)\n    var slot: raw/u8 = null\n" +
             "«N:    let w{0} = y@follow@ref\n    var x{0} = Writer.init(q: w{0}@raw@raw/u8)\n    x{0}.p = slot@raw\n    x{0} = Writer.init(q: null)\n»" +
             "    usep(slot)\npublic func main() => ()\n";
         long[] work = [.. new[] { 8, 16, 32 }.Select(n => this.Measured(DropShapes + Expand(Shape, n, 0)).Work)];
         output.WriteLine($"N 8, 16, 32: work {string.Join(", ", work)}");
-        Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }
 
     // V16: A5 on a program version it checked before allocates nothing at destructions: every site's composition, the published

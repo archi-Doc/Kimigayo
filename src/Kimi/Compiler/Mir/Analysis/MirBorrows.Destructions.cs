@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's destructions (SPEC 15.6.4, 16.3.1–16.3.3, 16.4; DECISIONS BU-47; PLAN G264 U1): a Drop the view keeps retains as a call of each
+// A5's destructions (SPEC 15.6.4, 16.3.1–16.3.3, 16.4; DECISIONS BU-47, R4-M150): a Drop the view keeps retains as a call of each
 // `drop` its destruction runs, whose `self` is a `uniq/Self` receiver referring to the destroyed part. The receiver's value is the
 // destroyed root's plain address (MirBorrows.Addresses), formed in the pre-pass for each Drop whose destruction may run a drop (Dropping:
 // Observe), so every reader of a direct Loan reads it as a reference to that root; it is never a conflict candidate and cannot be stored
