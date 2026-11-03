@@ -111,3 +111,20 @@ D1–D3 ≈ −30, T ≈ −250/+210 (H, from round 1's table). JSON ≈ 35 rows
 | X1 | PD29's "one commit" read per commit (§0) | adopt; F's DECISIONS entry states it |
 | X2 | O lands before the flip: the old-side assertions stop pinning the old verdict for the few commits before F, on the branch only | adopt (R5-M182 deletes them at H5; the MIR side stays asserted) |
 | X3 | Commits between F and the last T-unit fail Session tests outside their own rows (H3b's input) | adopt as H0b-2's reading; the group review checks the final Session |
+
+## Rulings (the planning session, 2026-11-03)
+
+- **X1 adopted.** PD29's intent is that dev never holds a state where both old producers or neither run. The flip group lands as one
+  merge (H0b-1), so no intermediate commit of the branch reaches dev, and PD29 holds per merge. Its "one commit" is read per commit only
+  on the branch: F stops both producers, and the dead code goes in D1-D3 inside the same merge. Reason: WORKFLOW's one-hour limit
+  (DECISIONS Q12), since a literal single commit is a three-hour, two-author unit. F's DECISIONS entry states this reading as a line
+  under R5-M182. The owner is told as a planning decision: it changes no acceptance and no published record on dev.
+- **X2 adopted**, on one condition: O's unit run shows no change on the default pipeline (traits and ledger sides only). Any selection
+  change under the mir lane is recorded as H3b round 1's input.
+- **X3 adopted**, on three conditions:
+  - each unit's own classes pass in its unit run;
+  - the branch Session's failures between F and the last T-unit are recorded as that round's H3b input (the table), never hidden;
+  - no unit changes an expectation except a class-3 re-point that H3b's table names (Q13).
+  The group review checks the final round's Session.
+- **Start.** H5 starts now. R5 tells BU (the branch's writer until now), merges dev into `claude/r6-flip`, and begins with E. H3-2 lands on
+  dev in its own R5 window; the branch merges dev again before H3b round 1.
