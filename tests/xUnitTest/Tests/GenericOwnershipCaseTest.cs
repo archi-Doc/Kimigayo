@@ -18,42 +18,14 @@ public class GenericOwnershipCaseTest
     private static readonly Lazy<Dictionary<string, PairCaseRow>> Rows = new(() =>
         JsonSerializer.Deserialize<PairCaseRow[]>(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "diagnostics", "pair-cases.json")))!.ToDictionary(x => x.Name, StringComparer.Ordinal));
 
-    public static TheoryData<string> Judged
-    {
-        get
-        {
-            var data = new TheoryData<string>();
-            foreach (var row in Rows.Value.Values)
-            {
-                if (Array.IndexOf(Landed, row.Unit) >= 0)
-                {
-                    data.Add(row.Name);
-                }
-            }
+    public static TheoryData<string> Judged => Names(static _ => true);
 
-            return data;
-        }
-    }
+    public static TheoryData<string> Executed => Names(static x => x.Run is not null && x.Mir is null);
 
-    public static TheoryData<string> Executed
-    {
-        get
-        {
-            var data = new TheoryData<string>();
-            foreach (var row in Rows.Value.Values)
-            {
-                if (Array.IndexOf(Landed, row.Unit) >= 0 && row.Run is not null)
-                {
-                    data.Add(row.Name);
-                }
-            }
-
-            return data;
-        }
-    }
+    public static TheoryData<string> Refused => Names(static x => x.Run is not null && x.Mir is not null);
 
     // The MIR decides (DECISIONS R5-M185): a rejected case is its published record at the stated operation, whose loan location is a use
-    // of the stated Loan holder.
+    // of the stated Loan holder. A row's `Mir` states the MIR's verdicts where they differ from the SPEC's.
     [Theory]
     [MemberData(nameof(Judged))]
     public void JudgesEveryCaseAtDefinition(string name)
@@ -64,7 +36,7 @@ public class GenericOwnershipCaseTest
         c.ReportAnalysis();
         var records = c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission).Diagnostics;
         var rejected = false;
-        foreach (var expected in row.Expected.Values)
+        foreach (var expected in (row.Mir?.Expected ?? row.Expected).Values)
         {
             if (expected.ValueKind == JsonValueKind.String)
             {
@@ -90,6 +62,39 @@ public class GenericOwnershipCaseTest
         var row = Rows.Value[name];
         var run = row.Run!;
         ScalarEmissionTest.EmitFixture("GenericCase" + name.Replace("-", string.Empty, StringComparison.Ordinal), run.Source, run.Stdout);
+    }
+
+    // H5's (e) rows (the owner, 2026-11-03, 「推奨どおり」, board O-1): A4-box-ok and A4-field-ok are valid in every case (SPEC 8.15), and A5
+    // over-approximates their uniq case. Their run, which ValidFamiliesRunInEveryInstance generated and ran before the flip, is rejected at
+    // each rejected case of the row's `Mir`, at the operation's exact span, and generation writes nothing. PLAN G147 (8) restores the
+    // acceptance, removes the `Mir` members and returns the rows to ValidFamiliesRunInEveryInstance.
+    [Theory]
+    [MemberData(nameof(Refused))]
+    public void RunsTheMirRejectsGenerateNothing(string name)
+    {
+        var row = Rows.Value[name];
+        var c = MinimalEmissionTest.Analyze(row.Run!.Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var mir = row.Mir!;
+        Assert.False(c.Accepts, mir.Note);
+        MirTargetSide.Check(c, [.. mir.Expected.Values.Where(static x => x.ValueKind != JsonValueKind.String).Select(static x =>
+            (Enum.Parse<DiagnosticCode>(x.GetProperty("Code").GetString()!), new SyntaxLocation(x.GetProperty("Line").GetString())))]);
+        Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // The names of the landed rows a theory selects.
+    private static TheoryData<string> Names(Func<PairCaseRow, bool> selected)
+    {
+        var data = new TheoryData<string>();
+        foreach (var row in Rows.Value.Values)
+        {
+            if (Array.IndexOf(Landed, row.Unit) >= 0 && selected(row))
+            {
+                data.Add(row.Name);
+            }
+        }
+
+        return data;
     }
 
     // A rejection's zero-based operation line and Loan holder, the name that the `let` or `var` line holding the Loan text declares.
@@ -132,7 +137,11 @@ public class GenericOwnershipCaseTest
         return line;
     }
 
-    private sealed record PairCaseRow(string Name, string Family, string Unit, string[] Spec, string Source, Dictionary<string, JsonElement> Expected, PairCaseRun? Run);
+    private sealed record PairCaseRow(
+        string Name, string Family, string Unit, string[] Spec, string Source, Dictionary<string, JsonElement> Expected, PairCaseRun? Run, PairCaseMir? Mir);
 
     private sealed record PairCaseRun(string Source, string Stdout);
+
+    // The MIR's verdicts per case, in Expected's form, and the reason they differ from the SPEC's.
+    private sealed record PairCaseMir(Dictionary<string, JsonElement> Expected, string Note);
 }
