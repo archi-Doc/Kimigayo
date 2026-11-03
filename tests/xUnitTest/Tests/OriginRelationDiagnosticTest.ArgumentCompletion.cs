@@ -327,9 +327,10 @@ public partial class OriginRelationDiagnosticTest
     // the Tuple results sc_tov) and with one, at a named call (sc_fi, sc_elem, sc_tfi) and a value call (sc_h), the record is
     // NoApplicableOverload_Kd at the call, as a typed join's is (d1h). Tuple results of another length fit no candidate (sc_len; 10.5.1).
     // Outside a call argument the conflict is the join's (sc_let). B3a's review B1: a probe join with Dictionary results whose sources
-    // conflict waits for its call as any other shape does, so the call keeps its records (d06: the one candidate's; n08: two candidates
-    // both fit, as on d7f69e006). The fix moves n0f: its middle join, whose flattened parts conflict, now waits, and the call's record
-    // replaces the join's own TypeMismatch_Kd, as at two levels (B3a design, class (2)).
+    // conflict waits for its call as any other shape does, and the call fits its sources per candidate (BU-80 Fix-D): no candidate admits
+    // both `[1: x]` and `[2: b]` or `[2: y]`, so the call's record is NoApplicableOverload_Kd (d06 one candidate, n08 two), dev's record.
+    // B3a's fix moves n0f: its middle join, whose flattened parts conflict, now waits, and the call's record replaces the join's own
+    // TypeMismatch_Kd, as at two levels (B3a design, class (2)).
     [Theory]
     [InlineData("B2b", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
     [InlineData("B2b", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
@@ -339,8 +340,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("B2b", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
     [InlineData("U1.6g", "sc_let", KXB + "    let v = if c => x else => b\n    return 0\n", "TypeMismatch_Kd if c => x else => b")]
-    [InlineData("B3a", "d06", "func fdi(x: Dictionary<i64, i64>) -> i32 => 0\nfunc k(c: bool, x: i64, y: i32) -> i32\n    return fdi(if c => [1: x] else => [2: y])\n", "TypeMismatch_Kd y")]
-    [InlineData("B3a", "n08", FDicts + KXB + "    return fd(if c => [1: x] else => [2: b])\n", "AmbiguousBinding_Kd fd(if c => [1: x] else => [2: b])")]
+    [InlineData("B3a", "d06", "func fdi(x: Dictionary<i64, i64>) -> i32 => 0\nfunc k(c: bool, x: i64, y: i32) -> i32\n    return fdi(if c => [1: x] else => [2: y])\n", "NoApplicableOverload_Kd fdi(if c => [1: x] else => [2: y])")]
+    [InlineData("B3a", "n08", FDicts + KXB + "    return fd(if c => [1: x] else => [2: b])\n", "NoApplicableOverload_Kd fd(if c => [1: x] else => [2: b])")]
     [InlineData("B3a", "n0f", IdentityT + FScalars + KXB3 + "    return f(if c => (if d => (if e => x else => b) else => identity(1)) else => x)\n", "NoApplicableOverload_Kd f(if c => (if d => (if e => x else => b) else => identity(1)) else => x)")]
     public void TypedSourcesInConflictAtACallArgumentFitNoCandidate(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
@@ -526,7 +527,8 @@ public partial class OriginRelationDiagnosticTest
 
     // SPEC 10.5.1 (B3a, DECISIONS BU-80; U2j's readers, ComposedJoin and PartContribution, call the root test): IsRootArgumentJoin is
     // true for the probe's own join only, recorded where IsProbeJoin decides that it waits and kept after its call completes it
-    // (`one(if c => identity(1) else => 2)`, `fo(if c => (if d => x else => y) else => x)`); false for a clean nested join, which has no
+    // (`one(if c => identity(1) else => 2)`, `fo(if c => (if d => x else => y) else => x)`), whatever its results' shape (a Dictionary:
+    // `fdf(if c => [1: gv@move] else => [2: twice])`, BU's decision 2; the review's R3); false for a clean nested join, which has no
     // record, and for a nested join that waits on a conflict among its sources, whose conflict is its call's, though it holds a Join
     // record (`fo(if c => (if d => x else => b) else => x)`). The BU/R4 decision (2026-11-03, option (a)) replaced "no nested Join record".
     // It reads private members because no public layer observes the root test yet: U2j-a's observable rows replace this reflective pin.
@@ -552,6 +554,9 @@ public partial class OriginRelationDiagnosticTest
         Assert.False(Root(clean, "if d => x"));
         var conflict = MirBuildTest.Compile(Fo + "    return fo(if c => (if d => x else => b) else => x)\n" + Main);
         Assert.Equal(("Join", false), (Kind(conflict, "if d => x"), Root(conflict, "if d => x"))); // A conflict wait's Join record.
+        var dictionary = MirBuildTest.Compile(Twice + FDictFn + "func k(c: bool, gv: (i64) -> i64) -> i32\n    return fdf(if c => [1: gv@move] else => [2: twice])\n" + Main);
+        Assert.True(dictionary.Binding.Result.IsComplete, MinimalEmissionTest.Describe(dictionary));
+        Assert.Equal(("Join", true), (Kind(dictionary, "if c =>"), Root(dictionary, "if c =>"))); // BU's decision 2: every result shape.
     }
 
     // SPEC revision B (the group review's B5): a warm rebind of a reference join at a call argument, whose sources revision B fits one

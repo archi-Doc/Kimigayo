@@ -257,8 +257,8 @@ public sealed partial class Binding
     // probe before its call has taken it, the probe's control flow or one its argument-source walk enters (UnderArgumentProbe: results,
     // Tuple and array elements, nested joins). Its sources are argument sources, which its call fits per candidate, so a conflict among
     // them is its call's (SPEC 10.8; U1.6g (a); CallOwnsConflict): the join waits and its call completes it at the selected candidate's
-    // Type. The probe's
-    // own join has no common-Type search before selection (IsProbeJoin); a clean nested one keeps its own formation until G383 B3c.
+    // Type. The probe's own join has no common-Type search before selection (IsProbeJoin); a clean nested one keeps its own formation
+    // until G383 B3c.
     // Once its call has selected and taken the argument (TakenByCall), as when DecideTaken decides it again, no expectation is left to
     // wait for (the owner's answer, 2026-10-31: (i)): the conflict is the join's own record, as outside a call argument.
     private bool IsArgumentJoin(Koto join)
