@@ -4,7 +4,7 @@
 
 翻訳元：`8ee50bf7e36708f32cf308145c5cb0debca005bd`（2026年10月23日確認）。表記は[SPECJ_TERMINOLOGY](SPECJ_TERMINOLOGY.md)に従う。本書は非規範的な翻訳であり、解釈が異なる場合は英語の定義を優先する。コード、識別子、文字列、文法、JSONは原文の綴りを保つ。
 
-部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
+部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
 
 ## 目次
 
@@ -7308,19 +7308,23 @@ func laterAlloc<T>(y: uniq/i32)
     unsafe => Raw.release(m)
 ```
 
+書込みは、値のアドレスが名指す保持元から共有層を経ない読取りでさらに先へ届く（項目1）。束縛がそのような保持元へ格納するとき別のLoanが生きていても、それは具体メソッドと同じく[§5.2.1](#s-5-2-1)（条件4）に従うrawアクセスで、呼出しのエラーではない。呼出しがそこへ格納し得るものは保持される。
+
 ```kimi
 contract MakeP
     func make(p: raw/(raw/(raw/u8))) -> Self
     func setQ(self: uniq/Self, q: raw/u8)
 
-func chain<T>()
+func chain<T>(y: uniq/i32)
     T is MakeP
+    let w = y@follow@ref
     var slot: raw/u8 = null
     var pp: raw/(raw/u8) = slot@raw     // pp addresses slot.
     var x = T.make(p: pp@raw)           // x addresses pp.
-    let rs = slot@ref
-    // x.setQ(q: null)                  // Error: setQ may write slot, reached on from pp by a read, while rs is live.
-    inspect(rs)
+    x.setQ(q: w@raw@raw/u8)             // setQ may store q in slot, reached on from pp by a read.
+    consume(x@move)
+    // y@follow = 5                     // Error: slot may retain w's address, reached on from pp; slot is used below.
+    usep(slot)
 ```
 
 **効果要約**はアクセスし得る静的フィールドと読取り・借用・書込み・置換・破棄・初回初期化を列挙し、呼出し先、閉じた明示特殊化集合の全実装、既定値、アクセサー、遅延初期化、後処理も含む。宣言ごとに自身の型パラメーターで一度、再帰呼出しの最小不動点として計算する。**パラメーター依存効果**は、Copy未証明の型パラメーター・関連型射影の破棄、その型の公開操作のユーザーコード効果、Callable入力経由呼出し。宣言前提が射影の基底（またはその基底を反復したもの）のいずれかを再帰Contractへの適合と証明する場合、そこに保持する依存効果を未知環境効果へ広げる。他の射影深さは有界で不動点は有限。Callable入力呼出しは入力・レシーバモードごとに一度記録し、使用時に実引数と合成する。適合の効果境界は完成した要約で検査する。
