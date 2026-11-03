@@ -228,6 +228,53 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Equal((bodies, version + rebuilds), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
+    // DECISIONS R5-M186 (review B3): a warm rebind and rebuild of a program whose failure bodies rest on guesses allocates nothing: the
+    // builder copies Binding's guessed nodes into the body's pooled sites at once. A guard: before R6-1 the builder asked no guess.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebuildOfGuessedFailureBodiesAllocatesNothing()
+    {
+        var c = Compile("func f(flag: bool)\n    require flag else => missing()\n    require flag else => missing()\n");
+        Assert.Equal(2, c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").GuessedSites.Length);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
+    }
+
+    // DECISIONS R5-M186 (review N6): the builder asks the guess rule only at a failure body that can complete, so N nested requires whose
+    // outer failure bodies return after the inner require, in a pass that left the innermost call unresolved, cost the guess walk work
+    // linear in N, and only the innermost row names a site. A guard: the guess walk never runs where the structural walk finds no
+    // completion, which the condition also saves and GuessCompletionWork does not count.
+    [Fact]
+    public void GuessedSitesOfNestedRequiresScaleLinearly()
+    {
+        long[] work = [Work(8), Work(16), Work(32)];
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"guess walk {string.Join(", ", work)}");
+
+        static long Work(int depth)
+        {
+            var text = new StringBuilder("func nest(flag: bool)\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                text.Append(' ', 4 * i).Append("require flag else\n");
+            }
+
+            text.Append(' ', 4 * (depth + 1)).Append("missing()\n");
+            for (var i = depth; i > 1; i--)
+            {
+                text.Append(' ', 4 * i).Append("return\n");
+            }
+
+            var c = Compile(text.ToString());
+            var before = c.Binding.GuessCompletionWork;
+            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "nest");
+            Assert.Equal(1, body.GuessedSites.Length);
+            return c.Binding.GuessCompletionWork - before;
+        }
+    }
+
     // G350: the process's one-time initialization on the check path stays small. A fresh process's first cold build allocates at most
     // 64 KB more than a second cold build of the same text on a fresh Compilation: the class constructors of the rows and ABIs it reads
     // and the runtime's first instantiations, measured about 21.5 KB on .NET 10, three times that being the margin. Before G350 the

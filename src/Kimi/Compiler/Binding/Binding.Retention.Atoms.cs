@@ -11,8 +11,11 @@ namespace Kimi.Compiler;
 // borrow a Type refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
-    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, in walk order; reused.
-    private readonly List<(int Input, BoundType Type)> retentionRawInputs = new();
+    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40, BU-66): the raw sources of the contract and of each erased signature being walked, each input
+    // once, in walk order: an input whose Type holds a raw layer by value without passing a shared layer (RetentionParts), at its own layer
+    // (`Own`: a raw argument, RetentionInput) or wrapped (a Tuple element, a Type argument, one past an exclusive layer), whose own value
+    // the hold walk keeps as a raw argument's; reused.
+    private readonly List<(int Input, bool Own)> retentionRawSources = new();
 
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
     // Shared (Shared).
@@ -76,9 +79,10 @@ public sealed partial class Binding
     // retained as a borrowed one, its pointee as the referent (SPEC 15.6.4, DECISIONS R4-M116): its parts are Content, walked by its step
     // (RetentionParts); its own layer's Origin is an atom of no kind, which places it among the premises as a borrow's outer Origin is but
     // gives no row (R-B3: RawContent's rows and its own value decide), and its own value is retained by its Type (RetentionRows, over
-    // retentionRawInputs).
+    // retentionRawSources, as the value of any input whose walk meets a raw layer it holds by value).
     private void RetentionInput(BoundType input, int index)
     {
+        var sources = this.retentionRawSources.Count;
         if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent)
         {
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
@@ -93,21 +97,26 @@ public sealed partial class Binding
                     var field = captures[i].Environment.MutableCapture ? variance : OriginVariance.Covariant;
                     this.RetentionWalk(environment.Components[i], content, field, callable: false);
                 }
-
-                return;
             }
-
-            this.RetentionWalk(referent, content, variance, callable: false);
+            else
+            {
+                this.RetentionWalk(referent, content, variance, callable: false);
+            }
         }
         else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
         {
-            this.retentionRawInputs.Add((index, input));
+            this.retentionRawSources.Add((index, Own: true));
             this.AddRetentionAtom(new(index, Kind: null, Writable: false, OwnedOrigin(input), null, null), callable: false);
             this.RetentionParts(input, new(index, RetentionKind.Content, Writable: true, null, null, null), OriginVariance.Covariant, callable: false);
         }
         else
         {
             this.RetentionWalk(input, new(index, RetentionKind.Value, Writable: true, null, null, null), OriginVariance.Covariant, callable: false);
+        }
+
+        if (this.retentionRawSources.Count > sources)
+        {
+            this.retentionRawSources.RemoveRange(sources + 1, this.retentionRawSources.Count - sources - 1); // The input once, as its first.
         }
     }
 
@@ -166,7 +175,9 @@ public sealed partial class Binding
     // The walk below a Type's own layer at a position of `variance` (RetentionWalk): its components, writable, shared and past a raw
     // layer's step as RetentionWalk states, and the content a raw layer's Origin lets the call write (RawContent); a Closure's components
     // are its environment as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148; one that does not substitute is the
-    // contract's Limit). A raw input's walk starts here, past its own layer's atom (RetentionInput).
+    // contract's Limit). A raw input's walk starts here, past its own layer's atom (RetentionInput). A raw layer of an input not past a
+    // shared layer is one of its raw sources (retentionRawSources; SPEC 15.6.4 at the raw source, DECISIONS BU-66; a call writes through
+    // none past one, 5.2.1).
     private void RetentionParts(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         type = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
@@ -176,6 +187,11 @@ public sealed partial class Binding
         var shared = type.Kind == BoundTypeKind.Slice ||
             (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        if (raw && !inside && !at.Shared && at.Input >= 0)
+        {
+            this.retentionRawSources.Add((at.Input, Own: false));
+        }
+
         var rawOrigin = type.RawOrigin;
         var step = raw && !inside ? this.SignatureStep(rawOrigin, CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs]) : RawStep.Unstated;
         var past = at.Shared || shared || step == RawStep.Shared;

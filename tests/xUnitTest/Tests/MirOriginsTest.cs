@@ -38,6 +38,16 @@ public sealed partial class MirOriginsTest
     // A Closure header with an omitted inner Origin (PLAN G216's form), called in its evaluating body.
     private const string ClosureHeader = "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n";
 
+    // PLAN G216 (b)'s r1 and r2: a Closure's and a local Function Type's result `ref/(ref/i32 during q)` lies during the per-call Origin of
+    // the input the row writes next, well formed only where that input names `q` (SPEC 15.3.4).
+    private const string NestedResult = "func k(q: ref/i32) -> i32\n    let n = 1\n    let h = func [q] (p: ";
+
+    private const string NestedFunctionType = "func k(q: ref/i32) -> i32\n    let n = 1\n    var h: (";
+
+    // PLAN G216 (b)'s p4 (p3's Closure twin): a value call whose argument's inner Origin `b` meets the input's `a`, after a head with or
+    // without the clause ordering them.
+    private const string ValueCall = "    let h = func [] (p: ref/(ref/i32 during a)) -> i32 => p@follow@follow\n    return h(s)\n";
+
     // A holder of one shared reference and a callee whose result meets its two arguments' Origins (the 2a-1c design review's m7).
     private const string Held = "struct C {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
         "func pick(x: ref/i32 during s, y: ref/i32 during s) -> ref/i32 during s => x\n";
@@ -262,7 +272,8 @@ public sealed partial class MirOriginsTest
     // `during static` parameter (row 7', Inferred; SPEC 11.8), which the default pipeline rejects (PLAN G197's residual, ledger (a)),
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
-    // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215).
+    // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);
+    // and a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3).
     [Theory]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
@@ -276,6 +287,7 @@ public sealed partial class MirOriginsTest
     [InlineData(ClosureHeader + "    return h(x@ref@ref)\n")]
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit + InitP)]
     [InlineData(HolderP + "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 = x@ref\n        yield t@follow\n    else => 0\n")]
+    [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n    origin b outlives a\n" + ValueCall)]
     public void AValidChainHasNoOriginProblem(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -298,9 +310,17 @@ public sealed partial class MirOriginsTest
 
     // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
     // completeness (DECISIONS R4-M113): a callee's own Parameter atoms in a caller's rows (I-1, PLAN G195; meet-trans, which Binding rejects
-    // by its own relation record). An end a Binding failure left Unbound is Dependent instead (R4-M118).
+    // by its own relation record). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested result's row with a
+    // per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
+    // 15.3.4, R4-M162: the invalid ones are Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front, R7-O3).
     [Theory]
     [InlineData(MeetTrans, "t@uniq")]
+    [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
+    [InlineData(NestedResult + "ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
+    [InlineData(
+        NestedFunctionType + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> = func (p) => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n",
+        "ref/(ref/i32 during q)")]
+    [InlineData(NestedFunctionType + "ref/i32) -> Option<ref/(ref/i32 during q)> = func (p) => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     public void AnUnclassedEndIsTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 

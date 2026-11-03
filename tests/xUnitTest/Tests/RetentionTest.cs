@@ -799,6 +799,32 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Value, 1 Value}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(c, "make"));
     }
 
+    // The rule above at the raw source (DECISIONS BU-66, the owner's Q11 ruling of 2026-11-04): a raw layer an argument holds by value
+    // without passing a shared layer, a Tuple element, a Type argument (an Option's payload) or one past an exclusive layer, is retained as
+    // a raw argument is, by the argument's own value (R4-M154's grain), so `T.make`'s abstract result keeps it (fails before: no row; the
+    // result stays untied until PLAN G264's S0); past a shared layer it is not (SPEC 5.2.1). A concrete nominal's stored Field is BU-66's
+    // part B (PLAN).
+    [Theory]
+    [InlineData("Option<raw/u8>", "v", "result {0 Value}, untied")]
+    [InlineData("(raw/u8, i32)", "v", "result {0 Value}, untied")]
+    [InlineData("Array<raw/u8>", "v@move", "result {0 Value}, untied")]
+    [InlineData("uniq/Option<raw/u8>", "v", "result {0 Value}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("ref/(raw/u8)", "v", "untied")]
+    public void AnAbstractResultHoldsARawLayerItsArgumentHoldsByValue(string type, string argument, string expected)
+        => Assert.Equal([expected], Calls(Bind($"contract MakeO\n    func make(v: {type}) -> Self\nfunc g<T>(v: {type}) -> ()\n    T is MakeO\n    let t = T.make(v: {argument})\n"), "make"));
+
+    // The raw sources through the hold walk's other arms (DECISIONS BU-66 at the raw source), each a sound over-approximation of the
+    // wrapped pointer by the argument's own value: the generic wrapper whose handed `make` takes one (rule 3, ErasedFills), a pair layer
+    // admitting `raw` and a result raw layer stating an Origin. A lent one keeps only the raw arguments (R′, SPEC's "the raw arguments"),
+    // never a wrapped source (BU's ruling on part A: fails with R′ over the raw sources, `0 Value Chain`).
+    [Theory]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeO\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), t: (raw/i32, i32))\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
+    [InlineData("func f(b: ref/i32, t: (raw/i32, i32)) -> raw/i32 during b => b@follow@raw", "result {0 Value, 1 Value}")]
+    [InlineData("func f(t: (raw/u8, i32), x: ref/(raw/u8)) -> Option<ref/(raw/u8) during x> => .None", "result {1 Value}")]
+    public void TheHoldWalkKeepsARawLayerItsArgumentHoldsByValue(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind("contract MakeO\n    func make(v: Option<raw/u8>) -> Self\n" + function + "\n"), "f"));
+
     // SPEC 5.7 Calls, 15.6 (the design review's S2 and R-B2; DECISIONS R4-M116 item 5): a raw pointer in an unstated or `static` Field or
     // Case payload is stated by the Type's Fields alone, so a call that forms it ties it to no argument: a result that stores one, at any
     // depth of its stored content, is untied (`make`, `Hid.init`, an enum's payload, a Tuple element of an Option's struct) and retains

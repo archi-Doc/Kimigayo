@@ -16,7 +16,7 @@ fn f @0
   b0: T Value, Uniq
   static0: f: i32
   opaque 0 @0: _3
-  must not complete bb7 from bb1 @0
+  must not complete bb7 from bb1 @0 guessed @0
   bb0:
     * StorageLive(_3) @0 s1
       _4 = const 2_isize @0

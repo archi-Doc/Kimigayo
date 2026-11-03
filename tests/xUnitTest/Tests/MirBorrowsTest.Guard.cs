@@ -20,10 +20,10 @@ public sealed partial class MirBorrowsTest
     // read of `w`: `Loan.init(w@uniq)`'s instantiated signature admits a callee storing a reborrow through its argument's layers into the
     // argument's own referent, whose two local regions may coincide (DECISIONS R4-M154, Revision 4), a self-row returning a route's Loan
     // to its holder, SPEC's letter (R4-M147's no-loss class); rustc's acceptance is PLAN G148 (2)'s open question (GXS). An abstract
-    // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs, and its erased destruction (16.3.3,
-    // BU-47's `0 Content store 0`; R4-M150) may store what it carries, its own Loan after `next()`'s self-row (R4-M154), into storage the
-    // body does not own, so the loop's hidden iterator errs at its storage end (a location with no function) and at `for _ in items` (the
-    // same class, G148 (2)'s); a live iterator keeps the append's activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
+    // Iterable's iterator writes by provenance (SPEC 15.6.4's reach rule, R4-M170): its Loan on items is shared, so a call writes nothing
+    // past it and count is valid, an owner-decision reversal: the owner's G264 (S) instruction of 2026-11-04 overrides the owner's Q1 (a)
+    // of 2026-10-25 (an abstract part may be an exclusive reference), under which count's parameter end erred. A live iterator keeps the
+    // append's activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
     // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
     // literal is no call (DECISIONS R5-M129, as litPairOk), so PLAN G147 (8i)'s self-store row of a call taking the pair carrier by value
     // (TyCtxt.Retains, `i Value -> i`) does not reach it.
@@ -174,10 +174,285 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", ": $for.iterator", "count: for _ in items", "count: S", "seedRoute: w@follow@follow@ref", // count's S at its parameter's Type (BU-48 (a)).
-                "cleanRoute: xs.append(b) CallActivationConflict_Kd",
+                "dd3: t = 2", "seedRoute: w@follow@follow@ref", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 15.6.4's reach rule (DECISIONS R4-M170; G264 (S) S1′): an abstract part in a holder's own storage writes by provenance. Past it
+    // a call writes the holders its exclusive Loans and addresses name and what is reached on from them by reads through no shared layer
+    // (laterWriterBad: x addresses slot; chainBad: x → pp → slot), never a holder only a shared Loan names (count, TheGuardReadsEachPart),
+    // and E only where E was reached through no shared layer (Φ_W): an untied result (laterWriterOk and clearRcOk err, the owner's 「Yes,
+    // writable」), a raw pointer it derives from (allocBad, alloc2Bad, allocOptBad, allocTupBad, allocViaUBad), a parameter or a capture
+    // (ownParamBad, ownParamGen, directParamGen, exchGen, capGen, nestGen); sharedRawGen's false error stays (no strip at a shared Deref of a
+    // `ref/` parameter, an open issue). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
+    // (paramBad) past it by the write fact, and a live exclusive Loan (uniqBad) by the store. Every row errs on dev too, there through the
+    // owner's Q1 (a), which the owner's G264 (S) instruction of 2026-11-04 overrides; writerOk is valid on both.
+    [Fact]
+    public void AnAbstractPartWritesByProvenance()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            contract MakeR
+                func make(p: raw/(raw/u8), q: raw/u8) -> Self
+            contract MakeS
+                func make(p: raw/(raw/u8)) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
+            contract MakeP
+                func make(p: raw/(raw/(raw/u8))) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
+            contract MakeV
+                func make(v: raw/u8) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
+            contract MakeO
+                func make(v: Option<raw/u8>) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
+            contract MakeT
+                func make(v: (raw/u8, i32)) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
+            contract MakeU
+                func make(v: uniq/i32) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
+            contract SetQ
+                func setQ(self: uniq/Self, q: raw/u8)
+            func usep(p: raw/u8) => ()
+            func consume<T>(x: T) => ()
+            func idp(p: raw/u8) -> raw/u8 => p
+            func writerBad<T>()
+                T is MakeR
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = T.make(p: slot@raw, q: w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+                usep(slot)
+            func writerOk<T>()
+                T is MakeR
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = T.make(p: slot@raw, q: w@raw@raw/u8)
+                consume(x@move)
+                usep(slot)
+                y = 5
+            func laterWriterBad<T>()
+                T is MakeS
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = T.make(p: slot@raw)
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+                usep(slot)
+            func laterWriterOk<T>()
+                T is MakeS
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = T.make(p: slot@raw)
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                usep(slot)
+                y = 5
+            func chainBad<T>()
+                T is MakeP
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var pp: raw/(raw/u8) = slot@raw
+                var x = T.make(p: pp@raw)
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+                usep(slot)
+            func allocBad<T>()
+                T is MakeV
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var m: raw/u8 = Raw.allocate<u8>(1)
+                var x = T.make(v: m)
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+            func alloc2Bad<T>()
+                T is MakeV
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var m: raw/u8 = Raw.allocate<u8>(1)
+                var n = idp(m)
+                var x = T.make(v: n)
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+            func allocOptBad<T>()
+                T is MakeO
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var m: raw/u8 = Raw.allocate<u8>(1)
+                var x = T.make(v: .Some(m))
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+            func allocTupBad<T>()
+                T is MakeT
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var m: raw/u8 = Raw.allocate<u8>(1)
+                var x = T.make(v: (m, 1))
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+            func allocViaUBad<T, U>()
+                T is MakeV
+                U is MakeV
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var m: raw/u8 = Raw.allocate<u8>(1)
+                var u = U.make(v: m)
+                u.setQ(w@raw@raw/u8)
+                consume(u@move)
+                y = 5
+            func paramBad<T>(x: uniq/T)
+                T is MakeV
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                x.setQ(w@raw@raw/u8)
+                y = 5
+            func ownParamBad<T>(x: T)
+                T is MakeV
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var x2 = x@move
+                x2.setQ(w@raw@raw/u8)
+                consume(x2@move)
+                y = 5
+            func ownParamGen<T>(x: T)
+                T is SetQ
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var x2 = x@move
+                x2.setQ(w@raw@raw/u8)
+                consume(x2@move)
+                y = 5
+            func directParamGen<T>(x: T)
+                T is SetQ
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var x2 = x@move
+                x2.setQ(w@raw@raw/u8)
+                y = 5
+                consume(x2@move)
+            func sharedRawGen<T>(r: ref/(raw/u8))
+                T is MakeV
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var x = T.make(v: r@follow)
+                x.setQ(w@raw@raw/u8)
+                consume(x@move)
+                y = 5
+            func exchGen<T>(x: uniq/T, fresh: T)
+                T is SetQ
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var old = Kimi.Intrinsics.exchange(x, with: fresh@move)
+                old.setQ(w@raw@raw/u8)
+                consume(old@move)
+                y = 5
+            func capGen<T>(x: T)
+                T is SetQ
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var q: raw/u8 = w@raw@raw/u8
+                var c = func [var x@move, q] () => x.setQ(q)
+                c()
+                consume(c@move)
+                y = 5
+            func nestGen<T>(x: T)
+                T is SetQ
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var z = x@move
+                var r = z@uniq
+                var t = (r@move, 0)
+                t.0.setQ(w@raw@raw/u8)
+                consume(t@move)
+                consume(z@move)
+                y = 5
+            func uniqBad<T>()
+                T is MakeU
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var z: i32 = 2
+                var x = T.make(v: z@uniq)
+                x.setQ(w@raw@raw/u8)
+                y = 5
+                z = 3
+                consume(x@move)
+            func clearRcOk<T>()
+                T is MakeR
+                T is ObjectPayload
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var a: Array<rc/T> = []
+                a.append(Kimi.Intrinsics.makeRc(T.make(p: slot@raw, q: w@raw@raw/u8)))
+                a.clear()
+                consume(a@move)
+                usep(slot)
+                y = 5
+            func clearRcBad<T>()
+                T is MakeR
+                T is ObjectPayload
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var a: Array<rc/T> = []
+                a.append(Kimi.Intrinsics.makeRc(T.make(p: slot@raw, q: w@raw@raw/u8)))
+                a.clear()
+                consume(a@move)
+                y = 5
+                usep(slot)
+            """);
+        Assert.Equal(
+            [
+                "writerBad: y = 5", "laterWriterBad: y = 5", "laterWriterOk: y = 5", "chainBad: y = 5", "allocBad: y = 5", "alloc2Bad: y = 5",
+                "allocOptBad: y = 5", "allocTupBad: y = 5", "allocViaUBad: y = 5", "paramBad: y = 5", "ownParamBad: y = 5",
+                "ownParamGen: y = 5", "directParamGen: y = 5", "sharedRawGen: y = 5", "exchGen: y = 5", "capGen: y = 5", "nestGen: y = 5",
+                "uniqBad: y = 5", "clearRcOk: y = 5", "clearRcBad: y = 5",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 15.6.4 (DECISIONS R4-M170, the owner's Q11 ruling 「この方針で」): a tied abstract value retains every raw layer an input holds
+    // by value through no shared layer, an Option payload and a Tuple element included, so r's setQ may store w's address where m points,
+    // storage the body does not own, and `y = 5` and S's end err (as tiedRawBad does with a raw input; tiedOk, whose r holds only the
+    // shared Loan on s, is valid). FAIL-FIRST: S1′ alone accepts tiedOptBad and tiedTupBad (Binding's retention keeps a raw-typed input
+    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it.
+    [Theory]
+    [InlineData("tiedOptBad", "r.absorb(.Some(m))")]
+    [InlineData("tiedTupBad", "r.absorbT((m, 1))")]
+    [InlineData("tiedRawBad", "r.absorbR(m)")]
+    [InlineData("tiedOk", "")]
+    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb)
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            contract Mk
+                associate R(source) is Abs for ref/Self during source
+                func opn(self: ref/Self during source) -> Self.R(source)
+            contract Abs
+                func absorb(self: uniq/Self, v: Option<raw/u8>)
+                func absorbR(self: uniq/Self, v: raw/u8)
+                func absorbT(self: uniq/Self, v: (raw/u8, i32))
+                func setQ(self: uniq/Self, q: raw/u8)
+            func consume<T>(x: T) => ()
+
+            """ + $"func {name}<S>(s: S)\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
+            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
+            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n");
+        Assert.Equal(
+            name == "tiedOk" ? [] : [$"{name}: y = 5", $"{name}: S"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 

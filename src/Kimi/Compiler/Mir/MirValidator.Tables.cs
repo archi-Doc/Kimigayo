@@ -81,7 +81,7 @@ internal sealed partial class MirValidator
             foreach (var row in body.MustNotComplete)
             {
                 this.at = new(row.Subject, 0, StatementStart: false);
-                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length ||
+                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length || !InRange(row.Start, row.Count, body.GuessedSites.Length) ||
                     blocks[row.End].Terminator is not { Kind: MirTerminatorKind.Unreachable, CheckTarget: -1 })
                 {
                     this.Report(MirViolation.TargetRange);

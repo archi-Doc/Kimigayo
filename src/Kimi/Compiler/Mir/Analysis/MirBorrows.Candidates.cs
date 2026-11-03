@@ -40,9 +40,13 @@ internal sealed partial class MirBorrows
     {
         var kept = this.Kept(found, element, via);
         var dropped = (this.pass & DropTier) != 0;
-        if (element == Escaped)
+        if (element <= Writable)
         {
-            this.Reach(Escaped, scan: true);
+            if (element == Escaped)
+            {
+                this.Reach(Escaped, scan: true); // Φ_W, always beside Φ_E, is rule W's alone (MirBorrows.Reach).
+            }
+
             return;
         }
 

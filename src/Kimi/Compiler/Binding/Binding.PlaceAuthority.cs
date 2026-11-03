@@ -365,8 +365,7 @@ public sealed partial class Binding
         SemanticsKind? authority = null;
         for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
         {
-            var layer = TryPairLayer(type, out var whole, out _)
-                ? PairAuthority(CaseAdmitted(whole, place.CodeContext.Compilation.Binding.LayerAdmitted(type!), assignment)) : type!.Semantics;
+            var layer = LayerStep(place, type!, assignment, out _);
             if (layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
             {
                 return SemanticsKind.Ref;
@@ -394,11 +393,26 @@ public sealed partial class Binding
         var cases = SemanticsMask.None;
         for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
         {
-            cases |= TryPairLayer(type, out var whole, out _)
-                ? CaseAdmitted(whole, place.CodeContext.Compilation.Binding.LayerAdmitted(type!), assignment) : type!.Semantics.ToMask();
+            _ = LayerStep(place, type!, assignment, out var layerCases);
+            cases |= layerCases;
         }
 
         return cases;
+    }
+
+    // SPEC 3.4.3, 8.15.2, 13.5.5: one layer of a Place's own Type, the step LayerAuthority and LayerCases walk: its cases (a pair
+    // layer's under the case assignment, CaseAdmitted; any other layer's Semantics) and what it adds to the path (a pair layer the
+    // weakest of its cases, PairAuthority; any other layer its Semantics).
+    private static SemanticsKind? LayerStep(Koto place, BoundType layer, ReadOnlySpan<PairCase> assignment, out SemanticsMask cases)
+    {
+        if (!TryPairLayer(layer, out var whole, out _))
+        {
+            cases = layer.Semantics.ToMask();
+            return layer.Semantics;
+        }
+
+        cases = CaseAdmitted(whole, place.CodeContext.Compilation.Binding.LayerAdmitted(layer), assignment);
+        return PairAuthority(cases);
     }
 
     // SPEC 8.15.2: the cases of a pair layer, of the pair whose whole Type is given, under a case assignment: its binder's assigned

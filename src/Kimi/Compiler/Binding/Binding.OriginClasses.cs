@@ -7,7 +7,9 @@
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
 // enclosing body formed, are fixed; in a Closure k's body and the bodies nested in it, that row also fixes k's receiver Origin ρ (SPEC
 // 15.6.5: a receiver Origin), and until k is classified ρ and k's environment atoms are pending, neither fixed nor finite (DECISIONS
-// R4-M126 P5). The view's row 5 (OwnCallAtom), B's own call receiver and call result, is another such shared rule.
+// R4-M126 P5); in the declaration judge's frame (ExecutableBody.Declarations) every body's atoms are, an enclosing body's Origin a
+// declaration names being a fixed Origin of it (SPEC 15.3.4; DECISIONS BU-89, until PLAN G230 (A)'s declaring body). The view's row 5
+// (OwnCallAtom), B's own call receiver and call result, is another such shared rule.
 // - Inputs: an Origin as the caller has it at its use, and the body that formed the relation (an obligation's Body, or the forming body
 //   while binding; no body after binding); the formation context (BoundOrigin.Body, BoundClosure.EvaluatingBody, Binding.ExecutableBodies.cs)
 //   and whether a Closure is classified (BoundClosure.Classified).
@@ -22,9 +24,14 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The C1-F4 view's row 6 (2a0-D section 3): an atom of a body that B's evaluation reaches, B's Closure's evaluating body and so on
-    // outward, by the body that formed it or its slot's role (RootOf).
+    // outward, by the body that formed it or its slot's role (RootOf); in the declaration judge's frame, any body's atom (BU-89).
     internal static bool EnclosingAtom(BoundOrigin atom, ExecutableBody body)
     {
+        if (body == ExecutableBody.Declarations)
+        {
+            return atom.Body.IsBody;
+        }
+
         var role = RoleOf(atom);
         for (var outer = EvaluatingBody(body); outer.IsBody; outer = EvaluatingBody(outer))
         {

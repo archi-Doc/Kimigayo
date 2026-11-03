@@ -78,3 +78,150 @@ The fixture rows F4-F15 are the same programs as some tests in T30-T31 and T34, 
 | the owner | the (e) acceptance list: T31's two R4-M147 Gen rows, F11-F14 (6 programs: RawOrigin ×4, NestedReference, Utf8TryWrite FirstNever), T34's 7.7.2/0 (the collector's static record, P42); the (c) readings: F7 (G147 (8ii), GenericCase A4-box-ok and A4-field-ok), T35 with T14 (code after a Never call: 4 Language errors and 10 vanished limits), T62's index rows; the 1a list T10-T15 (77 tests) | decide |
 
 No Binding-cause row blocks. BU's rows are T40's re-points, which BU reviews as a T-unit, and the consent C-8 (D1, D2).
+
+### R4's verdicts on round 1 (2026-11-03)
+
+R4 confirmed the MIR-cause rows. Its tables are `r4-notes/post-exit/h3b-r4-verdicts.md`, `h3b-A.md` and `h3b-B.md` in R4's scratchpad,
+and their verdicts are copied here. The changes to the round's table:
+
+- **No unsound acceptance.** T62 ×5 is 1a, not 5: SPEC 4.7.4, 15.6.2, 4.9.6, 15.6.3, 15.6.6 and 16.3.3, with X-1's (a).
+- **ContentUpdate ×5 and CompilerFunctionReference are 1r**: SPEC 15.6 holders bullets 1-2, 15.6.3, 15.6.4 and R4-M95 D6. The
+  dispute (ruling 3) is closed.
+- **T30's self-Loan W family is (c), G148 (2) "GXS".** The MIR rejects these programs by the SPEC's letter, but they are intended valid:
+  F9 ×2, InputDependentValueCall, F15, MemberThroughLayers and F8 (`count<S>` over an abstract Iterable). F15's "?" is this row. It goes
+  to the owner as Q-A1.
+- **F7 with PairCaseFamilies is (c), G147 (8).** R4 reads them as valid: an A5 over-approximation. Owner Q-A2.
+- **T35 is class 3 and T14 is 1a.** SPEC 14.10.3 decides both with its own examples, so no (c) is needed.
+- **Moved to other owners:**
+  - T34's 13.7.1/0 is Binding's record. S dropped variant 0's Old side, so the row is class 3, a data fix by R5.
+  - T60 is Binding's (BU-26, the input-side mirror of U-O3's r1loc), so it goes to BU with U-O3.
+  - F14 is Binding's (`Binding.OriginRows`: a Never writer's formatting row), so it goes to BU as a new PLAN row, (e) until then.
+  - T63's prelude static row is 1x, and its InstanceCollector rows are 1x ×2 and 1a ×1. All are R5's re-points; the InstanceCollector
+    rows need BU's consent (BU-60).
+  - T63's NeverContinuation row is 1a (R5-M159's twin rule).
+- **Class 2 (b) rows R4 fixes on dev**, each ≤ 1 h, with the full ledger before review, landing in R5's windows:
+
+  | Unit | Rows | Fix |
+  | --- | --- | --- |
+  | U-B1 | T31b, F10 (G222) | A1 `MirMoveData.Resolve` (running) |
+  | U-A2 | T36 | the Fixed meet's entailment, `MirOrigins.Chains` |
+  | U-A3 | T63 DictionaryStoredReference ×2 | A5's activation seed set |
+  | U-B2 | T32b | A4's Requirement-call branch on a concrete Self |
+  | U-A1 | T30 ClosureReceiverClassification ×4 | a receiver store's W through a shared capture |
+  | U-B4 | T32a IteratorOriginEffects ×6 (G220) | design first, after G264 U1; a new MIR form is the owner's O1 |
+
+  These go after H5 under the owner's (e) unless they land first:
+  - U-B3: T31a, F11 and F12 (PQ-10, over an hour);
+  - U-B5: T31d (A5's depth bound 32 → 64);
+  - F13: G216 (b), the front's U-O3;
+  - F14: Binding's row above.
+- **T31c** (truncate/removeAll Gen) is (e) already decided (R4-M147 D″). The test is re-pointed citing it.
+- **R4's lane order:**
+  1. U-B1 with U-A2.
+  2. U-A3 with U-B2.
+  3. R6-1's builder and A3.
+  4. U-A1.
+  5. U-B4.
+  6. The GXS unit, after Q-A1.
+
+### The owner's list (board O-1)
+
+| # | Question | Rows | Recommendation |
+| --- | --- | --- | --- |
+| 1 | Q-A1, G148 (2): adopt GXS with its extension? This is a SPEC 15.6.4 revision through the full process. Under it, a store past layer 1 leaves out the direct Loans that name its target. The extension covers exclusive-element collections and the rule that an abstract part of a holder never refers into the holder's own Loan from a shared borrow. The alternative is to keep SPEC and list the rows as (e). | F9 ×2, InputDependentValueCall, F15, MemberThroughLayers, F8 | adopt (R4); until its unit lands, the rows are on H5's (e) list |
+| 2 | Q-A2, G147 (8): are F7 (A4-box-ok, A4-field-ok) and PairCaseFamilies valid? | 3 programs | valid (R4): an A5 over-approximation, fixed later, (e) for H5 |
+| 3 | Do H5's long fixes wait, or go on one (e) list with STATUS limits and PLAN rows? | PQ-10 (T31a ×7, F11, F12), the depth bound (T31d ×2), G216 (b) (F13), F14, G220 (T32a ×6), SPEC 7.7.2/0 (the collector's static record, P42), and the rows of questions 1-2 until their units land | one list (R5): H5 waits only for the ≤ 1 h fixes (U-B1, U-A2, U-A3, U-B2, U-A1, R6-1, T61) |
+| 4 | The 1a list: accept the programs that the old analysis's limits or false errors rejected | T10-T15 (77 tests), T62 ×5, T14, NeverContinuation, InstanceCollector's frame row | accept |
+| — | For information: the 1r list (unsound acceptances the MIR closes) | F1-F6, T01-T04, ContentUpdate ×5, CompilerFunctionReference | — |
+
+### The owner's answer (2026-11-03)
+
+The owner answered all four questions of the list above with 「推奨どおり」 ("as recommended"; board O-1). What each answer means:
+
+1. **Q-A1: GXS is adopted with its extension.** R4 runs it through the full process: the proposal and the SPEC 15.6.4 revision with its
+   tests, then the unit after U-A1. Until it lands, F9 ×2, InputDependentValueCall, F15, MemberThroughLayers and F8 are on H5's (e) list.
+2. **Q-A2: F7 (A4-box-ok, A4-field-ok) and PairCaseFamilies are valid.** A5 over-approximates there. R4 fixes it later, and the three
+   are on H5's (e) list until then.
+3. **One (e) list for H5.** H5 waits only for the fixes of an hour or less: R4's U-B1, U-A2, U-A3, U-B2 and U-A1, R6-1, BU's G409
+   (T60) and R5's T61. These go on the list instead:
+   - PQ-10 (T31a, F11, F12);
+   - the depth bound (T31d);
+   - G216 (b) (F13);
+   - G410 (F14);
+   - G220 (T32a);
+   - SPEC 7.7.2/0 (P42);
+   - the rows of answers 1 and 2.
+
+   H5's Rec unit records the list in STATUS, as limits, and in PLAN rows.
+4. **The 1a list is accepted.** T10-T15, T62 ×5, T14, NeverContinuation and InstanceCollector's frame row become T-units. The frame
+   row's re-point needs evidence that the program is really accepted (BU-60's condition).
+
+### After the owner's answer: U-A2 moves to the (e) list (2026-11-03)
+
+R4 found that T36 (U-A2) is not a fix of an hour or less (`r4-notes\post-exit\state-h3b-ua2.md`):
+
+- The MIR forms a body row for a nested signature's result relation and judges it under the body root's oracle, which lacks the nested
+  inputs' premises.
+- Binding judges the same relation correctly where it is written (R4-M162).
+- The fix belongs to U-O3's class: such a row forms no body row. That is BU's R7-O3.
+
+Under the owner's third answer (one (e) list; H5 waits only for the fixes of an hour or less), T36 joins F13 under G216 (b) on the
+(e) list. R4's H5 blockers are now U-B1, U-A3, U-B2, U-A1 and R6-1's builder and A3 commit, beside BU's G409 (T61 has landed on the
+branch).
+- **U-A1 also moves to the (e) list** (R4, 2026-11-03, `state-h3b-ua1.md`). T30's ClosureReceiverClassification ×4 rows belong to G148 (2)'s
+  self-store family. The Exclusive call `f(y)` stores the receiver's Content into two E nodes, which leaves the shared capture's Loan where
+  it meets `g`'s StorageDead. The SPEC texts pull apart: 15.6.4's per-argument letter against 15.8.2's "retains only in its var bindings
+  and the referents of its captured exclusive references". GXS as written does not recover these rows, so GXS's proposal (owner-adopted)
+  takes them in and reconciles the two clauses. R4's H5 blockers are now U-B1 (Q-8), U-A3, U-B2 and R6-1's builder and A3 commit,
+  beside BU's G409.
+
+### The owner's G264 (S) instruction adds units before H5 (2026-11-04)
+
+The owner instructed R4 to fix G264 U1 at the root, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」. R4's dialog holds
+the plan: `r4-notes\post-exit\g264-s-plan-owner.md`, which says 「S0 → S1 → S2 → S4 の順で、すべて H5 の前に置きます」. The units:
+
+- **S0**: the SPEC revision of 15.6.4, 16.3.3 and 5.7. An abstract Type's value reaches only the holders its holder's Loans and
+  addresses name; the implementing declaration checks its own raw layers. It also overrides Q1 (a) of 2026-10-25 and drops R4-M150's
+  staging sentence. The owner sees the text first, and it gets one SPEC review.
+- **S1**: A5's holding walk gives an abstract part Loan facts only. This fixes `count<S>`, so F8 leaves the (e) list.
+- **S2**: G264 U1 lands again without its staging. BU reviews it.
+- **S4**: a total check: the ledger, G216 (a)'s oracle, and 0 library or milestone rejections.
+
+H5 therefore waits for these four units, beside R4's U-B1, U-A3, U-B2 and R6-1, and BU's G409. S3 (c80) is a separate unit after H5.
+R5 proposed to R4 that S0 and GXS's 15.6.4 revision be one revision with one review, or at least sequenced. Round 2 runs after S4.
+
+### Round-2 family F-a goes on the (e) list (the owner, 2026-11-03)
+
+The T-units stopped eleven rows of family F-a:
+- T-15's `ANestedSignaturesPerCall` d1, d1_cw, ln, ln_okw, ann2 and ann2_n;
+- T-19's `ResultPremiseTest` g216b-ann, g216b-cl, AConversion premise, ann2 and cl1.
+
+In each, an invalid nested-signature program stays rejected, but by A5's located `Unsupported_Kd` instead of the old analysis's
+`UnprovenOriginRelation_Kd`. R4 identified the cause as G216 (b)'s row-9 limit. The fix is U-O3 (BU's R7-O3): the result row with a
+per-call end becomes the signature's declaration row, so Binding records the Language error at the same site.
+
+The owner answered board O-2, verbatim 「一覧に加える」. F-a joins H5's (e) list under G216 (b), beside F13 and T36, until U-O3. Its rows
+are re-pointed by the G216 (b) (e) unit, which pins the located record and names this decision and U-O3.
+
+### Round-2 families F-b and F-c (R4's verdicts and R5's rulings, 2026-11-03)
+
+R4 reproduced each row from the base's and the head's CLI output (`r4-notes\post-exit\h3b-round2.md`).
+
+**F-b.** T-18's r05_n, T-19's AValueCallThroughAFunctionItem and T-17's two ANestedSignatures rows are **class 4**: rejected on both
+sides. The added records are correct independent records under SPEC 15.6.5 rule W's letter, since an aggregate argument's or result's
+part is not Copy. They are counted by code.
+
+**F-c.**
+
+| Row | Cause | Fix | H5 blocker |
+| --- | --- | --- | --- |
+| T-07 ×5 (BlockEscape: the loan related at the block's first exit) | `MirBuilder.Transfers` builds the shared delivery block at the first exit's site | R4's U-T1 (≤ 1 h) | yes (R5) |
+| T-07 AnUndecided, T-17 AChainBetweenBodyOrigins, T-08 AFixedInput (the loan witness missing) | the holder's next use is in a later chain | R4's U-T2 (≤ 1 h); AnUndecided's second record is 1x | yes (R5) |
+| T-17 AWellFormedness (Reason fit vs wellFormed) | a duplicated Binding rule | BU's U-W (≤ 1 h) | yes (R5) |
+| T-09 SetterMoveFailure (MovedPlace_Kd at `value.id`) | A1's general rule | none: class 3, re-pointed | no |
+| T-08 BorrowingIteration's generic row (a self-Loan) | G264 (S)'s family, class 2 | S1′ (before H5, the owner's plan) re-points it to acceptance | via S1′ |
+| ScalarDefault's span `n` -> `n + 1` | intended | none | no |
+| no live `OwnershipStorageLimit_Kd` test (T-04) | the head produces it; coverage only | a coverage note for H10a | no |
+
+R5's ruling: U-T1, U-T2 and U-W are H5 blockers under the owner's third answer (fixes of an hour or less). Pinning wrong evidence would
+weaken the stopped tests, so they stay failing until the fixes land, and then they are re-pointed.
