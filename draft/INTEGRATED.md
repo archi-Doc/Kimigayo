@@ -1262,3 +1262,15 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   manifest); SPEC §8.4.4's OCC revision is proposed at R9's exit (RQ14). Adoption implies no implementation support.
 - Revision 1 (2026-11-03, plan §14): R8-L0a's census corrected §5.2's unit parts and `.ll.in` dispositions, the allocation inventory and
   SP1–SP4's citations; the plan stays 一部取り込み (open), nothing frozen.
+
+## 2026-11-03 — G216 (a) position rows
+
+- [G216 (a) Position Rows](Proposals/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
+  and its two SPEC readings in the G216 planning session (verbatim 「推奨の内容でOKです。」), fixed the policy (「その方針で確定します。」:
+  start after the flip group's sweep, this session leads the design and U0, R4 reviews, DECISIONS under BU numbers, U0 before H5) and
+  chose its placement (「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」: option A, the R7 plan's revision 2,
+  I3's content and I1's G216 (a) part). It is an implementation design: no section is integrated into SPEC or IMPL, and no text is
+  frozen. The two readings (SPEC 15.6.4 step 3 with 10.3: Result exempts only a position whose instantiated sub-Type is a slot the
+  expected result solved; SPEC 10.5.1 with 14.9.2 step 2: a control-flow argument supplies child positions by structure whether or not
+  the join waited) are readings of the current text; if U6 finds that 10.5.1 needs a sentence for the second, that revision is proposed
+  separately and recorded here. Adoption implies no implementation support.

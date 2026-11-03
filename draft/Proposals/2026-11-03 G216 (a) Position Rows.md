@@ -3,12 +3,7 @@
 Status (2026-11-03): the design and its two SPEC readings were approved by the owner in this planning session's dialog
 (verbatim 「推奨の内容でOKです。」), and the policy was fixed (verbatim 「その方針で確定します。」; 「着手時期: H5 後に開始」,
 「担当: あなたが開始し、R4をレビュアーとして、他エージェントと協調して作業してほしい」, 「DECISIONS の番号の扱い：BU 番号」,
-「U0 を H5 前に始めてよい」, 「「H5 後」は掃除完了後、です。」). **Placement is pending the owner's decision (§9):** the
-[R7, R8 and R9 Implementation Plan](../../Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md), adopted the same day
-(DECISIONS R7-M1–R7-M3), assigns G388, G390 and G391, revision B and B3a, and the files `Binding.ArgumentKinds*.cs` and
-`Binding.ResultPropagation*.cs` to the front session's stream I (I1 tests in phase B, I2 `InferCtxt` as a Full unit in phase C,
-I3 "positions through InferCtxt" in phase C). Until the owner decides, this file is a Sketch on `claude/g216a-design`; no PLAN,
-board, STATUS or DECISIONS row is written, and no session is asked for anything.
+「U0 を H5 前に始めてよい」, 「「H5 後」は掃除完了後、です。」). **Placement decided (the owner, 2026-11-03, verbatim 「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」): option A of §9.** The [R7, R8 and R9 Implementation Plan](2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md), adopted the same day (DECISIONS R7-M1–R7-M3), had assigned G388, G390 and G391, revision B and B3a, and the files `Binding.ArgumentKinds*.cs` and `Binding.ResultPropagation*.cs` to the front session's stream I (I1 tests in phase B, I2 `InferCtxt` as a Full unit in phase C, I3 "positions through InferCtxt" in phase C); its revision 2 (plan §14) makes this design I3's content and U0 I1's G216 (a) part (§9). This file is a working proposal (INTEGRATED, 2026-11-03): a revision edits it in place and adds a line in INTEGRATED; nothing is frozen.
 
 Working time (DECISIONS Q12): analysis and design in dialog 2026-11-03; this file 40 minutes. Base: dev `737514d54`. Paths: `C/` =
 `src/Kimi/Compiler/`, `T/` = `tests/xUnitTest/Tests/`. No build, test or probe was run for this file; the code facts were read on
@@ -224,6 +219,23 @@ Roles under either option: this session writes the design and U0 (no Binding edi
 reviews each unit (the owner's choice, one review); the Binding owner consents to the contract changes and gives the BU numbers; holds
 and consents on the board; landings in the middle's windows. If the owner prefers this session to run an implementer on the front's
 files, RP17 applies (a board hold, and the files' owner reviews), which conflicts with "R4 reviews"; the owner decides which.
+
+### 9.1 Decision (the owner, 2026-11-03)
+
+Verbatim 「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」: **option A**. The R7 plan's revision 2 (its §14)
+records the amendments:
+
+- I1: its G216 (a) part is U0 of this proposal, written in phase A (now) by the G216 planning session (this one), tests only; the
+  rest of I1 keeps phase B.
+- I3: its content is this proposal's U1–U6 (position rows), landing after the flip group's sweep and before I2 (RP5 holds: U2–U6
+  change acceptance only after H5); G378 and G356 follow as I3's remaining rules; the prerequisite "after B3c" is replaced by §3
+  rule 4.
+- I2: parts d (join states as constraints) and i (the waited-join state deleted) read this proposal; i needs no B3c; I2 keeps the
+  rows as a view over `InferCtxt`.
+- Roles: the front's lane implements U1–U6 (its files); the middle (R4) reviews each unit, one review (the owner's choice); the
+  Binding owner consents to the contract changes and gives the BU numbers; holds and consents on the board; landings in the
+  middle's windows. This session writes the design and U0 and implements nothing in Binding.
+- Evidence: revision B, B3a, U3a, U3b-1 and the U2j prototype stay unmerged.
 
 ## 10. Not in scope; evidence
 
