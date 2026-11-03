@@ -244,6 +244,24 @@ public sealed partial class HirFormsTest
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
     }
 
+    // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)): a pair layer's owner case acquires its target by SPEC 3.5's rows: a Copy target Copies, an
+    // exclusive reference Reborrows unless a shared layer is on its path (the binder's own layers are owners there), a nested pair layer
+    // acquires by its own cases; a target without a plan leaves the Move a TransferRequired_Kd needs.
+    [Theory]
+    [InlineData("s/T", "value: s/T", "s is owner or uniq\n    T is Copy", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: s/(uniq/i32 during a)", "s is owner or uniq", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: s/(s/(uniq/i32 during a) during b)", "s is owner or ref", "value@follow", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: ref/(s/(uniq/i32 during a) during c) during b", "s is owner or ref", "value@follow", nameof(HirAcquire.Move))]
+    [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or uniq\n    U is Copy", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or rc\n    U is Copy", "value", nameof(HirAcquire.Move))]
+    public void APairLayersOwnerCaseAcquiresItsTargetByItsPlan(string generics, string parameters, string constraints, string place, string acquire)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f<{generics}>({parameters}) -> ()\n    {constraints}\n    let local = {place}\n    _ = local@move\n");
+        HirTables.Publish(c);
+        var local = Reachable(c.Kotonoha).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "local");
+        Assert.Equal(acquire, HirTables.AdjustOf(local.InitializerKoto!).Acquire.ToString());
+    }
+
     // SPEC 13.5.6 (R6-check Q14 (b); DECISIONS R4-M142): a case adaptation's operand is used as the builder's Adapt reads it, a Place in
     // place and a value through a Temporary, never acquired by Move.
     [Fact]
