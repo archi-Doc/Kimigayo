@@ -133,3 +133,25 @@ and their verdicts are copied here. The changes to the round's table:
 | 3 | Do H5's long fixes wait, or go on one (e) list with STATUS limits and PLAN rows? | PQ-10 (T31a ×7, F11, F12), the depth bound (T31d ×2), G216 (b) (F13), F14, G220 (T32a ×6), SPEC 7.7.2/0 (the collector's static record, P42), and the rows of questions 1-2 until their units land | one list (R5): H5 waits only for the ≤ 1 h fixes (U-B1, U-A2, U-A3, U-B2, U-A1, R6-1, T61) |
 | 4 | The 1a list: accept the programs that the old analysis's limits or false errors rejected | T10-T15 (77 tests), T62 ×5, T14, NeverContinuation, InstanceCollector's frame row | accept |
 | — | For information: the 1r list (unsound acceptances the MIR closes) | F1-F6, T01-T04, ContentUpdate ×5, CompilerFunctionReference | — |
+
+### The owner's answer (2026-11-03)
+
+The owner answered all four questions of the list above with 「推奨どおり」 ("as recommended"; board O-1). What each answer means:
+
+1. **Q-A1: GXS is adopted with its extension.** R4 runs it through the full process: the proposal and the SPEC 15.6.4 revision with its
+   tests, then the unit after U-A1. Until it lands, F9 ×2, InputDependentValueCall, F15, MemberThroughLayers and F8 are on H5's (e) list.
+2. **Q-A2: F7 (A4-box-ok, A4-field-ok) and PairCaseFamilies are valid.** A5 over-approximates there. R4 fixes it later, and the three
+   are on H5's (e) list until then.
+3. **One (e) list for H5.** H5 waits only for the fixes of an hour or less: R4's U-B1, U-A2, U-A3, U-B2 and U-A1, R6-1, BU's G409
+   (T60) and R5's T61. These go on the list instead:
+   - PQ-10 (T31a, F11, F12);
+   - the depth bound (T31d);
+   - G216 (b) (F13);
+   - G410 (F14);
+   - G220 (T32a);
+   - SPEC 7.7.2/0 (P42);
+   - the rows of answers 1 and 2.
+
+   H5's Rec unit records the list in STATUS, as limits, and in PLAN rows.
+4. **The 1a list is accepted.** T10-T15, T62 ×5, T14, NeverContinuation and InstanceCollector's frame row become T-units. The frame
+   row's re-point needs evidence that the program is really accepted (BU-60's condition).
