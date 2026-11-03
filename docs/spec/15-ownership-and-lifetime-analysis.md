@@ -618,6 +618,47 @@ What it reaches only through a shared Loan or a shared borrow, or derives by a r
 
 A pointer is never part of its own pointee: storage a call writes through a raw argument never retains that argument's own value. A raw layer retains as [§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins) states: with an Origin, as the borrow that Origin belongs to would, without a Loan; without one, a parameter's raw layer ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) admits what its pointee Type admits, and a raw layer that the call may write, in its result, a nominal Type's Fields included, or in storage it writes through an argument, may retain every argument with what any chain of reads through it carries, but not the own value (its Loans and the holders it addresses) of the argument through which the call writes it, and reaches storage the body does not own. A chain of reads goes through a raw or borrowed layer anywhere in the argument's value (a Tuple element, an Option payload, a Field or a Type argument included), then through one in the value read, and so on. A raw layer behind a borrow in the result, a Slice's or UniqSlice's elements included, is lent, not written: it retains only the raw arguments, with what any chain of reads through them carries, as a result the call forms within their storage does, and reaches no storage the body does not own. A published operation that transfers values is an Iterator's `next` ([§22.2.3](22-core-execution-and-foreign-functions.md#2223-iterator-independence)), `exchange` or `swap` ([§15.7](#157-whole-value-updates)), or an operation of [§4.6](04-arrays-indexing-and-slices.md#46-positions-and-ranges) to [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections); at a raw layer without an Origin it retains a borrowed argument (not a raw pointer argument), a Slice or UniqSlice included, only by what a chain of reads through it carries, never by its own value; there, `exchange`'s result, the old contents, retains only what a chain of reads through its target carries. In the element storage it writes, an operation of [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections) retains at a raw layer without an Origin, of its arguments other than the receiver, only its added and replacing inputs, and a removed element in its result keeps the stored Types' full dependencies ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)). A call writes through no raw layer that it reaches past a shared layer ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)).
 
+**Route Loans.** A call's store through an argument reaches at its first step, **layer 1**, the holders that the argument's own Loan and its addresses name; a holder that only a parent Loan of the argument names ([§15.6.3](#1563-reborrowing-and-region-splitting)) is reached through the reference it was Reborrowed through, past layer 1. The **direct Loans** naming a holder are those whose access path starts at the holder and dereferences nothing ([§15.6.2](#1562-place-overlap-and-conflicts)): a Borrow of it or of an inline part, carried as a value's own Loan or as a parent Loan. A holder that a call's store reaches past layer 1 retains none of the direct Loans that name it, unless its Type may refer into itself: a value carrying such a Loan as its own is a reference into the holder's own storage, which the Type decides, and as a parent Loan it reaches past the holder into storage the route's other Loans protect, the holder being the route itself. A Type **may refer into itself** where a reference or raw layer it holds by value has a referent that agrees with the Type or one of its inline parts ([§3.8](03-types-and-values.md#38-type-relations-and-operations), Origins aside), or where an exclusive layer it holds by value lies beside another reference or is repeated (an element of a fixed array whose length is not 1, or of a collection of [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections)): the first is a reference into itself, and the second can hold a Reborrow through one exclusive layer beside it, two exclusive routes to one referent, which only the kept Loan rejects. An abstract Type, or an abstract part of a Type, refers into itself only where the premises make it such a reference: a binding storing a later borrow's Loan into its own holder would need that borrow's fresh Origin to outlive the Type's own, which [§8.15.1](08-generics-constraints-and-contracts.md#8151-universal-verification) refutes. Storage the body does not own that a store reaches from a parameter, a capture or a read through an exclusive borrow, or static storage (items 2 and 3 above), retains no exclusive Loan of the store's route, one naming a holder the store reaches or carried by one, a holder whose Type holds no Loan included: that storage's Types are fixed outside the body with Origins that outlive it, and a value carrying a route Loan is bounded by a body-local borrow, so it cannot fit there ([§15.6.1](#1561-origin-relations-and-well-formedness)). Storage reached through a raw layer without an Origin or from an untied result (items 4 and 5) keeps them: the body forms those Types, and a raw store needs no fit.
+
+A store past layer 1 does not return the route's own Loan to the holder it passes; a Type whose exclusive layers lie side by side keeps it:
+
+```kimi
+func put2(slot: uniq/(uniq/(ref/i32 during a) during c), value: ref/i32 during a) => slot@follow@follow = value
+func moveIn(pair: uniq/(uniq/(ref/i32 during a) during c, ref/i32 during a)) => pair@follow.0@follow = pair@follow.1
+
+func twoLayersRead()
+    var x = 1
+    var b = 2
+    var w = x@ref
+    var s = w@uniq
+    put2(s@uniq, b@ref)             // Stores into w, past layer 1 (s): w retains none of the Loans naming it, s's included.
+    inspect(w@follow@ref)
+    inspect(w@follow@ref)           // Valid: no value w holds refers into w.
+
+func acrossLayersRead()
+    var x = 1
+    var z = 3
+    var w = x@ref
+    var t = (w@uniq, z@ref)
+    moveIn(t@uniq)                  // Stores into w, past layer 1 (t).
+    inspect(w@follow@ref)
+    inspect(w@follow@ref)           // Valid.
+```
+
+```kimi
+func putU(slot: uniq/(uniq/(uniq/i32 during a) during c), value: uniq/i32 during a) => slot@follow@follow = value
+
+func twinBad()
+    var x = 1
+    var z = 2
+    var t = (x@uniq, z@uniq)
+    let r = t.0@uniq
+    var s = t.1@uniq
+    putU(s@uniq, r@follow@follow@uniq) // t.1 now holds a Reborrow of x through r, past layer 1 (s).
+    t.0@follow = 3                     // Error: t keeps r's Loan on t.0, since its Type holds an exclusive layer beside another one.
+    inspect(t.1@follow@ref)            // Error: t keeps s's Loan on t.1 too.
+```
+
 A destruction whose `drop` stores through a raw layer retains as that call would:
 
 ```kimi
@@ -648,7 +689,7 @@ A value of an abstract Type writes only by the routes above, never through a sha
 func count<S>(items: S) -> i32
     S is Iterable
     var n: i32 = 0
-    for _ in items                  // Valid: the Iterator's Loan on items is shared, so next and its destruction write only its own holder.
+    for _ in items                  // Valid: the Iterator's Loan on items is shared; next and its destruction write only its holder, which keeps no Loan naming it.
         n += 1
     return n
 ```
@@ -925,7 +966,7 @@ Erasing a concrete payload behind a base or runtime-Contract view requires its c
 
 A Closure keeps every captured value's Origin and Loan dependencies, not merely the lifetime of its creation Block. Moving in an owned value without borrowed contents borrows nothing, and an entry that borrows an outer slot ([§7.7.2](07-functions-and-callable-values.md#772-captures)) keeps its Loan on that slot.
 
-A Closure body is checked against its call receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)) as an instance function's body is against its receiver: its environment bindings are Fields of the receiver's referent, so its result Origins, containment ([§15.6.3](#1563-reborrowing-and-region-splitting)) and retention ([§15.6.4](#1564-calls)) follow the receiver rules. Each environment binding's permissions stay those of [§7.7.2](07-functions-and-callable-values.md#772-captures), and retention into the environment follows them, since no Closure body can replace its environment: an Exclusive call may retain an argument in its `var` bindings and in the referents of its captured exclusive references. The table restates the receiver rules for each source of a result:
+A Closure body is checked against its call receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)) as an instance function's body is against its receiver: its environment bindings are Fields of the receiver's referent, so its result Origins, containment ([§15.6.3](#1563-reborrowing-and-region-splitting)) and retention ([§15.6.4](#1564-calls)) follow the receiver rules. Each environment binding's permissions stay those of [§7.7.2](07-functions-and-callable-values.md#772-captures), and retention into the environment follows them, since no Closure body can replace its environment: an Exclusive call may retain an argument in its `var` bindings and in the referents of its captured exclusive references. The call retains a capture's own value, its Loans and the holders it addresses, only where the storage can hold a value of the capture's Type or a borrow formed through it, as [§15.6.4](#1564-calls) retains a part an argument holds by value, a capture being one the call receiver holds: this section names where the call retains, that one what. The table restates the receiver rules for each source of a result:
 
 | Result source | Contract |
 | --- | --- |
@@ -967,6 +1008,20 @@ func update(z: uniq/i32, x: ref/i32, out: uniq/i32)
     remember(z@follow@ref)  // last may keep value.
     // z@follow = 43        // Error: remember is used below.
     remember(x)
+```
+
+A capture retains only where its Type fits:
+
+```kimi
+// take<t/U>(y: t/U), with t is owner or uniq and U is Copy, returns at once.
+func outer<s/T>(x: s/T, y: s/T)
+    s is owner or uniq
+    T is Copy
+    let g = func (z: s/T) -> () => ()
+    var f = func [x, g@ref] (q: s/T) -> i32     // In the uniq case the call may store q in x's referent, a T.
+        take(x)
+        return 0
+    let v = f(y)                                // Valid: no premise makes T a ref to g's Type, so x's referent never retains g's Loan.
 ```
 
 A bare entry naming an enclosing local Reborrows it with that local's Origin ([§7.7.2](07-functions-and-callable-values.md#772-captures)):

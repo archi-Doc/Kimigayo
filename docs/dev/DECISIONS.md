@@ -5200,6 +5200,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reference" no longer holds; an abstract part writes by provenance (W's named step), and these rows arise from the `@uniq` capture's
     exclusive Loan. The verdicts stand on S1′: f7h1, f7h2, f7n1 and f7n2 keep their records (2x-P7's cases probed on 40639bb64 and
     9f85ecc46), and selfPair, selfPairChild and methodAbstract are unchanged (`RuleGsSelfStoreReachesAClosureReceiver`).
+  - Superseded in part by R4-M171 (GXS, 2026-11-04): "stay until GXS" is resolved by SPEC 15.6.4's route Loans; f7h1, f7h2, f7n1,
+    f7n2 and the pair-case E records move with A5's units H+C and E (S5), `v@follow = x` stays.
 - **R4-M149 An Opaque temp is no storage (PLAN G247)** (2026-10-27; unit G247: design 2's option A, chosen by the planning session
   over design 1's (C), design review ACCEPT, class Major; amends R4-M109 (a) and L1) SPEC 23.1.2, 3.4, 3.6, 13.5.6.
   - Cause: where a consumer needs a Place for an Opaque value, the builder holds the value in a temp (`Value` for a node published
@@ -5786,6 +5788,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
     pair-cases' six a5-writes rows.
+  - Superseded in part by R4-M171 (GXS, 2026-11-04): the self-row (by (S), `seedRoute`, and `hold<C>`'s `it` end over an
+    abstract target) is left out where a store reaches the holder past layer 1 and its Type cannot refer into itself (SPEC 15.6.4).
 - **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
   (2026-10-31; R4's design round 2 and design-r2 Amendments 1-5 (`r4-notes\g216a-u21\design-r2.md`), BU agreeing to the proof
   channel; the owner, verbatim: 「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and
@@ -6466,6 +6470,32 @@ and migration obligations remain in force; no numeric cap changes are authorized
     writerExclOk (an erased `uniq/Self` call taking `m@uniq` of a local raw pointer: the uniq Loan is kept as the input's own value) and
     writerPairOk (a by-value Tuple holding a `ref` beside a raw pointer). tiedExclOk, tiedExclOk2 and tiedPairOk2 err on dev too (their
     records move). BU's A2, which would remove the first shape, waits for the owner's GO. The ledger's corpus holds neither shape.
+- **R4-M171 Route Loans: a store past layer 1 keeps no Loan naming its holder unless the Type may refer into itself (GXS)**
+  (2026-11-04; the owner adopted GXS with its extension, Q-A1, verbatim 「推奨どおり」 (2026-11-03,
+  `draft/Sketches/R6-check/H3b-classification.md`, "The owner's answer", item 1), and ordered it, verbatim 「GXS first」 (2026-11-04,
+  R4's dialog): its SPEC text and A5 unit before S2; R4's designer's phase A (`r4-notes\post-exit\gxs-design.md`); the planning
+  session's OQ-4 (one SPEC revision with layer 1, S1, S2, S5 and S6) and OQ-2 (S2's raw clause kept, conservative); OQ-1, E's route, is
+  A5's and does not change the text; proposal `draft/Changes/2026-11-04 GXS Route Loans.md`; class Owner, one SPEC review, the text to
+  the owner before it lands, R7 plan RQ10 (a)) SPEC 15.6.4, 15.8.2.
+  - Rule (15.6.4 "Route Loans"): layer 1 is the holders the argument's own Loan and addresses name (a parent Loan's holder is past it);
+    the direct Loans naming a holder start at it and dereference nothing, own or parent; (S1) a holder a store reaches past layer 1
+    retains none of them unless its Type may refer into itself; (S2) a Type may where a reference or raw layer it holds by value has a
+    referent agreeing (3.8, Origins aside) with it or an inline part, or where an exclusive layer it holds by value lies beside another
+    reference or is repeated (a fixed array of length other than 1, a 4.9 collection); an abstract Type or part only where the premises
+    make it such a reference (a later borrow's fresh Origin cannot outlive the Type's own, 8.15.1); the extension's shared-borrow clause
+    is S0's route 1; (S5) E reached by S0's routes 2 and 3 retains no exclusive route Loan, routes 4 and 5 keep them. 15.8.2 (S6): a
+    Closure's call retains a capture's own value only where the storage can hold the capture's Type or a borrow formed through it.
+    S0's write routes (R4-M170) are unchanged.
+  - Replaces PLAN G148 (2) (GXS as first written: it named only the direct Loans of the target and left E as one node).
+  - Examples: 15.6.4's twoLayersRead and acrossLayersRead (valid), twinBad (errs at `t.0@follow = 3` and `inspect(t.1@follow@ref)`: S2's
+    exclusive clause), `count<S>`'s comment (its holder keeps no Loan naming it); 15.8.2's `outer<s/T>` (U-A1's cr1, valid). Spec-case
+    `15.6.4-route-twin` lands now (dev's MIR gives both records; the old path rejects the call by its earlier reservation rule, class
+    (a)); `15.6.4-route-layers` and `15.8.2-capture-retention` land with A5 H+C, since dev's MIR rejects them and MirCensusTest's
+    accepted-variant census would fail.
+  - Units: A5 H+C (Full: S1, S2, S6 in `MirBorrows.Calls.Keep` and `MirTypes`; F9 ×2, InputDependentValueCall, U-A1 ×4, `count<S>`
+    and `hold<C>`), then A5 E (Full: S5 with E's route, OQ-1, an owner question; F15, MemberThroughLayers and S2's ForKoto rows; the
+    two raw STOP rows stay), then S2 (G264 U1).
+  - (e): twoLent (S5's Origin form) and replTOk (a 16.3.1 sentence), the owner, verbatim 「Add both to (e)」 (2026-11-04).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

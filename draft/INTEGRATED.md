@@ -1300,3 +1300,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   B2′, verbatim 「この方針で」; DECISIONS R4-M170), and `chain<T>` shows B7's reach through retention (its store
   while another Loan lives is 5.2.1's raw access). The owner read the text (RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」
   (2026-11-04); round 5's alignments change no meaning.
+
+## 2026-11-04 — GXS route Loans integrated (R4)
+
+- `Changes/2026-11-04 GXS Route Loans.md`: 取り込み済み (2026-11-04). The owner adopted GXS with its extension (Q-A1, verbatim 「推奨どおり」)
+  and ordered it first (verbatim 「GXS first」). Mapping: layer 1, direct Loans, S1, S2 and S5 → SPEC §15.6.4's "Route Loans" paragraph
+  with its examples; S6 → §15.8.2; DECISIONS R4-M171 (replaces PLAN G148 (2)). SPECJ follows in this unit (RQ10 (a)); GUIDE is not
+  refreshed. Integration implies no implementation support (A5 units H+C and E).
