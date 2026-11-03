@@ -8,6 +8,7 @@ namespace XunitTest;
 
 public class Utf8ReserveEffectTest
 {
+    // The generic rows are refused by A4's X2 whatever the witness does (AGenericComparisonTakesOnlyItsPremisesBounds).
     [Theory]
     [InlineData("==", false, false)]
     [InlineData("!=", false, false)]
@@ -45,14 +46,20 @@ public class Utf8ReserveEffectTest
     [Theory]
     [InlineData("first.equals(last@ref)")]
     [InlineData("first.compare(last@ref)")]
-    [InlineData("Helpers.equal(first@ref, last@ref)")]
     public void IntrinsicComparisonWitnessesHaveOnlyInputEffects(string expression)
-    {
-        const string Prefix = "group Helpers\n    public func equal<T>(left: ref/T, right: ref/T) -> bool\n        T is Equatable\n        return left == right\n";
-        var c = Analyze(Prefix, "let first: i32 = 1\n        let last: i32 = 2\n        _ = " + expression);
-        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-    }
+        => EffectBoundImplementationTest.AssertBound(Analyze(EqualHelper, Integers + expression), valid: true, "Self is BufferWriter");
 
+    // SPEC 8.11.3 (A4's X2, DECISIONS R4-M22): a requirement call on an abstract Self uses the bounds of the Contracts its premises prove,
+    // never an implementation's, and Equatable bounds no effect of equals, so `equal<T>`'s `left == right` has unknown effects even over
+    // i32's intrinsic witness, and Writer's confined reserve is refused (R6-check H3b T-12: 1r; Binding's old pass accepted it).
+    [Fact]
+    public void AGenericComparisonTakesOnlyItsPremisesBounds()
+        => AssertRefused(Analyze(EqualHelper, Integers + "Helpers.equal(first@ref, last@ref)"));
+
+    private const string EqualHelper = "group Helpers\n    public func equal<T>(left: ref/T, right: ref/T) -> bool\n" +
+        "        T is Equatable\n        return left == right\n";
+
+    private const string Integers = "let first: i32 = 1\n        let last: i32 = 2\n        _ = ";
     private const string State = "group State\n    public var value: i32 = 0\n";
     private const string Writer = "struct Writer\n    Self is BufferWriter\n    public var local: i32 = 1\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n";
     private const string Formatter = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        ";

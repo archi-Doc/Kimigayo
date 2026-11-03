@@ -62,10 +62,16 @@ public partial class EffectBoundImplementationTest
     }
 
     // SPEC 8.11.3, 23.1.2 (DECISIONS BU-38): a witness reaching storage that rests on a part Binding rejected (Bad's Field m) reads it as
-    // instantiated, so its conformance has the records its repair has, beside Binding's own: none through a forwarded call, a forwarded
-    // Type argument, a dictionary, a requirement, formatting or a comparison over it, the repair's violation through a forwarded
-    // environment effect, and Unsupported_Kd for a storage limit beside it or alone (fail-before: Unsupported_Kd at each conformance, the
-    // rejected part read as a limit).
+    // instantiated, so the program has the records its repair has, beside Binding's own. Since the MIR decides acceptance (H5, DECISIONS
+    // R5-M185), these are check's records (R6-check H3b T-12):
+    // - none through a forwarded call, a forwarded Type argument, a dictionary, a requirement, formatting, or a comparison through a
+    //   Contract that bounds equals as confined (QuietEq);
+    // - A4's IncompatibleContractImplementation_Kd at `Self is Reset` through a forwarded environment effect, and through `same<T>`'s
+    //   comparison: a requirement call on an abstract Self uses the bounds of the Contracts its premises prove, never an
+    //   implementation's (SPEC 8.11.3; A4's X2, DECISIONS R4-M22), and Equatable bounds no effect of equals;
+    // - for storage nested past the implementation's height (Box65), the limits' records at the call (SPEC 23.1.1; PLAN G128), the
+    //   conformance valid (SPEC 8.11.2): A5's OwnershipDepthLimit_Kd (R4-M153), the instance collector's Unsupported_Kd and its
+    //   GenerationResourceLimit_Kd.
     [Theory]
     [InlineData("forward", "")]
     [InlineData("environment", "IncompatibleContractImplementation_Kd @ Self is Reset")]
@@ -73,15 +79,17 @@ public partial class EffectBoundImplementationTest
     [InlineData("dictionary", "")]
     [InlineData("requirement", "")]
     [InlineData("format", "")]
-    [InlineData("equals", "")]
-    [InlineData("pair", "Unsupported_Kd @ Self is Reset")]
-    [InlineData("deep", "Unsupported_Kd @ Self is Reset")]
-    [InlineData("deepArgument", "Unsupported_Kd @ Self is Reset")]
+    [InlineData("equals", "IncompatibleContractImplementation_Kd @ Self is Reset")]
+    [InlineData("quiet", "")]
+    [InlineData("pair", "OwnershipDepthLimit_Kd @ U.pair(self.item@ref, self.big@ref); Unsupported_Kd @ U.pair(self.item@ref, self.big@ref); GenerationResourceLimit_Kd @ self.item@ref")]
+    [InlineData("deep", "OwnershipDepthLimit_Kd @ U.wrap(self.item@ref); Unsupported_Kd @ U.wrap(self.item@ref); GenerationResourceLimit_Kd @ self.item@ref")]
+    [InlineData("deepArgument", "Unsupported_Kd @ U.inner<T>()")]
     public void StorageBindingRejectedViolatesNothing(string form, string repaired)
     {
         Assert.Equal(repaired, string.Join("; ", Issues("i32")));
         Assert.Equal(Issues("i32").Append("UnresolvedBinding_Kd @ Missing").Order(), Issues("Missing").Order());
 
+        // Binding's records, then check's (the MIR's and the collector's), each as its code and its subject's first line.
         string[] Issues(string field)
         {
             var item = form.StartsWith("deep", StringComparison.Ordinal) ? RetentionTest.Box65 : "Bad";
@@ -89,7 +97,7 @@ public partial class EffectBoundImplementationTest
             {
                 "requirement" => ("Named", "    public func name(self: ref/Self) -> i32 => 1\n"),
                 "format" => ("Utf8Format", "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n"),
-                "equals" => ("Equatable", "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n"),
+                "equals" or "quiet" => (form == "quiet" ? "QuietEq" : "Equatable", "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n"),
                 _ => (null, string.Empty),
             };
             var (call, helpers) = form switch
@@ -100,15 +108,20 @@ public partial class EffectBoundImplementationTest
                 "dictionary" => ("_ = U.keyed(self.item@ref)", "    public func keyed<T>(x: ref/T) -> i32\n        var d: Dictionary<i32, Option<T>> = [:]\n        return 0\n"),
                 "requirement" => ("_ = U.ask(self.item@ref)", "    public func ask<T>(x: ref/T) -> i32\n        T is Named\n        return x.name()\n"),
                 "format" => ("_ = U.show(self.item@ref)", "    public func show<T>(x: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(x)\n"),
-                "equals" => ("_ = U.same(self.item@ref)", "    public func same<T>(x: ref/T) -> bool\n        T is Equatable\n        return x == x\n"),
+                "equals" or "quiet" => ("_ = U.same(self.item@ref)", $"    public func same<T>(x: ref/T) -> bool\n        T is {conformance}\n        return x == x\n"),
                 _ => ("U.pair(self.item@ref, self.big@ref)", "    public func touch<T, S>(x: ref/T, y: ref/S) => ()\n    public func pair<T, S>(x: ref/T, y: ref/S) => U.touch(x, y)\n"),
             };
             var source = "contract Reset\n    func reset(self: uniq/Self)\n        effect confined\ncontract Named\n    func name(self: ref/Self) -> i32\n        effect confined\n" +
+                "contract QuietEq: Equatable\n    effect Equatable.equals confined\n" +
                 RetentionTest.Box + "struct Bad\n" + (conformance is null ? string.Empty : $"    Self is {conformance}\n") + $"    public var m: {field}\n" + witness +
                 $"struct Holder\n    Self is Reset\n    var item: {item}\n" + (form == "pair" ? $"    var big: {RetentionTest.Box65}\n" : string.Empty) +
                 $"    public func reset(self: uniq/Self)\n        {call}\ngroup U\n" + helpers + Main;
-            return [.. MinimalEmissionTest.Analyze(source).Binding.Issues.Select(static x => $"{x.Code} @ {x.Node.ToString().Split('\n')[0].Trim()}")];
+            var c = MinimalEmissionTest.Analyze(source);
+            return [.. c.Binding.Issues.Select(static x => $"{x.Code} @ {First(x.Node)}"),
+                .. c.Problems.Select(x => $"{x.Code} @ {First(c.SyntaxOf(x.Subject))}")];
         }
+
+        static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
     }
 
     // SPEC 8.11.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the

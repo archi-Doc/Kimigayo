@@ -69,7 +69,10 @@ public class RawAddressTest
         Assert.True(valid || !c.Accepts, MinimalEmissionTest.Describe(c));
 
         // R6-check H3b T40: the bound is A4's record at `Self is Sink` (EffectBoundImplementationTest.AssertBound), beside Binding's located
-        // Unsupported_Kd at the static's address (no static raw authority, DECISIONS BU-24), which keeps Binding incomplete.
+        // Unsupported_Kd at the static's address (no static raw authority, DECISIONS BU-24), which keeps Binding incomplete. Since Binding
+        // is incomplete, its completeness cannot show a returning Binding effect record, and MirTargetSide leaves out Binding's records
+        // that pair with an analysis (the compared set), which that record would; so Binding's issues are counted: only the address's.
+        Assert.Equal(valid ? 0 : 1, c.Binding.Issues.Count);
         (DiagnosticCode, SyntaxLocation)[] records =
             [(DiagnosticCode.Unsupported_Kd, new("Metrics.puts@raw")), (DiagnosticCode.IncompatibleContractImplementation_Kd, new("Self is Sink"))];
         MirTargetSide.Check(c, valid ? [] : records);
