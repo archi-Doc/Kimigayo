@@ -13,9 +13,9 @@ namespace XunitTest;
 // SPEC 15.6.2, 15.6.6, 16.2.2: a borrow of a block-local root that escapes through the block's result, a closure capture or a
 // longer-lived value is a Loan conflict at the destruction that ends the root while that value keeps its Loan. It is one record
 // per destroyed root and holder, at the MIR's storage end of the root: its declaration, or the temporary itself (H5, the flip),
-// relating the later use of the value keeping the Loan (`loan`) and the Borrow or capture that created it (`borrow`). The join
-// that the block's value reaches only after the destruction, later uses of the value and an exit that delivers another source's
-// borrow add no record.
+// relating the use of the value keeping the Loan (`loan`: the label block, which delivers an exit's value (DECISIONS R5-M50), or
+// a temporary's later use) and the Borrow or capture that created it (`borrow`). The join that the block's value reaches only
+// after the destruction, later uses of the value and an exit that delivers another source's borrow add no record.
 public class BlockEscapeLoanTest(ITestOutputHelper output)
 {
     private const string Closure = "public func main() -> ()\n    let g = label block: do\n        let n = 5\n        exit to block func [n@ref] () => n@follow\n    Console.writeLine(\"\\(g())\")\n";
@@ -36,6 +36,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string OtherFirst = "func show(c: bool)\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n" +
         "    Console.writeLine(\"\\(r@follow)\")\n\npublic func main() -> ()\n    show(true)\n";
 
+    // Both exits escape: the one record relates the later exit's Borrow, the MIR's Anchor (TheMirLoanIsUsedAtTheLabelBlock).
     private const string BothExits = "func show(c: bool)\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block n@ref\n        exit to block n@ref\n" +
         "    Console.writeLine(\"\\(r@follow)\")\n\npublic func main() -> ()\n    show(true)\n";
 
@@ -80,6 +81,9 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string LoopItem = "func show() -> i32\n    let r = label l: loop\n        let arr: Array<i32> = [1, 2]\n        for x in arr\n            exit to l x\n        exit to l arr[0]@ref\n" +
         "    return r@follow\n\npublic func main() -> ()\n    Console.writeLine(\"\\(show())\")\n";
+
+    private const string ReferenceSlot = "public func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = label b: do\n        let q = words[0]@ref\n" +
+        "        exit to b q@ref\n    Console.writeLine(r@follow)\n";
 
     // SPEC 3.6, 13.5.6, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
     // full-expression boundary.
@@ -134,33 +138,33 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     public static TheoryData<string, string, string, string, string, string, string> Escapes => new()
     {
         // Name, source, the text the primary span is found in and its text, the context of the related borrow and the borrow in it, and the
-        // related value (its first occurrence).
-        { "Closure", Closure, Root, Root, "exit to block func [n@ref] () => n@follow", "func [n@ref] () => n@follow", "exit to block func [n@ref] () => n@follow" },
-        { "Plain", Plain, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "NoUse", NoUse, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "Two", Two, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "Parameter", Parameter, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "OtherFirst", OtherFirst, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "BothExits", BothExits, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
+        // related use (its first occurrence; a label block's whole text).
+        { "Closure", Closure, Root, Root, "exit to block func [n@ref] () => n@follow", "func [n@ref] () => n@follow", Block(Closure, "do\n") },
+        { "Plain", Plain, Root, Root, "exit to block n@ref", "n@ref", Block(Plain, "do\n") },
+        { "NoUse", NoUse, Root, Root, "exit to block n@ref", "n@ref", Block(NoUse, "do\n") },
+        { "Two", Two, Root, Root, "exit to block n@ref", "n@ref", Block(Two, "do\n") },
+        { "Parameter", Parameter, Root, Root, "exit to block n@ref", "n@ref", Block(Parameter, "do\n") },
+        { "OtherFirst", OtherFirst, Root, Root, "exit to block n@ref", "n@ref", Block(OtherFirst, "do\n") },
+        { "BothExits", BothExits, Root, Root, "exit to block n@ref\n    Console", "n@ref", Block(BothExits, "do\n") },
         { "Temporary", Temporary, "let r = make()@ref", "make()", "make()@ref", "make()@ref", "r@follow" },
-        { "GenericRequirement", GenericRequirement, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "GenericReborrow", GenericReborrow, Root, Root, "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "AbstractHolder", AbstractHolder, "let n: T = other@follow", "let n: T = other@follow", "exit to block n@ref", "n@ref", "exit to block n@ref" },
-        { "ReadLocal", ReadLocal, Root, Root, "let q = n@ref", "n@ref", "exit to b q" },
-        { "NestedBlock", NestedBlock, Root, Root, "exit to b n@ref", "n@ref", "exit to outer inner" },
-        { "CapturedLocal", CapturedLocal, Root, Root, "let q = n@ref", "n@ref", "exit to b func [q] () => q@follow" },
-        { "Element", Element, "let n: Array<i32> = [5, 6]", "let n: Array<i32> = [5, 6]", "exit to b n[0]@ref", "n[0]@ref", "exit to b n[0]@ref" },
-        { "Constructor", Constructor, Root, Root, "Holder.init(n@ref)", "n@ref", "exit to b Holder.init(n@ref)" },
-        { "Tuple", Tuple, Root, Root, "(n@ref", "n@ref", "exit to b (n@ref, n@ref)" },
-        { "MatchBinding", MatchBinding, Root, Root, "match n@ref", "n@ref", "exit to b x" },
-        { "LoopItem", LoopItem, "let arr: Array<i32> = [1, 2]", "let arr: Array<i32> = [1, 2]", "for x in arr", "arr", "exit to l x" },
+        { "GenericRequirement", GenericRequirement, Root, Root, "exit to block n@ref", "n@ref", Block(GenericRequirement, "do\n") },
+        { "GenericReborrow", GenericReborrow, Root, Root, "exit to block n@ref", "n@ref", Block(GenericReborrow, "do\n") },
+        { "AbstractHolder", AbstractHolder, "let n: T = other@follow", "let n: T = other@follow", "exit to block n@ref", "n@ref", Block(AbstractHolder, "do\n") },
+        { "ReadLocal", ReadLocal, Root, Root, "let q = n@ref", "n@ref", Block(ReadLocal, "do\n") },
+        { "NestedBlock", NestedBlock, Root, Root, "exit to b n@ref", "n@ref", Block(NestedBlock, "do\n") },
+        { "CapturedLocal", CapturedLocal, Root, Root, "let q = n@ref", "n@ref", Block(CapturedLocal, "do\n") },
+        { "Element", Element, "let n: Array<i32> = [5, 6]", "let n: Array<i32> = [5, 6]", "exit to b n[0]@ref", "n[0]@ref", Block(Element, "do\n") },
+        { "Constructor", Constructor, Root, Root, "Holder.init(n@ref)", "n@ref", Block(Constructor, "do\n") },
+        { "Tuple", Tuple, Root, Root, "(n@ref", "n@ref", Block(Tuple, "do\n") },
+        { "MatchBinding", MatchBinding, Root, Root, "match n@ref", "n@ref", Block(MatchBinding, "do\n") },
+        { "LoopItem", LoopItem, "let arr: Array<i32> = [1, 2]", "let arr: Array<i32> = [1, 2]", "for x in arr", "arr", Block(LoopItem, "loop\n") },
         { "TemporaryInTuple", TemporaryInTuple, "let r = (make()@ref, 1)", "make()", "(make()@ref", "make()@ref", "r.0@follow" },
         { "TemporaryHandleView", TemporaryHandle + "    let r = make()@objref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@objref", "make()", "make()@objref", "make()@objref", "r.id" },
         { "TemporaryHandleAnnotated", TemporaryHandle + "    let r: objref/Item = make()\n    Console.writeLine(\"\\(r.id)\")\n", "let r: objref/Item = make()", "make()", "let r: objref/Item = make()", "make()", "r.id" },
         { "TemporaryHandlePayload", TemporaryHandle + "    let r = make()@follow@ref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@follow@ref", "make()", "let r = make()@follow@ref", "make()@follow@ref", "r.id" },
         { "TemporaryHandleField", TemporaryHandle + "    let r = make().id@ref\n    Console.writeLine(\"\\(r@follow)\")\n", "let r = make().id@ref", "make()", "let r = make().id@ref", "make().id@ref", "r@follow" },
         { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()", "make()@ref", "make()@ref", "Kimi.Intrinsics.clone(r)" },
-        { "ReferenceSlot", "public func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = label b: do\n        let q = words[0]@ref\n        exit to b q@ref\n    Console.writeLine(r@follow)\n", "let q = words[0]@ref", "let q = words[0]@ref", "exit to b q@ref", "q@ref", "exit to b q@ref" },
+        { "ReferenceSlot", ReferenceSlot, "let q = words[0]@ref", "let q = words[0]@ref", "exit to b q@ref", "q@ref", Block(ReferenceSlot, "do\n") },
         { "TemporaryReferenceSlot", FirstText + "\npublic func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = first(words@ref)@ref\n    Console.writeLine(r@follow)\n", "let r = first(words@ref)@ref", "first(words@ref)", "first(words@ref)@ref", "first(words@ref)@ref", "Console.writeLine(r@follow)" },
         { "TemporaryGeneric", TemporaryGeneric, "let r = make()@ref", "make()", "make()@ref", "make()@ref", "inspect(r)" },
         { "TemporaryFunction", TemporaryFunction, "let r = mk()@ref", "mk()", "mk()@ref", "mk()@ref", "call(r)" },
@@ -342,6 +346,20 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
+
+    // The text of the block that `head` opens (its first occurrence): through the last following line indented deeper than head's line.
+    private static string Block(string source, string head)
+    {
+        var start = source.IndexOf(head, StringComparison.Ordinal);
+        var depth = source.AsSpan(source.LastIndexOf('\n', start) + 1).IndexOfAnyExcept(' ');
+        var end = source.IndexOf('\n', start);
+        while (source.AsSpan(end + 1).IndexOfAnyExcept(' ') > depth)
+        {
+            end = source.IndexOf('\n', end + 1);
+        }
+
+        return source[start..end];
+    }
 
     // The start and text of `inner` in the first occurrence of `outer`.
     private static (int Start, string Text) Locate(string source, string outer, string inner)
