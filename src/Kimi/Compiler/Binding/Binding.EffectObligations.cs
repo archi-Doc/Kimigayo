@@ -112,13 +112,6 @@ public sealed partial class Binding
     internal SemanticsKind? CallableReceiver(BindingSymbol definition, BoundType input)
         => this.TryCallable(input, this.EffectPremises(definition), out _, out var receiver) ? receiver : null;
 
-    /// <summary>Gets whether an old Binding record of a conformance, Callable use or virtual function was made by an effect check: a bound
-    /// violation or an effect-limit Unsupported, which the MIR difference ledger compares with A4 (DECISIONS R4-M23).</summary>
-    /// <param name="node">The record's node.</param>
-    /// <returns>Whether an effect check recorded it.</returns>
-    [Transitional("R6", Reason = "The ledger's old-side effect subset; R6 deletes it with the old effect checks.")]
-    internal bool IsEffectRecord(Koto node) => this.effectViolations?.ContainsKey(node) == true || this.IsEffectLimit(node);
-
     // SPEC 8.11.3, virtual-dispatch 6: the premises a definition's effects are judged under (null: a module's top-level statements),
     // an override's inherited implementation premises where present.
     internal BindingScope EffectPremises(BindingSymbol? definition)

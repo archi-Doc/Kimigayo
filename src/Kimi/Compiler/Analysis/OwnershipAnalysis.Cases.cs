@@ -98,8 +98,6 @@ public sealed partial class OwnershipAnalysis
         this.BuildOnce(function, declarationDefault);
         var listed = this.body;
         this.caseListed = listed;
-        listed.AppendCleanupCase(listed.Cases.Span);
-        this.compilation.Binding.CollectCaseDestructions(listed, listed, this.caseBit);
         var run = 1;
         while (this.NextCase())
         {
@@ -113,8 +111,6 @@ public sealed partial class OwnershipAnalysis
             this.caseBody = side;
             this.BuildOnce(function, declarationDefault);
             this.caseBody = null;
-            listed.AppendCleanupCase(side.Cases.Span);
-            this.compilation.Binding.CollectCaseDestructions(side, listed, this.caseBit);
             listed.IsVerified &= side.IsVerified;
             run++;
         }

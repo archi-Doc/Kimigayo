@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
-using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -9,7 +8,6 @@ public sealed partial class OwnershipAnalysis
 {
     // The universal (source) plan of each analyzed function, never an instance plan.
     private readonly Dictionary<FunctionKoto, OwnershipBody> templateBodies = new(ReferenceEqualityComparer.Instance);
-    private readonly List<Koto> effectViolations = new();
 
     /// <summary>Gets the universal plan of a function body, the cleanups of which are the values the body destroys.</summary>
     /// <param name="function">The function.</param>
@@ -37,30 +35,5 @@ public sealed partial class OwnershipAnalysis
             this.flow!.Append(this.libraryBodies[i]);
             this.collector.Visit(this.libraryBodies[i]);
         }
-    }
-
-    // SPEC 8.6, 22.2.3: an effect bound counts the destructions its implementation's bodies perform, which are the
-    // cleanups planned here; Binding re-checks each bound with them once every reached body is analyzed.
-    private void ValidateEffectBounds()
-    {
-        this.effectViolations.Clear();
-        this.compilation.Binding.ValidateDestructionEffects(this.effectViolations);
-        this.AddEffectIssues(OwnershipRequirement.EffectBound);
-        this.compilation.Binding.ValidateCallableEffects(this.effectViolations);
-        this.AddEffectIssues(OwnershipRequirement.CallableEffectBound);
-        this.compilation.Binding.ValidateVirtualDestructionEffects(this.effectViolations);
-        this.AddEffectIssues(OwnershipRequirement.VirtualEffectBound);
-    }
-
-    // A check that stopped at an effect Binding cannot classify yet is the located limit (plan rule 5).
-    private void AddEffectIssues(OwnershipRequirement failure)
-    {
-        for (var i = 0; i < this.effectViolations.Count; i++)
-        {
-            var use = this.effectViolations[i];
-            this.issues.Add(new(use, this.compilation.Binding.IsEffectLimit(use) ? OwnershipRequirement.Unsupported : failure));
-        }
-
-        this.effectViolations.Clear();
     }
 }

@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -31,11 +29,6 @@ public class GenericAdaptationEffectTest
         {
             MinimalEmissionTest.AssertEffectBoundRejected(c);
         }
-
-        // The first body is the ref case, and later reused side bodies must not erase the obj case's facts.
-        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "discard");
-        Assert.Equal(SemanticsKind.Ref, body.Cases.Span[0].Semantics);
-        Assert.Contains(body.CaseDestructions, static x => x.Type?.Semantics == SemanticsKind.Obj && (x.Cases & 2UL) != 0 && (x.Cases & 1UL) == 0);
     }
 
     [Theory]

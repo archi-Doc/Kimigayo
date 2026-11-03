@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -34,19 +32,6 @@ public class GenericCleanupCaseTest
         else
         {
             MinimalEmissionTest.AssertEffectBoundRejected(c);
-        }
-
-        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "select");
-        if (partial)
-        {
-            Assert.Contains(body.CaseDestructions, static x => x.Type?.Semantics == SemanticsKind.Obj && (x.Cases & 2UL) != 0);
-            Assert.DoesNotContain(body.CaseDestructions, static x => x.Type?.Kind == BoundTypeKind.Tuple && (x.Cases & 2UL) != 0);
-            // A ref component Copies, so its case keeps the whole tuple without owning a payload destruction.
-            Assert.Contains(body.CaseDestructions, static x => x.Type?.Kind == BoundTypeKind.Tuple && x.Cases == 1UL);
-        }
-        else
-        {
-            Assert.Empty(body.CaseDestructions);
         }
     }
 
