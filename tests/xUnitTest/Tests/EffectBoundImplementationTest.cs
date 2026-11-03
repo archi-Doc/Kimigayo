@@ -48,15 +48,17 @@ public partial class EffectBoundImplementationTest
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
         => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink");
 
-    // SPEC 8.11.2: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of a static
-    // initializer other than a constant (reading an immutable static is no environment effect).
-    [Theory]
-    [InlineData("contract Read\n    func read(self: ref/Self) -> i32\n        effect confined\ngroup G\n    public let value: i32 = 2 + 3\nstruct S\n    Self is Read\n    public func read(self: ref/Self) -> i32 => G.value\n", "Self is Read", nameof(DiagnosticCode.Unsupported_Kd))]
-    public void AnUnclassifiedEffectIsAnImplementationLimit(string declarations, string at, string code)
+    // SPEC 8.11.2: reading an immutable static of a Transferable Type (`i32`) is no environment effect; its initializer (`2 + 3`) enters
+    // the summary and has none, so the confined witness keeps its bound. Binding refused the initializer's destructions with one
+    // Unsupported_Kd at `Self is Read`; since the MIR decides acceptance (H5, DECISIONS R5-M185) A4 judges the bound (1a, the owner
+    // 2026-11-03): check publishes no record, and a Library build (every root, K11) is accepted and generates S.read.
+    [Fact]
+    public void AnImmutableStaticsComputedInitializerIsNoEnvironmentEffect()
     {
-        var source = declarations + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+        const string Source = "contract Read\n    func read(self: ref/Self) -> i32\n        effect confined\ngroup G\n    public let value: i32 = 2 + 3\n" +
+            "struct S\n    Self is Read\n    public func read(self: ref/Self) -> i32 => G.value\n" + Main;
+        Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Contains("read", MinimalEmissionTest.GeneratedBodies(Source, OutputKind.Library, accepted: true));
     }
 
     // SPEC 8.11.3, 23.1.2 (DECISIONS BU-38): a witness reaching storage that rests on a part Binding rejected (Bad's Field m) reads it as
