@@ -835,10 +835,9 @@ public sealed partial class Binding
                 related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
                 note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.9.2)");
         }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd &&
-            (this.ReportCallablePremiseFailure(issue.Node, requirement) || this.ReportEffectViolation(issue.Node, requirement, issue.Code)))
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, requirement))
         {
-            // SPEC 8.11.1: reported at the violating effect.
+            // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
         }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, requirement, issue.Code))
         {
