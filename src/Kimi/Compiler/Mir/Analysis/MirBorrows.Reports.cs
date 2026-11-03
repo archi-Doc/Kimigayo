@@ -6,14 +6,14 @@ namespace Kimi.Compiler.Mir;
 
 // A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23, R4-M92, R4-M97, R4-M98, R4-M148): each problem recorded through MirReport under
 // its requirement with its code and facts, which MirBorrows.Witnesses builds: the Loan's or candidate's anchor, its witness (a holder's
-// next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
-// hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the default's operation
-// (Evaluated) with the outermost omitting call as subject (D13); the limit records, through the one recorder Limit (R4-M153): a located
-// Unsupported_Kd where the stratum classifies nothing, and in a view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at
-// every rejection's subject, and OwnershipDepthLimit_Kd where a check's verdict rests on a part past a walk's bound, a conflict only the
-// drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop tier gives
-// (DroppedDeparture); one per failure, recorded where its check fails (one check's facts met at its one verdict are joined first,
-// MirOutcome.Join), so independent checks at one subject keep their own records (SPEC 23.1.2);
+// next use in its chain or, past it, its declaration, the location for a value an access takes, a transit value's or E's store; none for
+// a destruction's own hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the
+// default's operation (Evaluated) with the outermost omitting call as subject (D13); the limit records, through the one recorder Limit
+// (R4-M153): a located Unsupported_Kd where the stratum classifies nothing, and in a view PD13 holds (MirBorrows.CallRows' held; R4-M126
+// (iii), R4-M148) at every rejection's subject, and OwnershipDepthLimit_Kd where a check's verdict rests on a part past a walk's bound, a
+// conflict only the drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop
+// tier gives (DroppedDeparture); one per failure, recorded where its check fails (one check's facts met at its one verdict are joined
+// first, MirOutcome.Join), so independent checks at one subject keep their own records (SPEC 23.1.2);
 // InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136). Every rejection but a limit record is
 // recorded through
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
@@ -70,13 +70,12 @@ internal sealed partial class MirBorrows
     }
 
     // An own-step departure only the drop tier gives (R4-M153), which rests on a Drop past the destruction walk's bound: the Warning, its
-    // witness by the one rule (Facts: the holder's next use in the location's chain, here its drop slot's, MirBorrows.Liveness; none where
-    // that Drop lies past the chain), and the depth limit at the holder's declaration.
+    // witness by the one rule (Facts: the holder's next use in the location's chain, here its drop slot's, MirBorrows.Liveness; the
+    // holder's declaration where that Drop lies past the chain), and the depth limit at the holder's declaration.
     private void DroppedDeparture(int entry, int holder, MirLocation at)
     {
-        var local = this.DropLocal(holder);
-        this.Departure(entry, this.dropSlots[local], at);
-        this.Limit(this.body.Subject(this.body.Locals[local].Source), MirOutcome.Deep);
+        this.Departure(entry, this.dropSlots[this.HolderLocal(holder)], at);
+        this.Limit(this.Declaration(holder), MirOutcome.Deep);
     }
 
     // A problem with its facts in the body's views.
@@ -107,20 +106,5 @@ internal sealed partial class MirBorrows
         {
             this.AddProblem(DiagnosticCode.OwnershipDepthLimit_Kd, OwnershipRequirement.DepthLimit, subject, default);
         }
-    }
-
-    // The declaration of a holder the drop tier found a record's candidate or marker through.
-    private SourceRef Declaration(int holder) => this.body.Subject(this.body.Locals[this.DropLocal(holder)].Source);
-
-    // The local of a holder the drop tier read (the drop list keeps it).
-    private int DropLocal(int holder)
-    {
-        var i = 0;
-        while (this.slots[this.drops[i].Local] != holder)
-        {
-            i++;
-        }
-
-        return this.drops[i].Local;
     }
 }

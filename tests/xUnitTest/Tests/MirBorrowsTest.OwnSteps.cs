@@ -175,8 +175,8 @@ public sealed partial class MirBorrowsTest
                 """));
 
     // DECISIONS R4-M116 OQ-2 (PD31's fact rows): the Anchor is the pointer's first formation (the location reading the layer); the witness
-    // is a live holder's next use (none where that lies in a later chain, as past a copy), the store of a value E keeps, or the call for an
-    // operand it takes; inside a copy the default's operation is Evaluated at the omitting call.
+    // is a live holder's next use (past the chain, as past a copy, its declaration as a Store), the store of a value E keeps, or the call
+    // for an operand it takes; inside a copy the default's operation is Evaluated at the omitting call.
     [Fact]
     public void TheWarningCarriesItsFacts()
     {
@@ -211,7 +211,7 @@ public sealed partial class MirBorrowsTest
                 "b: Anchor b.data, Use usep(p)", "b: Anchor keepIn(slot, b.data), Store b",
                 "var b = Buf<i32>.init(4): Anchor keepIn(slot, b.data), Store var b = Buf<i32>.init(4)",
                 "takeBoth(b@uniq, b.data): Anchor takeBoth(b@uniq, b.data), Use takeBoth(b@uniq, b.data)",
-                "withStatic(): Anchor G.buf.data, Evaluated G.buf = Buf<i32>.init(2)",
+                "withStatic(): Anchor G.buf.data, Store let p = G.buf.data, Evaluated G.buf = Buf<i32>.init(2)",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => x.x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.x.Subject.Module == 0).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));

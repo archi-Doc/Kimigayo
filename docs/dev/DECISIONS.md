@@ -1652,6 +1652,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   stratum sees no escape (the Origin stratum's, unit 2a). Rejected: the Loan-based err(ended) (prototype round 10's `EndedByLoan`,
   unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate
   (the local index is the key).
+  - Amendment (2026-11-04, R6-check H3b round 2's U-T2; the planning session's unit): a holder whose next use lies past the
+    access's chain is witnessed by its declaration as a `Store` (the value retaining the Loan, DIAGNOSTICS A6), no longer by none,
+    which dropped the `loan` the old path gave (an `if` or block join before the use); one rule in `MirBorrows.Witnesses.Facts`, a
+    drop slot's witness (R4-M153's "none past the chain") included; local 0 keeps none, its next use being the caller's (R4-M156).
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
   planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`; its "which the builder replaces whole" and
   "its children are not published as evaluated and a closure inside it is not built" are superseded by R5-M63 for the children
@@ -5453,7 +5457,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     only ask whether a candidate is taken (the effect rule's Limit loop, the initialization proof) read both tiers. An own-step entry the
     drop tier finds is tagged apart (`OwnSteps`): a departure only it keeps open keeps SPEC 5.2.1 condition 3's Warning, as the base gives
     it, with its witness by the one rule (the holder's next use in the location's chain, here its drop slot's; none past the chain, as the
-    base's records at depth 10), beside the depth limit at the holder's declaration (`DroppedDeparture`). A location's departure is the one
+    base's records at depth 10; superseded by R4-M57's amendment of 2026-11-04: the holder's declaration), beside the depth limit at
+    the holder's declaration (`DroppedDeparture`). A location's departure is the one
     a counted pass gives where one stands; a departure only the drop tier gives is recorded only where none does (revision 2).
   - Rule W and the referent store: `Writes` returns two facts: a Limit holder reached (R4-M147, unchanged) and a Deep holder whose step,
     at W's fixed point, would change what W writes (`Changes`: reach a holder W does not, or, by R4-M154's ways, one W reaches only at
