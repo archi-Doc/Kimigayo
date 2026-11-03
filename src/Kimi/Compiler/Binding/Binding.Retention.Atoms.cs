@@ -12,10 +12,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 15.6.4 (DECISIONS R4-M116, BU-40, BU-66): the raw sources of the contract and of each erased signature being walked, each input
-    // once, in walk order: an input whose Type holds a raw layer by value without passing a shared layer (RetentionParts), at its own layer
-    // (`Own`: a raw argument, RetentionInput) or wrapped (a Tuple element, a Type argument, one past an exclusive layer), whose own value
-    // the hold walk keeps as a raw argument's; reused.
-    private readonly List<(int Input, bool Own)> retentionRawSources = new();
+    // once, in walk order: an input whose Type holds a raw layer by value without passing a shared layer (RetentionParts), with what the
+    // hold walk keeps of it there (DECISIONS BU-66, A2): null at its own layer (a raw argument, RetentionInput: its own value, and R′'s),
+    // Value where it holds the layer by value (a Tuple element, a Type argument), Chain past an exclusive borrow (what a chain of reads
+    // through the input carries, never the borrow's own Loans), the input's sources joined; reused.
+    private readonly List<(int Input, RetentionKind? Kind)> retentionRawSources = new();
 
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
     // Shared (Shared).
@@ -105,7 +106,7 @@ public sealed partial class Binding
         }
         else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
         {
-            this.retentionRawSources.Add((index, Own: true));
+            this.retentionRawSources.Add((index, null));
             this.AddRetentionAtom(new(index, Kind: null, Writable: false, OwnedOrigin(input), null, null), callable: false);
             this.RetentionParts(input, new(index, RetentionKind.Content, Writable: true, null, null, null), OriginVariance.Covariant, callable: false);
         }
@@ -114,9 +115,15 @@ public sealed partial class Binding
             this.RetentionWalk(input, new(index, RetentionKind.Value, Writable: true, null, null, null), OriginVariance.Covariant, callable: false);
         }
 
-        if (this.retentionRawSources.Count > sources)
+        var list = this.retentionRawSources;
+        for (var i = sources + 1; i < list.Count; i++)
         {
-            this.retentionRawSources.RemoveRange(sources + 1, this.retentionRawSources.Count - sources - 1); // The input once, as its first.
+            list[sources] = (index, list[sources].Kind | list[i].Kind); // The input once; its own layer (null) stays alone.
+        }
+
+        if (list.Count > sources + 1)
+        {
+            list.RemoveRange(sources + 1, list.Count - sources - 1);
         }
     }
 
@@ -189,7 +196,7 @@ public sealed partial class Binding
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
-            this.retentionRawSources.Add((at.Input, Own: false));
+            this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));
         }
 
         var rawOrigin = type.RawOrigin;
