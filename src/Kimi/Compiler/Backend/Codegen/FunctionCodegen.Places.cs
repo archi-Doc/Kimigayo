@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Backend;
 // interned projection chain, root first, by one row per MirProjectionKind, each reading the layout its step needs (LayoutNeeds through
 // Needed: a Field's and a Downcast's prefix's record, an Index's and a ConstIndex's element's stride; DECISIONS R5-M149) in the item's
 // instance (IMPL 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at
-// its position times the element's stride, which the validator proved below the length; a Downcast at the enum's payload offset; a Deref of
+// its position's element offset (ElementOffset), the validator having proved the position below the length; a Downcast at the enum's payload offset; a Deref of
 // a reference, raw pointer or object borrow the address it stores (IMPL 21.1.3; an object borrow's is its payload's, DECISIONS R5-M110),
 // of an owning handle its object's payload; a PairLayer the
 // Place itself in the owner case, else the referent of its case Type by the Deref row (MirCases.Layer under the item's view, SPEC 13.5.5);
@@ -24,8 +24,12 @@ namespace Kimi.Compiler.Backend;
 // FunctionCodegen.Stores.cs.
 internal sealed partial class FunctionCodegen
 {
-    // A Place's address (the rows above): false after a broken contract's record (Referent: a Deref or PairLayer step to no pointer, which
-    // validated MIR never has; DECISIONS R5-M146), true without an address after another record.
+    // IMPL 21.1.2: the offset of a fixed array's element at a position (an Array's in its buffer): the position times the element's stride;
+    // the one rule of a ConstIndex step, an aggregate's element (FunctionCodegen.Aggregates' Component) and a glue's (Glue's Elements).
+    private static long ElementOffset(ValueLowering element, long position) => position * element.Layout.Stride;
+
+    // A Place's address (the rows above): false after a broken contract's record (a step's: a Deref or PairLayer to no pointer, which
+    // validated MIR never has, or a layout or location its step lacks; DECISIONS R5-M146).
     private bool Address(MirPlace place, out Value address)
     {
         address = default;
@@ -53,44 +57,43 @@ internal sealed partial class FunctionCodegen
         switch (row.Kind)
         {
             case MirProjectionKind.Field:
-                address = this.Part(place, start, row.Arg);
-                return true;
+                return this.Part(place, start, row.Arg, out address);
             case MirProjectionKind.Base:
                 return true;
             case MirProjectionKind.ConstIndex:
-                if (this.Needed(place) is { } element)
-                {
-                    address = this.Offset(start, (long)row.Arg * element.Layout.Stride);
-                }
-
-                return true;
+                var element = this.Needed(place);
+                address = element is null ? start : this.Offset(start, ElementOffset(element, row.Arg));
+                return element is not null;
             case MirProjectionKind.Downcast:
-                address = this.Part(place, start, 1); // The payload, after the i32 tag.
-                return true;
+                return this.Part(place, start, 1, out address); // The payload, after the i32 tag.
             case MirProjectionKind.Index:
                 return this.Element(place, prefix, start, out address);
             case MirProjectionKind.Deref when this.InstanceType(prefix) is { } pointer:
-                return this.Referent(pointer, start, out address);
+                return this.Deref(pointer, start, out address);
             case MirProjectionKind.Deref:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector made every Type of an admitted item.
-                return true;
+                return false;
             case MirProjectionKind.PairLayer:
-                return this.cases.Layer(place) is not { } layer || this.Referent(layer, start, out address);
+                return this.cases.Layer(place) is not { } layer || this.Deref(layer, start, out address);
             default:
                 throw new InvalidOperationException($"The MIR projection kind {row.Kind} has no code generation row.");
         }
     }
 
-    // A step's part at its prefix's record's offset of the index (its Parts need, Needed), a Field's or an enum's payload; the prefix's
-    // address after a record.
-    private Value Part(MirPlace step, Value start, int index)
-        => this.Needed(step) is { } whole ? this.Offset(start, whole.Layout.FieldOffsets.Span[index]) : start;
+    // A step's part at its prefix's record's offset of the index (its Parts need, Needed), a Field's or an enum's payload; false after a
+    // record.
+    private bool Part(MirPlace step, Value start, int index, out Value address)
+    {
+        var whole = this.Needed(step);
+        address = whole is null ? start : this.Offset(start, whole.Layout.FieldOffsets.Span[index]);
+        return whole is not null;
+    }
 
-    // A Deref by its Type (IMPL 21.1.3; DECISIONS R5-M110): one stored pointer, a reference's, a raw pointer's or an object borrow's the
-    // address of its referent, an object borrow's its object's payload; an owning handle's its object's header, the payload
-    // ObjectRuntime.PayloadOffset bytes after it. Any other Type is a broken contract (MirBody.ProjectedType admits a Deref only below a
-    // reference, handle or raw pointer, and TypeOf keeps the layer), recorded at the body's subject; false after it.
-    private bool Referent(BoundType pointer, Value start, out Value address)
+    // A Deref step's address by the Type it steps through (IMPL 21.1.3; DECISIONS R5-M110): one stored pointer, a reference's, a raw
+    // pointer's or an object borrow's the address of its referent, an object borrow's its object's payload; an owning handle's its object's
+    // header, the payload ObjectRuntime.PayloadOffset bytes after it. Any other Type is a broken contract (MirBody.ProjectedType admits a
+    // Deref only below a reference, handle or raw pointer, and TypeOf keeps the layer), recorded at the body's subject; false after it.
+    private bool Deref(BoundType pointer, Value start, out Value address)
     {
         address = start;
         if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner })
@@ -109,7 +112,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // An Index: the bounds check at the position local's location, then the element's address at its stride (its Element need, Needed); a
-    // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read.
+    // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read. False after a record.
     private bool Element(MirPlace step, MirPlace prefix, Value start, out Value address)
     {
         address = start;
@@ -119,7 +122,7 @@ internal sealed partial class FunctionCodegen
         if (!this.Location(this.body.Locals[position].Source, out var site) || this.Needed(step) is not { } element ||
             (sequence is null && type.Kind != BoundTypeKind.FixedArray))
         {
-            return true; // Recorded.
+            return false; // Recorded.
         }
 
         var isize = this.slots[position].Value;

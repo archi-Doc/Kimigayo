@@ -34,7 +34,8 @@ public sealed partial class Binding
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
                 retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null;
+                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null ||
+                    environment.Comparison.Expected is not null;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);
@@ -57,7 +58,7 @@ public sealed partial class Binding
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
     // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure).
-    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
     {
         if (OriginOutlives(longer, shorter))
         {
@@ -72,6 +73,7 @@ public sealed partial class Binding
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
+        environment.Comparison = comparison;
         try
         {
             var closure = environment.Closure;
@@ -217,6 +219,14 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
+        // required signature and of each enclosing comparison's; no other request sees them.
+        this.AddRequiredPremises(environment, environment.Comparison.Expected);
+        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
+        {
+            this.AddRequiredPremises(environment, outer.Required);
+        }
+
         var closure = environment.Closure;
         for (var node = 0; node < closure.NodeCount; node++)
         {
@@ -229,6 +239,22 @@ public sealed partial class Binding
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
         }
+    }
+
+    // A required signature's own well-formedness: its inputs' and its result's.
+    private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
+    {
+        if (required is not { Components: [var inputs, var result] })
+        {
+            return;
+        }
+
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            this.AddTypePremises(environment, inputs.Components[i], OriginPremiseRule.Input);
+        }
+
+        this.AddResultPremises(environment, result);
     }
 
     // R1: an established enclosing declaration's clauses.
@@ -334,18 +360,13 @@ public sealed partial class Binding
     // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
     // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
     // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment. A nested
-    // Function Type's inputs add none: their well-formedness is that signature's premise, proven at each call (RequireInputPremises), never
-    // one of the body whose input holds the Function Type (SPEC 15.3.4, 15.6.1; DECISIONS R4-M137); its result is PLAN G216's open half.
+    // Function Type adds none. Its inputs' well-formedness is that signature's premise, proven at each call (RequireInputPremises;
+    // DECISIONS R4-M137). Its result is judged where it is written, under the enclosing premises and its own inputs (SPEC 15.3.4, 15.6.1;
+    // DECISIONS R4-M162). Neither is a premise of the body whose input holds the Function Type.
     private void AddTypePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
-        if (!environment.Types.Add(type))
+        if (type.Kind == BoundTypeKind.Function || !environment.Types.Add(type))
         {
-            return;
-        }
-
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            this.AddTypePremises(environment, type.Components[1], rule);
             return;
         }
 
@@ -415,7 +436,12 @@ public sealed partial class Binding
     // Every Origin stored in `type` outlives the node `shorter`; with `result`, Origins inside a nested Function Type are not stored.
     // `condition` is the Semantics case of the storage itself; a pair layer's own slot, the implicit `o` of an original `s/T` included
     // (SPEC 8.1.1), is stored only in its binder's borrow cases, while its target is stored in every case (SPEC 15.6.5).
+    // Each distinct part is visited once per call (DECISIONS BU-19, PLAN G309): a revisit adds the same edges, which the closure reaches
+    // anyway.
     private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition = 0)
+        => this.StoredPremisePart(environment, type, shorter, rule, result, condition, this.visitedParts.Begin(this.storageVersion));
+
+    private void StoredPremisePart(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition, uint query)
     {
         if ((result && type.Kind == BoundTypeKind.Function) || !type.StoresOrigin)
         {
@@ -434,7 +460,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddStoredPremises(environment, type.Components[i], shorter, rule, result, condition);
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.StoredPremisePart(environment, type.Components[i], shorter, rule, result, condition, query);
+            }
         }
     }
 
@@ -455,6 +484,9 @@ public sealed partial class Binding
         internal Koto Use { get; set; } = null!;
 
         internal BindingScope? Scope { get; set; }
+
+        // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
+        internal CallableInstance Comparison { get; set; }
 
         // Whether this request is a dependence query's own, which reads failed contracts (readingFailedContracts; DECISIONS BU-69).
         internal bool ReadsFailedContracts { get; set; }
@@ -478,6 +510,7 @@ public sealed partial class Binding
             this.Resolvers.Clear();
             this.Use = null!;
             this.Scope = null;
+            this.Comparison = default;
             this.ReadsFailedContracts = false;
             this.Dependence = false;
             this.Reads.Clear();

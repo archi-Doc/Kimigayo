@@ -1,9 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns structural and Type validation of producer-owned MIR in every configuration.
-// Input: MIR bodies, their program and published Type facts. Output: located invariant findings.
+// Input: MIR bodies, their program and published Type facts. Output: located invariant findings, and each body's verdict
+// (MirBody.HasFinding: whether a finding is located in it), which only the validator writes (DECISIONS R5-M183).
 // Every IR invariant is checked here; a broken producer contract is InternalInvariant_Kd.
-// Must not repair broken IR, recover silently or leave consumers to revalidate it.
+// Must not repair broken IR, recover silently or leave consumers to revalidate it; no consumer reads a body with a finding.
 
 #pragma warning disable SA1402 // The validator's rules and findings belong to it.
 
@@ -33,13 +34,15 @@ internal enum MirViolation : byte
     Const, // A constant id out of range.
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
-    Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
+    Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee; a FormatFinish whose adapter is over no
+    // FormatBuffer's buffer, or whose estimate is not that FormatBuffer's (DECISIONS R5-M131).
     Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic.
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
     Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to; a
-    // testRecordValue's value other than a Scalar.
+    // testRecordValue's value other than a Scalar; an owning interpolation's step's constant other than its position's kind (its values'
+    // Types a Tuple's token, its text a string).
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).
@@ -65,7 +68,8 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// shared layers a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each staticEnsure names
 /// (G191), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
-/// MirValidatorTest) and staticEnsure's also as its static's slot (DECISIONS R5-M71), a Value callee's against its Type's signature where
+/// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
+/// a FormatFinish's estimate its FormatBuffer's (DECISIONS R5-M131), a Value callee's against its Type's signature where
 /// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
 /// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). A write, an in-place destruction or an exclusive acquisition
 /// passes no shared layer; a Move is A1's (DECISIONS R5-M123, R5-M139).</remarks>
@@ -73,19 +77,21 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 internal sealed partial class MirValidator(TyCtxt types)
 {
     private readonly MirCases cases = new(types);
-    private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
+    private readonly List<(MirRvalue Site, SourceInfo Source)> caseSites = []; // The body's case sites, its Adapts and PairAcquire Uses (Views).
     private readonly MirReach reach = new();
     private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
 
-    /// <summary>Validates a body.</summary>
+    /// <summary>Validates a body and sets its verdict (<see cref="MirBody.HasFinding"/>): whether it added a finding.</summary>
     /// <param name="body">The body.</param>
     /// <param name="findings">The caller's list the findings are added to.</param>
     internal void Validate(MirBody body, List<MirFinding> findings)
     {
+        var count = findings.Count;
         if (MirCases.Count(body) > PairBinder.CaseBound)
         {
             findings.Add(new(MirViolation.Binder, body.Source)); // Binding binds no part of a definition beyond the bound.
+            body.HasFinding = findings.Count > count;
             return; // Nor are its views resolved.
         }
 
@@ -95,10 +101,11 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
 
         Array.Clear(this.writes, 0, body.Locals.Length);
-        this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts, types);
+        this.caseSites.Clear();
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.caseSites, this.writes, this.parts, types);
         if (!checker.Tables())
         {
+            body.HasFinding = findings.Count > count;
             return; // A chain or site out of order or range cannot be walked.
         }
 
@@ -120,12 +127,15 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             this.Diverged(body, findings);
             this.Reach(body, findings);
+            this.Finishes(body, findings);
         }
 
         if (walked && !checker.Unscoped)
         {
             this.Entries(body, findings); // It walks the scope table and each location's scope.
         }
+
+        body.HasFinding = findings.Count > count;
     }
 
     // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports; it
@@ -135,7 +145,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         List<MirFinding> findings,
         bool[] unknown,
         bool[] ensured,
-        List<(MirRvalue Adapt, SourceInfo Source)> adapts,
+        List<(MirRvalue Site, SourceInfo Source)> caseSites,
         byte[] writes,
         HashSet<BoundType> parts,
         TyCtxt types) : IMirUses

@@ -47,7 +47,7 @@ internal sealed partial class FunctionCodegen
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var handle = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (this.Referent(this.InstanceType(handle)) is not { } array || this.Laid(array) is not { } record || this.LoweringOf(length) is not { } isize)
+        if (this.ReferencedType(this.InstanceType(handle)) is not { } array || this.Laid(array) is not { } record || this.LoweringOf(length) is not { } isize)
         {
             return; // A broken contract, recorded.
         }

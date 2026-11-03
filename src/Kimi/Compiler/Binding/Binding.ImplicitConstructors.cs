@@ -115,7 +115,7 @@ public sealed partial class Binding
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
                 CallSelection.Unproven => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
-                CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedCause()),
+                CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedCause().Use),
                 CallSelection.FailedSignature => new(OmittedBaseOutcome.Dependent, Cause: evaluation.FailedPendingSignature),
                 _ => new(OmittedBaseOutcome.Dependent, Cause: evaluation.IncompleteSignature),
             };

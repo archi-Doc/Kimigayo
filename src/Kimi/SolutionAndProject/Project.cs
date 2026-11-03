@@ -42,19 +42,25 @@ public partial class Project
     /// <param name="path">The project-file path.</param>
     /// <param name="inputs">The input source; the language server supplies open documents.</param>
     /// <param name="project">The loaded project.</param>
-    /// <param name="failure">The reason the project did not load.</param>
+    /// <param name="failures">The reasons the project did not load, one per independent failure (SPEC 23.1.2); empty when loaded.</param>
     /// <returns><see langword="true"/> when the project was loaded.</returns>
-    internal static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, CheckInputSource inputs, [MaybeNullWhen(false)] out Project project, out string? failure)
+    internal static bool TryCreate(
+        Kimigayo kimigayo,
+        ILogger? logger,
+        string path,
+        CheckInputSource inputs,
+        [MaybeNullWhen(false)] out Project project,
+        out IReadOnlyList<string> failures)
     {
         project = default;
-        failure = null;
+        failures = [];
         try
         {
             var fullPath = Path.GetFullPath(path);
             var file = ProjectFile.Load(inputs.ReadAllBytes(fullPath));
             if (file is null)
             {
-                failure = $"Empty project configuration '{path}'.";
+                failures = [$"Empty project configuration '{path}'."];
                 logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
                 return false;
             }
@@ -68,16 +74,23 @@ public partial class Project
                 project.AddKimiFile(source);
             }
         }
-        catch (TinyhandException ex)
+        catch (Exception ex) when (ex is TinyhandException or ProjectConfigurationException)
         {
-            failure = $"Invalid project configuration '{path}': {ex.Message}";
-            kimigayo.WriteLine(DiagnosticSeverity.Error, failure);
+            var notes = (ex as ProjectConfigurationException)?.Failures ?? [ex.Message];
+            var reasons = new string[notes.Count];
+            for (var i = 0; i < reasons.Length; i++)
+            {
+                reasons[i] = $"Invalid project configuration '{path}': {notes[i]}";
+                kimigayo.WriteLine(DiagnosticSeverity.Error, reasons[i]);
+            }
+
+            failures = reasons;
             project = default;
             return false;
         }
         catch (Exception ex) when (ex is not PendingInputException)
         {
-            failure = $"The project '{path}' could not be loaded: {ex.Message}";
+            failures = [$"The project '{path}' could not be loaded: {ex.Message}"];
             logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
             project = default;
             return false;
@@ -175,7 +188,7 @@ public partial class Project
     public void AddSource(string url, string text)
         => this.AddSource(new SourceDocument(url, text));
 
-    /// <summary>Adds a generated or in-memory source document.</summary>
+    /// <summary>Adds a generated or in-memory source document, parsed with the project's sources in logical declaration order (SPEC 6.2.1).</summary>
     /// <param name="sourceDocument">The source document.</param>
     public void AddSource(SourceDocument sourceDocument)
     {
@@ -253,8 +266,10 @@ public partial class Project
         => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
 
     /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
-    /// the generation records, or the publication failure. Emission is a later phase with its own result, rendered after the front-end
-    /// result, for <c>kimi build</c> and <c>kimi test</c> alike (R5 C0a).</summary>
+    /// the generation records, the publication failure, or, for an exception publication does not classify (a broken contract code
+    /// generation throws among them), the Faulted result as the front end's (DIAGNOSTICS rule 9; DECISIONS R5-M169). Emission is a later
+    /// phase with its own result, rendered after the front-end result, for <c>kimi build</c>, <c>emit</c>, <c>run</c> and <c>test</c> alike
+    /// (R5 C0a).</summary>
     /// <param name="compilation">The accepted compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="context">The check context, or null for a command.</param>
@@ -262,12 +277,22 @@ public partial class Project
     /// <returns>Whether the artifacts were published.</returns>
     internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
     {
-        if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+        irPath = null;
+        Exception? fault = null;
+        try
         {
-            return true;
+            if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+            {
+                return true;
+            }
+        }
+        catch (Exception ex) when (this.Faults(ex, context))
+        {
+            fault = ex;
         }
 
-        this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
+        // The one finalization point of the Emission result (SPEC 23.3).
+        this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context, fault: fault);
         return false;
     }
 
@@ -315,9 +340,8 @@ public partial class Project
         this.buildMetadata.Clear();
         cancellationToken.ThrowIfCancellationRequested();
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
-        if (DependencyConfiguration.Validate(this.ProjectFile) is { } configurationFailure)
+        if (!this.ValidateConfiguration(diagnostics, out var testSources))
         {
-            this.Fail(diagnostics, configurationFailure);
             return false;
         }
 
@@ -327,33 +351,8 @@ public partial class Project
             // Nonempty graphs still require the forthcoming semantic integration.
             var root = new DependencyNode("root", new(projectPath, this.ProjectFile, [], []), -1, string.Empty);
             var empty = new DependencyPartition([root]);
-            var failure = DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs);
-            if (failure is not null)
+            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs)))
             {
-                this.Fail(diagnostics, failure);
-                return false;
-            }
-        }
-
-        HashSet<string>? testSources = null;
-        if (this.ProjectFile.TestSources.Length != 0)
-        {
-            testSources = new(SourceIdentity.PathComparer);
-            try
-            {
-                var baseDirectory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
-                foreach (var source in this.ProjectFile.TestSources)
-                {
-                    if (!testSources.Add(Path.GetFullPath(source, baseDirectory)))
-                    {
-                        this.Fail(diagnostics, $"Duplicate resolved TestSources path: {source}");
-                        return false;
-                    }
-                }
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                this.Fail(diagnostics, $"Invalid TestSources path: {ex.Message}");
                 return false;
             }
         }
@@ -391,10 +390,8 @@ public partial class Project
             if (rootConfiguration is not null)
             {
                 var resolution = DependencyResolver.Resolve(this.FilePath!, x, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, rootConfiguration, false, inputs);
-                var failure = DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs);
-                if (failure is not null)
+                if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs)))
                 {
-                    this.Fail(diagnostics, failure);
                     success = false;
                     continue;
                 }
@@ -441,9 +438,8 @@ public partial class Project
             accepted = this.CheckFrontEnd(compilation, target, testSources, graph, prepared, context);
             completed = true;
         }
-        catch (Exception ex) when (context is null && this.kimigayo.RendersDiagnostics && ex is not OperationCanceledException)
+        catch (Exception ex) when (this.Faults(ex, context))
         {
-            // SPEC 23.2.2: a command renders the Faulted result the check entry publishes; the command then fails.
             fault = ex;
         }
         finally
@@ -464,7 +460,6 @@ public partial class Project
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
-        var projectKotonoha = compilation.Kotonoha;
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
 
         // SPEC 23.2.2: every file input is read before parsing, and the reads are consumed in
@@ -472,6 +467,7 @@ public partial class Project
         var reads = graph is null ? this.ReadSources(inputs, testSources) : null;
         var testReads = compilation.IsTestBuild && testSources is not null ? ReadTestSources(inputs, testSources) : null;
         var established = true;
+        var documents = Array.ConvertAll(compilation.SourceModules, static _ => new List<SourceDocument>());
 
         if (graph is not null)
         {
@@ -481,7 +477,7 @@ public partial class Project
                 foreach (var source in input.Sources)
                 {
                     var path = Path.Combine(Path.GetDirectoryName(input.Path)!, source.LogicalPath);
-                    AddSource(path, source.Content, null, compilation.SourceModules[i]);
+                    AddInput(path, source.Content, null, i);
                 }
             }
         }
@@ -489,7 +485,7 @@ public partial class Project
         {
             foreach (var (path, content, exception) in reads!)
             {
-                AddSource(path, content, exception, projectKotonoha);
+                AddInput(path, content, exception, 0);
             }
         }
 
@@ -497,8 +493,17 @@ public partial class Project
         {
             foreach (var (path, content, exception) in testReads)
             {
-                AddSource(path, content, exception, projectKotonoha, isTestOnly: true);
+                AddInput(path, content, exception, 0, isTestOnly: true);
             }
+        }
+
+        // SPEC 6.2.1: declarations follow their documents' logical names, not the read order, so each module's ordinary documents
+        // (product, TestSources and in-memory ones) are parsed in one call. Parsing precedes the established check, so a read failure
+        // still reports the other documents' syntax errors (SPEC 23.1.2).
+        documents[0].AddRange(this.additionalSource);
+        for (var i = 0; i < documents.Length; i++)
+        {
+            compilation.SourceModules[i].AddSources(documents[i]);
         }
 
         // Every already-consumed input failure must have its own explanation before the blocked check returns.
@@ -508,9 +513,21 @@ public partial class Project
             return this.PreparationFailed(compilation.Diagnostics);
         }
 
-        foreach (var y in this.additionalSource)
+        // IMPL 20.1: every module's source names, the root's and each dependency's, are checked once its sources are established,
+        // and each independent failure is its own record (SPEC 23.1.2).
+        var namesFailed = false;
+        foreach (var module in compilation.SourceModules)
         {
-            projectKotonoha.AddSource(y);
+            foreach (var failure in module.CheckNames())
+            {
+                this.Fail(compilation.Diagnostics, failure);
+                namesFailed = true;
+            }
+        }
+
+        if (namesFailed)
+        {
+            return this.PreparationFailed(compilation.Diagnostics);
         }
 
         if (context is not null)
@@ -543,7 +560,8 @@ public partial class Project
 
         return accepted;
 
-        void AddSource(string path, SourceContent? content, Exception? failure, Kotonoha module, bool isTestOnly = false)
+        // Establishes one read input of a module: its document, registered at read time, or its failure.
+        void AddInput(string path, SourceContent? content, Exception? failure, int module, bool isTestOnly = false)
         {
             if (failure is not null)
             {
@@ -556,8 +574,8 @@ public partial class Project
             try
             {
                 var document = content!.CreateDocument(path, isTestOnly);
-                compilation.Diagnostics.AddInput(document, module);
-                module.AddSource(document);
+                compilation.Diagnostics.AddInput(document, compilation.SourceModules[module]);
+                documents[module].Add(document);
             }
             catch (DecoderFallbackException)
             {
@@ -605,6 +623,25 @@ public partial class Project
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
 
+    // SPEC 23.1.2: each failure is its own record; true when there is one.
+    private bool Reported(DiagnosticOwner diagnostics, IReadOnlyList<string> failures)
+    {
+        for (var i = 0; i < failures.Count; i++)
+        {
+            this.Fail(diagnostics, failures[i]);
+        }
+
+        return failures.Count != 0;
+    }
+
+    // IMPL 20.1: the configuration with its TestSources compared at the project directory; a project without one is the current
+    // directory's.
+    private bool ValidateConfiguration(DiagnosticOwner diagnostics, out HashSet<string>? testSources)
+    {
+        var directory = Path.GetFullPath(this.Directory.Length == 0 ? "." : this.Directory);
+        return !this.Reported(diagnostics, DependencyConfiguration.Validate(this.ProjectFile, directory, out testSources));
+    }
+
     // SPEC 23.2.2: input preparation that ends without an Error reports its fallback, in the command and the check entry alike.
     private bool PreparationFailed(DiagnosticOwner diagnostics)
     {
@@ -615,6 +652,11 @@ public partial class Project
 
         return false;
     }
+
+    // SPEC 23.2.2, DIAGNOSTICS rule 9: a command renders an exception that ends a result (the front end's or the Emission result) as that
+    // result's fault, CheckFaulted_Kd, and then fails; a check request's caller (CheckService) handles its own, and cancellation propagates.
+    private bool Faults(Exception exception, CheckContext? context)
+        => context is null && this.kimigayo.RendersDiagnostics && exception is not OperationCanceledException;
 
     // SPEC 23.3: a command renders each result once it is finalized; a check request's caller finalizes its own.
     private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false, Exception? fault = null)

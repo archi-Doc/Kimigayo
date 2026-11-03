@@ -332,18 +332,11 @@ public class OwnershipAnalysisTest
             var c = Parse(source.ToString());
             c.Bind();
             Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-            var phases = new long[2 * (AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations)];
-            var phase = 0;
-            var allocated = AllocationMeasurement.Measure(() =>
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
-                var before = GC.GetAllocatedBytesForCurrentThread();
                 c.Bind();
-                phases[phase++ % phases.Length] = GC.GetAllocatedBytesForCurrentThread() - before;
-                before = GC.GetAllocatedBytesForCurrentThread();
                 c.Analyze();
-                phases[phase++ % phases.Length] = GC.GetAllocatedBytesForCurrentThread() - before;
-            });
-            Assert.True(allocated == 0, $"Allocated {allocated}; Binding/Ownership phases of the last 16 operations: {string.Join(',', phases)}");
+            }));
         }
     }
 }

@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
@@ -271,7 +272,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
                 use, use, $"NoApplicableOverload_Kd HA<{subject}>.init(null)", use],
             c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
         Assert.Empty(c.Problems);
-        Assert.Empty(c.Instances?.Records ?? []);
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
         var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!;
         Assert.Equal((Binding.StorageOutcome.Rejected, null), (c.Binding.PrepareTypeStorage(holder), c.Types.StoredParts(holder, out _)[0]));
         Assert.Empty(c.BuildMir().Findings);
@@ -299,7 +300,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
                 .. derived.Chunk(2).SelectMany(static x => (string[])[$"InvalidTypeFormation_Kd struct {x[0]}", $"InvalidConstraint_Kd {x[1]}"]), use, use];
         Assert.Equal(records, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
         Assert.Empty(c.Problems);
-        Assert.Empty(c.Instances?.Records ?? []);
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
         var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!;
         var verdict = records.Length == 0 ? (Binding.StorageOutcome.Prepared, BoundType.I32) : (Binding.StorageOutcome.Rejected, null);
         Assert.Equal(verdict, (c.Binding.PrepareTypeStorage(holder), c.Types.StoredParts(holder, out _)[0]));

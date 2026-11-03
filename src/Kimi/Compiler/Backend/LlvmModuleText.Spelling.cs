@@ -6,7 +6,7 @@ using System.Text;
 namespace Kimi.Compiler.Backend;
 
 // The spellings of LlvmModuleText (DECISIONS R5-M14): an external symbol's spelling after @ and its recovery, numbers formatted on the
-// stack or once as text, numbered names and the bits of a floating constant's hexadecimal spelling.
+// stack, numbered names and the bits of a floating constant's hexadecimal spelling.
 internal static partial class LlvmModuleText
 {
     // The LLVM spelling after @ of an external symbol: the plain identifier, or a quoted
@@ -67,9 +67,6 @@ internal static partial class LlvmModuleText
 
         return Encoding.UTF8.GetString(bytes, 0, count);
     }
-
-    // A number's text for a runtime template filled once at startup; writing formats through WriteNumber instead.
-    internal static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
 
     // TextWriter.Write(long) formats through a temporary string; format on the stack instead.
     internal static void WriteNumber(TextWriter output, long value)

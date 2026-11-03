@@ -8,7 +8,7 @@
 // the storage-boundary and capacity kernels written inline in their caller's body with their library record Field addressing
 // (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
 // the ones every call reads). MIR code generation writes the helpers through this static component (promoted, never copied).
-// Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
+// Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name), the Option payload
 // offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions a Dictionary
 // helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
@@ -45,7 +45,8 @@
 // the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
 // runtime needs come from its row; warm writes allocate nothing; whether a value travels as a scalar is decided once, by
-// StoredValue.TravelsAsScalar.
+// StoredValue.TravelsAsScalar; the expanded runtime texts (Texts) are built only when a code generation writer first reads one,
+// never on the check path (G350).
 // Must not hold module state, take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
 // destination for its kind or bound (FormatKind, FormatBound, WriterKind), or use LINQ.
 
@@ -176,10 +177,10 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
         => this.Writer == LegacyWriter.Place ? LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Storage : DictionaryCallee.None;
 }
 
-/// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
-/// routine that destroys it when it is an aggregate needing destruction (otherwise null), and whether it is a string.</summary>
+/// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation and the name of the
+/// routine that destroys it when destroying it runs code (its glue, a string's included; otherwise null).</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct StoredValue(ValueLowering Value, string? Drop, bool Text)
+internal readonly record struct StoredValue(ValueLowering Value, string? Drop)
 {
     /// <summary>Gets a value indicating whether the value has no bytes (Unit or a zero-sized aggregate); its helpers take no
     /// value or result pointer, because zero-sized values have no slot.</summary>
@@ -189,7 +190,7 @@ internal readonly record struct StoredValue(ValueLowering Value, string? Drop, b
     internal bool IsScalar => TravelsAsScalar(this.Value);
 
     /// <summary>Gets a value indicating whether destroying the value runs code.</summary>
-    internal bool NeedsDestruction => this.Text || this.Drop is not null;
+    internal bool NeedsDestruction => this.Drop is not null;
 
     /// <summary>Gets a value indicating whether a value of a representation travels as a scalar rather than through a slot: its
     /// internal-ABI argument form is its computation representation (SPEC 21.3.1), while strings and aggregates pass by address
@@ -214,47 +215,9 @@ internal static partial class LegacyRuntimeHelpers
     /// the second, lexicographically by UTF-8 byte.</summary>
     internal static readonly FunctionAbi StringCompare = new("__kimi_string_compare", "i32", StringEqual.Parameters);
 
-    /// <summary>The string-comparison routines' text, each definition spliced from its signature (LlvmModuleText.ExpandRuntime), which code
-    /// generation writes once per module that compares strings.</summary>
-    internal static readonly string StringComparisons = ExpandRuntime(
-        """
-        declare i32 @memcmp(ptr, ptr, i64)
-        {{__kimi_string_equal}}
-        entry:
-          %sameLength = icmp eq i64 %an, %bn
-          br i1 %sameLength, label %same, label %different
-        same:
-          %empty = icmp eq i64 %an, 0
-          br i1 %empty, label %equal, label %bytes
-        bytes:
-          %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %an)
-          ret i32 %comparison
-        equal:
-          ret i32 0
-        different:
-          ret i32 1
-        }
-        {{__kimi_string_compare}}
-        entry:
-          %shorter = icmp ult i64 %an, %bn
-          %count = select i1 %shorter, i64 %an, i64 %bn
-          %empty = icmp eq i64 %count, 0
-          br i1 %empty, label %lengths, label %bytes
-        bytes:
-          %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %count)
-          %equal = icmp eq i32 %comparison, 0
-          br i1 %equal, label %lengths, label %different
-        different:
-          ret i32 %comparison
-        lengths:
-          %sameLength = icmp eq i64 %an, %bn
-          %direction = select i1 %shorter, i32 -1, i32 1
-          %result = select i1 %sameLength, i32 0, i32 %direction
-          ret i32 %result
-        }
-
-        """,
-        [StringEqual, StringCompare]);
+    /// <summary>Gets the string-comparison routines' text, each definition spliced from its signature (LlvmModuleText.ExpandRuntime), which
+    /// code generation writes once per module that compares strings.</summary>
+    internal static string StringComparisons => Texts.StringComparisons;
 
     /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
     /// kind to how MIR code generation writes its call, by the row's writer, and the one test of whether a function is one: every site asks
@@ -360,7 +323,7 @@ internal static partial class LegacyRuntimeHelpers
         }
 
         output.Write("  call void @");
-        output.Write(value.Text ? RuntimeAbi.DestroyString.Name : value.Drop);
+        output.Write(value.Drop);
         output.Write("(ptr ");
         output.Write(address);
         output.Write(", ptr %location, i64 %location_length)\n");
@@ -368,4 +331,50 @@ internal static partial class LegacyRuntimeHelpers
 
     // An Instance row over the Array helper of a kind (DECISIONS R5-M121).
     private static LegacyRow Instance(ArrayHelperKind kind) => new(LegacyWriter.Instance, Helper: kind);
+
+    // Code generation's expanded runtime texts (G350), one part beside each text's rows: the CLR initializes this class when a writer
+    // (WriteArrayRuntime, WriteFormattingRuntime, StringComparisons) first reads one for a module, never on the check path, whose
+    // collector reads the rows and ABIs (Row, DictionaryRow, Construction, IntrinsicRows) but no text; no other member reads them.
+    private static partial class Texts
+    {
+        internal static readonly string StringComparisons = ExpandRuntime(
+            """
+            declare i32 @memcmp(ptr, ptr, i64)
+            {{__kimi_string_equal}}
+            entry:
+              %sameLength = icmp eq i64 %an, %bn
+              br i1 %sameLength, label %same, label %different
+            same:
+              %empty = icmp eq i64 %an, 0
+              br i1 %empty, label %equal, label %bytes
+            bytes:
+              %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %an)
+              ret i32 %comparison
+            equal:
+              ret i32 0
+            different:
+              ret i32 1
+            }
+            {{__kimi_string_compare}}
+            entry:
+              %shorter = icmp ult i64 %an, %bn
+              %count = select i1 %shorter, i64 %an, i64 %bn
+              %empty = icmp eq i64 %count, 0
+              br i1 %empty, label %lengths, label %bytes
+            bytes:
+              %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %count)
+              %equal = icmp eq i32 %comparison, 0
+              br i1 %equal, label %lengths, label %different
+            different:
+              ret i32 %comparison
+            lengths:
+              %sameLength = icmp eq i64 %an, %bn
+              %direction = select i1 %shorter, i32 -1, i32 1
+              %result = select i1 %sameLength, i32 0, i32 %direction
+              ret i32 %result
+            }
+
+            """,
+            [StringEqual, StringCompare]);
+    }
 }

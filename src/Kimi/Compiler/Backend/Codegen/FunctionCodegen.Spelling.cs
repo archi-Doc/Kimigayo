@@ -116,7 +116,7 @@ internal sealed partial class FunctionCodegen
                 local.TryFormat(text[2..], out var digits, default, CultureInfo.InvariantCulture);
                 return text[..(2 + digits)];
             case Home.Parameter:
-                return this.Spelled(new('p', slot.Index), text);
+                return this.Spelled(new('p', slot.Parameter), text);
             case Home.None:
                 this.module.Request(ModuleCodegen.Needs.ZeroSized);
                 text[0] = '@';

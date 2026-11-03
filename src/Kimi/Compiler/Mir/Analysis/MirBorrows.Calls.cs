@@ -132,7 +132,7 @@ internal sealed partial class MirBorrows
         {
             var target = this.targets[t];
             var value = this.Received(state, call, written, target, checks);
-            this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, Joined, issue: false);
+            this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, JoinedThrough, issue: false);
         }
     }
 

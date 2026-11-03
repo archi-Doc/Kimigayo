@@ -167,7 +167,7 @@ public sealed partial class Binding
             {
                 // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
                 // against it at the ordinary result fit; without such evidence the slot remains unsolved.
-                return arguments[slot] is not { } establishedArray || IsStructuralSubtype(establishedArray, actual);
+                return arguments[slot] is not { } establishedArray || FitsStructuralPart(establishedArray, actual);
             }
 
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
@@ -178,11 +178,11 @@ public sealed partial class Binding
                 actual = referent;
             }
 
-            if (evidence is { Binder: FunctionKoto { ClosureDefinition: not null } closure } && HasEnvironmentOrigin(actual, closure))
+            if (evidence is { Binder: FunctionKoto { ClosureDefinition: not null } closure } && this.HasEnvironmentOrigin(actual, closure))
             {
                 // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
-                this.environmentEvidence = true;
+                this.environmentEvidence ??= new(PendingJudgmentKind.EnvironmentResult, evidence.Value.Source, pattern.Symbol);
                 return true;
             }
 
@@ -202,7 +202,7 @@ public sealed partial class Binding
                 }
 
                 if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    IsStructuralSubtype(actual, previous) && IsStructuralSubtype(previous, actual))
+                    FitsStructuralPart(actual, previous) && FitsStructuralPart(previous, actual))
                 {
                     // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
                     // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
@@ -219,7 +219,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual) ?? previous;
+                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous;
                     }
 
                     return true;
@@ -235,7 +235,7 @@ public sealed partial class Binding
                     return true;
                 }
 
-                if (commonOrigins && this.CommonOriginType(previous, actual) is { } common)
+                if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
                     arguments[slot] = common;
                     return true;

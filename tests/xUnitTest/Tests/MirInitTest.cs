@@ -289,7 +289,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile(
             "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    $expect(helper(1) == a)\n    $expect((a < 4))\n",
             test: true);
-        var program = c.BuildMir();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
         var read = MirBuildTest.Records(body).Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).ToArray();
         Assert.Equal(3, read.Length);
@@ -299,7 +299,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
         }
 
-        new MirAnalysis(c.Types).Run(program);
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
@@ -331,14 +331,14 @@ public sealed class MirInitTest(ITestOutputHelper output)
     public void ASecuredNeverPlaceIsWritten()
     {
         var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc g2(a: Never, b: i32) => ()\nfunc absurd(x: Never) => g2(x, k())\n");
-        var program = c.BuildMir();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
         var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x.Callee.Symbol?.Name == "g2");
         var secured = body.Operands[call.Start];
         Assert.Equal((MirOperandKind.Move, MirLocalKind.Temp), (secured.Kind, body.Locals[secured.Place.Root].Kind));
         ref readonly var local = ref body.Locals[secured.Place.Root];
         Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
-        new MirAnalysis(c.Types).Run(program);
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
@@ -379,6 +379,21 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "func plain<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    let y: T\n    return y\n"));
         Assert.Empty(Problems(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "cases.kimi"))));
     }
+
+    // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)'s acceptance moves): the owner case of a pair layer over `uniq/i32`, directly or through its
+    // own binder's layer, Reborrows, and over a nested `t/U` acquires by that layer's cases, so the Place is usable again after the child's
+    // last use (before (b2) each was a Move, a false MovedPlace_Kd at the second use).
+    [Theory]
+    [InlineData("func exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local\n" +
+        "    let again = value\n    _ = again\nfunc nested<t/U, s/T>(value: s/t/U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n" +
+        "    U is Copy\n    let local = value\n    _ = local\n    let again = value\n    _ = again\npublic func main() -> ()\n    var n: i32 = 1\n" +
+        "    let r = n@uniq\n" +
+        "    exclusive<owner/i32>(r@move)\n    var m: i32 = 2\n    nested<owner/i32, owner/i32>(m)\n")]
+    [InlineData("func own<s/T>(value: s/(s/(uniq/i32 during a) during b)) -> ()\n    s is owner or ref\n    let local = value@follow\n    _ = local\n" +
+        "    let again = value@follow\n    _ = again\nfunc exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or ref\n    let local = value\n" +
+        "    _ = local\n    let again = value\n    _ = again\npublic func main() -> ()\n    var n: i32 = 1\n    let r = n@uniq\n    own<owner/i32>(r@move)\n" +
+        "    var m: i32 = 1\n    let q = m@uniq\n    exclusive<owner/i32>(q@move)\n")]
+    public void AnOwnerCaseReborrowLeavesItsPlaceUsable(string source) => Assert.Empty(Problems(source));
 
     // R4-M15a: a body whose state arena would exceed the analyses' byte limit (64 MiB) records OwnershipStorageLimit_Kd once, at the body,
     // and is not analyzed: N locals live across N branches need about N heads × 5 lanes × N/64 words, so the unset read of y is reported at
@@ -425,8 +440,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
     public void InitializationScalesLinearly(string group)
     {
-        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
             text.Append("func work(flag: bool)\n");
@@ -443,15 +459,21 @@ public sealed class MirInitTest(ITestOutputHelper output)
             var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            flow.Begin(body);
-            moves.Build(body, flow);
-            drops.Begin(body, sink);
-            cases.Select(body, 0);
-            Assert.True(init.Run(body, 0, sink.Problems));
-            drops.Judge(0);
-            drops.End();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            analyses[i] = (body, flow, moves, sink);
+            return () =>
+            {
+                flow.Begin(body);
+                moves.Build(body, flow);
+                drops.Begin(body, sink);
+                cases.Select(body, 0);
+                Assert.True(init.Run(body, 0, sink.Problems));
+                drops.Judge(0);
+                drops.End();
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (body, flow, moves, sink) = analyses[i];
             Assert.Equal(0, sink.Problems.All.Length);
             arena[i] = ArenaWords(body, flow, moves);
         }

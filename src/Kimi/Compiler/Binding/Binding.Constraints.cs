@@ -25,13 +25,21 @@ public sealed partial class Binding
     public ConstraintProof Prove(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto context)
         => this.ProveConstraint(this.SubstituteConstraint(constraint, binder, arguments), this.ConstraintScope(context));
 
+    // The scope a node's names and premises are judged in: its nearest enclosing scope, where a match arm's body is in its pattern's
+    // scope (SPEC 14.8.2) and a standard witness bridge has its conformance path's premises (SPEC 11.9.2).
     internal BindingScope ConstraintScope(Koto node)
     {
-        for (Koto? current = node; current is not null; current = current.Parent)
+        Koto? child = null;
+        for (Koto? current = node; current is not null; child = current, current = current.Parent)
         {
             if (current is FunctionKoto { IsPropertyWitness: true, BoundSymbol.Scope: { } bridge })
             {
                 return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
+            }
+
+            if ((current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) is { } armScope)
+            {
+                return this.NodeScope(node, armScope);
             }
 
             if (this.scopes.TryGetValue(current, out var scope))
@@ -76,6 +84,20 @@ public sealed partial class Binding
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
+
+    // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
+    private BindingScope? ArmScope(MatchKoto match, Koto body)
+    {
+        for (var i = 0; i < match.Arms.Count; i++)
+        {
+            if (ReferenceEquals(match.Arms[i].Body, body))
+            {
+                return this.scopes.GetValueOrDefault(match.Arms[i].Pattern);
+            }
+        }
+
+        return null;
+    }
 
     // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
     // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
@@ -176,10 +198,21 @@ public sealed partial class Binding
             // never Refuted (CallableOriginFailure explains it). A required signature over an open region is decided by the per-call
             // stand-in instead (SPEC 15.3.6, PerCallCallables). A Function Item's Origin conditions, its clauses and result premises, are
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
-            return (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner)
-                : this.CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject))) ? ConstraintProof.Proven
-                : ReferenceTypes.StorageMatches(proposition.RequiredType, signature) && !HasOpenOrigin(proposition.RequiredType!) ? ConstraintProof.Unknown
-                : ConstraintProof.Refuted;
+            // The Unknown's comparison failure joins the proof as its U fact (design-r2 Amendment 4).
+            var failure = default(ComparisonFailure);
+            if (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner, out failure)
+                : this.CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject), scope.Owner, out failure))
+            {
+                return ConstraintProof.Proven;
+            }
+
+            if (!ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
+            {
+                return ConstraintProof.Refuted;
+            }
+
+            this.ScopeReads.Unknown ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };
+            return ConstraintProof.Unknown;
         }
 
         if (proposition.Kind == ConstraintKind.Semantics)

@@ -157,9 +157,9 @@ internal sealed partial class HoverBuilder
 
         var effects = text.ToString().TrimEnd();
         info = info with { Effects = effects, TypeIdentity = new("effect evidence", keys.ToArray()) };
-        if (syntax.CodeContext.SourceDocument is { } source)
+        if (syntax.CodeContext.SourceDocument is { } source && SourceIdentity.TryFromPath(source.Path, out var identity))
         {
-            this.legacyEffects.Add(new(SourceIdentity.FromPath(source.Path), source.GetSourceRange(syntax.Span), effects));
+            this.legacyEffects.Add(new(identity, source.GetSourceRange(syntax.Span), effects));
         }
 
         return info;

@@ -132,7 +132,7 @@ public class VirtualAssociatedHeaderTest
         Assert.True(KotoHelper.Replace(c.Kotonoha.RootKoto, original, replacement));
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "U.Element");
+        Assert.Contains(TestDiagnostics.Of(c, original.CodeContext.SourceDocument!), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "U.Element");
         Assert.True(KotoHelper.Replace(c.Kotonoha.RootKoto, replacement, original));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }

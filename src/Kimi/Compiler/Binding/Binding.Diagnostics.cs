@@ -232,11 +232,19 @@ public sealed partial class Binding
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
     // SPEC 15.6.1, 23.1: the Reason names the comparison, the member, the relation and its two ends, rigid symbols of the comparison
     // displayed as the required contract writes them; an omitted end is related at its Type occurrence.
-    private static void ReportOriginContract(Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code)
+    private static void ReportOriginContract(
+        Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition = 0)
     {
         if (contract.Required is { } original)
         {
-            node.Report(requirement, code, evidence: ["implementation", contract.Member, contract.Equality ? "==" : "outlives", OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)], related: [("requirement", original, "the original implementation contract")], at: contract.At);
+            var relation = contract.Equality ? "==" : "outlives";
+            node.Report(
+                requirement,
+                code,
+                evidence: ["implementation", contract.Member, relation, OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)],
+                related: [("requirement", original, "the original implementation contract")],
+                at: contract.At,
+                condition: condition);
             return;
         }
 
@@ -255,11 +263,25 @@ public sealed partial class Binding
             // is related at the anonymous function's header.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             const string Note = "A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.7.4)";
-            node.Report(requirement, code, note: Note, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, relatedSpans: [("origin", closure, header, null)], at: contract.At);
+            node.Report(
+                requirement,
+                code,
+                note: Note,
+                evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
+                related: related,
+                relatedSpans: [("origin", closure, header, null)],
+                at: contract.At,
+                condition: condition);
             return;
         }
 
-        node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, at: contract.At);
+        node.Report(
+            requirement,
+            code,
+            evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
+            related: related,
+            at: contract.At,
+            condition: condition);
     }
 
     // The capture entry that names an environment binding, when the closure has a capture list.
@@ -347,140 +369,6 @@ public sealed partial class Binding
         _ => null,
     };
 
-    private string? ClosureConversionNote(Koto node, object actual, object expected)
-    {
-        if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)
-        {
-            return null;
-        }
-
-        // SPEC 10.5, 7.7.4: a generic reference binds its slots from the expected signature, and its Item converts only
-        // when its bound arguments are Owned.
-        if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
-        {
-            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
-                ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
-                : null;
-        }
-
-        if (actual is BoundType { Kind: BoundTypeKind.Function } && node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
-        {
-            return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
-        }
-
-        // The definition, not the closure as created: a closure that failed at a call argument or a default keeps it (SPEC 7.7.4).
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { } closure } declaration })
-        {
-            return null;
-        }
-
-        return closure.Receiver switch
-        {
-            SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
-            SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration)
-                ? "The closure's parameter or result contract does not match the expected common Function signature"
-                : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
-        };
-
-        // SPEC 10.5, 10.8: why the one generic candidate's slots did not bind from S, when the binding recorded it.
-        static string ReferenceSlotNote(ReferenceSlotFact? fact)
-        {
-            var prefix = fact is { } entry && ItemTypeArgumentCount(entry.Declaration) != entry.Declaration.GenericArguments.Count
-                ? "The generic function's Type and length parameters are bound from the expected signature without adaptations; "
-                : "The generic function's Type parameters are bound from the expected signature without adaptations; ";
-            var slot = fact is { Slot: >= 0 } known && known.Slot < known.Declaration.GenericArguments.Count
-                ? $"{(known.Declaration.GenericArguments[known.Slot] is LengthParameterKoto ? "length" : "Type")} parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a generic parameter";
-            return fact?.Failure switch
-            {
-                ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => prefix + $"the signature does not bind {slot}",
-                ReferenceSlotFailure.Structure => prefix + "no binding of them fits its structure",
-                ReferenceSlotFailure.Constraint => prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
-                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
-                    "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.OriginConflict => prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
-                    "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.InputOrigin => prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
-                    "which never becomes part of a bound Type argument (SPEC 10.5)",
-                _ => prefix + "no binding fits it, or a bound argument fails its Constraints",
-            };
-        }
-    }
-
-    // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
-    // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
-    // entry and related there.
-    private void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var subject = DiagnosticTypeName(owned.Subject);
-        var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
-        var origin = owned.Origin is not { } failing ? (DiagnosticOrigin?)null
-            : entry is { } written ? new DiagnosticOrigin("borrow", written.Name + "@" + written.Operation) : OriginDisplay(failing, owned.Borrow);
-
-        // SPEC 23.1: a borrow end is related at its syntax: a capture entry that borrows, or the Borrow a captured binding was
-        // initialized by; otherwise at the capture entry or the converted value. An omitted end is related at its Type occurrence.
-        (string Role, Koto Owner, SourceSpan Span, string? Label)[]? spans = null;
-        (string Role, Koto At, string? Label)[]? related = null;
-        if (origin is { Kind: "borrow" or "omitted" } relatedOrigin)
-        {
-            if (entry is { } at && owned.Closure is { } closure)
-            {
-                spans = [("origin", closure, at.Span, null)];
-            }
-            else if (relatedOrigin.Kind == "omitted" && OmittedAt(owned.Origin!) is { } occurrence)
-            {
-                related = [("origin", occurrence, null)];
-            }
-            else if (owned.Borrow is { } borrow)
-            {
-                related = [("origin", borrow, null)];
-            }
-            else if (owned.Entry is { } named && owned.Closure is { } owner)
-            {
-                spans = [("origin", owner, named.Span, null)];
-            }
-            else
-            {
-                related = [("origin", owned.At, null)];
-            }
-        }
-
-        string note;
-        if (owned.Closure is { } converted && PreparedCapture(converted, owned.Member) is { } preparedSource)
-        {
-            // SPEC 7.2.3: in a default, a capture of a preceding argument can neither move it nor keep a new borrow of it, and the
-            // closure always converts to the parameter's Function Type, so only a Copy that holds no borrow or a new parameter remain.
-            note = (origin is { } shown
-                ? $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
-                : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} is not proven Owned") +
-                "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
-            // An exclusive reference is captured by a Reborrow, which no proof makes valid there.
-            var parameter = $"give the Function Type a parameter for {owned.Member} and pass {owned.Member} where the function value is called";
-            // A borrowing entry of a Copy Owned argument, such as [k@ref] of k: i32, is repaired by its bare Copy entry, [k].
-        }
-        else if (owned.Closure is not null)
-        {
-            note = origin is { } shown
-                ? $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
-                : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} is not proven Owned";
-        }
-        else
-        {
-            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.7.4, 15.2.3); the {owned.Member} is not proven Owned";
-        }
-
-        object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
-
-        static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
-        {
-            "borrow" => "the borrow " + origin.Text,
-            "omitted" => "the omitted Origin of " + origin.Text,
-            "closure" => "the closure's " + origin.Text,
-            _ => origin.Text,
-        };
-    }
-
     /// <summary>Binds an expression against the Type that a written syntax supplies; when that syntax failed, a check that
     /// needs the expected Type names it as the prerequisite (SPEC 23.1.2).</summary>
     private BoundType? BindExpected(Koto node, BindingScope scope, BoundType? expected, Koto? supplier)
@@ -525,69 +413,75 @@ public sealed partial class Binding
     /// <param name="at">The smallest syntax that shows the mismatch, such as the value.</param>
     /// <param name="actual">The value's Type.</param>
     /// <param name="expected">The expected Type.</param>
+    /// <param name="failure">The failure of the comparison that decided, or <see cref="ComparisonFailure.Shape"/> for a description.</param>
     /// <returns><see langword="null"/>.</returns>
-    private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected)
-        => this.RecordMismatch(node, at, actual, expected);
+    private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
+        => this.RecordMismatch(node, at, actual, expected, failure);
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
     // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
     // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
     // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
     // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
-    // The signature and own binder an implementation converts to a common Function Type with (SPEC 7.7.4): a Function value, a Function
-    // Item proven Owned, or a closure with a Shared receiver and a proven Owned environment. Other failures stay Type mismatches.
-    private bool ConversionSignature(BoundType implementation, Koto use, out BoundType signature, out Koto? own)
-    {
-        own = SignatureOwner(implementation);
-        signature = implementation;
-        if (implementation.Kind == BoundTypeKind.Function)
-        {
-            return implementation.Components.Count == 2;
-        }
-
-        if (implementation.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(implementation) is { } item && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            signature = item;
-            return true;
-        }
-
-        if (BoundClosure.Of(implementation) is { Receiver: SemanticsKind.Ref } &&
-            this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            signature = closure;
-            return true;
-        }
-
-        return false;
-    }
-
-    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
+    // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
+    // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
+    // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
+    // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
+    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } owner && actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
+        if (expected is BoundType { Kind: BoundTypeKind.Function } owner &&
+            actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
             this.FailOwnedConversion(value, owner, at, node))
         {
             return null;
         }
 
-        // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is
-        // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
-            this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
-            (implementation.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(implementation, signature, required, at, node)
-            : this.ConversionContractFailure(signature, required, own, at, node)) is { } contract)
+        var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
-            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
-        }
-
-        // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
-        if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
-            this.RecordOriginFitFailure(node, at, actualType, expectedType))
-        {
-            return null;
+            return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
+                : this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
         }
 
         return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+    }
+
+    // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
+    // and the others published with it (RecordFurtherOriginRecord): each Function component's failed condition is one
+    // UnprovenOriginContract_Kd at the value (ContractFact); the plain positions are recorded once, by RecordOriginFitFailure, whose search
+    // skips the Function components the walk judged; a limit is the located Unsupported_Kd. The walk's facts are read only when their
+    // first is `failure` (another fit may have walked since); otherwise `failure` is the one fact.
+    private BoundType? RecordComparisonFacts(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
+    {
+        if (failure.Kind == ComparisonFailureKind.Limit)
+        {
+            return this.Fail(node, BindingFailure.Unsupported);
+        }
+
+        var facts = this.comparisonFacts;
+        var count = facts.Count != 0 && facts[0].Same(failure) ? facts.Count : 1;
+        var positions = !failure.IsCondition;
+        if (!positions)
+        {
+            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure, node));
+        }
+
+        for (var i = 1; i < count; i++)
+        {
+            if (facts[i].IsCondition)
+            {
+                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
+            }
+            else
+            {
+                positions |= facts[i].Kind is ComparisonFailureKind.Position or ComparisonFailureKind.Shape;
+            }
+        }
+
+        // A plain position the walk met is always found by its search; one that is not is a broken contract (design-r2 §2).
+        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && node.BindingFailure == BindingFailure.None
+            ? this.Fail(node, BindingFailure.Internal) : null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
@@ -611,7 +505,7 @@ public sealed partial class Binding
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target), target);
+        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target, out _), target);
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
         => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
@@ -730,14 +624,17 @@ public sealed partial class Binding
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
+        this.erasureOutcomes?.Clear();
         this.callableConstraints?.Clear();
-        this.referenceConstraints?.Clear();
+        this.clauseConstraints?.Clear();
+        this.pendingJudgments?.Clear();
         this.operatorOperands?.Clear();
         this.arithmeticConformanceFailures?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
+        this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.arityFailures?.Clear();
@@ -752,6 +649,7 @@ public sealed partial class Binding
         this.prerequisites.Clear();
         this.partPrerequisites.Clear();
         this.specificationLinks?.Clear();
+        this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();
         this.derivedIssues.Clear();
         this.consulted.Clear();

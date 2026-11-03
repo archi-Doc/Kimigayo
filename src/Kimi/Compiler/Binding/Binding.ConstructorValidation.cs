@@ -94,6 +94,7 @@ public sealed partial class Binding
         var argumentCount = call.ArgumentNodes.Count;
         var checkedCandidates = this.candidateScratch.Rent(count);
         var checkedOperations = this.argumentOperationScratch.Rent(count * stride);
+        Span<Contribution> contributions = stackalloc Contribution[argumentCount];
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -150,6 +151,7 @@ public sealed partial class Binding
                         Origins = origins,
                         Inputs = inputs,
                         FixedConstruction = true,
+                        Contributions = contributions, // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                     },
                     [],
                     mapping,
@@ -180,7 +182,7 @@ public sealed partial class Binding
                         }
 
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-                        var contextPattern = this.WasWaitingPart(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
+                        var contextPattern = this.WasDeferred(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&

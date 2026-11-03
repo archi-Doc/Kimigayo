@@ -255,9 +255,9 @@ public sealed partial class OwnershipAnalysis
                 issue.Source.Report(
                     requirement,
                     issue.Code,
-                    note: CaseNote(null, defaultCase, singleDefaultCase),
-                    evidence: CaseEvidence(issue.Code, null, defaultCase),
-                    related: this.WithCaseDeclarations(issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, defaultCase));
+                    note: Binding.CaseNote(null, defaultCase, singleDefaultCase),
+                    evidence: Binding.CaseEvidence(issue.Code, null, defaultCase),
+                    related: Binding.WithCaseDeclarations(issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, this.namedBinders, defaultCase));
                 continue;
             }
 
@@ -325,9 +325,9 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(
                 requirement,
                 issue.Code,
-                note: CaseNote(AcquisitionNote(issue), found, single),
-                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
-                related: this.WithCaseDeclarations(RelatedLocations(issue), found),
+                note: Binding.CaseNote(AcquisitionNote(issue), found, single),
+                evidence: Binding.CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
+                related: Binding.WithCaseDeclarations(RelatedLocations(issue), this.namedBinders, found),
                 span: SignatureSpan(issue.Source),
                 repairs: transfer && judgment != AcquisitionJudgment.Refuted ? Binding.TransferRepair(issue.Source, issue.Source, judgment) : null);
         }
@@ -379,21 +379,10 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
-                note: CaseNote(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer, found, single),
-                evidence: CaseEvidence(issue.Code, null, found),
-                related: this.WithCaseDeclarations(related, found),
+                note: Binding.CaseNote(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer, found, single),
+                evidence: Binding.CaseEvidence(issue.Code, null, found),
+                related: Binding.WithCaseDeclarations(related, this.namedBinders, found),
                 relatedSpans: spans);
-        }
-
-        // SPEC 8.15, 23.1.2: a problem found under some Semantics cases names them in its Note.
-        static string? CaseNote(string? note, string? found, bool single)
-            => found is null ? note : (note is null ? "Found" : note + "; found") + (single ? " under the Semantics case " : " under the Semantics cases ") + found + " (SPEC 8.15)";
-
-        // The `case` fact closes the evidence alternative of the codes that carry it; a code without the alternative keeps its Note.
-        static object?[]? CaseEvidence(DiagnosticCode code, object? target, string? found)
-        {
-            var withCase = found is not null && HasCaseEvidence(code);
-            return target is null ? (withCase ? [found] : null) : withCase ? [target, found] : [target];
         }
 
         static string CaptureText(CaptureKoto entry)
@@ -965,7 +954,9 @@ public sealed partial class OwnershipAnalysis
                 return -1;
             }
 
-            var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);
+            // SPEC 7.7.4 (DECISIONS BU-83): erasure acquires its source ordinarily, by its bare acquisition; a committed acquisition is
+            // the erased value's, which Argument checks against the temporary below. Removed with the old Analysis at H10b.
+            var source = this.ExpressionCore(node, PlaceUseKind.Consume, null);
             if (source < 0)
             {
                 return -1;

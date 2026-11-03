@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 // - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
-//   other chains through RecordMoreRelation, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
+//   other chains through RecordFurtherOriginRecord, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
 //   or fails it Unsupported, and returns whether a position failed; a record at a body chain adds the fit's position rows
 //   (CheckTypeUse, DECISIONS R4-M108) and makes its node a twin (IsTwinRecord, DECISIONS R4-M111).
 // - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state;
@@ -55,7 +55,7 @@ public sealed partial class Binding
     private void ResetOriginRecords()
     {
         this.originRelations?.Clear();
-        this.callRelations?.Clear();
+        this.furtherOriginRecords?.Clear();
         this.originTwins?.Clear();
     }
 
@@ -112,7 +112,7 @@ public sealed partial class Binding
 
         if (this.RecordOriginChains(node, at, this.formingBody, expected, recorded, cause))
         {
-            _ = this.CheckTypeUse(actual, expected, node);
+            _ = this.CheckTypeUse(actual, expected, node, out _);
         }
 
         return true;
@@ -120,7 +120,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 23.1.2 (DECISIONS R4-M133): the one recording of an Origin relation failure's chains, a fit's at binding time and a
     // pending relation's at its Closure's classification: the chains in `relationScratch`, `recorded` the node's own record and the
-    // others published with it (RecordMoreRelation), each at `at` with the destination Type (none for a relation without one). A
+    // others published with it (RecordFurtherOriginRecord), each at `at` with the destination Type (none for a relation without one). A
     // failure with a `cause`, the failed clause it rests on (UnrefutedCause), is that clause's dependent instead. Returns whether a
     // recorded chain is a body chain of `body`, its ends resolved at the use; the node is then a twin (DECISIONS R4-M108, R4-M111).
     private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded, Koto? cause)
@@ -133,19 +133,25 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
+        // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it. Beside a node whose
+        // own record is a comparison's contract (RecordComparisonFacts), every chain is published with that record.
         var rows = false;
-        for (var i = 0; i < all.Count && node.BindingFailure == BindingFailure.None; i++)
+        var further = node.BindingFailure == BindingFailure.OriginContract;
+        for (var i = 0; i < all.Count && (further || node.BindingFailure == BindingFailure.None); i++)
         {
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
-            if (!all[i].Equals(recorded))
+            if (further || !all[i].Equals(recorded))
             {
-                this.RecordMoreRelation(node, all[i] with { At = at, Destination = destination });
+                this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));
             }
         }
 
         all.Clear();
-        this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = destination });
+        if (!further)
+        {
+            this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = destination });
+        }
+
         if (rows)
         {
             (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(node);
@@ -156,7 +162,7 @@ public sealed partial class Binding
 
     // The position search of one fit or one relation (SPEC 15.6.1, 15.6.5; DECISIONS R4-M133).
     // - Responsibility: the first, or with `all` every, Origin position whose relation fails, in the order of the outer borrow layer, the
-    //   Semantics target, then slots and Type arguments, by the variance FitsTypeCore and CheckTypeUse compose (FailedOriginRelation,
+    //   Semantics target, then slots and Type arguments, by the variance RelationWalk and CheckTypeUse compose (FailedOriginRelation,
     //   FailedOriginPart); for a meet at the longer end, the chain of a failing operand, Refuted before Unknown (FailedChain,
     //   AddFailingChains, FailingOperand, OriginPartFails).
     // - Inputs, its constant context: the use, the body that formed the relation (whose classes and judge decide its chains: an
@@ -173,7 +179,7 @@ public sealed partial class Binding
         // Type arguments, whose relation fails; `==` at an invariant position. It is Refuted when the longer end is a body-local finite
         // Origin and the shorter end a fixed one, and Unknown otherwise. With `all`, every failing position, and every failing operand of
         // a meet at its longer end, is added in that order (SPEC 15.6.1: every failed chain is reported).
-        // `polarity` is the variance of the compared position within the fitted Type, composed as FitsTypeCore and CheckTypeUse compose
+        // `polarity` is the variance of the compared position within the fitted Type, composed as RelationWalk and CheckTypeUse compose
         // it (SPEC 15.3.5): a contravariant position names the reverse relation, and an invariant or unused one an `==`, also for every
         // position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
         internal OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, OriginVariance polarity, int depth = 0)
@@ -195,6 +201,13 @@ public sealed partial class Binding
                 }
 
                 first ??= layer;
+            }
+
+            // Transitional until G216 (a) U2.2 removes this search (DECISIONS R4-M155, Staged): a Function component is one comparison,
+            // which the fit's walk judged and records as its contract fact (RecordComparisonFacts), so its members are no plain positions.
+            if (mode != OriginFitMode.Verified && actual.Kind == BoundTypeKind.Function)
+            {
+                return first;
             }
 
             var exclusive = IsInvariantLayer(actual, binding);

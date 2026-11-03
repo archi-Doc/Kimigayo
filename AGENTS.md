@@ -74,6 +74,7 @@ SPEC correctness and the native O2 run-time and allocation guarantees are constr
 # Diagnostics
 
 - Specification violations are Language diagnostics, valid but unimplemented forms the single location-only `Unsupported_Kd`, and internal contract violations Internal errors. A valid form that no common rule covers yet stays `Unsupported_Kd`: never accept a narrow subset of it or report a conservative Language error for it.
+- Report every independent failure (SPEC 23.1.2). Suppress a dependent record only where a check reads a failed or resting input directly (a node's own verdict over a failed child, a derived failure) whose record, or the record it rests on, is reported; otherwise report it. Never build an analysis that decides dependence beyond those inputs. Record differences are regressions only as [WORKFLOW](docs/dev/WORKFLOW.md#review) states (DECISIONS Q13); its other blocking findings stand.
 - A check records typed facts where it fails; message text comes only from the diagnostics adapter, and no check re-runs inference or proof to explain a failure. Follow SPEC §23 and [DIAGNOSTICS](docs/dev/DIAGNOSTICS.md); never invent evidence, Advice or repair guarantees. Apply [DIAGNOSTIC_WORKFLOW](docs/dev/DIAGNOSTIC_WORKFLOW.md) only on explicit request.
 
 # Verification and Delivery

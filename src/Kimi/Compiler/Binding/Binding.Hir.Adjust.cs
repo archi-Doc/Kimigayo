@@ -101,11 +101,14 @@ public sealed partial class Binding
             case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
                 uses.FixAdjust(transfer.Left, new(HirAcquire.Move, HirAdaptation.None));
                 break;
-            case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent and a runtime test use their operand in place.
+            case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent, a runtime test and a case adaptation (SPEC 8.14, 13.5.3:
+                // its Adapt reads a Place in place and a value through a Temporary; R6-check Q14 (b)) use their operand in place.
+                var inPlace = op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest ||
+                    node is ConversionKoto { ConversionBinding: ConversionBinding.CaseAdaptation };
                 uses.Use(
                     node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left,
                     ViewBorrow(node),
-                    op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest ? UseKind.InPlace : UseKind.Acquisition);
+                    inPlace ? UseKind.InPlace : UseKind.Acquisition);
                 break;
             case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
                 var adaptation = this.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None;
@@ -269,10 +272,11 @@ public sealed partial class Binding
     // The claim a use's operation makes on its child (R4-M142's `claimed`): its target needs exclusive capability of what it takes.
     private bool Claims(in BoundArgumentOperation operation) => this.Exclusive(operation.AdaptedType ?? operation.ParameterType);
 
-    // The claim a fixed Adjust makes on its child (SPEC 10.2, 4.7.2, 8.14): an exclusive borrow, or the Reborrow or pair-case acquisition of
-    // a child whose Type needs exclusive capability.
+    // The claim a fixed Adjust makes on its child (SPEC 10.2, 4.7.2, 8.14): an exclusive borrow, the Reborrow of a child whose Type needs
+    // exclusive capability, or a pair-case acquisition that Reborrows in some case (BareReborrows, the owner case's target included).
     private bool Claims(Koto child, HirAdjust adjust) => adjust.Adaptation == HirAdaptation.ExclusiveBorrow ||
-        (adjust.Acquire is HirAcquire.Reborrow or HirAcquire.ByCase && this.Exclusive(child.BoundType));
+        (adjust.Acquire == HirAcquire.Reborrow && this.Exclusive(child.BoundType)) ||
+        (adjust.Acquire == HirAcquire.ByCase && child.BoundType is { } type && this.BareReborrows(type, child));
 
     // Whether an acquisition's target needs exclusive capability of what it takes (SPEC 4.7.1, 13.5.5): an exclusive reference or object
     // view, or a pair layer admitting one, whose exclusive case does.

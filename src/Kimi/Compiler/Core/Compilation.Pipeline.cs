@@ -4,8 +4,9 @@
 // Input: a prepared compilation. Output: analysis, the validated and analyzed MIR with its checked set, and diagnostics, the same on every
 // pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
 // Until R6 the legacy path decides acceptance; the MIR's construction records, validator findings and every record of its checked set join
-// it through the same Problem publication (SPEC 8.15.3, 23.2.2; DECISIONS R5-M156); its analysis problems stay unpublished (R4-M1, until
-// H3). Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
+// it through the same Problem publication (SPEC 8.15.3, 23.2.2; DECISIONS R5-M156), the records read as the program's record classes
+// (MirProgram.Records, R6-check H3-1); its analysis problems stay unpublished (R4-M1, until H3).
+// Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
 using Kimi.Compiler.Parsing;
@@ -23,7 +24,7 @@ public partial class Compilation
     private Mir.MirBuilder? mirBuilder;
     private Mir.MirAnalysis? mirAnalysis;
     private Backend.InstanceCollector? instances;
-    private Backend.CheckedSet? collected; // The checked set of the latest Analyze; null before one and after invalidation.
+    private Mir.MirProgram? collected; // The program the latest collection recorded into; null before one and after invalidation.
     private Mir.MirProgram? mir; // The MIR of the latest Analyze; null before one and after invalidation.
 
     /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and the MIR's of the
@@ -104,7 +105,7 @@ public partial class Compilation
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
     internal Mir.MirProgram BuildMir()
     {
-        var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
+        var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build(), this.SourceModules.Length);
         this.Collect(program);
         return program;
     }
@@ -119,7 +120,10 @@ public partial class Compilation
     // The checked set of a built and validated program, on every pipeline (SPEC 8.15.3: its layout obligations are judged at check), the
     // one the records of the latest Analyze come from.
     private void Collect(Mir.MirProgram program)
-        => this.collected = (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
+    {
+        (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
+        this.collected = program;
+    }
 
     // The MIR records of the latest Analyze, added to the list when one is given: the construction records and validator findings, the
     // library's as well as the source modules', and every record of the checked set (SPEC 23.2.2: check reports every error of the checked
@@ -129,24 +133,27 @@ public partial class Compilation
         var count = 0;
         if (this.mir is { } program)
         {
-            count += program.Records.Count + program.Findings.Count;
-            if (into is not null)
+            count = Add(program.Records(Mir.MirRecordClass.Construction), into);
+            count += program.Findings.Count;
+            foreach (var finding in program.Findings)
             {
-                into.AddRange(program.Records);
-                foreach (var finding in program.Findings)
-                {
-                    into.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
-                }
+                into?.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
             }
         }
 
-        if (this.collected is { } set)
-        {
-            count += set.Records.Count;
-            into?.AddRange(set.Records);
-        }
+        return this.collected is { } collected ? count + Add(collected.Records(Mir.MirRecordClass.Collection), into) : count;
 
-        return count;
+        static int Add(Mir.MirProgram.RecordRows rows, List<Problem>? into)
+        {
+            var count = 0;
+            foreach (var row in rows)
+            {
+                count++;
+                into?.Add(row);
+            }
+
+            return count;
+        }
     }
 }
 

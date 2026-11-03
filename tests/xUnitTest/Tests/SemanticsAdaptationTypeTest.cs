@@ -104,8 +104,8 @@ public class SemanticsAdaptationTypeTest
         var same = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
         var expected = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);
         Assert.Equal(SemanticsMask.Ref, c.Binding.ResultSemantics(actual, pair.Scope));
-        Assert.True(c.Binding.FitsTypeAt(actual, same, function));
-        Assert.False(c.Binding.FitsTypeAt(actual, expected, function));
+        Assert.True(c.Binding.FitsTypeAt(actual, same, function, out _));
+        Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Owner)];
         Assert.Same(reference, c.Binding.CaseType(actual, cases));
     }
@@ -129,7 +129,7 @@ public class SemanticsAdaptationTypeTest
         var shorter = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
         var actual = c.Binding.SemanticsAdaptation(pair, longer, BoundOrigin.Static);
         var expected = c.Binding.SemanticsAdaptation(pair, shorter, BoundOrigin.Static);
-        Assert.False(c.Binding.FitsTypeAt(actual, expected, function));
+        Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Raw)];
         Assert.False(Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
     }

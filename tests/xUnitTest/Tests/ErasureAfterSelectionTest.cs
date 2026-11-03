@@ -13,6 +13,18 @@ public class ErasureAfterSelectionTest
 {
     private const string Call = "func call(action: (i32) -> i32, x: i32) -> i32 => action(x)\nfunc run<T>(action: (T) -> i32, x: T) -> i32 => action(x@move)\n";
 
+    private const string ValueH = "func k(h: ((i32) -> i32, i32) -> i32) -> i32\n";
+
+    private const string Copied = "    let y: i32 = 2\n    let f = func [y] (n: i32) => n + y\n";
+
+    private const string FieldS = "struct S\n    public var h: ((i32) -> i32, i32) -> i32\nfunc k(s: ref/S) -> i32\n";
+
+    private const string ActEnum = "enum Act\n    Run((i32) -> i32)\nfunc k() -> Act\n";
+
+    private const string ActRun = "enum Act\n    Run((i32) -> i32)\nfunc k() -> i32\n";
+
+    private const string NonCopy = "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n";
+
     [Theory]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
@@ -62,6 +74,69 @@ public class ErasureAfterSelectionTest
     [Fact]
     public void AnOwnedSharedClosureConverts()
         => ScalarEmissionTest.EmitFixture("ErasureAfterSelectionValid", Call + "let y: i32 = 2\nlet f = func [y] (n: i32) => n + y\nrequire call(f, 1) == 3 and run(f, 2) == 4 else => $abort(\"valid\")", string.Empty);
+
+    // SPEC 7.7.4, 3.5, 12.5.2 (G341, rule E, DECISIONS BU-83): an erasure acquires its source ordinarily, by bare acquisition of the
+    // source's own Type, so a stored Copy Closure converts at a value call's Function parameter as at a named call's (en_ok), whatever
+    // the callee: a parameter (ev_ok, ev_nocap, ev_implicit, ev_twice), a `ref/` parameter (ev_refh), a local of a Function Type
+    // (ev_local), a Function Item local (ev_localitem), a Field (ev_field, ev_fieldp) or a Closure (ev_clos). A Non-Copy source (ev_nc)
+    // and a value already of the erased Type (ev_erased) still need `@move`.
+    [Theory]
+    [InlineData("ev_ok", ValueH + Copied + "    return h(f, 1)\n", "")]
+    [InlineData("ev_nocap", ValueH + "    let f = func [] (n: i32) => n + 1\n    return h(f, 1)\n", "")]
+    [InlineData("ev_implicit", ValueH + "    let y: i32 = 2\n    let f = func (n: i32) => n + y\n    return h(f, 1)\n", "")]
+    [InlineData("ev_twice", ValueH + Copied + "    return h(f, 1) + h(f, 2)\n", "")]
+    [InlineData("ev_refh", "func k(h: ref/(((i32) -> i32, i32) -> i32)) -> i32\n" + Copied + "    return h(f, 1)\n", "")]
+    [InlineData("ev_local", Call + "func k() -> i32\n    let h: ((i32) -> i32, i32) -> i32 = call\n" + Copied + "    return h(f, 1)\n", "")]
+    [InlineData("ev_localitem", Call + "func k() -> i32\n    let h = call\n" + Copied + "    return h(f, 1)\n", "")]
+    [InlineData("ev_field", FieldS + Copied + "    return s.h(f, 1)\n", "")]
+    [InlineData("ev_fieldp", FieldS + Copied + "    return (s.h)(f, 1)\n", "")]
+    [InlineData("ev_clos", "func k() -> i32\n    let g = func [] (a: (i32) -> i32, x: i32) -> i32 => a(x)\n" + Copied + "    return g(f, 1)\n", "")]
+    [InlineData("en_ok", Call + "func k() -> i32\n" + Copied + "    return call(f, 1)\n", "")]
+    [InlineData("ev_nc", ValueH + "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n    return h(f, 1)\n", "TransferRequired_Kd f")]
+    [InlineData("ev_erased", ValueH + "    let y: i32 = 2\n    let f: (i32) -> i32 = func [y] (n: i32) => n + y\n    return h(f, 1)\n", "TransferRequired_Kd f")]
+    public void AStoredCopyClosureErasesAtAValueCallAsAtANamedCall(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 3.5, 6.5.2 (G341, rule E, DECISIONS BU-83): a Case payload at a Function Type acquires its erased source by the
+    // source's own Type too, contextual (ec_ok) or qualified (ec_q); a Non-Copy source still needs `@move` (ec_nc).
+    [Theory]
+    [InlineData("ec_ok", ActEnum + Copied + "    return .Run(f)\n", "")]
+    [InlineData("ec_q", ActEnum + Copied + "    return Act.Run(f)\n", "")]
+    [InlineData("ec_nc", ActEnum + "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n    return .Run(f)\n", "TransferRequired_Kd f")]
+    public void AStoredCopyClosureErasesAtACasePayload(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 3.5, 23.1.2 (G341, rule E, DECISIONS BU-83): Binding judges an erased source's bare acquisition once, at the source,
+    // so a Non-Copy source's record stands beside an independent one (q_v_nc_berr, r_geninst_nc), inside a payload's failing argument
+    // (p_typemis) and at each use, with no Move of the source (r_twice_nc).
+    [Theory]
+    [InlineData("q_v_nc_berr", ValueH + NonCopy + "    return h(f, 1)\nfunc z() -> i32\n    return \"x\"\n", "TransferRequired_Kd f; TypeMismatch_Kd \"x\"")]
+    [InlineData("r_geninst_nc", "func k<T>(h: ((i32) -> i32, i32) -> i32, t: T) -> i32\n" + NonCopy + "    return h(f, 1)\nfunc m(h: ((i32) -> i32, i32) -> i32) -> i32\n    return k(h, 1)\n", "TransferRequired_Kd f; TransferRequired_Kd h")]
+    [InlineData("p_typemis", "enum Act\n    Run((i32) -> i32)\nfunc k(h: ((i32) -> i32, i32) -> i32) -> Act\n" + NonCopy + "    return .Run(h(f, 1) + 0)\n", "TransferRequired_Kd f")]
+    [InlineData("r_twice_nc", ValueH + NonCopy + "    return h(f, 1) + h(f, 2)\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
+    public void ANonCopyErasedSourceIsBindingsRecordAtEachUse(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 3.5 (G341, rule E, DECISIONS BU-83): a payload's erasure Copies a Copy source, which stays usable afterwards
+    // (p_useafter_ok, p_useafter2_ok, p_gen_useafter_ok), in a second payload (p_twice_ok) or at a value call (p_then_v_ok); the
+    // payload slot's Move takes only the fresh erased value. A Non-Copy source still needs `@move` at each payload (p_twice_nc).
+    [Theory]
+    [InlineData("p_useafter_ok", ActRun + Copied + "    let a = Act.Run(f)\n    return f(1)\n", "")]
+    [InlineData("p_useafter2_ok", ActRun + Copied + "    let a: Act = .Run(f)\n    return f(1)\n", "")]
+    [InlineData("p_twice_ok", ActRun + Copied + "    let a = Act.Run(f)\n    let b = Act.Run(f)\n    return 1\n", "")]
+    [InlineData("p_then_v_ok", "enum Act\n    Run((i32) -> i32)\n" + ValueH + Copied + "    let a = Act.Run(f)\n    return h(f, 1)\n", "")]
+    [InlineData("p_gen_useafter_ok", "enum Act<T>\n    Run((T) -> T)\nfunc k() -> i32\n" + Copied + "    let a: Act<i32> = .Run(f)\n    return f(1)\n", "")]
+    [InlineData("p_twice_nc", ActRun + NonCopy + "    let a = Act.Run(f)\n    let b = Act.Run(f)\n    return 1\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
+    public void APayloadErasureLeavesACopySourceUsable(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // The program's records, each `Code text` in report order ("; " between them), with a startup body.
+    private static void AssertRecords(string form, string source, string records)
+    {
+        source += "public func main() -> () => ()\n";
+        var shown = string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"));
+        Assert.True(shown == records, $"{form}: expected [{records}], found [{shown}]");
+    }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
 }

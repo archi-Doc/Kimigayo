@@ -225,7 +225,7 @@ public sealed class HoverImprovementsTest
         Assert.EndsWith("(z/second.kimi)", body);
         var original = entry.Info.Declarations[0];
         var duplicated = original with { Origins = [original.Origins[0], original.Origins[0], original.Origins[1]] };
-        Assert.Equal(body, HoverRenderer.Render(entry.Info with { Declarations = [duplicated] }, false).Body);
+        Assert.Equal(body, HoverRenderer.Render(entry.Info with { Declarations = [duplicated] }, false, HoverPlacement.Canonical).Body);
     }
 
     [Fact]
@@ -239,6 +239,8 @@ public sealed class HoverImprovementsTest
         Assert.Equal(plain.Info.Use, applied.Info.Use);
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): hover names a source by its own module's logical name, never relative to the consuming project:
+    // a dependency's source relative to its project, any other path by its own text; a built-in source has none.
     [Fact]
     public void DependencyAndUnknownSourceBasesNeverUseTheConsumingProjectAsAFallback()
     {
@@ -246,19 +248,75 @@ public sealed class HoverImprovementsTest
         var root = Path.GetFullPath("temp/dependency-hover");
         var known = new Kotonoha(compilation, "Dependency", Path.Combine(root, "Dependency.kimiproj"));
         known.AddSource(new(Path.Combine(root, "src", "Model.kimi"), "struct Model\n"));
-        Assert.Equal("src/Model.kimi", known.HoverSourceName(0));
+        Assert.Equal("src/Model.kimi", known.HoverSourceName(known.SourceDocuments[0]));
         var unknown = new Kotonoha(compilation, "Unknown", "unmapped-project");
         unknown.AddSource(new(Path.Combine(root, "Model.kimi"), "struct Model\n"));
-        Assert.Null(unknown.HoverSourceName(0));
+        Assert.Equal(Path.Combine(root, "Model.kimi").Replace(Path.DirectorySeparatorChar, '/'), unknown.HoverSourceName(unknown.SourceDocuments[0]));
         var embedded = new Kotonoha(compilation, "Embedded", string.Empty);
         embedded.AddSource(new("compiler://Kimi/Model.kimi", "struct Model\n"));
-        Assert.Null(embedded.HoverSourceName(0));
+        embedded.AddSource(new("https://example.test/Model.kimi", "struct Model\n"));
+        Assert.Null(embedded.HoverSourceName(embedded.SourceDocuments[0]));
+        Assert.Equal("https://example.test/Model.kimi", embedded.HoverSourceName(embedded.SourceDocuments[1]));
         if (OperatingSystem.IsWindows())
         {
             var otherDrive = new Kotonoha(compilation, "OtherDrive", @"Y:\Dependency\Dependency.kimiproj");
             otherDrive.AddSource(new(@"Z:\src\Model.kimi", "struct Model\n"));
-            Assert.Null(otherDrive.HoverSourceName(0));
+            Assert.Equal("Z:/src/Model.kimi", otherDrive.HoverSourceName(otherDrive.SourceDocuments[0]));
         }
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): hover names a source by its logical name, which no path makes throw: a NUL inside the base of a
+    // project without a directory (the captured current directory) keeps its relative name; a path outside the base its own text.
+    [Fact]
+    public void HoverNamesASourceByItsLogicalNameWithoutThrowing()
+    {
+        var compilation = Compilation.CreateForTest();
+        var outside = Path.Combine(Path.GetDirectoryName(Directory.GetCurrentDirectory())!, "Outside.kimi");
+        compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct A\n"));
+        compilation.Kotonoha.AddSource(new(outside, "struct B\n"));
+        Assert.Equal("a\0b.kimi", compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[0]));
+        Assert.Equal(outside.Replace(Path.DirectorySeparatorChar, '/'), compilation.Kotonoha.HoverSourceName(compilation.Kotonoha.SourceDocuments[1]));
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a declaration moved into another module (the public AddLast) keeps its document's name, which the
+    // module the document came from gives (CodeContext.SourceModule), not one relative to the module it moved into.
+    [Fact]
+    public void AMovedDeclarationKeepsItsDocumentsName()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.CollectHover = true;
+        compilation.Project.Directory = Path.GetFullPath("moved-root");
+        var library = Path.GetFullPath("moved-library");
+        var other = new Kotonoha(compilation, "Other", Path.Combine(library, "Other.kimiproj"));
+        other.AddSource(new(Path.Combine(library, "src", "Moved.kimi"), "struct Moved\n"));
+        var moved = KotoTree.Walk(other.RootKoto).OfType<Kimi.Compiler.Parsing.StructKoto>().Single();
+        const string source = "func use(value: Moved) => ()\n";
+        var main = Path.Combine(compilation.Project.Directory, "Main.kimi");
+        compilation.Kotonoha.AddSource(new(main, source));
+        compilation.Kotonoha.RootKoto.AddLast(moved);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
+        var document = HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath(main)];
+        var entry = At(document, source.IndexOf("Moved", StringComparison.Ordinal));
+        var origin = Assert.Single(Assert.Single(entry.Info.Declarations).Origins);
+        Assert.Equal(("src/Moved.kimi", Path.Combine(library, "Other.kimiproj")), (origin.LogicalName, origin.Project));
+    }
+
+    // PLAN G346 (DECISIONS R5-M175): a document whose path has an embedded NUL, which no client can name, has no hover
+    // (SourceIdentity.TryFromPath), and the snapshot keeps every other document, where its build threw before.
+    [Fact]
+    public void AHoverSnapshotLeavesOutADocumentNoClientCanName()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.CollectHover = true;
+        var named = Path.Combine(Directory.GetCurrentDirectory(), "Named.kimi");
+        compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct Value\n"));
+        compilation.Kotonoha.AddSource(new(named, "struct Other\n"));
+        Assert.True(compilation.Bind().IsComplete);
+        var snapshot = HoverBuilder.Create(compilation);
+        Assert.True(Assert.Single(snapshot.Documents).Value.Find(7) >= 0);
+        Assert.True(snapshot.Documents.ContainsKey(SourceIdentity.FromPath(named)));
     }
 
     [Fact]
@@ -279,7 +337,7 @@ public sealed class HoverImprovementsTest
         var documentation = new HoverDocumentation(source, new(0, source.SourceText.Length), 0, "Project", "src/A.kimi", null, 0, default, []);
         var declaration = new HoverDeclaration("Type", "Project", "struct A", [new("Project", "physical.kimi", default, "src/A.kimi")], [documentation]);
         var info = new HoverInfo([declaration]);
-        var rendered = HoverRenderer.Render(info, true);
+        var rendered = HoverRenderer.Render(info, true, HoverPlacement.Canonical);
         Assert.Contains("Documentation truncated:", rendered.Body);
         Assert.EndsWith("(src\\/A\\.kimi)", rendered.Body);
         Assert.True(rendered.Body!.Length <= HoverLimits.Output);
@@ -296,7 +354,8 @@ public sealed class HoverImprovementsTest
         var second = Project(source);
         var identity = SourceIdentity.FromPath("main.kimi");
         using var text = new TextDocument(source);
-        var state = new HoverState([new(new(identity, UnitKind.Product, "one"), 1, first), new(new(identity, UnitKind.Product, "two"), 2, second)], true);
+        HoverParticipant[] participants = [new(new(identity, UnitKind.Product, "one"), 1, first), new(new(identity, UnitKind.Product, "two"), 2, second)];
+        var state = new HoverState(participants, true, HoverPlacement.Canonical);
         var positions = new[] { new SourcePosition(1, 8), new SourcePosition(2, 8), new SourcePosition(2, 13), new SourcePosition(2, 14) };
         foreach (var position in positions)
         {
@@ -337,5 +396,5 @@ public sealed class HoverImprovementsTest
     }
 
     private static string Render(HoverEntry entry, bool markdown)
-        => Assert.IsType<string>(HoverRenderer.Render(entry.Info, markdown).Body);
+        => Assert.IsType<string>(HoverRenderer.Render(entry.Info, markdown, HoverPlacement.Canonical).Body);
 }

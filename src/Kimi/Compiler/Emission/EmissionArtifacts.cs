@@ -11,11 +11,13 @@ namespace Kimi.Compiler;
 public static class EmissionArtifacts
 {
     /// <summary>Publishes both files, with the manifest last, or records why not in the Emission partition without claiming old files
-    /// (DECISIONS R5-M165): the generation entry's records; <c>ArtifactPublicationFailed_Kd</c> at the project, its cause as a note, for an
-    /// output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the project when the
-    /// compiler's embedded backend record is missing or code generation fails a contract check while it writes the output (GenerateInto's
-    /// mapping). The publication inputs are checked first, since the generation entry writes into
-    /// the temporary IR file (R5 C0a); preparation has validated the native configuration (DependencyConfiguration).</summary>
+    /// (DECISIONS R5-M165): the generation entry's records and, beside them, <c>ArtifactPublicationFailed_Kd</c> at the project, its cause
+    /// as a note, for an output failure or a publication-time native-configuration or supply failure; <c>InternalInvariant_Kd</c> at the
+    /// project when the compiler's embedded backend record is missing. Any other exception, such as a broken contract code generation
+    /// throws, is not classified here: it leaves for the command's fault path (DECISIONS R5-M169). The publication inputs are checked
+    /// first, since the generation entry writes into the temporary IR file (R5 C0a); code generation never reads them, so it runs once
+    /// whatever they found, into no output when they failed (DECISIONS R5-M181); preparation has validated the native configuration
+    /// (DependencyConfiguration).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="irPath">The published IR path on success.</param>
@@ -23,81 +25,102 @@ public static class EmissionArtifacts
     internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath)
     {
         irPath = null;
-        if (WindowsProfile.BackendVersion.Length == 0 || WindowsProfile.BackendSha256.Length != 64)
+        if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
         {
-            Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
-            return false;
+            return FailBeforeGeneration(compilation, DiagnosticCode.InternalInvariant_Kd, null);
         }
 
-        string? tempIr = null;
-        string? tempManifest = null;
+        var settings = compilation.Project.ProjectFile;
+        string directory, destination, manifest, outputDirectory;
+        string? tempIr = null, tempManifest = null, llvm = null;
+        NativeLibraryInput? backend;
+        List<(string Name, string Kind, string Input, string? Sha256)>? foreign;
+        StreamWriter? writer = null;
         try
         {
-            var project = compilation.Project;
-            var settings = project.ProjectFile;
-            var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-            paths ??= ArtifactPaths.Create(project);
-            var destination = paths.Ir;
-            var manifest = paths.Manifest;
-            var outputDirectory = Path.GetDirectoryName(destination)!;
-            var backend = ResolveBackend(settings);
-            var foreign = ResolveForeignSupplies(compilation, settings);
-            if (backend is not null && HasDirectory(backend.Input))
+            // The publication's steps before and after code generation classify their failures; generation runs between them, outside
+            // either catch, so only GenerateInto classifies its failure (its output's) and any other leaves for the fault (R5-M169).
+            try
             {
-                var actual = Hash(Path.GetFullPath(backend.Input, directory));
-                if (!actual.Equals(WindowsProfile.BackendSha256, StringComparison.Ordinal))
+                var project = compilation.Project;
+                directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
+                paths ??= ArtifactPaths.Create(project);
+                destination = paths.Ir;
+                manifest = paths.Manifest;
+                outputDirectory = Path.GetDirectoryName(destination)!;
+                backend = ResolveBackend(settings);
+                foreign = ResolveForeignSupplies(compilation, settings);
+                if (backend is not null && HasDirectory(backend.Input) &&
+                    !Hash(Path.GetFullPath(backend.Input, directory)).Equals(ToolchainIdentity.BackendSha256, StringComparison.Ordinal))
                 {
                     throw new InvalidDataException("The selected backend archive does not match the adopted SHA-256.");
                 }
+
+                if (settings.LlvmBin is { } bin)
+                {
+                    CheckPath(bin);
+                    llvm = Path.GetRelativePath(outputDirectory, Path.GetFullPath(bin, directory));
+                }
+
+                Directory.CreateDirectory(outputDirectory);
+                var unique = Guid.NewGuid().ToString("N");
+                tempIr = destination + "." + unique + ".tmp";
+                tempManifest = manifest + "." + unique + ".tmp";
+                writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384);
+            }
+            catch (Exception ex) when (IsPublicationFailure(ex))
+            {
+                return FailBeforeGeneration(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
             }
 
-            string? llvm = null;
-            if (settings.LlvmBin is { } bin)
+            var generated = GenerateInto(compilation, writer);
+            try
             {
-                CheckPath(bin);
-                llvm = Path.GetRelativePath(outputDirectory, Path.GetFullPath(bin, directory));
-            }
-
-            Directory.CreateDirectory(outputDirectory);
-            var unique = Guid.NewGuid().ToString("N");
-            tempIr = destination + "." + unique + ".tmp";
-            tempManifest = manifest + "." + unique + ".tmp";
-            using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
-            {
-                if (!GenerateInto(compilation, writer))
+                writer.Dispose(); // A flush failure is the output's.
+                if (!generated)
                 {
                     return false;
                 }
-            }
 
-            var hash = Hash(tempIr);
-            using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                var hash = Hash(tempIr);
+                using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                {
+                    var kind = compilation.Binding.Startup.OutputKind;
+                    WriteManifest(json, settings, kind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                }
+
+                Replace(tempIr, destination);
+                Replace(tempManifest, manifest);
+                irPath = destination;
+                return true;
+            }
+            catch (Exception ex) when (IsPublicationFailure(ex))
             {
-                WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
+                return false;
             }
-
-            Replace(tempIr, destination);
-            Replace(tempManifest, manifest);
-            irPath = destination;
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-        {
-            Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
-            return false;
         }
         finally
         {
-            DeleteTemporary(tempIr);
-            DeleteTemporary(tempManifest);
+            try
+            {
+                writer?.Dispose(); // While a generation exception unwinds, a flush failure replaces it and becomes the fault.
+            }
+            finally
+            {
+                DeleteTemporary(tempIr);
+                DeleteTemporary(tempManifest);
+            }
         }
     }
 
-    /// <summary>Generates into the publication's output through the generation entry, separating the output's failure from a broken
-    /// contract of code generation (DECISIONS R5-M165): an I/O failure of the output is <c>ArtifactPublicationFailed_Kd</c> with its
-    /// cause, and an argument, data or support exception from code generation's own checks is <c>InternalInvariant_Kd</c>. Publish's
-    /// other output operations (paths, directories, files, the manifest, the replacement) map their failures themselves.</summary>
+    /// <summary>Generates into the publication's output through the generation entry and records only the output's failure (DECISIONS
+    /// R5-M169): code generation does no file I/O but through this writer (it reads embedded templates), so an <c>IOException</c> or
+    /// <c>UnauthorizedAccessException</c> is the output's, <c>ArtifactPublicationFailed_Kd</c> with its cause. Every other exception, such
+    /// as a broken contract code generation throws, leaves unclassified for the command's fault path (<c>CheckFaulted_Kd</c>, DIAGNOSTICS
+    /// rule 9). Publish's other output operations (paths, directories, files, the manifest, the replacement) map their failures
+    /// themselves.</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="output">The output, written only when generation succeeds.</param>
     /// <returns>Whether the module was written; otherwise the Emission partition records why.</returns>
@@ -112,18 +135,30 @@ public static class EmissionArtifacts
             Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
             return false;
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or NotSupportedException)
-        {
-            Fail(compilation, DiagnosticCode.InternalInvariant_Kd, null);
-            return false;
-        }
     }
 
-    // A publication failure, at the project, replaces the partition's records as a generation does.
+    // An output, configuration or supply failure a publication step throws (DECISIONS R5-M165); any other exception is a fault (R5-M169).
+    private static bool IsPublicationFailure(Exception ex)
+        => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
+
+    // A publication failure, at the project, beside the generation's records (R5-M181).
     private static void Fail(Compilation compilation, DiagnosticCode code, string? cause)
+        => compilation.Diagnostics.Report(DiagnosticPartition.Emission, code, compilation.Project.FilePath, note: cause);
+
+    // A publication failure before generation (DECISIONS R5-M181): code generation never reads publication's inputs, so it still runs, into
+    // no output, for its own records, and the failure is recorded after it, since it clears the partition first, also when it throws.
+    private static bool FailBeforeGeneration(Compilation compilation, DiagnosticCode code, string? cause)
     {
-        compilation.Diagnostics.Invalidate(DiagnosticPartition.Emission);
-        compilation.Diagnostics.Report(DiagnosticPartition.Emission, code, compilation.Project.FilePath, note: cause);
+        try
+        {
+            GenerateInto(compilation, TextWriter.Null);
+        }
+        finally
+        {
+            Fail(compilation, code, cause);
+        }
+
+        return false;
     }
 
     // Checks every configured library's input, even when unused, and selects the backend supply (SPEC 20.4) of the configuration
@@ -144,7 +179,7 @@ public static class EmissionArtifacts
                         throw new InvalidDataException("kimi_backend must be static.");
                     }
 
-                    if (sha256 is not null && !sha256.Equals(WindowsProfile.BackendSha256, StringComparison.OrdinalIgnoreCase))
+                    if (sha256 is not null && !sha256.Equals(ToolchainIdentity.BackendSha256, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidDataException("The kimi_backend Sha256 assertion does not match the adopted SHA-256.");
                     }
@@ -172,7 +207,7 @@ public static class EmissionArtifacts
         for (var i = 0; i < imports.Count; i++)
         {
             var import = imports[i];
-            if (import.Library == Kernel32Imports.LibraryName)
+            if (import.Library == WindowsProfile.Kernel32Library)
             {
                 continue;
             }
@@ -223,7 +258,7 @@ public static class EmissionArtifacts
         json.WriteString("target", WindowsProfile.Target);
         json.WriteStartObject("codegen");
         json.WriteString("profile", WindowsProfile.Name);
-        json.WriteString("llvmVersion", WindowsProfile.LlvmVersion);
+        json.WriteString("llvmVersion", ToolchainIdentity.LlvmVersion);
         json.WriteString("cpu", WindowsProfile.Cpu);
         WriteStrings(json, "features", [WindowsProfile.Features]);
         json.WriteString("relocationModel", WindowsProfile.RelocationModel);
@@ -232,11 +267,11 @@ public static class EmissionArtifacts
         json.WriteString("optimization", settings.Optimization);
         json.WriteEndObject();
         json.WriteStartObject("backendSupport");
-        json.WriteString("packageId", WindowsProfile.BackendPackageId);
-        json.WriteNumber("abiVersion", WindowsProfile.BackendAbiVersion);
-        json.WriteString("packageVersion", WindowsProfile.BackendVersion);
+        json.WriteString("packageId", ToolchainIdentity.BackendPackageId);
+        json.WriteNumber("abiVersion", ToolchainIdentity.BackendAbiVersion);
+        json.WriteString("packageVersion", ToolchainIdentity.BackendVersion);
         json.WriteString("library", WindowsProfile.BackendLibrary);
-        json.WriteString("artifactSha256", WindowsProfile.BackendSha256);
+        json.WriteString("artifactSha256", ToolchainIdentity.BackendSha256);
         WriteStrings(json, "providedSymbols", WindowsProfile.ProvidedSymbols);
         json.WriteEndObject();
         json.WriteString("irFile", irFile);
@@ -246,9 +281,9 @@ public static class EmissionArtifacts
         json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
         json.WriteStartArray("libraries");
         var next = 0;
-        WriteForeign(Kernel32Imports.LibraryName);
+        WriteForeign(WindowsProfile.Kernel32Library);
         json.WriteStartObject();
-        json.WriteString("name", Kernel32Imports.LibraryName);
+        json.WriteString("name", WindowsProfile.Kernel32Library);
         json.WriteString("kind", "import");
         json.WriteString("generator", Kernel32Imports.Generator);
         json.WriteString("dll", Kernel32Imports.Dll);

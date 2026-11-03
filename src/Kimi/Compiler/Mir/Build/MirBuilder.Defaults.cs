@@ -73,12 +73,11 @@ internal sealed partial class MirBuilder
     private void Template(int index)
     {
         var decl = this.omissions[index].Decl;
-        var findings = this.program.Findings.Count;
         if (HirTables.Symbol(decl.Function) is { } function && decl.Parameter(decl.Index) is { } type && HirTables.Op(decl.Expression) != HirOp.Syntax)
         {
             this.Body(new(function, MirBodyKind.DefaultTemplate, decl.Index), decl.Function, function, type, decl.Expression);
             ref var node = ref CollectionsMarshal.AsSpan(this.omissions)[index];
-            (node.Body, node.Failed, node.Reads) = (this.body, this.body.HasOpaque || this.program.Findings.Count > findings, this.prepared);
+            (node.Body, node.Failed, node.Reads) = (this.body, this.body.HasOpaque || this.body.HasFinding, this.prepared);
         }
     }
 

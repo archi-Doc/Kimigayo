@@ -39,7 +39,7 @@ internal static partial class MirDump
             }
         }
 
-        foreach (var record in program.Records.Where(x => x.Subject.Module == module))
+        foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module))
         {
             Source(text.Append(record.Code == DiagnosticCode.Unsupported_Kd ? "unsupported" : record.Code.ToString()), record.Subject).Append('\n');
         }

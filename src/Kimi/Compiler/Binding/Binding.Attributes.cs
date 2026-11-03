@@ -116,10 +116,10 @@ public sealed partial class Binding
             // SPEC 20.4/20.8.2.4: the Kind of the defining module's requirement, after self-targeted
             // supply expansion, decides dllimport generation; reserved supplies have their fixed kinds.
             string? kind = null;
-            if (name is Kernel32Imports.LibraryName)
+            if (name is WindowsProfile.Kernel32Library)
             {
                 kind = "import"; // The generated kernel32 import library (SPEC 20.4).
-                if (Array.IndexOf(Kernel32Imports.Symbols, symbol) < 0)
+                if (Array.IndexOf(WindowsProfile.Kernel32Symbols, symbol) < 0)
                 {
                     // SPEC 20.4: the reserved supply exports only the reviewed project-owned definition.
                     this.Fail(attribute, BindingFailure.UnavailableReservedImport);
@@ -157,7 +157,7 @@ public sealed partial class Binding
                 // SPEC 21.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
                 // table; an import joins one only through the reserved kernel32 supply with an equal
                 // physical Type, and never a declaration carrying an inexpressible ABI attribute.
-                if (IsRuntimeDeclaration(symbol, out var declared) && (name != Kernel32Imports.LibraryName || declared != signature))
+                if (IsRuntimeDeclaration(symbol, out var declared) && (name != WindowsProfile.Kernel32Library || declared != signature))
                 {
                     this.Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
                 }

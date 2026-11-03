@@ -232,7 +232,7 @@ public class AssociatedInferenceTest
         var snapshot = HoverBuilder.Create(c);
         var document = Assert.Single(snapshot.Documents).Value;
         var entry = document.Entries[document.Find(source.IndexOf("struct S", StringComparison.Ordinal) + 7)];
-        var rendered = HoverRenderer.Render(entry.Info, false).Body!;
+        var rendered = HoverRenderer.Render(entry.Info, false, HoverPlacement.Canonical).Body!;
         Assert.Contains("Inferred associate C.Item is i32", rendered);
         Assert.Contains("source: read declared result", rendered);
         Assert.Single(Assert.Single(Definition(c).Paths).InferenceEvidence);

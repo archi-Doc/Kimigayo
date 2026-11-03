@@ -6,7 +6,8 @@ namespace Kimi.Compiler.Mir;
 // access through what it runs. Under the owner's P5 every key of one Field is one key, so keys are Fields, never substituted: a node's keys
 // are its local accesses (AddKey, as Local walks the view) joined with those of every body view it composes (Spread, after Run's fixed
 // point); Keys answers a site of one view with its key row and classes from the summaries and keys of the last Run, Summary gives a body
-// view's own row and classes (a static initializer's, for A5's initialization proof), and Field numbers a Field's bits.
+// view's own row and classes (a static initializer's, for A5's initialization proof), Items its solved classes and atoms (what holds a
+// published operation's body within its row, SPEC 4.9.6), and Field numbers a Field's bits.
 internal sealed partial class MirEffects
 {
     private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
@@ -63,6 +64,19 @@ internal sealed partial class MirEffects
         }
 
         return this.keys.AsSpan(node * this.keyWords, this.keyWords);
+    }
+
+    /// <summary>Gets the solved summary of a body view from the last <see cref="Run"/> as A4 keeps it: its classes, an environment
+    /// effect's included, and its atoms over the definition's abstract Types (SPEC 15.6.4: its parameter-dependent effects).</summary>
+    /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
+    /// <param name="view">The view.</param>
+    /// <param name="classes">The summary's classes.</param>
+    /// <returns>The atoms, A4's storage, valid until the next <see cref="Run"/>.</returns>
+    internal ReadOnlySpan<Atom> Items(MirBody body, long view, out byte classes)
+    {
+        var node = this.bases[body.Ordinal] + (int)view;
+        classes = this.classes[node];
+        return this.atoms.AsSpan(this.atomStarts[node], this.atomCounts[node]);
     }
 
     /// <summary>Gets A4's number of a mutable static Field in the program version of the last <see cref="Run"/>, whose bits in a key row

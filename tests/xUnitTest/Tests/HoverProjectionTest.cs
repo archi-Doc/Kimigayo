@@ -170,22 +170,17 @@ public sealed class HoverProjectionTest
 
         var document = new HoverDocument(new("main.kimi", string.Empty), entries);
         var sum = 0;
-        for (var i = 0; i < 32; i++)
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            sum += document.Find(i * 3);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < entries.Length; i++)
-        {
-            sum += document.Find(i * 3);
-            sum += document.Find((i * 3) + 1);
-            sum += document.Find((i * 3) + 2);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
-        Assert.Equal(99980496, sum);
+            sum = 0;
+            for (var i = 0; i < entries.Length; i++)
+            {
+                sum += document.Find(i * 3);
+                sum += document.Find((i * 3) + 1);
+                sum += document.Find((i * 3) + 2);
+            }
+        }));
+        Assert.Equal(99980000, sum);
         Assert.Equal(-1, document.Find(-1));
         Assert.Equal(-1, document.Find(30000));
     }

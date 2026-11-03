@@ -356,7 +356,7 @@ public sealed partial class Binding
             else
             {
                 var separator = union ? "; " : ", ";
-                text.Append(i == 0 ? string.Empty : separator).Append(cases[i].Target.Pair?.Name ?? cases[i].Target.Name).Append(" = ");
+                text.Append(i == 0 ? string.Empty : separator).Append(BinderName(cases[i].Target)).Append(" = ");
                 several |= union && i > 0;
             }
 
@@ -416,7 +416,7 @@ public sealed partial class Binding
 
         foreach (var parameter in function.Parameters)
         {
-            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && ContainsOrigin(input, actual.Origin))
+            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && this.MentionsOrigin(input, actual.Origin))
             {
                 return true;
             }

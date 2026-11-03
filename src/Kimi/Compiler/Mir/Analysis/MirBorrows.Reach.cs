@@ -43,11 +43,11 @@ internal sealed partial class MirBorrows
     private int walks; // The W walks made.
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
-    // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (ReadThrough).
+    // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (Parts).
     private static bool Whole(in Loan loan) => loan.Count == 0;
 
     // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each read through
-    // rule W's clause (ReadThrough); memoized at the location.
+    // rule W's clause (Parts), each distinct Shared set once, joined by one n-ary union; memoized at the location.
     private int Content(ulong[] state, int set)
     {
         if (set < this.reads.Length && this.reads[set].Content != 0)
@@ -55,19 +55,29 @@ internal sealed partial class MirBorrows
             return this.reads[set].Content - 1;
         }
 
-        var (content, direct, escaped) = (0, false, false);
+        var (direct, escaped) = (false, false);
         this.Work += this.sets.Count(set);
+        this.parts.Clear();
+        this.Step();
         foreach (var element in this.sets.Elements(set))
         {
             escaped |= element == Escaped;
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
             {
                 direct = true;
-                content = loan.Named >= 0 ? this.sets.Union(content, this.ReadThrough(state, loan.Named, Whole(loan))) : content;
+                if (loan.Named >= 0)
+                {
+                    this.Parts(state[loan.Named], Whole(loan));
+                }
             }
         }
 
-        content = escaped || !direct ? this.sets.Union(content, this.ReadThrough(state, Escaped, whole: false)) : content;
+        if (escaped || !direct)
+        {
+            this.Parts(state[Escaped], whole: false);
+        }
+
+        var content = this.sets.Union(CollectionsMarshal.AsSpan(this.parts));
         this.Memo(set).Content = content + 1;
         return content;
     }
@@ -75,7 +85,7 @@ internal sealed partial class MirBorrows
     // chain(S) (SPEC 15.6.4; DECISIONS BU-40, R4-M138): the least fixed point of a read from S, the states of the holders content(S) reads,
     // then of each holder a state read names by a direct Loan or address, and E's where that state carries Φ_E; each holder is queued once
     // per closure, so a pointer cycle ends, and read through rule W's clause as a whole value only where every reach of it was one
-    // (ReadThrough); the states are joined by one n-ary union (MirLoanSets.Union); memoized at the location.
+    // (Parts); the states are joined by one n-ary union (MirLoanSets.Union); memoized at the location.
     private int Chain(ulong[] state, int set)
     {
         if (set < this.reads.Length && this.reads[set].Chain != 0)
@@ -92,15 +102,21 @@ internal sealed partial class MirBorrows
             this.Queued(Escaped, whole: false); // content's rule: E where S carries no direct Loan.
         }
 
+        this.Step();
         for (var i = 0; i < this.chained.Count; i++)
         {
-            this.Queue((int)state[this.chained[i]]);
+            this.Queue(Placed(state[this.chained[i]]));
+            if (this.Steps(Shared(state[this.chained[i]]), 0))
+            {
+                this.Queue(Shared(state[this.chained[i]]));
+            }
         }
 
         this.parts.Clear();
+        this.Step();
         foreach (var holder in this.chained)
         {
-            this.parts.Add(this.ReadThrough(state, holder, whole: this.partlyBy[holder] != this.closures));
+            this.Parts(state[holder], whole: this.partlyBy[holder] != this.closures);
         }
 
         var chain = this.sets.Union(CollectionsMarshal.AsSpan(this.parts));
@@ -161,8 +177,16 @@ internal sealed partial class MirBorrows
     }
 
     // Rule W's read-through clause (SPEC 15.6.5): a read through a reference to a holder's whole value is a Copy of its state, through one
-    // to a part of it, or through E, not (Indirect, MirBorrows.Causes).
-    private int ReadThrough(ulong[] state, int holder, bool whole) => whole ? (int)state[holder] : this.Indirect((int)state[holder]);
+    // to a part of it, or through E, not (Indirect, MirBorrows.Causes); into the parts an n-ary union joins: its Placed set, and its
+    // Shared set where the walk (Step) has not read it at that level (Indirect distributes over the parts' union).
+    private void Parts(ulong held, bool whole)
+    {
+        this.parts.Add(whole ? Placed(held) : this.Indirect(Placed(held)));
+        if (this.Steps(Shared(held), whole ? 0 : 1))
+        {
+            this.parts.Add(whole ? Shared(held) : this.Indirect(Shared(held)));
+        }
+    }
 
     // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan.
     private void Refs(int set)
@@ -249,20 +273,27 @@ internal sealed partial class MirBorrows
     {
         this.Write(set, ViaRoot); // The kinds of refs(S)'s holders, which Referents put in the targets.
         var limited = false;
+        this.Step(); // Written is idempotent, so a Shared id stepped from again writes nothing more.
         for (var i = 0; i < this.targets.Count; i++)
         {
             var kind = this.writingKind[this.targets[i]];
+            var held = state[this.targets[i]];
             limited |= kind == MirWrites.Limit;
             if (kind == MirWrites.Through)
             {
-                this.Write((int)state[this.targets[i]], ViaPast);
+                this.Write(Placed(held), ViaPast);
+                if (this.Steps(Shared(held), 0))
+                {
+                    this.Write(Shared(held), ViaPast);
+                }
             }
         }
 
         var deep = false;
         for (var i = 0; i < this.targets.Count && !deep; i++)
         {
-            deep = this.writingKind[this.targets[i]] == MirWrites.Deep && this.Changes((int)state[this.targets[i]]);
+            var held = state[this.targets[i]];
+            deep = this.writingKind[this.targets[i]] == MirWrites.Deep && (this.Changes(Placed(held)) || this.Changes(Shared(held)));
         }
 
         return (limited, deep);

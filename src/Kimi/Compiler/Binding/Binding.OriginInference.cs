@@ -8,6 +8,24 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
+    // The failure of a solve's bound under its source (OriginInference.Bounds): a declared clause, else a member's position, else a result
+    // premise.
+    private static ComparisonFailure BoundFailure(
+        in CallableInstance comparison, byte member, Koto? clause, BoundOrigin longer, BoundOrigin shorter, bool equality)
+    {
+        var kind = ComparisonFailureKind.ResultPremise;
+        if (clause is not null)
+        {
+            kind = ComparisonFailureKind.Clause;
+        }
+        else if (member != 0)
+        {
+            kind = ComparisonFailureKind.Origin;
+        }
+
+        return new(kind, longer, shorter, equality, comparison) { Clause = clause, Path = member, Depth = (byte)(member == 0 ? 0 : 1) };
+    }
+
     private OriginInference BeginOriginInference(Koto use, Koto binder)
     {
         if (!this.originInferences.TryGetValue((use, binder), out var inference))
@@ -18,6 +36,8 @@ public sealed partial class Binding
         inference.Bounds.Clear();
         inference.Variables.Clear();
         inference.WellFormed.Clear();
+        inference.Comparison = default;
+        inference.Source = default;
         return inference;
     }
 
@@ -87,10 +107,12 @@ public sealed partial class Binding
     private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
+        inference.Failure = default;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
             {
+                inference.Source = (0, relation.Syntax, relation.Equality);
                 var longer = Project(relation.Longer);
                 var shorter = Project(relation.Shorter);
                 inference.Discover(longer, 0);
@@ -101,6 +123,8 @@ public sealed partial class Binding
                     inference.Add(shorter, longer);
                 }
             }
+
+            inference.Source = default;
         }
 
         // Preliminary Type inference may have proposed values. Recompute every mentioned
@@ -129,11 +153,11 @@ public sealed partial class Binding
 
                     if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable.Origin) && Resolve(bound.Shorter, bound.ShorterVariable) is { } floor)
                     {
-                        if (lower is null || this.ProvesOriginOutlives(floor, lower, use))
+                        if (lower is null || this.ProvesOriginOutlives(floor, lower, use, inference.Comparison))
                         {
                             lower = floor;
                         }
-                        else if (!this.ProvesOriginOutlives(lower, floor, use))
+                        else if (!this.ProvesOriginOutlives(lower, floor, use, inference.Comparison))
                         {
                             incomparable = true;
                         }
@@ -146,7 +170,7 @@ public sealed partial class Binding
                 for (var i = 0; upper is not null && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
                 {
                     if (ReferenceEquals(inference.WellFormed[i].Shorter, variable.Origin) && Resolve(inference.WellFormed[i].Longer, true) is { } stored &&
-                        !this.ProvesOriginOutlives(stored, upper, use))
+                        !this.ProvesOriginOutlives(stored, upper, use, inference.Comparison))
                     {
                         upper = this.Meet(upper, stored);
                     }
@@ -154,7 +178,7 @@ public sealed partial class Binding
 
                 var candidate = variable.Polarity == 2 ? (incomparable ? null : lower) : upper ?? (incomparable ? null : lower);
                 if (variable.Polarity == 3 && (incomparable || upper is null || lower is null ||
-                    !this.ProvesOriginOutlives(upper, lower, use) || !this.ProvesOriginOutlives(lower, upper, use)))
+                    !this.ProvesOriginOutlives(upper, lower, use, inference.Comparison) || !this.ProvesOriginOutlives(lower, upper, use, inference.Comparison)))
                 {
                     candidate = null;
                 }
@@ -198,8 +222,11 @@ public sealed partial class Binding
         {
             var longer = Resolve(bound.Longer, bound.LongerVariable);
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
-            if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use))
+            if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison))
             {
+                inference.Failure = longer is not null && shorter is not null
+                    ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
+                    : this.ConflictFailure(inference, Unsolved(longer is null ? bound.Longer : bound.Shorter), use);
                 return false;
             }
         }
@@ -213,6 +240,25 @@ public sealed partial class Binding
         {
             var values = origin.Kind == OriginKind.Parameter ? origins : inputs;
             return (uint)origin.Slot < (uint)values.Length ? values[origin.Slot] : null;
+        }
+
+        // The variable without a solution that leaves `expression` unresolved.
+        BoundOrigin? Unsolved(BoundOrigin expression)
+        {
+            if (ReferenceEquals(expression.Binder, binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input)
+            {
+                return Get(expression) is null ? expression : null;
+            }
+
+            foreach (var operand in expression.Operands)
+            {
+                if (Unsolved(operand) is { } variable)
+                {
+                    return variable;
+                }
+            }
+
+            return null;
         }
 
         void Set(BoundOrigin origin, BoundOrigin? value)
@@ -256,6 +302,56 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.5, 15.6.1 (design-r2 Amendment 2 (2)): the failure of a variable without a solution names fixed ends only, with the
+    // variable eliminated: an invariant one's first two fixed ends that are not proven equal (`s == x` and `s == y` give x == y), any
+    // other's fixed limit that is not proven to outlive its fixed floor. The Kind and member are those of the bound that completed the
+    // conflict. None when no fixed pair conflicts, such as a variable with no bound.
+    private ComparisonFailure ConflictFailure(OriginInference inference, BoundOrigin? variable, Koto use)
+    {
+        var invariant = false;
+        foreach (var known in inference.Variables)
+        {
+            invariant |= ReferenceEquals(known.Origin, variable) && known.Polarity == 3;
+        }
+
+        BoundOrigin? first = null;
+        BoundOrigin? limit = null;
+        BoundOrigin? floor = null;
+        foreach (var bound in inference.Bounds)
+        {
+            var isLimit = bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable);
+            if (!isLimit && !(bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable)))
+            {
+                continue;
+            }
+
+            var end = isLimit ? bound.Longer : bound.Shorter;
+            var (longer, shorter) = isLimit ? (end, floor) : (limit, end);
+            if (invariant)
+            {
+                (longer, shorter) = (first, end);
+            }
+
+            if (longer is not null && shorter is not null && (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison) ||
+                (invariant && !this.ProvesOriginOutlives(shorter, longer, use, inference.Comparison))))
+            {
+                return BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, invariant);
+            }
+
+            first ??= end;
+            if (isLimit)
+            {
+                limit ??= end;
+            }
+            else
+            {
+                floor ??= end;
+            }
+        }
+
+        return default;
+    }
+
     // The representative of a variable without a principal solution: for an invariant one the first Origin that bounds it from both
     // sides (an equality), for a contravariant one its first lower bound, otherwise its first upper bound, else its first lower bound.
     // Only bounds whose other end is a fixed value count.
@@ -267,7 +363,7 @@ public sealed partial class Binding
         {
             if (bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable))
             {
-                if (polarity == 3 && inference.Bounds.Contains((variable, bound.Longer, true, false)))
+                if (polarity == 3 && inference.IndexOf((Longer: variable, Shorter: bound.Longer, LongerVariable: true, ShorterVariable: false)) >= 0)
                 {
                     return bound.Longer;
                 }
@@ -276,7 +372,7 @@ public sealed partial class Binding
             }
             else if (bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable))
             {
-                if (polarity == 3 && inference.Bounds.Contains((bound.Shorter, variable, false, true)))
+                if (polarity == 3 && inference.IndexOf((Longer: bound.Shorter, Shorter: variable, LongerVariable: false, ShorterVariable: true)) >= 0)
                 {
                     return bound.Shorter;
                 }
@@ -292,20 +388,49 @@ public sealed partial class Binding
     {
         internal Koto Binder { get; } = binder;
 
-        internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable)> Bounds { get; } = new();
+        // Each bound with its source (SPEC 15.6.1): the comparison's member whose position collected it (a parameter n + 1, the result
+        // ComparisonFailure.ResultStep), else the declared clause; neither, a result premise or a call's bound.
+        internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable,
+            byte Member, Koto? Clause, bool Equality)> Bounds { get; } = new();
 
         internal List<(BoundOrigin Origin, int Polarity)> Variables { get; } = new();
 
         // SPEC 15.6.4 step 3: the relations of the call's inputs' well-formedness, each an upper limit of its shorter end only.
         internal List<(BoundOrigin Longer, BoundOrigin Shorter)> WellFormed { get; } = new();
 
+        // The Callable comparison whose implementation the solve instantiates (ContractFits), whose premises its proofs assume; default
+        // for a call's solve.
+        internal CallableInstance Comparison { get; set; }
+
+        // The source of the bounds being added, set by their producer around its collection (ContractFits, SolveOriginInference).
+        internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
+
+        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
+        internal ComparisonFailure Failure { get; set; }
+
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true)
         {
-            var bound = (longer, shorter, longerVariable, shorterVariable);
-            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) && !this.Bounds.Contains(bound))
+            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) &&
+                this.IndexOf((longer, shorter, longerVariable, shorterVariable)) < 0)
             {
-                this.Bounds.Add(bound);
+                this.Bounds.Add((longer, shorter, longerVariable, shorterVariable, this.Source.Member, this.Source.Clause, this.Source.Equality));
             }
+        }
+
+        // The index of the bound with these ends (its source aside), or -1.
+        internal int IndexOf((BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable) ends)
+        {
+            for (var i = 0; i < this.Bounds.Count; i++)
+            {
+                var bound = this.Bounds[i];
+                if (ReferenceEquals(bound.Longer, ends.Longer) && ReferenceEquals(bound.Shorter, ends.Shorter) &&
+                    bound.LongerVariable == ends.LongerVariable && bound.ShorterVariable == ends.ShorterVariable)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         internal void Discover(BoundOrigin expression, int polarity)

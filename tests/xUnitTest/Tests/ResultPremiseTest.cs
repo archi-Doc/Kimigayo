@@ -12,7 +12,7 @@ namespace XunitTest;
 // SPEC 15.3.7, 15.6.1, 15.6.5: a signature's result-Type well-formedness is a premise of its definition and an obligation at each use.
 // A call solves its fresh Origins under the premise, so a result over body-local borrows is bounded by every Origin it holds; where an
 // argument pins an Origin so that no solution satisfies it, the substituted result's relation is a wellFormed record at the call.
-public class ResultPremiseTest
+public partial class ResultPremiseTest
 {
     private const string Main = "public func main() => ()\n";
 
@@ -95,6 +95,42 @@ public class ResultPremiseTest
 
     private const string MeetArgument = ClauseCallee + "func pk(p: ref/i32, q: ref/i32, keep: uniq/(ref/i32 during p)) -> Option<ref/(ref/i32 during q) during p>\n    return .None\n\n" +
         "func caller(a: ref/i32, x: ref/i32, b: ref/i32, h: ref/i32 during s, keep: uniq/(ref/i32 during s)) -> i32\n    let t = f(a, x, b)\n    let r = pk(h, t.0, keep)\n    return 0\n";
+
+    // SPEC 15.3.4 (DECISIONS R4-M162): nested signatures whose result relates the enclosing Origins q and r, with and without the clause.
+    private const string Nested = "func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> ref/i32 during r\n";
+
+    private const string NestedCaller = "func caller() -> i32\n    let long = 1\n    let lr = long@ref\n    var keep = lr\n    if true\n        let short = 2\n        let sq = short@ref\n" +
+        "        keep = k(sq, lr, func [] () => Option.None)\n    return keep@follow\n\n";
+
+    private const string NestedShort = "func caller(lr: ref/i32) -> ref/i32 during lr\n    let short = 2\n    let sq = short@ref\n    return k(sq, lr, func [] () => Option.None)\n\n";
+
+    private const string NestedLong = "func caller() -> i32\n    let long = 1\n    let lq = long@ref\n    if true\n        let short = 2\n        let sr = short@ref\n" +
+        "        let got = k(lq, sr, func [] () => Option.None)\n        let v = got@follow\n    return lq@follow\n\n";
+
+    private const string Clause = "    origin q outlives r\n";
+
+    private const string ClauseType = "struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\n";
+
+    // A Type whose argument must be Copy: `Box<Array<i32>>` fails a closed clause wherever it is written.
+    private const string BoxType = "struct Box<T>\n    T is Copy\n    public let x: T\n\n    public init(x: T) => self.x = x\n\n";
+
+    private const string ClauseResult = "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n    return 0\n\n";
+
+    private const string SelfReturning = ClauseType + "struct R {a}\n    origin a outlives static\n    public let next: () -> Option<R during a>\n\n" +
+        "    public init(next: () -> Option<R during a>) => self.next = next@move\n\nfunc walk(q: ref/i32, r: () -> Option<R during q>) -> i32\n    return 0\n\n";
+
+    // lpfix: the per-call input fixed at `static`, which the outlives-outer direction needs; the named `mk` still converts.
+    private const string FixedInput = "func use(g: (ref/i32 during static) -> (Option<ref/(ref/i32 during static) during static>, ref/i32 during static), s: ref/i32 during static) -> ref/i32 during static\n" +
+        "    let pair = g(s)\n    return pair.1\n\nfunc mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n\n" +
+        "func caller(s: ref/i32 during static) -> ref/i32 during static\n    return use(mk, s)\n\n";
+
+    private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd) + "|";
+
+    private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
+
+    private const string Mismatch = nameof(DiagnosticCode.TypeMismatch_Kd) + "|";
+
+    private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd) + "|";
 
     // SPEC 15.6.5: pickRelated is valid and runs; the call's result keeps the Loans of both borrows, so writing either referent while
     // it lives is a Loan conflict.
@@ -252,9 +288,12 @@ public class ResultPremiseTest
 
         var premise = "func f(q: ref/i32) -> (Option<ref/(ref/i32 during q) during static>, ref/i32 during static)\n    return (.None, q)\n\n" +
             "func use() -> i32\n    let g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static) = f\n    return 0\n" + Main;
+        // The owner's (a) (2026-10-27): the conversion assumes the target's own well-formedness and adds no record (it was
+        // UnprovenOriginContract_Kd at f); the target relates its per-call Origin to static beyond its input, which is the annotation's
+        // record where it is written (SPEC 15.3.4, DECISIONS R4-M162).
         var result = Assert.Single(DiagnosticCorpus.Check(premise).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f"), (result.Code, Text(premise, result.Span)));
-        Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during static"), (result.Code, Text(premise, result.Span)));
+        Assert.Equal("requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
         // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
@@ -443,18 +482,72 @@ public class ResultPremiseTest
             [("ref/((ref/i32) -> ref/i32) during b", "wellFormed")],
             DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (Text(annotated, x.Span), x.Reason![3].Value)));
 
-        // A Function Item converted to a nested Function Type proves its premise from that Type's inputs alone: a per-call input
-        // cannot outlive `b`, and writing it over `b` converts. mk's own result Type is an independent record (SPEC 23.1.2, BU-26).
+        // A Function Item converted to a nested Function Type assumes that Type's own well-formedness (the owner's (a)), so leak's
+        // premise adds no conversion record; mk's result Type relates a per-call input to `b`, which is mk's record where it is written
+        // (SPEC 15.3.4, DECISIONS R4-M162). Writing the input over `b` converts.
         var converted = LeakItem + "func mk(b: ref/i32) -> (ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during b>, ref/i32 during b)\n    return leak\n" + Main;
-        var records = DiagnosticCorpus.Check(converted).Diagnostics;
-        Assert.Equal(2, records.Length);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during b"), (records[0].Code, Text(converted, records[0].Span)));
-        var conversion = records[1];
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "leak"), (conversion.Code, Text(converted, conversion.Span)));
-        Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives b, which is not proven", conversion.Label);
-        Assert.Equal(["conversion", "the result's well-formedness", "outlives", "ref/i32", "b"], conversion.Reason!.Select(static x => x.Value));
-        Assert.Equal(converted.IndexOf("during b, ref/i32)", StringComparison.Ordinal) + 10, Assert.Single(conversion.Related!).Span!.Value.Start);
+        var record = Assert.Single(DiagnosticCorpus.Check(converted).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during b"), (record.Code, Text(converted, record.Span)));
         Assert.True(DiagnosticCorpus.Check(converted.Replace("(ref/i32 during b, ref/i32) ->", "(ref/i32 during b, ref/i32 during b) ->", StringComparison.Ordinal)).Accepted);
+    }
+
+    // SPEC 15.3.4, 15.6.1 (DECISIONS R4-M162): a nested signature's result is a written Type of the declaration that contains it, judged
+    // where it is written under that declaration's premises and the nested signature's own inputs, and never a premise of the body. Its
+    // borrow layers and its Types' own clauses (SPEC 15.3.3) are judged in a parameter, a Type argument, a Closure parameter, a local
+    // annotation and a Field, whatever the declaration order. A relation among the enclosing Origins is an `origin` clause, which each
+    // call proves; a per-call Origin's relation must follow from the inputs, so r3's form is unwritable and lpfix fixes the input.
+    [Theory]
+    [InlineData(Nested + "    return q\n\n" + NestedCaller, Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven", Unproven + "q|requires q outlives r, which is not proven")] // z1
+    [InlineData("func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> i32\n    return 1\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // z1n
+    [InlineData("func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> i32\n    return 0\n\nfunc mover() -> i32\n    var s = [1, 2]\n    let t = s@move\n    let u = s@move\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // z1nmv: dev's MovedPlace_Kd at `s@move` is lost on both pipelines beside this Binding-level record (PLAN G56 until H11; the MIR's until H3; DECISIONS R4-M162, BU-45)
+    [InlineData("func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>) -> i32 => 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives the omitted Origin of ref/i32, which is not proven")] // r3
+    [InlineData("func host(q: ref/i32) -> i32\n    let g = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives p, which is not proven")] // G216 (b), a Closure's written result; dev: the same record
+    [InlineData("func host(q: ref/i32) -> i32\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)> = func [] (p: ref/i32) => Option.None\n    return 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives the omitted Origin of ref/i32, which is not proven")] // G216 (b), a local annotation; dev: the same record
+    [InlineData("func use(g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static), s: ref/i32 during static) -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\n\n", Unproven + "ref/(ref/i32) during static|requires the omitted Origin of ref/i32 outlives static, which is not proven")] // lpok
+    [InlineData("func k(q: ref/i32, r: ref/i32, fs: Array<() -> Option<ref/(ref/i32 during q) during r>>) -> i32\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // arr
+    [InlineData(ClauseType + ClauseResult, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7
+    [InlineData(ClauseResult + ClauseType, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7, the Type declared after
+    [InlineData(ClauseType + ClauseResult + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", nameof(DiagnosticCode.UnprovenOriginContract_Kd) + "|func [] () => 5|the result's well-formedness requires the borrow a outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1a: a call keeps judging its Closure argument, recording at it (the owner's D-1, 「記録は引数に」)
+    [InlineData(ClauseType + ClauseResult + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1s: and adds no call record
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Mismatch + "true|expected i32, found bool")] // b2in: an input's clause is that signature's premise (R4-M137), so the callee's declaration walk does not enter it and the Closure keeps its own TypeMismatch_Kd (G374, closed by G375's structural core, DECISIONS R4-M163)
+    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "(Box<Array<i32>>)|", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "k(func [] (b) => 0)|", Unsatisfied + "b|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes, and the selected call's instantiated input and the Closure's parameter fail where they occur (DECISIONS R4-M163, Q13)
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => 0)\n\n")] // b2valid: b2in's valid twin is accepted at the call (dev: UnprovenConstraint_Kd at the call; an acceptance move, DECISIONS R4-M163)
+    [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    let g = k\n    _ = g\n    return 0\n\n")] // refvalid: and at a function reference (dev: UnprovenConstraint_Kd at `k`; an acceptance move, R4-M163)
+    [InlineData("public struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\npublic contract C\n    func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32\n\npublic struct S\n    Self is C\n    public func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32 => 0\n\n")] // ctrvalid: and in contract matching (dev: UnprovenConstraint_Kd at the conformance; an acceptance move, R4-M163)
+    [InlineData(ClauseType + "func k(q: ref/i32) -> i32\n    let c = func [] (f: () -> Option<T during q>) -> i32 => 0\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a Closure parameter
+    [InlineData(ClauseType + "func k(q: ref/i32, h: () -> Option<T during static>) -> i32\n    let g: () -> Option<T during q> = h@move\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a local annotation
+    [InlineData(SelfReturning, Unproven + "Option<R during q>|requires q outlives static, which is not proven")] // a Type whose Field returns itself
+    [InlineData(Nested + Clause + "    return q\n\n" + NestedShort, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false")] // z1d
+    [InlineData(Nested + Clause + "    return q\n\n" + NestedLong)] // z1t
+    [InlineData(Nested + Clause + "    let c = func [f@move] () -> i32 => 0\n    return q\n\n")] // cap
+    [InlineData("func g(q: ref/i32, cb: (ref/(ref/i32 during q)) -> ref/(ref/i32 during q)) -> i32 => 0\n\n")] // inwf
+    [InlineData(FixedInput)] // lpfix
+    [InlineData(ClauseType + "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n    origin q outlives static\n    return 0\n\n")] // t7 with the clause
+    [InlineData(ClauseType + "struct H {q}\n    origin q outlives static\n    public let f: () -> Option<T during q>\n\n")] // a Field with the clause
+    [InlineData("struct S {q}\n    origin q outlives static\n    public let f: () -> Option<S during q>\n\n    public init(f: () -> Option<S during q>) => self.f = f@move\n\n")] // a Field returning its own Type
+    public void ANestedSignaturesResultIsJudgedWhereItIsWritten(string program, params string[] records)
+    {
+        var text = program + Main;
+        Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
+    }
+
+    // The local annotations that dev already judged at their occurrence keep their records (ann2, loc), and a Field's Function Type result
+    // keeps the Field's formation record beside its own (the formation check also enters Function Types; a dependent record, DECISIONS Q13).
+    [Fact]
+    public void WrittenFunctionTypeResultsKeepTheirOtherRecords()
+    {
+        var ann2 = "func k() -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during static> = func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None\n    return 0\n\n" + Main;
+        Assert.Equal(
+            [Unproven + "ref/(ref/i32) during static|requires the omitted Origin of ref/i32 outlives static, which is not proven", Unproven + "ref/(ref/i32 during x) during static|requires x outlives static, which is not proven"],
+            DiagnosticCorpus.Check(ann2).Diagnostics.Select(x => $"{x.Code}|{Text(ann2, x.Span)}|{x.Label}"));
+        var loc = "func k(q: ref/i32, r: ref/i32) -> i32\n    let g: () -> Option<ref/(ref/i32 during q) during r> = func [] () -> Option<ref/(ref/i32 during q) during r> => .None\n    return 0\n\n" + Main;
+        Assert.Equal(
+            [Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven"],
+            DiagnosticCorpus.Check(loc).Diagnostics.Select(x => $"{x.Code}|{Text(loc, x.Span)}|{x.Label}"));
+        var field = ClauseType + "struct H {q}\n    public let f: () -> Option<T during q>\n\n" + Main;
+        Assert.Equal(
+            [nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|let f: () -> Option<T during q>|", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven"],
+            DiagnosticCorpus.Check(field).Diagnostics.Select(x => $"{x.Code}|{Text(field, x.Span)}|{x.Label}"));
     }
 
     // A result that holds a Function Type beside a premise keeps the premise outside it: the valid uses run, and the top-level result

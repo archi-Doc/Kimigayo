@@ -21,7 +21,7 @@ public sealed partial class Binding
     {
         var factory = this.Library.GetSymbol(ObjectFactoryId(target.Semantics))!;
         var argument = new BoundArgumentOperation(conversion.Left, source, source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: 0);
-        destination.Set(factory, target, null, [0], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
+        destination.Set(factory, target, null, [argument.ParameterIndex], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
         destination.AdaptationSource = conversion;
         return destination;
     }
@@ -221,7 +221,7 @@ public sealed partial class Binding
         var operation = ExplicitAdaptationPlan.Select(source, target, shorthand);
         if (operation == ConversionBinding.None)
         {
-            this.FailMismatch(conversion, conversion, writtenSource, writtenTarget);
+            this.FailMismatch(conversion, conversion, writtenSource, writtenTarget, ComparisonFailure.Shape);
             return false;
         }
 
@@ -249,7 +249,7 @@ public sealed partial class Binding
     {
         if (operation == ConversionBinding.None)
         {
-            this.FailMismatch(conversion, conversion, source, target);
+            this.FailMismatch(conversion, conversion, source, target, ComparisonFailure.Shape);
             return false;
         }
 

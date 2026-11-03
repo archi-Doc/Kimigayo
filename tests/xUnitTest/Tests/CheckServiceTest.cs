@@ -5,6 +5,7 @@ using Arc.Unit;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Helper;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -54,6 +55,239 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
         Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): two source names equal under simple case folding are a project preparation failure, Blocked before
+    // the front end: ASCII case, and U+1E9E/U+00DF and U+017F/s, which OrdinalIgnoreCase misses; ß and ss differ (simple, not full,
+    // folding).
+    [Theory]
+    [InlineData("A.kimi", "a.kimi", true)]
+    [InlineData("\u1E9E.kimi", "\u00DF.kimi", true)]
+    [InlineData("\u017F.kimi", "s.kimi", true)]
+    [InlineData("\u00DF.kimi", "ss.kimi", false)]
+    public void SourceNamesAreUniqueUnderSimpleCaseFolding(string first, string second, bool equal)
+    {
+        var project = this.WriteProject("App");
+        var folder = Path.GetDirectoryName(project)!;
+        const string other = "public func two() -> i32 => 2\n";
+        var inputs = new OverlayInputSource(new() { [Path.Combine(folder, first)] = Valid, [Path.Combine(folder, second)] = other });
+        var output = this.Run(project, inputs: inputs);
+        if (!equal)
+        {
+            Assert.Equal(CheckOutcome.Completed, output.Outcome);
+            Assert.Empty(output.Diagnostics);
+            return;
+        }
+
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
+        Assert.Contains("simple case folding", failure.Note, StringComparison.Ordinal);
+        Assert.Contains(first, failure.Note, StringComparison.Ordinal);
+        Assert.Contains(second, failure.Note, StringComparison.Ordinal);
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a source name not in NFC is a project preparation failure, checked before folding: a decomposed
+    // letter, and U+037E (a non-identifier scalar whose canonical decomposition is ';'); a precomposed name and one whose marks are in
+    // canonical order are accepted.
+    [Theory]
+    [InlineData("e\u0301.kimi", false)]
+    [InlineData("\u037E.kimi", false)]
+    [InlineData("q\u0307\u0323.kimi", false)]
+    [InlineData("\u00E9.kimi", true)]
+    [InlineData("q\u0323\u0307.kimi", true)]
+    public void SourceNamesAreInNfc(string file, bool normalized)
+    {
+        var project = this.WriteProject("App");
+        var output = this.Run(project, inputs: new OverlayInputSource(new() { [Path.Combine(Path.GetDirectoryName(project)!, file)] = Valid }));
+        if (normalized)
+        {
+            Assert.Equal(CheckOutcome.Completed, output.Outcome);
+            Assert.Empty(output.Diagnostics);
+            return;
+        }
+
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
+        Assert.Contains("Normalization Form C", failure.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.1.2, IMPL 20.1 (DECISIONS R5-M175): each independent failure of a module's names is its own record: a name not in NFC,
+    // and each group of names equal under simple case folding, three names in one group naming them all.
+    [Fact]
+    public void EachIndependentNameFailureIsReported()
+    {
+        var project = this.WriteProject("App");
+        var folder = Path.GetDirectoryName(project)!;
+        var files = new[] { "S.kimi", "s.kimi", "\u017F.kimi", "e\u0301.kimi", "B.kimi", "b.kimi" };
+        var output = this.Run(project, inputs: new OverlayInputSource(files.ToDictionary(x => Path.Combine(folder, x), static _ => Valid)));
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        var notes = output.Diagnostics.Select(static x => x.Note!).ToArray();
+        Assert.Equal(3, notes.Length);
+        Assert.Single(notes, static x => x.Contains("e\u0301.kimi", StringComparison.Ordinal) && x.Contains("Normalization", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.Contains("'S.kimi', 's.kimi', '\u017F.kimi'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.Contains("'B.kimi', 'b.kimi'", StringComparison.Ordinal));
+    }
+
+    // SPEC 23.1.2, IMPL 20.1: TestSources entries are compared as resolved paths, and each duplicate is its own record, in a product and
+    // a test check alike.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void EachDuplicateTestSourceIsReported(CheckMode mode)
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "TestSources={\"tests/../a.kimi\" \"a.kimi\" \"b.kimi\" \"b.kimi\"}");
+        var output = this.Run(project, mode);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        Assert.Equal(
+            ["Duplicate resolved TestSources path: a.kimi", "Duplicate resolved TestSources path: b.kimi"], output.Diagnostics.Select(static x => x.Note));
+    }
+
+    // SPEC 23.1.2, 23.2.2: each test setting and the test identity are independent records blocking test preparation; the product
+    // check, which reads none of them, is accepted.
+    [Fact]
+    public void EachTestSettingFailureIsReported()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "TestProjectId=\" \" Test={Timeout=\"0s\" Environment={TMP=\"x\"}}");
+        var output = this.Run(project, CheckMode.Test);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        Assert.Equal(3, output.Diagnostics.Length);
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("Test durations", StringComparison.Ordinal));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("environment name: TMP", StringComparison.Ordinal));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("TestProjectId", StringComparison.Ordinal));
+        Assert.True(this.Run(project).Accepted);
+    }
+
+    // SPEC 23.1.2: each independent failure of the dependency graph is its own record, in a product and a test check alike.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void EachIndependentDependencyFailureIsReported(CheckMode mode)
+    {
+        var dependencies = "A={PackageId=\"a\" PackageVersion=\"1\" Project=\"../A/A.kimiproj\"} " +
+            "B={PackageId=\"b\" PackageVersion=\"1\" Project=\"../B/B.kimiproj\"}";
+        var project = this.WriteProject("App", ("main.kimi", Valid), dependencies: dependencies);
+        var output = this.Run(project, mode);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(2, output.Diagnostics.Length);
+        Assert.All(output.Diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), x.Code));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("A.kimiproj", StringComparison.Ordinal));
+        Assert.Single(output.Diagnostics, static x => x.Note!.Contains("B.kimiproj", StringComparison.Ordinal));
+    }
+
+    // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
+    // the path syntax depends on that failure and is left out.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void PreparationReportsEachConfigurationFailure(CheckMode mode)
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
+        loaded.ProjectFile.Alias = [" "];
+        loaded.ProjectFile.TestSources = ["*.kimi", "*.kimi"];
+        var output = CheckService.Run(loaded, WindowsProfile.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(
+            ["Alias requires nonempty Container paths.", "TestSources requires explicit project-relative paths without globs."],
+            output.Diagnostics.Select(static x => x.Note!).Order(StringComparer.Ordinal));
+    }
+
+    // SPEC 23.1.2, IMPL 20.1 (DECISIONS R5-M175): every module's names are checked, the root's and each dependency's, each failure naming
+    // its module; names are compared only within one module, so a root Main.kimi beside a dependency's main.kimi is accepted.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EveryModulesNamesAreCheckedWithinTheModule(bool invalid)
+    {
+        this.WriteLibrary("Lib", "lib", "public func value() -> i32 => 2\n");
+        const string dependency = "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}";
+        var project = this.WriteProject("App", ("Main.kimi", Valid), dependencies: dependency);
+        if (invalid)
+        {
+            File.WriteAllText(this.PathOf("App", "o\u0308.kimi"), "public func app() -> i32 => 3\n");
+            File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "public func lib() -> i32 => 4\n");
+        }
+
+        var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken);
+        var output = this.Run(project);
+        if (!invalid)
+        {
+            Assert.Equal(CheckOutcome.Completed, output.Outcome);
+            Assert.Empty(output.Diagnostics);
+            return;
+        }
+
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var notes = output.Diagnostics.Select(static x => x.Note!).ToArray();
+        Assert.Equal(2, notes.Length);
+        Assert.Single(notes, static x => x.Contains("o\u0308.kimi", StringComparison.Ordinal) && x.Contains("'App'", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.Contains("e\u0301.kimi", StringComparison.Ordinal) && !x.Contains("'App'", StringComparison.Ordinal));
+    }
+
+    // SPEC 6.2.1, IMPL 20.1 (DECISIONS R5-M176): source names order as UTF-8 byte sequences over the whole name, `/` an ordinary byte
+    // and a proper prefix first; UTF-16 order differs where a supplementary scalar meets U+E000–U+FFFF.
+    [Theory]
+    [InlineData("a.kimi", "b.kimi", -1)]
+    [InlineData("a/b.kimi", "a-b.kimi", 1)]
+    [InlineData("a.kimi", "a0.kimi", -1)]
+    [InlineData("a", "a.kimi", -1)]
+    [InlineData("\U0001F600.kimi", "\uFF21.kimi", 1)]
+    [InlineData("\U0001F600.kimi", "\U0001F601.kimi", -1)]
+    [InlineData("\U0001F600.kimi", "\U00020000.kimi", -1)]
+    public void SourceNamesOrderAsUtf8Bytes(string first, string second, int order)
+    {
+        Assert.Equal(order, Math.Sign(UnicodeNameHelper.ScalarOrder.Compare(first, second)));
+        Assert.Equal(-order, Math.Sign(UnicodeNameHelper.ScalarOrder.Compare(second, first)));
+        Assert.Equal(order, Math.Sign(Encoding.UTF8.GetBytes(first).AsSpan().SequenceCompareTo(Encoding.UTF8.GetBytes(second))));
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M176): a lone surrogate (a name not in NFC) orders by its code unit, so the order stays total and
+    // deterministic: above U+E000, a high one before its own pair (a proper prefix), a low one after.
+    [Fact]
+    public void LoneSurrogatesOrderByTheirCodeUnits()
+    {
+        string[] names = ["\uDC00", "\U00010000", "\uE000", "\uD800"];
+        Assert.Equal(["\uE000", "\uD800", "\U00010000", "\uDC00"], names.Order(UnicodeNameHelper.ScalarOrder));
+    }
+
+    // SPEC 6.2.1 (DECISIONS R5-M176): a module's sources are parsed in logical declaration order, whatever the read order: a TestSources
+    // entry and an in-memory source between product sources, and a supplementary scalar after U+FF21, which UTF-16 orders first.
+    [Fact]
+    public void SourcesAreParsedInLogicalDeclarationOrder()
+    {
+        var project = this.WriteProject("App", ("c.kimi", "public func c() -> i32 => 3\n"), settings: "TestSources={\"b.kimi\"}");
+        File.WriteAllText(this.PathOf("App", "a.kimi"), "public func a() -> i32 => 1\n");
+        File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
+        File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
+        File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "public func wide() -> i32 => 5\n");
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
+        loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
+        var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
+        Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "\uFF21.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a name used twice in one module (an in-memory source beside the listed one) is the same failure.
+    [Fact]
+    public void ATwinSourceNameIsAPreparationFailure()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid));
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+            string.Join(", ", failures));
+        loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "public func twin() -> i32 => 2\n");
+        var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), Assert.Single(output.Diagnostics).Code);
     }
 
     // SPEC 23.2.2: an invalid test configuration is not established, so test preparation is Blocked before the front end.
@@ -304,7 +538,9 @@ public sealed partial class CheckServiceTest : IDisposable
     private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null)
     {
         inputs ??= CheckInputSource.Disk;
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failure), failure);
+        Assert.True(
+            Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures),
+            string.Join(", ", failures));
         return CheckService.Run(project, target.Length == 0 ? WindowsProfile.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
     }
 

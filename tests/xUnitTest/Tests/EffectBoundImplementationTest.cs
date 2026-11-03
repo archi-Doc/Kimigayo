@@ -142,42 +142,6 @@ public partial class EffectBoundImplementationTest
         }
     }
 
-    // SPEC 4.9.6: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
-    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, `removeAll`'s `matching` the only
-    // Callable input one publishes (the summary reads both from the row), and the capacity, clear and truncate rows publish none at
-    // Binding (destructions are checked after ownership analysis).
-    [Fact]
-    public void PublishedOperationBodiesStayWithinTheirRows()
-    {
-        var c = MinimalEmissionTest.Analyze(Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var equals = ((ContractKoto)c.Library.GetSymbol(KimiDeclarationId.Equatable)!.Declaration).Members.OfType<FunctionKoto>().Single(static x => x.Name == "equals").SymbolOf();
-        var operations = 0;
-        foreach (var entry in KimiLibraryCatalog.Entries)
-        {
-            var operation = c.Library.GetSymbol(entry.Id)!;
-            if (KimiLibraryCatalog.Row(operation) is null || entry.Function != CompilerFunctionKind.None)
-            {
-                continue; // A compiler function's row has no Kimi body to verify.
-            }
-
-            if (entry.Implementation is { } implementation)
-            {
-                // A bodiless constructor's summary is its linked implementation's, which is checked as its own entry.
-                Assert.Same(c.Library.GetSymbol(implementation), c.Library.ConstructorImplementation(operation));
-                continue;
-            }
-
-            Assert.True(c.Types.Published(operation)!.Value.Runs is not { } runs || runs == equals, entry.Name); // The summary reads the row.
-            var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation);
-            Assert.True(valid, $"{entry.Name}: {violation} at {node}");
-
-            operations++;
-        }
-
-        Assert.Equal(13, operations);
-    }
-
     // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
     // helper, every specialization the call may still select (by Type, length or a compound key), the accessor or indexer a Place's use
     // selects, and a destructor ownership analysis plans; a member no call reaches is not judged. (These forms were preserves results

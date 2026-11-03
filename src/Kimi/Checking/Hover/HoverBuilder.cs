@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -28,7 +29,6 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
     private readonly HashSet<string> syntaxErrorSources = new(SourceIdentity.PathComparer);
     private readonly HashSet<string> documentationErrorSources = new(SourceIdentity.PathComparer);
     private readonly List<EffectHover> legacyEffects = [];
-    private readonly Dictionary<SourceDocument, string?> logicalNames = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(string Operation, bool Full), HoverInfo> operations = new();
     private readonly HoverBudget budget = new(maximumWork: 4 * HoverLimits.Work);
 
@@ -54,11 +54,6 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
         foreach (var module in compilation.SourceModules.Append(query.Library.Kotonoha))
         {
-            for (var i = 0; i < module.SourceDocuments.Count; i++)
-            {
-                this.logicalNames.TryAdd(module.SourceDocuments[i], module.HoverSourceName(i));
-            }
-
             foreach (var source in module.SourceDocuments)
             {
                 if (compilation.Diagnostics.HasSyntaxErrors(source))
@@ -114,7 +109,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                     this.origins.Add(declaration, list = []);
                 }
 
-                list.Add(this.Origin(declaration, anchor.Source, anchor.Token));
+                list.Add(this.Origin(anchor.Syntax.CodeContext.SourceModule, anchor.Source, anchor.Token));
             }
         }
 
@@ -170,7 +165,11 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 }
             }
 
-            result.Add(SourceIdentity.FromPath(document.Key.Path), new(document.Key, entries.ToArray()));
+            // A document no client can name (a path with NUL, an in-memory source) has no hover.
+            if (SourceIdentity.TryFromPath(document.Key.Path, out var identity))
+            {
+                result.Add(identity, new(document.Key, entries.ToArray()));
+            }
         }
 
         return new(this.legacyEffects.ToArray()) { Documents = result };
@@ -384,7 +383,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         var generated = syntax is FunctionKoto { IsGenerated: true } or FunctionKoto { IsImplicitConstructor: true };
         var origins = generated ? [] : this.origins.TryGetValue(syntax, out var fragments)
             ? fragments.ToArray()
-            : source is null ? [] : new HoverOrigin[] { this.Origin(syntax, source, syntax.Span) };
+            : source is null ? [] : new HoverOrigin[] { this.Origin(syntax.CodeContext.SourceModule, source, syntax.Span) };
         Array.Sort(origins, static (a, b) =>
         {
             var result = string.CompareOrdinal(a.Project, b.Project);
@@ -442,7 +441,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 }
 
                 var location = comment.Owner;
-                documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.Kotonoha)));
+                documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax.CodeContext.SourceModule), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.CodeContext.SourceModule)));
             }
 
             documentation.Sort(static (a, b) =>
@@ -455,7 +454,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
                 if (result == 0)
                 {
-                    result = string.CompareOrdinal(a.ModId ?? a.LogicalName, b.ModId ?? b.LogicalName);
+                    result = UnicodeNameHelper.ScalarOrder.Compare(a.ModId ?? a.LogicalName, b.ModId ?? b.LogicalName);
                 }
 
                 if (result == 0)
@@ -475,11 +474,13 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         }
     }
 
-    private string Project(Koto syntax)
-        => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : query.Compilation.Project.FilePath ?? query.Compilation.Project.Directory;
+    // A document's project and name are its own module's, the module it came from (CodeContext.SourceModule), which a cross-module
+    // move keeps; a split declaration's fragment keeps its own document.
+    private string Project(Kotonoha module)
+        => module.Url.Length != 0 ? module.Url : query.Compilation.Project.FilePath ?? query.Compilation.Project.Directory;
 
-    private HoverOrigin Origin(Koto syntax, SourceDocument source, SourceSpan span)
-        => new(this.Project(syntax), source.Path, span, this.logicalNames.GetValueOrDefault(source));
+    private HoverOrigin Origin(Kotonoha module, SourceDocument source, SourceSpan span)
+        => new(this.Project(module), source.Path, span, module.HoverSourceName(source));
 
     private HoverPlacement Placement(Kotonoha module)
     {
@@ -506,7 +507,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 }
             }
 
-            var root = module.SourceDirectory;
+            var root = module.Base;
             placement = new(Path.IsPathFullyQualified(root) ? root : null, files.ToArray());
             this.placements.Add(module, placement);
         }
@@ -664,7 +665,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         if (!this.identities.TryGetValue(binder, out var result))
         {
             var text = new StringBuilder("binder;");
-            AppendKey(text, this.Project(binder));
+            AppendKey(text, this.Project(binder.CodeContext.SourceModule));
             AppendKey(text, binder.CodeContext.SourceDocument?.Path ?? string.Empty);
             text.Append((int)binder.Akind).Append(',').Append(binder.Span.Start).Append(',').Append(binder.Span.Length);
             result = new(text.ToString(), []);

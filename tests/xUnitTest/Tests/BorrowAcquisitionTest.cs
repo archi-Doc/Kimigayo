@@ -138,6 +138,18 @@ public class BorrowAcquisitionTest
         Assert.Equal("TransferRequired_Kd x@follow", string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
+    // SPEC 6.5.2, 3.5, 8.15.2 (R6-check (b2)'s acceptance move): a payload Place is acquired by its bare acquisition, so `s/(uniq/i32)`, whose
+    // owner case Reborrows its target, is no TransferRequired_Kd (before (b2) the owner case had no plan).
+    [Fact]
+    public void APayloadOfAnOwnerCaseOverAnExclusiveTargetIsAcquiredByCase()
+    {
+        var source = "func pass<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or uniq\n    let o = Option<s/(uniq/i32 during a)>.Some(value)\n" +
+            "    _ = o@move\npublic func main() => ()\n";
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
+    }
+
     // SPEC 3.5.1, 10.2.2 (PLAN G232): at a fixed expected Type that it fits, a bare Place storing an exclusive reference, `uniq/T` or
     // `objuniq/T`, Reborrows as at a bare acquisition position, contained in the layers reaching it (DECISIONS BU-27): the leak is the
     // Origin relation's, the twin with the relation is accepted, at a `return` and an annotated `let`. Through a shared layer it has no

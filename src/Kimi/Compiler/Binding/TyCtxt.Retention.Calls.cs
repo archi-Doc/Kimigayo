@@ -142,7 +142,7 @@ internal sealed partial class TyCtxt
             return closure;
         }
 
-        return closure.ClosureContext is { } context ? this.ReadableInstance(environment, context) : environment;
+        return ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
     }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the

@@ -1,0 +1,8 @@
+[
+  { "name": "Empty", "source": "" },
+  { "name": "Main", "source": "public func main(value: i32) -> i32 => value + 1" },
+  { "name": "MainAbort", "source": "public func main() => $abort(\"must not execute\")" },
+  { "name": "Functions", "source": "public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"" },
+  { "name": "Generic", "source": "public group Api\n    public func keep<T>(value: T) -> T => value@move" },
+  { "name": "Cleanup", "source": "public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")" }
+]

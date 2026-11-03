@@ -8,19 +8,31 @@ namespace XunitTest;
 
 public class LibraryEmissionTest
 {
+    // The Library sources test-library.ps1 emits through the CLI and checks natively, its tests/library-sources.json: each name and source.
+    public static TheoryData<string, string> HarnessSources
+    {
+        get
+        {
+            var path = DiagnosticCorpus.RepositoryPath("src", "backend", "windows-x64", "tests", "library-sources.json");
+            using var sources = JsonDocument.Parse(File.ReadAllBytes(path));
+            var rows = new TheoryData<string, string>();
+            foreach (var entry in sources.RootElement.EnumerateArray())
+            {
+                rows.Add(entry.GetProperty("name").GetString()!, entry.GetProperty("source").GetString()!);
+            }
+
+            return rows;
+        }
+    }
+
     // A Library's module from the generation entry exports no definition and has no OS entry (DECISIONS R5-M12's class S assertion on the
-    // old generator's module, rewritten at G3); test-library.ps1 emits these sources through the CLI and checks the IR natively.
+    // old generator's module, rewritten at G3), for each source the harness emits.
     [Theory]
-    [InlineData("")]
-    [InlineData("public func main(value: i32) -> i32 => value + 1")]
-    [InlineData("public func main() => $abort(\"must not execute\")")]
-    [InlineData("public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"")]
-    [InlineData("public group Api\n    public func keep<T>(value: T) -> T => value@move")]
-    [InlineData("public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")")]
-    public void EmitsInspectionWithoutAnOsEntry(string source)
+    [MemberData(nameof(HarnessSources))]
+    public void EmitsInspectionWithoutAnOsEntry(string name, string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Binding.Startup.IsComplete);
+        Assert.True(c.Binding.Startup.IsComplete, name);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Matches(@"(?m)^define internal ", ir);

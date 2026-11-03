@@ -106,10 +106,11 @@ public sealed partial class Binding
             }
             else if (!ReferenceEquals(actual, BoundType.Never))
             {
-                var common = element is null ? actual : this.CommonOriginType(element, actual);
+                var failure = default(ComparisonFailure);
+                var common = element is null ? actual : this.CommonOriginType(element, actual, out failure);
                 if (common is null)
                 {
-                    this.Fail(literal.Elements[i], BindingFailure.TypeMismatch);
+                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
                     complete = false;
                 }
                 else
@@ -309,14 +310,15 @@ public sealed partial class Binding
         if (this.AwaitsPosition(source))
         {
             // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
-            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual) ?? literalDefault;
+            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual, out _) ?? literalDefault;
             return true;
         }
 
-        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        var failure = default(ComparisonFailure);
+        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
         if (common is null)
         {
-            this.FailMismatch(source, source, actual, established!);
+            this.FailMismatch(source, source, actual, established!, failure);
             return false;
         }
 
@@ -412,10 +414,11 @@ public sealed partial class Binding
             return true;
         }
 
-        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        var failure = default(ComparisonFailure);
+        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
         if (common is null)
         {
-            this.FailMismatch(source, source, actual, established!);
+            this.FailMismatch(source, source, actual, established!, failure);
             failed = source;
             return false;
         }

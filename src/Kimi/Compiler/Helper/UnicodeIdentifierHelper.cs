@@ -50,33 +50,12 @@ internal static class UnicodeIdentifierHelper
         return !needsNormalization || IsNormalized(text);
     }
 
-    private static int GetProperties(int scalar)
-    {
-        var data = UnicodeIdentifierData.Properties;
-        var low = 0;
-        var high = (data.Length / 3) - 1;
-        while (low <= high)
-        {
-            var middle = (low + high) >> 1;
-            var offset = middle * 3;
-            if (scalar < data[offset])
-            {
-                high = middle - 1;
-            }
-            else if (scalar > data[offset + 1])
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                return (int)data[offset + 2];
-            }
-        }
-
-        return 0;
-    }
-
-    private static bool IsNormalized(ReadOnlySpan<char> text)
+    /// <summary>Gets a value indicating whether text is in NFC, the one NFC check (identifiers and source names): canonical
+    /// decomposition and recomposition over the pinned Unicode 15.0.0 data, every scalar's combining class from
+    /// <see cref="UnicodeNameHelper.CombiningClass"/>.</summary>
+    /// <param name="text">Well-formed UTF-16 text.</param>
+    /// <returns><see langword="true"/> when the text equals its NFC.</returns>
+    internal static bool IsNormalized(ReadOnlySpan<char> text)
     {
         // Canonical decomposition expands a scalar to at most four scalars.
         int[]? rented = null;
@@ -96,7 +75,7 @@ internal static class UnicodeIdentifierHelper
             for (var i = 1; i < count; i++)
             {
                 var scalar = buffer[i];
-                var combiningClass = (GetProperties(scalar) >> 2) & 255;
+                var combiningClass = UnicodeNameHelper.CombiningClass(scalar);
                 var composed = Compose(buffer[starter], scalar);
                 if (composed != 0 && (lastClass == 0 || lastClass < combiningClass))
                 {
@@ -134,6 +113,32 @@ internal static class UnicodeIdentifierHelper
         }
     }
 
+    private static int GetProperties(int scalar)
+    {
+        var data = new IntegerTable<int>(UnicodeIdentifierData.Properties);
+        var low = 0;
+        var high = (data.Length / 3) - 1;
+        while (low <= high)
+        {
+            var middle = (low + high) >> 1;
+            var offset = middle * 3;
+            if (scalar < data[offset])
+            {
+                high = middle - 1;
+            }
+            else if (scalar > data[offset + 1])
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                return data[offset + 2];
+            }
+        }
+
+        return 0;
+    }
+
     private static void Decompose(int scalar, Span<int> buffer, ref int count)
     {
         var syllable = scalar - 0xAC00;
@@ -149,7 +154,7 @@ internal static class UnicodeIdentifierHelper
             return;
         }
 
-        var data = UnicodeIdentifierData.Decompositions;
+        var data = new IntegerTable<int>(UnicodeIdentifierData.Decompositions);
         var low = 0;
         var high = (data.Length / 3) - 1;
         while (low <= high)
@@ -166,10 +171,10 @@ internal static class UnicodeIdentifierHelper
             }
             else
             {
-                Decompose((int)data[offset + 1], buffer, ref count);
+                Decompose(data[offset + 1], buffer, ref count);
                 if (data[offset + 2] != 0)
                 {
-                    Decompose((int)data[offset + 2], buffer, ref count);
+                    Decompose(data[offset + 2], buffer, ref count);
                 }
 
                 return;
@@ -181,11 +186,11 @@ internal static class UnicodeIdentifierHelper
 
     private static void Append(int scalar, Span<int> buffer, ref int count)
     {
-        var combiningClass = (GetProperties(scalar) >> 2) & 255;
+        var combiningClass = UnicodeNameHelper.CombiningClass(scalar);
         var index = count++;
         if (combiningClass != 0)
         {
-            while (index > 0 && ((GetProperties(buffer[index - 1]) >> 2) & 255) > combiningClass)
+            while (index > 0 && UnicodeNameHelper.CombiningClass(buffer[index - 1]) > combiningClass)
             {
                 buffer[index] = buffer[index - 1];
                 index--;
@@ -208,7 +213,7 @@ internal static class UnicodeIdentifierHelper
         }
 
         var key = ((ulong)first << 21) | (uint)second;
-        var data = UnicodeIdentifierData.Compositions;
+        var data = new IntegerTable<ulong>(UnicodeIdentifierData.Compositions);
         var low = 0;
         var high = data.Length - 1;
         while (low <= high)

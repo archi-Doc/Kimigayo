@@ -43,8 +43,10 @@ they do not change language guarantees or mark pending work as supported.
   before publication; contract fields remain indivisible. Unsupported syntax is escaped, and links use source placement.
 - Containers use inline code and declarations use normal-size code blocks. Comment heading levels are preserved.
   Parameter items use the existing classified documentation path once, then move immediately after the variable header.
-  Known physical source names are computed once per module source using its own project base, independently of comments;
-  embedded/generated/unknown mappings invent no physical path. Stable attribution accompanies a reserved source footer,
+  A source's footer name is asked live from the module its document came from (`Kotonoha.HoverSourceName`, the logical name,
+  memoized in that module), independently of comments: relative to that module's own project base, and any path outside it
+  (another drive, an unknown mapping, another `://` scheme) by its own text; a built-in or Mod-generated document has none, and
+  a document no client can name (a path with NUL) has no hover. Stable attribution accompanies a reserved source footer,
   including after documentation truncation. Agreement includes these names and variable facts.
 
 ## Deterministic limits

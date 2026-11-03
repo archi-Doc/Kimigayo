@@ -292,9 +292,9 @@ internal static class DiagnosticMeasurements
 
     private static CheckOutput Check(string project)
     {
-        if (!Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure))
+        if (!Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures))
         {
-            throw new InvalidOperationException(failure);
+            throw new InvalidOperationException(string.Join(Environment.NewLine, failures));
         }
 
         return CheckService.Run(loaded, Target, CheckMode.Product, false, CheckInputSource.Disk, CancellationToken.None);

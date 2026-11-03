@@ -1973,7 +1973,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var program = Analyze(c);
         Assert.Equal(
             ["OwnershipDepthLimit_Kd Nest<ref/i32 during a>", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"], // The parameter's at its Type (BU-48 (a)).
-            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
@@ -2429,18 +2429,20 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
-    // Design §8 (DECISIONS R4-M154): the Loan stratum's second pass over a program allocates nothing, whichever role its two swapped Loan
-    // arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7 regrew 32 Loans before). The standard window
-    // (AllocationMeasurement) warms up before it measures, which absorbs a second-pass regrow, so this pass is measured on its own.
+    // V16, design §8 (DECISIONS R4-M154): A5's second pass over a program allocates nothing, the Origin stratum's and the Loan stratum's
+    // runs alike: whichever role the Loan stratum's two swapped Loan arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7
+    // regrew 32 Loans before), and whatever atoms the first pass added to a body's table (MirOrigins sizes its Anchor table by the Refs'
+    // own atoms; Milestone7 regrew it by 64 B before). The standard window (AllocationMeasurement) warms up before it measures, which
+    // absorbs a second-pass regrow, so this pass is measured on its own.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void TheLoanStratumsSecondPassAllocatesNothing()
+    public void A5sSecondPassAllocatesNothing()
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone7");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
-        _ = stratum.Run(program);
-        Assert.Equal(0, stratum.Run(program));
+        stratum.Run(program);
+        Assert.Equal(0, AllocationMeasurement.MeasureOnce(() => stratum.Run(program)));
     }
 
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
@@ -2492,7 +2494,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // A program's problems of some codes in its own bodies: function and the subject's first line, with the code unless it is a comparison's.
     private static string[] Problems(Compilation c, MirProgram program, DiagnosticCode[] codes)
     {
-        return [.. program.Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
+        return [.. program.Problems.All.ToArray().Where(x => !x.IsRecord && codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
@@ -2600,34 +2602,31 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal MirBorrows Borrows { get; }
 
-        // Each run returns what the Loan stratum's runs allocated on the thread (the Origin stratum's Judge apart).
-        internal long Run(MirProgram program)
+        internal void Run(MirProgram program)
         {
-            long allocated = 0;
             foreach (var body in program.Bodies)
             {
-                allocated += this.Run(program, body);
+                this.Run(program, body);
             }
-
-            return allocated;
         }
 
-        internal long Run(MirProgram program, MirBody body)
+        internal void Run(MirProgram program, MirBody body)
+        {
+            this.Begin(program, body);
+            for (var view = 0L; view < MirCases.Count(body); view++)
+            {
+                this.cases.Select(body, view);
+                this.Borrows.Run(program, body, view);
+            }
+        }
+
+        // A4's summaries of the program version, then the body's dataflow, Moves and Origin stratum, before its views.
+        private void Begin(MirProgram program, MirBody body)
         {
             this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
             this.origins.Judge(body, MirCases.Count(body), program.Problems);
-            long allocated = 0;
-            for (var view = 0L; view < MirCases.Count(body); view++)
-            {
-                this.cases.Select(body, view);
-                var before = GC.GetAllocatedBytesForCurrentThread();
-                this.Borrows.Run(program, body, view);
-                allocated += GC.GetAllocatedBytesForCurrentThread() - before;
-            }
-
-            return allocated;
         }
 
         // A4 over a program version it has not solved: each body's views' local facts, then the summaries and keys.

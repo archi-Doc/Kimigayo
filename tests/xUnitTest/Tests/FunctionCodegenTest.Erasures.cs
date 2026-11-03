@@ -2,6 +2,7 @@
 
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -48,7 +49,7 @@ public sealed partial class FunctionCodegenTest
 
     // PD19, IMPL 21.1.3 (DECISIONS R5-M103, R5-M104): an environment of 8 bytes or less is stored in the Function value's word, zero-filled
     // first, also one that needs destruction, so its erasure allocates nothing: its table's drop entry is null, or the environment's own glue,
-    // which receives the word's address; a larger one is allocated once, at the conversion's location, and its table's drop entry, the
+    // which receives its copy's address; a larger one is allocated once, at the conversion's location, and its table's drop entry, the
     // release, destroys it through its glue and frees it once.
     [Fact]
     public void AnInlineEnvironmentAllocatesNothingAndALargerOneOnce()
@@ -116,6 +117,34 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([item.Parameters[1], item.Parameters[2]], add.Operands);
     }
 
+    // IMPL 21.3.1 (DECISIONS R5-M108 as G157 (25) amends it): an adapter's entry is its target Function Type's erased signature named, the
+    // one computation every call of a value of that Type writes, so they share one parameter list (fail-before: two equal lists). A value
+    // called at a Callable signature other than its Type (a Never-result Function value at another result) is rejected by Binding (PLAN
+    // G159 (3)), so no program shows the call's half: the call reads its value's Type (FunctionCodegen.Closures' Erased).
+    [Fact]
+    public void AnAdapterEntryIsItsTargetsErasedSignature()
+    {
+        var (_, collector, module, _) = WrittenModule(Analyze(Erasures, OutputKind.Library));
+        var set = collector.Set;
+        var adapters = Enumerable.Range(0, set.Items.Length)
+            .Where(x => set.IsGenerated(x) && set.Items[x].Key.Kind is MonoKind.ClosureErasure or MonoKind.ItemAdapter).ToArray();
+        Assert.True(adapters.Length > 4, $"{adapters.Length}");
+        Assert.All(adapters, x => Assert.Same(module.Erased(set.Items[x].Key.Function!).Parameters, module.Adapter(x).Parameters));
+    }
+
+    // IMPL 21.3.1 (DECISIONS R5-M108 as G157 (25) amends it): a Function Type's erased signature is its Origin-erased Type's (Abi reads no
+    // Origin), the Type an adapter's key holds, so a call of a value whose Type states an Origin shares that entry's parameter list
+    // (fail-before: a list of its own).
+    [Fact]
+    public void AFunctionTypesErasedSignatureIsItsErasedTypes()
+    {
+        var c = Analyze("func apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 => f(x)\n", OutputKind.Library);
+        var (program, _, module, _) = WrittenModule(c);
+        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "apply").Locals[1].Type;
+        Assert.NotSame(c.Types.Erase(function), function);
+        Assert.Same(module.Erased(c.Types.Erase(function)), module.Erased(function));
+    }
+
     // SPEC 22.5.1 (DECISIONS R5-M104): an erased Item whose function is a caller-location body (FromEnd.resolve) gives it the location its
     // own entry received, the erased call's, after its other parameters: the entry's, but for its environment word and its context.
     [Fact]
@@ -130,8 +159,9 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([.. own.Skip(1).Take(own.Count - 4), own[^2], own[^1]], body.Operands);
     }
 
-    // SPEC 16.4, 8.10 (DECISIONS R5-M102, R5-M104): a Function value's glue calls its table's drop entry, when present, with its own
-    // parameters; a parameter's Drop destroys it so, and an owner call of the erased value destroys the value after the call.
+    // SPEC 16.4, 8.10 (DECISIONS R5-M102, R5-M104 as G182 amends it): a Function value's glue calls its table's drop entry, when present,
+    // with the address of its word's copy in an entry slot, so the value's own address does not escape, and its own location and length; a
+    // parameter's Drop destroys it so, and an owner call of the erased value destroys the value after the call.
     [Fact]
     public void AFunctionValueIsDestroyedByItsTablesDropEntry()
     {
@@ -140,11 +170,17 @@ public sealed partial class FunctionCodegenTest
         var call = Assert.Single(FunctionsOf(ir, c, "call"));
         var glue = Assert.Single(CallsOf(call), static x => x.Callee?.Signature == "internal void (ptr, ptr, i64)").Callee!;
         Assert.Equal(
-            ["getelementptr i8, ptr %, i64 8", "load ptr, ptr %, align 8", "getelementptr i8, ptr %, i64 16", "load ptr, ptr %, align 8",
-                "icmp ne ptr %, null", "br i1 %, label %, label %"],
+            ["alloca i64, align 8", "getelementptr i8, ptr %, i64 8", "load ptr, ptr %, align 8", "getelementptr i8, ptr %, i64 16",
+                "load ptr, ptr %, align 8", "icmp ne ptr %, null", "br i1 %, label %, label %"],
             glue.Blocks[0].Instructions.Select(static x => x.Shape));
-        var drop = Assert.Single(glue.Instructions, static x => x.Shape == "call void %(ptr %, ptr %, i64 %)");
-        Assert.Equal([glue.Instructions[3], .. glue.Parameters], drop.Operands);
+        var (slot, entry) = (glue.Blocks[0].Instructions[0], glue.Blocks[0].Instructions[4]);
+        var guarded = glue.Blocks[1].Instructions;
+        Assert.Equal(
+            ["load i64, ptr %, align 8", "store i64 %, ptr %, align 8", "call void %(ptr %, ptr %, i64 %)", "br label %"],
+            guarded.Select(static x => x.Shape));
+        Assert.Same(glue.Parameters[0], guarded[0].Operands[0]);
+        Assert.Equal([guarded[0], slot], guarded[1].Operands);
+        Assert.Equal([entry, slot, glue.Parameters[1], glue.Parameters[2]], guarded[2].Operands);
         var invoke = Assert.Single(FunctionsOf(ir, c, "invoke"));
         var calls = CallsOf(invoke).Where(static x => x.Shape.StartsWith("call i32", StringComparison.Ordinal) ||
             x.Callee?.Signature == "internal void (ptr, ptr, i64)").ToArray();
@@ -208,29 +244,6 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([write.Parameters[1], write.Parameters[3], write.Parameters[4]], line.Operands);
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M128, R5-M130): a compiler function's call is its direct call's row, whatever targets the row needs:
-    // Text.toString's row runs the format witness and Text.writer's the reserve witness, but neither function is its witness, so their Items,
-    // called as values or erased, run their row: a user formatter's toString its conversion over the witness's write wrapper, which alone
-    // calls the witness, and Text.writer its routine, whose dispatch word names the witness, which nothing calls (they called the witness
-    // with the function's operands before).
-    [Theory]
-    [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show = Text.toString<Value<i32>>\n    return show(n)\n", "format", 1)]
-    [InlineData(
-        UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show: (ref/Value<i32>) -> string = Text.toString\n    return show(n)\n",
-        "format",
-        1)]
-    [InlineData(Sink + "public func run(s: uniq/Sink) -> Utf8Writer during s\n    let make = Text.writer<Sink>\n    return make(s)\n", "reserve", 0)]
-    public void ACompilerFunctionsItemRunsItsRowNotItsRowsWitness(string source, string witness, int callers)
-    {
-        var c = Analyze(source, OutputKind.Library);
-        var text = Generate(c);
-        var ir = GeneratedIr.Parse(text);
-        var body = Assert.Single(FunctionsOf(ir, c, witness));
-        var calling = ir.Functions.Where(x => CalleesOf(x).Contains(body)).ToArray();
-        Assert.Equal(callers, calling.Length);
-        Assert.All(calling, x => Assert.Same(ir.Function(Regex.Match(text, @"define internal void @(__kimi_write\d+)\(").Groups[1].Value), x));
-    }
-
     // SPEC 7.7.4, 10.7, 22.5.1 (DECISIONS R5-M108): erased compiler functions' Items and a Never Item erased into two results run natively, the
     // Never one called through a borrowed string-result value.
     [Fact]
@@ -260,15 +273,6 @@ public sealed partial class FunctionCodegenTest
     private const string NeverWitness = "contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public let x: i64 = 0\n" +
         "    public func empty() -> Never => $abort(\"no value\")\nfunc g<T>() -> () -> T\n    T is Empty\n    T is Owned\n    return T.empty\n" +
         "public func h() -> () -> Impossible => g<Impossible>()\n";
-
-    // A user Utf8Format witness (Text.toString's row runs it).
-    private const string UserFormat = "struct Value<T>\n    Self is Utf8Format\n    let value: T\n    public init(value: T) => self.value = value@move\n" +
-        "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => Result<(), BufferFull>.Ok(())\n";
-
-    // A user BufferWriter witness (Text.writer's row reserves through it).
-    private const string Sink = "struct Sink\n    Self is BufferWriter\n    public var count: i32 = 0\n" +
-        "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" +
-        "        return .Err(BufferFull.init())\n";
 
     // The table an item's text stores into its Function value, read from the module's text: its entry's and its drop entry's names (null:
     // none).

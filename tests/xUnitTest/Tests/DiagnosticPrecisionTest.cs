@@ -48,6 +48,8 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    var w: Missing = .None\n    w = .Some(1)", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("func make() -> Missing => .None\npublic func main()\n    let v = make()", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("func make() -> Missing\n    return .None\npublic func main()\n    let v = make()", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<Undefined>(1)", "UnresolvedBinding_Kd", "Undefined")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\npublic func main()\n    let values = identity<[_ of i32]>([1])", "ExpectedSyntax_Kd", "_")]
     public void LimitsAndDependentChecksPublishOneSpecificError(string source, string code, string text)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -138,6 +140,8 @@ public class DiagnosticPrecisionTest
     [InlineData(Payload + "func read(o: objref/P) -> P => o@follow\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P, c: bool) -> P\n    if c => return o@follow\n    return P.init(1)\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P) -> i32\n    let p = o@follow\n    return p.v\npublic func main() => ()", "TransferRequired_Kd")]
+    // The valid twin of a failed explicit Type argument (DECISIONS BU-86): an argument that binds selects the candidate.
+    [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<i32>(1)", "")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
         => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
@@ -205,8 +209,10 @@ public class DiagnosticPrecisionTest
     }
 
     // SPEC 4.7.1, 5.3, 23.1.2: an index key that fits no conformance, Dictionary key or pointer offset is reported once, with
-    // both Types at the key or at the index expression, and a receiver without indexing is a Language error.
+    // both Types at the key or at the index expression, and a receiver without indexing is a Language error; a user index through
+    // a pair layer is the located limit (PLAN G179).
     [Theory]
+    [InlineData("func g<s/T>(value: s/T, x: s/View)\n    s is owner or uniq\n    let a = x[0]", "Unsupported_Kd", "x[0]", null)]
     [InlineData("let a = v[^1]", "NoApplicableOverload_Kd", "v[^1]", null)]
     [InlineData("let n: i32 = 0\nlet a = v[n]", "NoApplicableOverload_Kd", "v[n]", null)]
     [InlineData("let a = v[0..1]", "NotIndexable_Kd", "v[0..1]", null)]
@@ -221,6 +227,26 @@ public class DiagnosticPrecisionTest
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
         Assert.Equal(label, label is null ? null : error.Label);
+    }
+
+    // SPEC 15.1.5, 13.5.5: a Take its path does not offer keeps its code, and its Note names the layer that offers no Take, for the
+    // implicit and the explicit forms alike; no Message names an exclusive reference (PLAN G181 (1)).
+    [Theory]
+    [InlineData("func g<s/T>(m: s/T, p: s/P)\n    s is owner or uniq\n    let y = p.inner@move", "ExclusivePathTake_Kd", "a pair layer admitting owner")]
+    [InlineData("func g<s/T>(m: s/T, p: s/P)\n    s is owner or uniq\n    let y = p@follow.inner@move", "ExclusivePathTake_Kd", "a pair layer admitting owner")]
+    [InlineData("func g<s/T>(m: s/T, p: s/P)\n    s is uniq\n    let y = p.inner@move", "ExclusivePathTake_Kd", "an exclusive reference or view")]
+    [InlineData("func g(p: uniq/P)\n    let y = p.inner@move", "ExclusivePathTake_Kd", "an exclusive reference or view")]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h.inner@move", "InvalidAssignment_Kd", "an object payload")]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h@follow.inner@move", "InvalidAssignment_Kd", "an object payload")]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h@follow@move", "InvalidAssignment_Kd", "an object payload")]
+    public void DeniedTakesNameTheirLayer(string function, string code, string layer)
+    {
+        const string Types = "public func main()\n    return\nstruct Q\n    public var w: i32\n    public init(w: i32) => self.w = w\n" +
+            "struct P\n    public var v: i32\n    public var inner: Q\n    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n";
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(Types + function)));
+        Assert.Equal(code, error.Code);
+        Assert.Contains($"The Place is reached through {layer}", error.Note);
+        Assert.DoesNotContain("exclusive reference", error.Message);
     }
 
     // SPEC 13.5.3: only a numeric conversion changes an owned Core, so converting a position or range is a Type error.

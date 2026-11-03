@@ -170,6 +170,7 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
+        var contributions = this.contributionScratch.Rent(candidateCount * argumentCount);
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -235,6 +236,7 @@ public sealed partial class Binding
                 Inputs = inputs,
                 Evaluated = evaluated,
                 Operations = operations,
+                Contributions = contributions,
                 OperationStride = operationStride,
                 SavedCandidates = savedCandidates,
                 AllTypes = allTypes,
@@ -257,7 +259,8 @@ public sealed partial class Binding
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
                 // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
-                return (evaluation.InvalidDeclaration ?? this.TakeFailedCause()) is { } cause ? this.CompleteDependent(call, cause) : this.Fail(call, BindingFailure.InvalidConstraint);
+                return (evaluation.InvalidDeclaration ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(call, cause)
+                    : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (!this.CheckCallShapeContracts(call, generic, scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
@@ -278,6 +281,7 @@ public sealed partial class Binding
                 // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
                 return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
+                    : evaluation.PendingCount == 1 && evaluation.PendingJudgment is { } judgment ? this.FailPendingJudgment(call, judgment)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
             }
 
@@ -345,24 +349,7 @@ public sealed partial class Binding
 
             if (selection == CallSelection.Ambiguous)
             {
-                if (this.DeferNestedCall(call, expected))
-                {
-                    return Complete(call, null);
-                }
-
-                var remaining = new RejectedCandidate[applicable];
-                var next = 0;
-                var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);
-                for (var i = 0; i < count; i++)
-                {
-                    if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
-                    {
-                        remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
-                    }
-                }
-
-                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
-                return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
+                return this.CompleteAmbiguous(evaluation);
             }
 
             var winner = evaluated[winnerIndex].Symbol!;
@@ -394,7 +381,7 @@ public sealed partial class Binding
                 }
 
                 var state = this.TryCandidate(
-                    this.Solution(evaluation, selected, selectedType),
+                    this.Solution(evaluation, winnerIndex, selected, selectedType),
                     explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,
@@ -494,9 +481,9 @@ public sealed partial class Binding
             // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            var solution = this.Solution(evaluation, selected, selectedType);
+            var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
             var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
-            this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType, defaults.AsSpan(0, formed ? defaultCount : 0));
+            this.JudgeSelectedCall(call, solution, selectedOperations, defaults.AsSpan(0, formed ? defaultCount : 0));
             if (!formed)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -553,6 +540,7 @@ public sealed partial class Binding
             }
 
             this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.contributionScratch.Return(contributions);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
@@ -569,6 +557,32 @@ public sealed partial class Binding
             this.indexScratch.Return(mapping);
             this.typeScratch.Return(scratch, clearArray: true);
         }
+    }
+
+    // SPEC 10.4, 23.1.2: the Ambiguous outcome of a call's selection. Under the argument probe a nested call waits (DeferNestedCall);
+    // otherwise the kept candidates explain the failed selection, a failed argument part included (rule W, DECISIONS BU-79).
+    private BoundType? CompleteAmbiguous(in CallEvaluation evaluation)
+    {
+        var call = evaluation.Call;
+        if (this.DeferNestedCall(call, evaluation.Expected))
+        {
+            return Complete(call, null);
+        }
+
+        var evaluated = evaluation.Evaluated;
+        var remaining = new RejectedCandidate[evaluation.Applicable];
+        var next = 0;
+        var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
+        for (var i = 0; i < evaluation.Count; i++)
+        {
+            if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+            {
+                remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
+            }
+        }
+
+        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
+        return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
     }
 
     // SPEC 7.2.3, 10.1 step 2: the `count` defaults the selected candidate uses (DefaultSlots), each with its instantiated parameter Type;

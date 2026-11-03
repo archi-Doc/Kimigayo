@@ -19,7 +19,8 @@ namespace Benchmark;
 // collection); freshLayout, a new Layout with the Type context's memos warm; warm, the compilation's Layout again. Layout's first
 // computations are freshLayout - warm and the Type context's first queries cold - freshLayout, both per operation inside one compilation.
 // `--collection-cost-check` times nothing: it requires the three collections to equal each other and the compilation's own checked set
-// (its Analyze's) element by element (the items' keys in admission order, the records' codes and locations), the comparison to fail on a
+// (its Analyze's) element by element (the items' keys in admission order, the records' codes and locations: a program's collection records,
+// MirProgram.Records, which the later collections over one program must leave as the cold one made them), the comparison to fail on a
 // reordered collection and on a changed record, and cold to allocate more than warm, so a warm "cold" fails.
 internal static class CollectionCostMeasurements
 {
@@ -98,7 +99,7 @@ internal static class CollectionCostMeasurements
                 (ticks[v][i], bytes[v][i]) = (operation.Ticks[v], operation.Bytes[v]);
             }
 
-            counts = (operation.Bodies, operation.Cold.Items.Length, operation.Cold.Records.Count);
+            counts = (operation.Program.Bodies.Length, operation.Cold.Items.Length, operation.Records.Length);
         }
 
         var variants = Enumerable.Range(0, Variants.Length).Select(v => new
@@ -128,11 +129,12 @@ internal static class CollectionCostMeasurements
     private static Collections Operation(string source)
     {
         var c = Checked(source);
-        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build());
-        Require(program.Records.Count == 0 && program.Findings.Count == 0, "MIR construction or validation failed.");
+        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(), c.SourceModules.Length);
+        Require(!program.Records(MirRecordClass.Construction).Any() && program.Findings.Count == 0, "MIR construction or validation failed.");
         Layout[] layouts = [c.Layout, new Layout(), c.Layout];
         var (ticks, bytes) = (new long[layouts.Length], new long[layouts.Length]);
         CheckedSet? cold = null;
+        Problem[] records = [];
         for (var v = 0; v < layouts.Length; v++)
         {
             var allocated = GC.GetAllocatedBytesForCurrentThread();
@@ -140,11 +142,13 @@ internal static class CollectionCostMeasurements
             var set = new InstanceCollector(c.Types, layouts[v]).Run(program, c.SourceModules.Length);
             ticks[v] = Stopwatch.GetTimestamp() - start;
             bytes[v] = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            records = cold is null ? [.. program.Records(MirRecordClass.Collection)] : records;
             cold ??= set;
-            Require(Difference(cold, set) is null, $"The {Variants[v]} collection differs from the cold one: {Difference(cold, set)}.");
+            var difference = Difference(Keys(cold), Keys(set), records, [.. program.Records(MirRecordClass.Collection)]);
+            Require(difference is null, $"The {Variants[v]} collection differs from the cold one: {difference}.");
         }
 
-        return new(c, program.Bodies.Length, cold!, ticks, bytes);
+        return new(c, program, cold!, records, ticks, bytes);
     }
 
     // The check of one input: cold is the compilation's first collection (it allocates more than warm), the collections equal the
@@ -155,15 +159,17 @@ internal static class CollectionCostMeasurements
         Require(operation.Bytes[0] > operation.Bytes[2], $"cold allocates {operation.Bytes[0]} B, warm {operation.Bytes[2]} B: cold is not cold.");
         Require(operation.Compilation.Analyze().IsVerified, "The analysis rejected the program.");
         var own = operation.Compilation.Instances ?? throw new InvalidOperationException("The compilation has no checked set.");
-        Require(Difference(operation.Cold, own) is null, $"The collection differs from the compilation's own: {Difference(operation.Cold, own)}.");
+        Problem[] ownRecords = [.. operation.Compilation.BuildMir().Records(MirRecordClass.Collection)];
         var keys = Keys(operation.Cold);
+        var difference = Difference(keys, Keys(own), operation.Records, ownRecords);
+        Require(difference is null, $"The collection differs from the compilation's own: {difference}.");
         if (keys.Length > 1)
         {
-            Require(Difference(keys, [.. keys[1..], keys[0]], operation.Cold.Records, own.Records) is not null, "A reordered collection passes.");
+            Require(Difference(keys, [.. keys[1..], keys[0]], operation.Records, ownRecords) is not null, "A reordered collection passes.");
         }
 
-        Console.WriteLine($"PASS collection cost: shape={input.Shape}, size={input.Size}, MIR bodies={operation.Bodies}, items={keys.Length}, " +
-            $"records={operation.Cold.Records.Count}, cold {operation.Bytes[0]} B > warm {operation.Bytes[2]} B");
+        Console.WriteLine($"PASS collection cost: shape={input.Shape}, size={input.Size}, MIR bodies={operation.Program.Bodies.Length}, items={keys.Length}, " +
+            $"records={operation.Records.Length}, cold {operation.Bytes[0]} B > warm {operation.Bytes[2]} B");
     }
 
     // The record half of the comparison fails on a changed code and on a changed location (the inputs have no records of their own).
@@ -187,8 +193,6 @@ internal static class CollectionCostMeasurements
         Require(c.Binding.CheckStartup(OutputKind.Application).IsComplete, "Startup failed.");
         return c;
     }
-
-    private static string? Difference(CheckedSet a, CheckedSet b) => Difference(Keys(a), Keys(b), a.Records, b.Records);
 
     // The first difference of two collections: their items' keys in admission order, then their records' codes and locations.
     private static string? Difference(MonoKey[] a, MonoKey[] b, IReadOnlyList<Problem> recordsA, IReadOnlyList<Problem> recordsB)
@@ -248,5 +252,5 @@ internal static class CollectionCostMeasurements
     }
 
     // One operation's compilation, its program's bodies, the cold collection and each variant's ticks and allocated bytes.
-    private sealed record Collections(Compilation Compilation, int Bodies, CheckedSet Cold, long[] Ticks, long[] Bytes);
+    private sealed record Collections(Compilation Compilation, MirProgram Program, CheckedSet Cold, Problem[] Records, long[] Ticks, long[] Bytes);
 }

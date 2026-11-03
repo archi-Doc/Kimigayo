@@ -19,7 +19,8 @@ internal enum MonoKind : byte
     Body, // A body instance.
     ClosureErasure, // A Closure Type's value of a common Function Type (SPEC 7.7.4): its erased Closure Type and erased Function Type.
     ItemAdapter, // A function item Type's value of a common Function Type (SPEC 7.7.4): its erased Item Type and erased Function Type.
-    DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type.
+    DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type, one glue of every Function value, or an owning handle's
+    // release (InstanceCollector.GlueKey).
     Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.3): the function (its kind its CompilerFunction), the erased Self;
     // a comparison's also its ComparisonMode, its node's erased Type at the template and the requesting instance when that has a parameter.
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
@@ -37,9 +38,11 @@ internal enum MonoKind : byte
 /// <param name="Body">A body item's instance; a comparison Builtin item's requesting instance (its erased substitution, no definition)
 /// when its Type has a parameter (DECISIONS R5-M166).</param>
 /// <param name="Type">A type-driven item's erased Type (<see cref="TyCtxt.Erase(BoundType)"/>): a comparison Builtin item's is its node's,
-/// at the template when it has a parameter (DECISIONS R5-M166).</param>
+/// at the template when it has a parameter (DECISIONS R5-M166); () -> () for a DropGlue item of a Function value, and the handle over
+/// Unit for one of an owning handle's release that destroys no payload glue (DECISIONS R5-M60, amended by U11 and G372).</param>
 /// <param name="Symbol">A Builtin's compiler function or a property witness's Field.</param>
-/// <param name="Variant">A property witness's operation; a comparison Builtin item's <see cref="ComparisonMode"/>.</param>
+/// <param name="Variant">A property witness's operation; a comparison Builtin item's <see cref="ComparisonMode"/>; 1 for such a DropGlue
+/// item whose release runs the descriptor's finalizer.</param>
 /// <param name="Function">A ClosureErasure's or ItemAdapter's erased target Function Type, the one whose erased calls reach its entry
 /// (SPEC 10.7: a Never-result source fits Function Types of other results; DECISIONS R5-M108).</param>
 internal readonly record struct MonoKey(MonoKind Kind, Instantiation Body, BoundType? Type, BindingSymbol? Symbol, byte Variant, BoundType? Function);
@@ -69,8 +72,8 @@ internal record struct MonoItem
     /// <summary>Gets the item that first admitted it, or -1 for a root.</summary>
     internal int Parent { get; init; }
 
-    /// <summary>Gets its depth on the admission chain, 0 for a root.</summary>
-    internal ushort Depth { get; init; }
+    /// <summary>Gets its place in its identity's growth on the admission chain (DECISIONS R5-M170).</summary>
+    internal Growth Growth { get; init; }
 
     /// <summary>Gets the root-module site of its first admission (a root's body).</summary>
     internal SourceRef Site { get; init; }
@@ -81,6 +84,15 @@ internal record struct MonoItem
     /// <summary>Gets or sets the number of its targets.</summary>
     internal int TargetCount { get; set; }
 }
+
+/// <summary>A mono item's place in the growth of its identity (DECISIONS R5-M170): its generation, the number of times the height of its
+/// identity's keys grew on its admission chain, counting from 1 (0 for an item without an identity); the greatest height of those keys
+/// (its peak); and the nearest item with an identity above it on the chain (-1 for none), through which a search reads only identity
+/// items. Generation and peak saturate.</summary>
+/// <param name="Generation">The generation.</param>
+/// <param name="Peak">The peak height.</param>
+/// <param name="Above">The nearest identity item above it, or -1.</param>
+internal readonly record struct Growth(byte Generation, byte Peak, int Above);
 
 /// <summary>An edge of the checked set: the item a site of an item's body names, the site, and whether a runtime path from the body's
 /// entry reaches it (false: only the checks reach it, so the item is checked, never generated through it); a type-driven item's targets

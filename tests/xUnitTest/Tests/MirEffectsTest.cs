@@ -617,8 +617,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
     public void SummariesScaleLinearly(string member)
     {
-        var (sizes, evaluations, allocated) = (new[] { 256, 512, 1024 }, new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, evaluations) = (new[] { 256, 512, 1024 }, new long[3]);
+        var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder(Sink + "group G\n    public let flag: bool = false\ngroup H\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -635,9 +636,12 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             var (cases, report) = (new MirCases(c.Types), new MirReport());
             var flow = new MirDataflow(new MirReach());
             var effects = new MirEffects(c.Types, cases, flow);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            Analyze(effects, flow, cases, program, report);
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            analyses[i] = (effects, flow, cases, program, report);
+            return () => Analyze(effects, flow, cases, program, report);
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (effects, flow, cases, program, report) = analyses[i];
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
@@ -688,6 +692,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     }
 
     private static string[] Problems(Compilation c, MirReport report)
-        => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
+        => [.. report.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
             DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

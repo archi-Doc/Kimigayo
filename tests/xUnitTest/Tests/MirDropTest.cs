@@ -14,15 +14,15 @@ namespace XunitTest;
 /// verdict groups and each location's flag points, without source suffixes) and the problems <c>Compilation.BuildMir</c> finds.</summary>
 public sealed partial class MirDropTest(ITestOutputHelper output)
 {
+    // A default holding ledger row a1-whole-incomplete's form (a fixed array's length read after an element's Move, SPEC 4.7.3), inline in f.
+    internal const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
+        "    for i in a.indices => ()\n    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
+
     private const string Resource = "struct Resource\n    var name: string\n    public init(name: string) => self.name = name@move\n" +
         "func make() -> Resource => Resource.init(\"r\")\nfunc consume(r: Resource) => ()\n";
 
     private const string Box = Resource + "struct Box\n    public var value: Resource\n    public init(value: Resource) => self.value = value@move\n" +
         "    drop => ()\n";
-
-    // A default holding ledger row a1-whole-incomplete's form (a fixed array's length read after an element's Move, SPEC 4.7.3), inline in f.
-    private const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
-        "    for i in a.indices => ()\n    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
 
     // SPEC 16.2.1: a value initialized on every path is destroyed (Keep); one moved on every path is not (Elide), and needs no flag.
     [Fact]
@@ -274,8 +274,9 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     [Fact]
     public void DropFlagsScaleLinearly()
     {
-        var (sizes, flags, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, flags) = (new[] { 16, 32, 64 }, new long[3]);
+        var analyses = new (MirBody Body, MirProgram Sink)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc work(flag: bool)\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -288,15 +289,21 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
             var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            flow.Begin(body);
-            moves.Build(body, flow);
-            drops.Begin(body, sink);
-            cases.Select(body, 0);
-            Assert.True(init.Run(body, 0, sink.Problems));
-            drops.Judge(0);
-            drops.End();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            analyses[i] = (body, sink);
+            return () =>
+            {
+                flow.Begin(body);
+                moves.Build(body, flow);
+                drops.Begin(body, sink);
+                cases.Select(body, 0);
+                Assert.True(init.Run(body, 0, sink.Problems));
+                drops.Judge(0);
+                drops.End();
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (_, sink) = analyses[i];
             Assert.Equal(0, sink.Problems.All.Length);
             flags[i] = sink.Drops.FlagsOf(0);
         }

@@ -354,6 +354,9 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets what <see cref="SourceState"/> rests on (an Unknown's limit, an Error's cause).</summary>
     internal ICheckCause? SourceCause { get; set; }
 
+    /// <summary>Gets or sets the U fact an Unknown <see cref="SourceState"/> rests on, stored with it (design-r2 Amendment 4).</summary>
+    internal Binding.CallableUnknown? SourceFact { get; set; }
+
     internal int Slot { get; set; }
 
     internal bool MutableCapture { get; set; }
@@ -391,9 +394,11 @@ public sealed record BoundType
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
+    private readonly bool containsClosure;
     private readonly bool hasAbstractPart;
+    private readonly int height;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
     {
         this.Name = name;
         this.Kind = kind;
@@ -412,6 +417,7 @@ public sealed record BoundType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
+        this.ClosureContext = closureContext;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
         this.underlying = this;
 
@@ -424,6 +430,8 @@ public sealed record BoundType
         var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
+        var closure = kind == BoundTypeKind.Closure;
+        var height = closureContext is null ? 0 : closureContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -432,7 +440,9 @@ public sealed record BoundType
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
+            closure |= components[i].containsClosure;
             abstractPart |= components[i].hasAbstractPart;
+            height = Math.Max(height, components[i].height + 1);
         }
 
         this.carriesOrigin = found;
@@ -444,9 +454,20 @@ public sealed record BoundType
             parameter |= argument is { IsConstant: false };
         }
 
+        // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
+        // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
+        if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
+        {
+            parameter |= held.containsParameter;
+            pair |= held.containsPairLayer;
+            abstractPart |= held.hasAbstractPart;
+        }
+
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
+        this.containsClosure = closure;
         this.hasAbstractPart = abstractPart;
+        this.height = height;
     }
 
     // SPEC 3.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
@@ -536,8 +557,8 @@ public sealed record BoundType
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
-    // closures, even when none of its slots occupy capture storage.
-    internal Subst? ClosureContext { get; init; }
+    // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
+    internal Subst? ClosureContext { get; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
@@ -571,9 +592,18 @@ public sealed record BoundType
     /// may substitute (SPEC 8.2).</summary>
     internal bool ContainsParameter => this.containsParameter;
 
+    /// <summary>Gets the height of this Type as an interned term (DECISIONS BU-71): 0 for a leaf, else 1 + the greatest height of its
+    /// children, the parts its identity holds as Types: its components and a Closure's whole context (<see cref="Subst.Height"/>).</summary>
+    /// <remarks>SPEC-neutral: a measure of the term, which no language rule reads; the instance collector bounds Type growth by it (PLAN
+    /// G332). Its children are not <see cref="ContainsParameter"/>'s, which reads only a held context's instance (BU-60).</remarks>
+    internal int Height => this.height;
+
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
     /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
+    internal bool ContainsClosure => this.containsClosure;
 
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
@@ -741,6 +771,10 @@ internal enum ReferenceSlotFailure : byte
 // SPEC 15.6.1, 23.1: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
+
+// SPEC 23.1.2: a record of a node beyond its first, of either Origin kind: a failed chain of an Origin relation (Relation) or a failed
+// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind.
+internal readonly record struct OriginRecord(OriginRelationFact? Relation, OriginContractFact? Contract);
 
 // SPEC 15.2.3, 23.1: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
 // which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the

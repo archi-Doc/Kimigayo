@@ -96,7 +96,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 }
             }
 
-            foreach (var record in program.Records.Where(x => x.Subject.Module == module.Syntax.Module))
+            foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module.Syntax.Module))
             {
                 counts[2]++;
                 var key = Key(c.SyntaxOf(record.Subject));
@@ -228,15 +228,40 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Equal((bodies, version + rebuilds), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
+    // G350: the process's one-time initialization on the check path stays small. A fresh process's first cold build allocates at most
+    // 64 KB more than a second cold build of the same text on a fresh Compilation: the class constructors of the rows and ABIs it reads
+    // and the runtime's first instantiations, measured about 21.5 KB on .NET 10, three times that being the margin. Before G350 the
+    // collector's IntrinsicRows built code generation's runtime texts there, 8.2 MB more. This test owns that one-time cost:
+    // AllocationMeasurement.MeasureSeries keeps it out of every cold scaling series.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public Task AFreshProcessPaysLittleOnceForItsFirstBuild()
+        => FreshProcess.RunExplicit(typeof(MirBuildTest), nameof(MirBuildTest.TheFirstBuildOfAFreshProcess));
+
+    // AFreshProcessPaysLittleOnceForItsFirstBuild's child: the first and a second cold build, each of a fresh Compilation of one text.
+    [Trait("Purpose", "Allocation")]
+    [Fact(Explicit = true)]
+    public void TheFirstBuildOfAFreshProcess()
+    {
+        var allocated = new long[2];
+        for (var i = 0; i < allocated.Length; i++)
+        {
+            var c = Compile("func work() -> i32 => 1\n");
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => c.BuildMir());
+        }
+
+        output.WriteLine($"cold build allocation {allocated[0]}, then {allocated[1]}");
+        Assert.True(allocated[0] - allocated[1] <= 64 * 1024, $"cold build allocation {allocated[0]}, then {allocated[1]}");
+    }
+
     // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by
     // the returns, and the normal end), so the MIR and its cold build's allocation grow linearly with N, and a warm rebuild allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void DropTreesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func touch(n: i32) => ()\nfunc work(flag: bool) -> i32\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -249,21 +274,24 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 text.Append("    if flag => return ").Append(n).Append('\n');
             }
 
-            c = Compile(text.Append("    return -1\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.Equal(sizes[i] * 2, body.Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
+            var c = compilations[i] = Compile(text.Append("    return -1\n").ToString());
+            return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
+            Assert.Equal(
+                sizes[i] * 2, bodies[i].Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
     }
 
@@ -275,9 +303,9 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     [Fact]
     public void BodiesScaleLinearly()
     {
-        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var (compilations, programs, bodies) = (new Compilation[3], new MirProgram[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work<s/T>(flag: bool, shape: Shape) -> i32\n");
             text.Append("    s is owner or ref\n    var total = 0\n");
@@ -287,13 +315,18 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 text.Append("    while total > 1000\n        total -= 1\n        if flag => exit\n    Console.writeLine(\"\\(total)\")\n");
             }
 
-            c = Compile(text.Append("    return total\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var program = c.BuildMir();
-            var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
+            return () =>
+            {
+                programs[i] = c.BuildMir();
+                bodies[i] = programs[i].Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (program, body) = (programs[i], bodies[i]);
             work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
+            Assert.True(!body.HasOpaque && program.Records(MirRecordClass.Construction).Count() == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
             var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
             flow.Begin(body);
             moves.Build(body, flow);
@@ -304,10 +337,11 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             $"A1 arena words {string.Join(", ", arena)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
     }
 

@@ -76,6 +76,11 @@ public sealed partial class FunctionCodegenTest
         "func apWide(x: ref/u128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(x, w)\n" +
         "func apItemOf(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
 
+    // A user BufferWriter witness (Text.writer's row reserves through it).
+    private const string Sink = "struct Sink\n    Self is BufferWriter\n    public var count: i32 = 0\n" +
+        "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" +
+        "        return .Err(BufferFull.init())\n";
+
     // A Library creating writers over a FixedBuffer, a HeapBuffer and a user Writer (Sink), Text.writer's Item called and erased.
     private const string Writers = Sink +
         "func wrFixed(buffer: uniq/Text.FixedBuffer)\n    _ = Text.writer(buffer)\n" +
@@ -290,7 +295,8 @@ public sealed partial class FunctionCodegenTest
     // SPEC 22.10.1, 22.9.2, 7.7.4 (DECISIONS R5-M130): a user formatter's write, toString and tryFormat run through its wrappers, one per row,
     // whatever calls them: the write wrapper is SPEC 22.10.1's frame (the runtime's failure test before and after, its failure record)
     // around one call of the witness with the value and the adapter; a conversion is the old generator's text over that write wrapper; the
-    // calls pass their operands, tryFormat's measured capacity and their location, and toString's Item called and erased runs its wrapper.
+    // calls pass their operands, tryFormat's measured capacity and their location, and toString's Item called and erased runs its wrapper
+    // (SPEC 7.7.4, DECISIONS R5-M108: toString is not its row's witness, so its Item runs its row), which alone calls the witness.
     [Fact]
     public void AUserFormatterRunsThroughItsWrappers()
     {
@@ -327,7 +333,8 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 22.9.2, 22.9.4, 7.7.4 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer calls its routine with its destination's writer kind and
     // dispatch word: a FixedBuffer's 0 and a HeapBuffer's 1 with none, a user Writer's 2 with its reserve witness's function, at its call, its
-    // Item's Value call and its erased adapters; the witness is never called here (the runtime calls it through the word).
+    // Item's Value call and its erased adapters (SPEC 7.7.4: Text.writer is not its row's witness, so its Item runs its row); the witness is
+    // never called here (the runtime calls it through the word).
     [Fact]
     public void TextWriterGivesItsDestinationsKindAndDispatch()
     {

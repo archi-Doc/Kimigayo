@@ -6,6 +6,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -105,7 +106,7 @@ public sealed partial class MirBuildTest
 
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
-            Assert.Empty(program.Records);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
             Assert.Equal(HirPlaceKind.ConstIndex, HirTables.PlaceOf(literal.Parent!.Parent!).Kind);
             var dump = new StringBuilder();
             MirDump.Write(program, 0, dump);
@@ -127,7 +128,7 @@ public sealed partial class MirBuildTest
     {
         var program = Compile($"func f(values: [3 of i32], p: {type}) -> i32 => values[p]\n").BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         Assert.Empty(program.Problems.All.ToArray());
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
@@ -161,7 +162,7 @@ public sealed partial class MirBuildTest
             $"    return 1\nfunc f<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let b = Box.init()\n    {statements}\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
@@ -169,6 +170,81 @@ public sealed partial class MirBuildTest
         var tests = string.Join(' ', Regex.Matches(body, @"Le\([^)]*\)").Select(static x => x.Value));
         Assert.Equal("Le(const 0_I, copy _) Le(copy _, const 9223372036854775807_u128)" + selection, tests);
         Assert.Contains(" = copy _ as u128 (Integer) proven", body, StringComparison.Ordinal);
+    }
+
+    // SPEC 8.2.3, 23.1.2 (DECISIONS R5-M63, R5-M84; PLAN G168): a Field of a Place whose Type an identity premise makes a struct (`T is
+    // Pair`) is a located Unsupported_Kd whose Opaque site names only the receiver's root, built already, so a root the receiver's index
+    // moved is not used again there and A1 reports no MovedPlace_Kd at the member, while the independent ones stay: a later use of the
+    // moved root, a use of a moved receiver (fail-before: the site named the member's syntax roots, `_1 _2`, and A1 added MovedPlace_Kd at
+    // the member in c1 and c1Used). Each row: the parameters, the statements, the module-0 problems.
+    [Theory]
+    [InlineData("xs: ref/Array<T>, t: string", "return xs[pos(t@move)].a", "")]
+    [InlineData("xs: ref/Array<T>, t: string", "let v = xs[pos(t@move)].a\n    use(t@move)\n    return v", "MovedPlace_Kd t")]
+    [InlineData("s: T", "let m = s@move\n    return s.a", "MovedPlace_Kd s.a")]
+    [InlineData("s: ref/T", "return s.a", "")]
+    [InlineData("s: T", "return s.a", "")]
+    public void AnUnsupportedFieldsSiteNamesItsReceiversRoot(string parameters, string statements, string problems)
+    {
+        var c = Compile("struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\n" +
+            $"func pos(y: string) -> isize => 0\nfunc use(y: string) => ()\nfunc f<T>({parameters}) -> i32\n    T is Pair\n    {statements}\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var member = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, ".a"), (member.Code, c.SyntaxOf(member.Subject).ToString()![^2..]));
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
+        Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+    }
+
+    // SPEC 8.2.3 (DECISIONS BU-72; PLAN G168b): a selection Binding resolved through an identity premise whose subject is the Type
+    // parameter of its receiver's Place (an Array, a fixed array or a Tuple, also through a chain, at a position, ^x, a key or a range) is one
+    // located Unsupported_Kd at the selection on every pipeline, its Opaque site naming only the receiver's root, decided before anything
+    // reads the receiver, with no projection or length the MIR validator rejects and no InternalInvariant_Kd (fail-before: a typeless
+    // projection or Len, a validator finding and InternalInvariant_Kd beside Unsupported_Kd at the member, for ^x and a key at the
+    // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). Each row: the Type parameters, the
+    // premises, the parameters, the statement and the selection.
+    [Theory]
+    [InlineData("T", "T is Array<Pair>", "s: ref/T, t: string", "return s[pos(t@move)].a", "s[pos(t@move)]")]
+    [InlineData("T", "T is (Pair, i32)", "s: ref/T", "return s.0.a", "s.0")]
+    [InlineData("T", "T is [2 of Pair]", "s: ref/T", "return s[0].a", "s[0]")]
+    [InlineData("T", "T is Array<Pair>", "s: ref/T", "return s[^1].a", "s[^1]")]
+    [InlineData("T", "T is [2 of Pair]", "s: ref/T", "return s[^1].a", "s[^1]")]
+    [InlineData("T", "T is Array<Pair>", "s: ref/T, k: FromEnd<isize>", "return s[k].a", "s[k]")]
+    [InlineData("T", "T is Array<Pair>", "s: ref/T, t: string", "let r = s[0..pos(t@move)]\n    return 0", "s[0..pos(t@move)]")]
+    [InlineData("T, U", "T is U\n    U is Array<Pair>", "s: ref/T, t: string", "return s[pos(t@move)].a", "s[pos(t@move)]")]
+    [InlineData("T, U", "T is U\n    U is Pair", "s: ref/T", "return s.a", "s.a")]
+    public void AnIdentityPremisesSelectionIsOneUnsupported(string types, string premises, string parameters, string statement, string selection)
+    {
+        var source = "struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\nfunc pos(y: string) -> isize => 0\n" +
+            $"func f<{types}>({parameters}) -> i32\n    {premises}\n    {statement}\npublic func main() => ()\n";
+        foreach (var pipeline in (CompilerPipeline[])[CompilerPipeline.Legacy, CompilerPipeline.Mir])
+        {
+            var c = Compilation.CreateForTest();
+            c.Pipeline = pipeline;
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+            c.Bind();
+            c.Binding.CheckStartup(OutputKind.Application);
+            c.Analyze();
+            c.Binding.ReportDiagnostics();
+            c.ReportAnalysis();
+            var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
+            Assert.Equal([("Unsupported_Kd", selection)], errors);
+        }
+
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => !x.IsRecord && x.Subject.Module == 0);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
+        Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
     }
 
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one
@@ -180,7 +256,7 @@ public sealed partial class MirBuildTest
         var c = Compile("func next() -> isize => 2\nfunc f(values: ref/Array<i32>, x: i32) -> Slice<i32> during values => values[^x..next()]\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var fail = Assert.Single(body.Blocks.ToArray(), static x => x.Terminator.Callee is { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Fail });
         Assert.Equal("values[^x..next()]", c.SyntaxOf(fail.Terminator.Source.Syntax).ToString());
@@ -205,7 +281,7 @@ public sealed partial class MirBuildTest
             "    public var name: string = \"\"\n    public init() => ()\n" + $"func f(value: uniq/{element} during a)\n" +
             $"    var entries: Dictionary<i32, uniq/{element} during a> = [1: value@move]\n    " + statement + "\n").BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var body = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
@@ -223,7 +299,7 @@ public sealed partial class MirBuildTest
     {
         var program = Compile("struct Point\n    public var n: i32 = 0\n    public init() => ()\nfunc f(value: uniq/Point during a)\n    " + statements + "\n").BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
@@ -253,7 +329,7 @@ public sealed partial class MirBuildTest
         {
             var program = Compile($"struct S\n    public var item: i32 = 0\n{accessors}\n\nfunc f(s: uniq/S)\n    {written}\n").BuildMir();
             Assert.Empty(program.Findings);
-            Assert.Empty(program.Records);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
             var text = new StringBuilder();
             MirDump.Write(program, 0, text);
             return string.Join('\n', text.ToString().Split('\n').Select(static x => x.Split(" @")[0]));
@@ -324,7 +400,7 @@ public sealed partial class MirBuildTest
             "    public var counter: uniq/Counter during a\n    public var o: uniq/Option<i32> during a\n";
         var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         var f = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var refs = f.Statements.ToArray().Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref }).Select(static x => x.Rvalue.Type!)
@@ -348,7 +424,7 @@ public sealed partial class MirBuildTest
             "func exclusive(view: objuniq/Base) => ()\nfunc make() -> obj/Leaf => Kimi.Intrinsics.makeObj(Leaf.init())\n";
         var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var f = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var statements = f.Statements.ToArray();
         var cast = Assert.Single(statements, static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Cast, Op: (byte)MirCastKind.Upcast } }).Rvalue;

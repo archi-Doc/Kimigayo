@@ -196,7 +196,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(complete, c.Binding.Result.IsComplete);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         new Stratum(c.Types).Run(program);
         return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]));
     }

@@ -284,7 +284,7 @@ internal static class StaticKeyMeasurements
             c.Kotonoha.AddSource(new SourceDocument("StaticKeys.kimi", Source(shape, size, fields)));
             Require(c.Bind().IsComplete, "Binding failed.");
             var program = c.BuildMir();
-            Require(program.Findings.Count == 0 && program.Records.Count == 0, "The MIR build failed.");
+            Require(program.Findings.Count == 0 && !program.Records(MirRecordClass.Construction).Any(), "The MIR build failed.");
             var w = new Workload(fields, c, program, new(c.Types), new(new MirReach()), new());
             _ = Measure(w.Effects(), w);
             return w;

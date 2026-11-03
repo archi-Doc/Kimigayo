@@ -84,6 +84,21 @@ public sealed class LspCodeActionTest : IDisposable
         Assert.Equal(2, Assert.Single(actions.EnumerateArray()).GetProperty("edit").GetProperty("documentChanges")[0].GetProperty("textDocument").GetProperty("version").GetInt32());
     }
 
+    // DECISIONS R5-M180: a quick fix's diagnostic is the one published, its related locations spelled the same way.
+    [Fact]
+    public async Task AQuickFixsDiagnosticSpellsItsRelatedLocationsAsPublished()
+    {
+        const string Missing = "public func main()\n    let n = ([1)\n"; // The missing ']' is related to its '['.
+        var main = this.WriteProject("App", "main.kimi", Missing);
+        await using var client = new LspTestClient();
+        await client.InitializeAsync(capabilities: Capabilities.Replace("{\"textDocument\":{", "{\"textDocument\":{\"publishDiagnostics\":{\"relatedInformation\":true},"));
+        await client.OpenAsync(main, Missing);
+        var published = Assert.Single((await client.PublishAsync(main)).EnumerateArray()).GetProperty("relatedInformation");
+        Assert.Equal(LspTestClient.Uri(main), published[0].GetProperty("location").GetProperty("uri").GetString());
+        var action = Assert.Single((await this.Request(client, main, 1, 15, 1, 15)).EnumerateArray());
+        Assert.Equal(published.GetRawText(), Assert.Single(action.GetProperty("diagnostics").EnumerateArray()).GetProperty("relatedInformation").GetRawText());
+    }
+
     [Fact]
     public async Task WithoutClientSupportTheRequestReturnsNothing()
     {

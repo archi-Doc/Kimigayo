@@ -24,3 +24,13 @@ func caller<s/T>(x: s/T) -> T
     s is owner or uniq
     T is Copy
     return peek(x)
+func exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()
+    s is owner or uniq
+    let local = value
+    _ = local
+func nested<t/U, s/T>(value: s/t/U) -> ()
+    s is owner or uniq
+    t is owner or uniq
+    U is Copy
+    let local = value
+    _ = local

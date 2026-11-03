@@ -299,7 +299,7 @@ public sealed partial class Binding
                 }
 
                 result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
-                if (HasUnsubstitutedOrigin(result, accessor.Binder))
+                if (this.HasUnsubstitutedOrigin(result, accessor.Binder))
                 {
                     this.Fail(node, BindingFailure.Unsupported, true);
                     return false;
@@ -307,7 +307,13 @@ public sealed partial class Binding
 
                 call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
-                this.JudgeSelectedCall(call, function, operations.AsSpan(0, count + 1), origins, inputs, declaringType, []);
+                Span<Contribution> evidence = stackalloc Contribution[count];
+                evidence.Fill(Contribution.Evidence); // The update's value and the receiver are typed parts.
+                var solution = new SlotSolution
+                {
+                    Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Contributions = evidence,
+                };
+                this.JudgeSelectedCall(call, solution, operations.AsSpan(0, count + 1), []);
                 Complete(call, result);
                 return true;
             }

@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records.
+// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records,
+// and the validator's verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183).
 // References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
 // Must not resolve syntax or introduce a parallel representation for the same body.
 
@@ -83,6 +84,10 @@ internal sealed class MirBody
 
     /// <summary>Gets a value indicating whether a value of the body is Opaque: an error or Unsupported form replaced it.</summary>
     internal bool HasOpaque => this.opaqueCount > 0;
+
+    /// <summary>Gets or sets a value indicating whether the validator found a broken contract located in the body (MirValidator, its one
+    /// writer; tests inject it), so that no consumer reads it (DECISIONS R5-M183).</summary>
+    internal bool HasFinding { get; set; }
 
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
     /// <param name="source">The source of a statement, a terminator or a local.</param>
@@ -211,12 +216,12 @@ internal sealed class MirBody
     internal bool Binds(int binder, BindingSymbol? target) => target is not null && (uint)binder < (uint)this.Binders.Count &&
         ReferenceEquals(this.Binders[binder].Target, target);
 
-    /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain.</summary>
+    /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain, no finding.</summary>
     /// <param name="key">The definition.</param>
     /// <param name="source">The body's syntax.</param>
     internal void Reset(MirDefKey key, SourceRef source)
     {
-        (this.Key, this.Source) = (key, source);
+        (this.Key, this.Source, this.HasFinding) = (key, source, false);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
         this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = 0;
         this.projectionIds.Clear();

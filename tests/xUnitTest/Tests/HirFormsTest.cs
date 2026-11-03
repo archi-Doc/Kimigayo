@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 using static XunitTest.HirColumnsTest;
@@ -196,7 +197,7 @@ public sealed partial class HirFormsTest
         Assert.Null(HirTables.PlanOf(jump).Plan);
         Assert.True(HoldsItsTarget(jump));
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code && x.Span == jump.Span);
-        Assert.DoesNotContain(c.BuildMir().Records, x => x.Subject == SourceRef.Of(jump));
+        Assert.DoesNotContain(c.BuildMir().Records(MirRecordClass.Construction), x => x.Subject == SourceRef.Of(jump));
     }
 
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
@@ -242,6 +243,40 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
+    }
+
+    // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)): a pair layer's owner case acquires its target by SPEC 3.5's rows: a Copy target Copies, an
+    // exclusive reference Reborrows unless a shared layer is on its path (the binder's own layers are owners there), a nested pair layer
+    // acquires by its own cases; a target without a plan leaves the Move a TransferRequired_Kd needs.
+    [Theory]
+    [InlineData("s/T", "value: s/T", "s is owner or uniq\n    T is Copy", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: s/(uniq/i32 during a)", "s is owner or uniq", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: s/(s/(uniq/i32 during a) during b)", "s is owner or ref", "value@follow", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: ref/(s/(uniq/i32 during a) during c) during b", "s is owner or ref", "value@follow", nameof(HirAcquire.Move))]
+    [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or uniq\n    U is Copy", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or rc\n    U is Copy", "value", nameof(HirAcquire.Move))]
+    public void APairLayersOwnerCaseAcquiresItsTargetByItsPlan(string generics, string parameters, string constraints, string place, string acquire)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f<{generics}>({parameters}) -> ()\n    {constraints}\n    let local = {place}\n    _ = local@move\n");
+        HirTables.Publish(c);
+        var local = Reachable(c.Kotonoha).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "local");
+        Assert.Equal(acquire, HirTables.AdjustOf(local.InitializerKoto!).Acquire.ToString());
+    }
+
+    // SPEC 13.5.6 (R6-check Q14 (b); DECISIONS R4-M142): a case adaptation's operand is used as the builder's Adapt reads it, a Place in
+    // place and a value through a Temporary, never acquired by Move.
+    [Fact]
+    public void ACaseAdaptationUsesItsOperandInPlace()
+    {
+        var c = MinimalEmissionTest.Analyze("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
+            "func widen<s/T>(value: s/Derived) -> s/Base\n    s is object\n    return value@move@s/Base\n" +
+            "func inspect<s/T>(value: s/Derived) -> i32\n    s is object\n    let view = value@objref/Base\n    return view.value\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var operands = Reachable(c.Kotonoha).OfType<ConversionKoto>().Where(static x => x.ToString()!.EndsWith("/Base", StringComparison.Ordinal))
+            .Select(static x => $"{x.Left} {HirTables.AdjustOf(x.Left).Acquire}/{HirTables.AdjustOf(x.Left).Adaptation}");
+        Assert.Equal(["value@move Temporary/None", "value None/None"], operands);
     }
 
     // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a

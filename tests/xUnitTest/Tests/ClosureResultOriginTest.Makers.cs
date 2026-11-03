@@ -118,6 +118,17 @@ public partial class ClosureResultOriginTest
 
     private const string Constraint = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd);
 
+    private const string UnprovenOwned = nameof(DiagnosticCode.UnprovenConstraint_Kd);
+
+    // A maker whose result Tuple holds a Closure part first, then a part over its second input (G353's review B1).
+    private const string TwoParts = "    let outer = func (r: ref/i32, s: ref/i32) => func () => (func () => r, func () => s)\n";
+
+    private const string RefPart = "    let outer = func (r: ref/i32, s: ref/i32) => func () => (func () => r, s)\n";
+
+    private const string SignaturePart = "    let outer = func (r: ref/i32, s: ref/i32) => func () => (func () => r, func (w: ref/i32 during s) => ())\n";
+
+    private const string LastPart = "    let outer = func (r: ref/i32, s: ref/i32) => func () => (r, func (w: ref/i32 during s) => ())\n";
+
     // The chains of the scaling rows (problem-draft §4.3): each shape at each depth D.
     public static TheoryData<string, int> Chains
     {
@@ -344,6 +355,22 @@ public partial class ClosureResultOriginTest
     [InlineData("w1_raw_retain_bad", RawRetain + "    local = 2\n    usep(t)\n", Conflict + " local = 2", null)]
     public void AReturnedClosureKeepsItsImagesInARawLayer(string form, string source, string mir, string? published)
         => AssertSides(form, source, mir, published);
+
+    // SPEC 3.2.1, 15.3.4 (DECISIONS R4-M159, BU-73; G353's review B1): a Closure Type's Origin arguments are every enclosing atom its
+    // signature names, also in a part after a Closure part of a Tuple result (`(func () => r, func () => s)`), so each later use reads
+    // its maker's image of `s`: a1-a3 keep dev's records, the valid a5, a6, a8 and a9 keep dev's verdicts (the old analysis' stop on the
+    // default side), and a10, its Closure part last, is the control.
+    [Theory]
+    [InlineData("a1", "func f(a: ref/i32 during static, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    return need(mk().1)\n", UnprovenOwned + " return need(mk().1)", UnprovenOwned + " need(mk().1)")]
+    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Unsatisfied + " return mk().1()", Unsatisfied + " mk().1()")]
+    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Unsatisfied + " return mk().1", Unsatisfied + " mk().1")]
+    [InlineData("a5", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + TwoParts + "    let mk = outer(a, a)\n    return mk().1()\n", "", null)]
+    [InlineData("a6", "func f(a: ref/i32, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    let p = mk()\n    return 1\n", "", null)]
+    [InlineData("a8", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + RefPart + "    let mk = outer(a, a)\n    return mk().1\n", "", null)]
+    [InlineData("a9", "func f(a: ref/i32 during static, b: ref/i32 during static) -> i32\n" + SignaturePart + "    let mk = outer(a, b)\n    return need(mk@move)\n", "", null)]
+    [InlineData("a10", "func f(a: ref/i32 during static, b: ref/i32 during static) -> i32\n" + LastPart + "    let mk = outer(a, b)\n    return need(mk@move)\n", "", null)]
+    public void AClosuresImagesReachEveryPartAfterAClosurePart(string form, string source, string mir, string? published)
+        => AssertSides(form, ConcreteClosureTest.NeedOwned + source + MainUnit, mir, published);
 
     // A program's two sides (MirDifferenceLedger.Sides) after Binding and the old analysis, each program parse-clean. The MIR side,
     // Binding's records and the MIR's, is exactly `mir`: each Error record as its code and the trimmed source line its subject starts on,

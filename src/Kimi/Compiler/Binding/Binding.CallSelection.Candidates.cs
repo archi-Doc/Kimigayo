@@ -14,8 +14,8 @@ public sealed partial class Binding
     private FunctionKoto? activeInferenceFunction;
 
     // Set when a known call signature's result over its closure's hidden environment receiver supplied no evidence for a slot: that slot
-    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4).
-    private bool environmentEvidence;
+    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4). The judgment, its argument and slot.
+    private PendingJudgment? environmentEvidence;
 
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
@@ -46,7 +46,8 @@ public sealed partial class Binding
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
-        this.environmentEvidence = false;
+        this.environmentEvidence = null;
+        var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         try
         {
             var result = this.TryCandidateCore(
@@ -73,16 +74,27 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            return result;
+            // Rule W at the candidate's own verdict (DECISIONS BU-79; SPEC 23.1.2; PLAN G206): a parameter or result Type that failed to
+            // bind is a wildcard in every fit, so only a candidate that would apply rests on it (IncompleteSignature) instead.
+            return result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && IncompleteSignature(solution.Function) is not null
+                ? CandidateApplicability.Pending : result;
         }
         finally
         {
+            this.CloseTrial(enclosing);
             this.ReturnSlotSet(this.invariantSlots);
             this.invariantSlots = saved;
             this.activeInferenceFunction = savedInferenceFunction;
             this.environmentEvidence = savedEnvironment;
             this.acquisitionFailure = savedAcquisition;
         }
+    }
+
+    // DECISIONS BU-86: a Pending return that a known signature's environment result decided publishes that judgment as the trial's.
+    private CandidateApplicability PendingOnEnvironment()
+    {
+        this.trialPending = this.environmentEvidence is { } environment ? environment with { Epoch = this.frameEpoch } : null;
+        return CandidateApplicability.Pending;
     }
 
     private CandidateApplicability TryCandidateCore(
@@ -115,6 +127,7 @@ public sealed partial class Binding
         var unboundSlots = this.RentSlotSet(CallSlotCount(function));
         var unsolvedSlots = this.RentSlotSet(CallSlotCount(function));
         var defaults = this.RentSlotSet(function.Parameters.Count);
+        var expectedSlots = this.RentSlotSet(CallSlotCount(function));
         try
         {
             defaultsUsed = argumentMap.DefaultsUsed;
@@ -179,6 +192,7 @@ public sealed partial class Binding
                     arguments[i] = generic.TypeArguments[i].BoundType;
                     if (arguments[i] is null)
                     {
+                        this.trialPending = new(PendingJudgmentKind.FailedTypeArgument, generic.TypeArguments[i]) { Epoch = this.frameEpoch };
                         return CandidateApplicability.Pending;
                     }
                 }
@@ -199,12 +213,8 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
 
-                if (function.Parameters[receiverSlot].Type.BoundType is not { } parameterType)
-                {
-                    return CandidateApplicability.Pending;
-                }
-
-                if (!solution.InferInput(parameterType, receiverType, receiver, receiverPath, receiver: true))
+                if (function.Parameters[receiverSlot].Type.BoundType is { } parameterType &&
+                    !solution.InferInput(parameterType, receiverType, receiver, receiverPath, receiver: true))
                 {
                     if (this.CallMemberPattern(parameterType, function, declaringType) is { } memberType && this.ContractType(memberType, scope, self) is { } required && SharedObjectAuthorityMismatch(receiverType, required))
                     {
@@ -221,12 +231,12 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var part = call.ArgumentNodes[i];
-                contextualInputs |= this.KindOf(part) == ArgumentKind.Composite;
-                contextualCallables |= KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(part);
-                var type = function.Parameters[mapping[i]].Type.BoundType;
-                if (type is null)
+                var kind = this.KindOf(part);
+                contextualInputs |= kind is PartKind.Aggregate or PartKind.Join;
+                contextualCallables |= kind is PartKind.Function or PartKind.Reference;
+                if (function.Parameters[mapping[i]].Type.BoundType is not { } type)
                 {
-                    return CandidateApplicability.Pending;
+                    continue; // A parameter Type that failed to bind is a wildcard (rule W; TryCandidate reads it at the verdict).
                 }
 
                 if (this.FormedApplication(type, CallSlotOwner(function), arguments).Kind == BoundTypeKind.SemanticsApplication)
@@ -276,6 +286,7 @@ public sealed partial class Binding
 
             // Established input types cannot change; expectations only fill unresolved slots.
             var expectedStructure = true; // SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is still checked.
+            UnboundTypeSlots(function, arguments, ref expectedSlots); // F1: the slots no evidence binds, which the expected result may solve.
             if (expected is not null && (function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol?.Type) is { } returnPattern)
             {
                 // Result expectations use the selected receiver's container Origins, just like inputs.
@@ -298,21 +309,34 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
+            solution.Contribute(mapping, ref expectedSlots);
             if (!this.SolveLate(ref solution, mapping, defaults))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (receiverSlot >= 0)
+            if (receiverSlot >= 0 && function.Parameters[receiverSlot].Type.BoundType is { } receiverPattern)
             {
-                var requiredReceiver = solution.Type(function.Parameters[receiverSlot].Type.BoundType!);
+                var requiredReceiver = solution.Type(receiverPattern);
                 if (requiredReceiver is null)
                 {
                     return CandidateApplicability.Pending;
                 }
 
                 // SPEC 15.6.1: applicability uses the structural part of each fit; its Origin relations are judged after selection.
-                if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true, deferAcquisition: true) || !this.FitsStructurallyAt(adaptedReceiver, requiredReceiver, call))
+                if (!this.AdaptInput(
+                        receiver!,
+                        requiredReceiver,
+                        receiver!.BoundType!,
+                        scope,
+                        receiverPath,
+                        declaringType,
+                        out var adaptedReceiver,
+                        out var quality,
+                        out var kind,
+                        receiver: true,
+                        deferAcquisition: true) ||
+                    !this.FitsStructuralPartAt(adaptedReceiver, requiredReceiver, call))
                 {
                     if (SharedObjectAuthorityMismatch(receiver.BoundType!, requiredReceiver))
                     {
@@ -331,17 +355,18 @@ public sealed partial class Binding
                 for (var i = 0; i < call.ArgumentNodes.Count; i++)
                 {
                     var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
-                    if (argument is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(argument) ? pass != ordinaryPasses :
-                        pass == ordinaryPasses || (contextualInputs && (this.KindOf(argument) == ArgumentKind.Composite) != (pass == 1)))
+                    var kind = this.KindOf(argument);
+                    if (function.Parameters[mapping[i]].Type.BoundType is not { } pattern ||
+                        (kind is PartKind.Function or PartKind.Reference ? pass != ordinaryPasses :
+                        pass == ordinaryPasses || (contextualInputs && (kind is PartKind.Aggregate or PartKind.Join) != (pass == 1))))
                     {
                         continue;
                     }
 
-                    var type = solution.Type(function.Parameters[mapping[i]].Type.BoundType!);
+                    var type = solution.Type(pattern);
                     if (type is null)
                     {
-                        var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-                        if (IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
+                        if (this.IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
                             arguments[ContainerSlot(solution.SlotOwner, slotType.Symbol!)] is null)
                         {
                             BoundType? signature = null;
@@ -377,14 +402,14 @@ public sealed partial class Binding
                         // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
-                            if (this.KindOf(argument) != ArgumentKind.Literal &&
+                            if (this.KindOf(argument) != PartKind.Literal &&
                                 MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument)
+                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument)
                                     ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
@@ -447,7 +472,7 @@ public sealed partial class Binding
 
                     // SPEC 10.2: a borrowed literal temporary's Place Origin binds the parameter's input Origin like any other borrowed temporary.
                     if (operation is { Kind: ArgumentOperationKind.Borrow, AdaptedType: not null } && argument.BoundType is null &&
-                        !solution.InferInput(function.Parameters[mapping[i]].Type.BoundType!, operation.SourceType!, argument))
+                        !solution.InferInput(pattern, operation.SourceType!, argument))
                     {
                         return CandidateApplicability.Inapplicable;
                     }
@@ -465,11 +490,11 @@ public sealed partial class Binding
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
             this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
-            unrepresentable |= this.environmentEvidence;
+            unrepresentable |= this.environmentEvidence is not null;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
                 (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
-                return CandidateApplicability.Pending;
+                return this.PendingOnEnvironment();
             }
 
             if (unrepresentable)
@@ -479,9 +504,9 @@ public sealed partial class Binding
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                var completed = solution.Type(function.Parameters[i].Type.BoundType!);
                 // SPEC 10.8: a parameter Type that holds an unsolved slot, an open position or an unused default, is no failure of its own.
-                if (completed is null ? !(waitingCallables || MentionsSlots(function.Parameters[i].Type.BoundType!, CallSlotOwner(function), unsolvedSlots)) : !this.ProveTypeLengths(completed, scope.Function))
+                if (function.Parameters[i].Type.BoundType is { } parameter && (solution.Type(parameter) is not { } completed
+                    ? !(waitingCallables || MentionsSlots(parameter, CallSlotOwner(function), unsolvedSlots)) : !this.ProveTypeLengths(completed, scope.Function)))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
@@ -496,7 +521,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (result is not null && (HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
+            if (result is not null && (this.HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
                 this.OpenResultOnlyOrigins(call, function, origins, defaults))
             {
                 // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
@@ -508,14 +533,20 @@ public sealed partial class Binding
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
             // still checked against an expected result (SPEC 10.3).
             var openResult = result is null && resultPattern is not null && MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots);
-            if ((result is null && !waitingCallables && !openResult) || (result is not null && HasUnsubstitutedOrigin(result, function)))
+            if ((resultPattern is not null && result is null && !waitingCallables && !openResult) || (result is not null && this.HasUnsubstitutedOrigin(result, function)))
             {
                 // Result-only Origin inference needs the later call-site solver. Never retain a
                 // requirement's abstract binder as though it were this call's concrete Origin.
-                return result is null && solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
+                // DECISIONS BU-86: only a result without a Type rests on the environment judgment; an unsubstituted Origin on none.
+                return result switch
+                {
+                    null when solution.IsComplete() => CandidateApplicability.Inapplicable,
+                    null => this.PendingOnEnvironment(),
+                    _ => CandidateApplicability.Pending,
+                };
             }
 
-            if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call) &&
+            if (expected is not null && result is not null && !this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
                 this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)
             {
                 return CandidateApplicability.Inapplicable;
@@ -526,10 +557,13 @@ public sealed partial class Binding
             }
 
             var proof = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables, unsolvedSlots);
+            var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;
             }
+
+            constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
                 this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, CallSlotCount(function)), scope, self, function.IsConstructor ? null : declaringType, lengths.AsSpan(0, CallOwnSlots(function).Count), slotOwner: CallSlotOwner(function)))
@@ -553,26 +587,15 @@ public sealed partial class Binding
                 return CandidateApplicability.Waiting;
             }
 
-            if (proof == ConstraintProof.Refuted && this.ClosureReceiverMismatch(call, function, mapping) is { } mismatch)
+            if (proof == ConstraintProof.Refuted)
             {
-                // SPEC 7.7.3, 8.10: a closure's minimum call receiver is the candidate's failure only when the candidate applies once that
-                // receiver is permitted; a rejected candidate then names both receivers (NoApplicableOverload_Kd).
-                this.permitClosureReceivers = true;
-                try
-                {
-                    var permitted = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables);
-                    closureReceiver = permitted == ConstraintProof.Proven ? mismatch : null;
-                }
-                finally
-                {
-                    this.permitClosureReceivers = false;
-                }
+                closureReceiver = this.PermittedClosureReceiver(mapping, solution, waitingCallables);
             }
 
-            // Retain only a condition actually reached after the argument/result checks, before scratch is reused.
+            // Retain only a condition actually reached after the argument/result checks.
             if (proof == ConstraintProof.Refuted && closureReceiver is null)
             {
-                constraintFailure = this.CandidateConstraintFailure(function, arguments, lengths, scope, self, declaringType, ConstraintProof.Refuted);
+                constraintFailure = failure;
             }
 
             unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty;
@@ -587,6 +610,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.ReturnSlotSet(expectedSlots);
             this.ReturnSlotSet(defaults);
             this.ReturnSlotSet(unsolvedSlots);
             this.ReturnSlotSet(unboundSlots);
@@ -598,21 +622,25 @@ public sealed partial class Binding
 
     // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
     // applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which the well-formedness of
-    // each default it uses (`defaults`, DefaultSlots) shortens as a written part's does; false when the candidate is inapplicable.
+    // each Signature position (F1, R4-M164: an argument's, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence
+    // part's does (InferAdapted); false when the candidate is inapplicable.
     private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
     {
         var call = solution.Call;
         var function = solution.Function;
+        var signature = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            if (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } latePattern &&
+            if (function.Parameters[mapping[i]].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } latePattern &&
                 !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
             {
                 return false;
             }
+
+            signature |= solution.Contributions[i] == Contribution.Signature && function.Parameters[mapping[i]].Type.BoundType is { StoresOrigin: true };
         }
 
-        if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+        if (solution.OriginInference is null && (signature || this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0))
         {
             solution.OriginInference = this.BeginOriginInference(call, function);
         }
@@ -622,11 +650,14 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var i = 0; !defaults.IsEmpty && i < function.Parameters.Count; i++)
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (defaults.Contains(i) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
+            var slot = Array.IndexOf(mapping, i, 0, call.ArgumentNodes.Count);
+            if ((slot < 0 ? defaults.Contains(i) : solution.Contributions[slot] == Contribution.Signature) &&
+                function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
+                this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
             {
-                this.CollectInputPremises(this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
+                this.CollectInputPremises(instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
             }
         }
 

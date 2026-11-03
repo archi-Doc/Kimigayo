@@ -18,6 +18,8 @@ internal sealed record TestSite(int Id, string File, int Line, int Column, strin
 
 internal sealed class TestCatalog
 {
+    internal const string InvalidProjectId = "TestProjectId must be nonempty text without NUL.";
+
     private readonly Dictionary<SourceRef, int> siteIds = new();
 
     internal string ProjectId { get; private set; } = string.Empty;
@@ -54,10 +56,16 @@ internal sealed class TestCatalog
     /// <returns>The identity.</returns>
     /// <exception cref="InvalidDataException">The identity is empty or contains NUL.</exception>
     internal static string ProjectIdOf(Project project)
+        => TryProjectIdOf(project) ?? throw new InvalidDataException(InvalidProjectId);
+
+    /// <summary>Gets a project's test identity, or null when it is empty or contains NUL (test preparation reports it).</summary>
+    /// <param name="project">The project.</param>
+    /// <returns>The identity, or null.</returns>
+    internal static string? TryProjectIdOf(Project project)
     {
         var id = (project.ProjectFile.TestProjectId ?? project.ProjectFile.PackageId ??
             (project.FilePath is { } file ? Path.GetFileName(file) : project.Name + ".kimi")).Normalize(NormalizationForm.FormC);
-        return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? throw new InvalidDataException("TestProjectId must be nonempty text without NUL.") : id;
+        return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? null : id;
     }
 
     /// <summary>Gets the SiteId of a verification, which code generation passes for its site (SPEC 20.6.2, plan 5.6.7).</summary>
@@ -79,7 +87,7 @@ internal sealed class TestCatalog
         var project = compilation.Project;
         this.ProjectId = ProjectIdOf(project);
 
-        new Collector(this, project).Visit(compilation.Kotonoha.RootKoto);
+        new Collector(this).Visit(compilation.Kotonoha.RootKoto);
         this.Cases.Sort(static (a, b) => Compare(a.Name, a.File, a.CaseId, b.Name, b.File, b.CaseId));
         this.Sites.Sort(static (a, b) =>
         {
@@ -131,9 +139,10 @@ internal sealed class TestCatalog
         {
             inputs.Add(module.Name);
             Section("sources", module.SourceDocuments.Count);
-            foreach (var source in module.SourceDocuments.OrderBy(x => LogicalPath(project, x.Path), StringComparer.Ordinal))
+            // In logical declaration order (SPEC 6.2.1), whatever the read order.
+            foreach (var source in module.SourceDocuments)
             {
-                inputs.Add(LogicalPath(project, source.Path));
+                inputs.Add(module.LogicalName(source));
                 inputs.Add(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source.SourceText))));
                 inputs.Add(source.IsTestOnly.ToString());
             }
@@ -228,10 +237,7 @@ internal sealed class TestCatalog
         return order == 0 ? string.CompareOrdinal(c, z) : order;
     }
 
-    private static string LogicalPath(Project project, string source)
-        => Path.GetRelativePath(Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory), Path.GetFullPath(source)).Replace('\\', '/');
-
-    private sealed class Collector(TestCatalog catalog, Project project) : KotoVisitor
+    private sealed class Collector(TestCatalog catalog) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
@@ -261,8 +267,8 @@ internal sealed class TestCatalog
                 names.Reverse();
                 var containerName = string.Join('.', names);
                 var name = containerName.Length == 0 ? function.Name : containerName + "." + function.Name;
-                var file = LogicalPath(project, source!.Path);
-                var position = source.GetPosition(function.Span.Start);
+                var position = source!.GetPosition(function.Span.Start);
+                var file = node.CodeContext.SourceName!;
                 var testId = Hash("t1-", "kimi-test-v1", catalog.ProjectId, containerName, function.Name + "()->()", file);
                 catalog.Cases.Add(new(testId, Hash("c1-", "kimi-case-v1", testId, "default"), name, file, position.Line + 1, position.Character + 1, symbol));
             }
@@ -270,7 +276,8 @@ internal sealed class TestCatalog
             if (node is TestVerificationKoto verification && source is not null)
             {
                 var position = source.GetPosition(verification.Span.Start);
-                catalog.Sites.Add(new(-1, LogicalPath(project, source.Path), position.Line + 1, position.Character + 1, source.SourceText.Substring(verification.Condition.Span.Start, verification.Condition.Span.Length), verification));
+                var expression = source.SourceText.Substring(verification.Condition.Span.Start, verification.Condition.Span.Length);
+                catalog.Sites.Add(new(-1, node.CodeContext.SourceName!, position.Line + 1, position.Character + 1, expression, verification));
             }
 
             node.VisitChildren(this);

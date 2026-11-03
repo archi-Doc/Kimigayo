@@ -57,7 +57,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
-    // as an invariant one (FitsTypeCore).
+    // as an invariant one (RelationWalk).
     private static OriginVariance ComposeVariance(OriginVariance outer, OriginVariance inner)
         => outer == OriginVariance.Invariant || inner is OriginVariance.Invariant or OriginVariance.Unused ? OriginVariance.Invariant
             : inner == OriginVariance.Covariant ? outer

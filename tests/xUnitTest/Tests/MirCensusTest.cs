@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -63,7 +64,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
             }
 
             var program = c.BuildMir();
-            foreach (var record in program.Records)
+            foreach (var record in program.Records(MirRecordClass.Construction))
             {
                 rows.Add(Row(name, complete, "B", record.Code, c.SyntaxOf(record.Subject), complete));
             }
@@ -75,6 +76,11 @@ public sealed class MirCensusTest(ITestOutputHelper output)
 
             foreach (var problem in program.Problems.All)
             {
+                if (problem.IsRecord)
+                {
+                    continue; // Its construction records are above; its collection records are no census row.
+                }
+
                 var analysis = MirDifferenceLedger.MirAnalysisOf(problem.Requirement, problem.Code) ?? "B";
                 rows.Add(Row(name, complete, analysis, problem.Code, c.SyntaxOf(problem.Subject), complete || analysis is "A5" or "B"));
             }

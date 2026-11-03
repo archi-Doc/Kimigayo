@@ -441,12 +441,29 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     {
         var source = declaration + "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n" + body + "    Console.writeLine(\"\\(s[0])\")\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), body.Trim().Split('\n')[0][8..]), (error.Code, Text(source, error.Span)));
+        var call = body.Trim().Split('\n')[0][8..];
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), call), (error.Code, Text(source, error.Span)));
+
+        // DECISIONS BU-86: the record carries the judgment that left the candidate pending, the argument and the slot.
+        Assert.Equal("The result of c over its environment is no evidence for T", error.Note);
+        var argument = Assert.Single(error.Related!);
+        Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span)));
 
         var valid = "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\npublic func main() -> ()\n    var x: i32 = 5\n    let r = x@ref\n    let c = func [r] () => r\n    let s = make(c@ref)\n    x = 6\n    Console.writeLine(\"\\(s@follow)\")\n";
         var conflict = Assert.Single(DiagnosticCorpus.Check(valid).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "x = 6"), (conflict.Code, Text(valid, conflict.Span)));
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceCapturedReference", "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\nlet x: i32 = 5\nlet r = x@ref\nlet c = func [r] () => r\nlet s = make(c@ref)\nrequire s@follow == 5 else => $abort(\"captured\")", string.Empty);
+    }
+
+    // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) leaves the candidate Pending
+    // on that Origin, not on the environment result that also leaves T unsolved, so the record carries no environment judgment.
+    [Fact]
+    public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
+    {
+        var source = "func make<T, F>(f: ref/F, o: Option<ref/i32 during s>) -> Option<ref/i32 during s>\n    F is Callable<() -> T>\n    return o@move\npublic func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n    let r = make(c@ref, .None)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", null), (error.Code, Text(source, error.Span), error.Note));
+        Assert.Null(error.Related);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -121,9 +121,9 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 6.4.5: lexical self as a direct base call takes it (TyCtxt.EnclosingFunction, DECISIONS BU-53); an accessor is never an override.
+        // SPEC 6.4.5: lexical self as a direct base call takes it (TyCtxt.EnclosingDeclaration, DECISIONS BU-53); an accessor is never an override.
         var scope = this.ConstraintScope(operand);
-        if (this.types.EnclosingFunction(scope) is { Declaration: FunctionKoto { IsOverride: true } lexical } &&
+        if (this.types.EnclosingDeclaration(scope) is { Declaration: FunctionKoto { IsOverride: true } lexical } &&
             this.virtualOverrides.TryGetValue(lexical, out var implementation) && ReferenceEquals(source, implementation.ImplementingType) &&
             ReferenceEquals(receiver, this.BaseReceiver(scope.Function, lexical)))
         {
@@ -204,7 +204,7 @@ public sealed partial class Binding
         {
             if (actual.HandleMode is not { } actualMode || actualMode != targetMode)
             {
-                return this.FailMismatch(conversion, conversion, actual, target);
+                return this.FailMismatch(conversion, conversion, actual, target, ComparisonFailure.Shape);
             }
 
             if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
@@ -229,9 +229,10 @@ public sealed partial class Binding
             result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
             if (target.Origin is not null)
             {
-                if (!this.CheckTypeUse(result, target, conversion))
+                if (!this.CheckTypeUse(result, target, conversion, out var failure))
                 {
-                    return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                    return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure)
+                        : this.Fail(conversion, BindingFailure.InvalidAssignment);
                 }
 
                 result = target;

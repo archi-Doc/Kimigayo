@@ -38,7 +38,7 @@ public sealed partial class MirBuildTest
             "let a = f(2)\nlet b = h(1)\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var bodies = program.Bodies.ToArray();
         Assert.Equal(["g#1"], Templates(bodies.Single(static x => x.Key is { Kind: MirBodyKind.DefaultTemplate, Decl.Name: "f" })));
         Assert.Equal(["f#1"], Templates(bodies.Single(static x => x.Key is { Kind: MirBodyKind.DefaultTemplate, Decl.Name: "g" })));
@@ -168,7 +168,7 @@ public sealed partial class MirBuildTest
         var c = Compile(text.Append("let value = f16()\n").ToString());
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records);
+        var record = Assert.Single(program.Records(MirRecordClass.Construction));
         Assert.Equal(DiagnosticCode.DefaultExpansionLimit_Kd, record.Code);
         Assert.Matches(@"^f\d+\(\)$", c.SyntaxOf(record.Subject).ToString());
         Assert.All(program.Bodies.ToArray(), static x => Assert.InRange(x.Statements.Length, 0, 65_536));
@@ -201,7 +201,9 @@ public sealed partial class MirBuildTest
         Assert.True(library.Bind().IsComplete);
         Assert.True(library.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(["main: take; Lib.Api.take(1) reads PendingSlot", "record Lib.Api.take(1) Unsupported_Kd"], Callers(library, "main"));
-        Assert.Empty(new InstanceCollector(library.Types, library.Layout).Run(library.BuildMir(), 1).Records);
+        var program = new MirBuilder(library).Build(); // Uncollected: the compilation's own collection roots both modules.
+        new InstanceCollector(library.Types, library.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
     }
 
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139): a copy over storage Binding rejected is built in the call's instance, as every reader of an
@@ -242,9 +244,8 @@ public sealed partial class MirBuildTest
     [Fact]
     public void DefaultCopiesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc scale<T>(x: T, factor: i32 = next(2)) -> i32\n    T is Copy\n    return factor\n");
             text.Append("func work() -> i32\n    var total = 0\n");
@@ -253,21 +254,23 @@ public sealed partial class MirBuildTest
                 text.Append("    total += scale(").Append(n).Append(")\n");
             }
 
-            c = Compile(text.Append("    return total\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.Equal(sizes[i] * 2, body.Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
+            var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
+            return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
+            Assert.Equal(sizes[i] * 2, bodies[i].Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
     }
 
@@ -285,7 +288,7 @@ public sealed partial class MirBuildTest
             var sites = body.OpaqueSites.ToArray().Select(x =>
                 $"; {c.SyntaxOf(x.Source)} reads {string.Join(" ", body.OpaqueRoots.Slice(x.Start, x.Count).ToArray().Select(r => body.Locals[r].Role))}");
             return $"{name}: {string.Concat(scopes)}{string.Join(" ", callees)}{string.Concat(sites)}";
-        }), .. program.Records.Where(static x => x.Subject.Module == 0).Select(x => $"record {c.SyntaxOf(x.Subject)} {x.Code}")];
+        }), .. program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => $"record {c.SyntaxOf(x.Subject)} {x.Code}")];
     }
 
     // A caller of a default of DefaultsOver: v's Loan held across the omitting call, which `v = 2` then meets.
