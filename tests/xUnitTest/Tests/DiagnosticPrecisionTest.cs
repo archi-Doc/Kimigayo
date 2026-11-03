@@ -229,6 +229,26 @@ public class DiagnosticPrecisionTest
         Assert.Equal(label, label is null ? null : error.Label);
     }
 
+    // SPEC 15.1.5, 13.5.5: a Take its path does not offer keeps its code, and its Note names the layer that offers no Take, for the
+    // implicit and the explicit forms alike; no Message names an exclusive reference (PLAN G181 (1)).
+    [Theory]
+    [InlineData("func g<s/T>(m: s/T, p: s/P)\n    s is owner or uniq\n    let y = p.inner@move", "ExclusivePathTake_Kd", "a pair layer admitting owner")]
+    [InlineData("func g<s/T>(m: s/T, p: s/P)\n    s is owner or uniq\n    let y = p@follow.inner@move", "ExclusivePathTake_Kd", "a pair layer admitting owner")]
+    [InlineData("func g<s/T>(m: s/T, p: s/P)\n    s is uniq\n    let y = p.inner@move", "ExclusivePathTake_Kd", "an exclusive reference or view")]
+    [InlineData("func g(p: uniq/P)\n    let y = p.inner@move", "ExclusivePathTake_Kd", "an exclusive reference or view")]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h.inner@move", "InvalidAssignment_Kd", "an object payload")]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h@follow.inner@move", "InvalidAssignment_Kd", "an object payload")]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h@follow@move", "InvalidAssignment_Kd", "an object payload")]
+    public void DeniedTakesNameTheirLayer(string function, string code, string layer)
+    {
+        const string Types = "public func main()\n    return\nstruct Q\n    public var w: i32\n    public init(w: i32) => self.w = w\n" +
+            "struct P\n    public var v: i32\n    public var inner: Q\n    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n";
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(Types + function)));
+        Assert.Equal(code, error.Code);
+        Assert.Contains($"The Place is reached through {layer}", error.Note);
+        Assert.DoesNotContain("exclusive reference", error.Message);
+    }
+
     // SPEC 13.5.3: only a numeric conversion changes an owned Core, so converting a position or range is a Type error.
     [Theory]
     [InlineData("let a = (^1)@u8", "(^1)@u8", "expected u8, found Kimi.FromEnd<i32>")]

@@ -88,7 +88,7 @@ public sealed partial class Binding
     {
         if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
         {
-            return this.Fail(conversion, AccessFailure(conversion.Left));
+            return this.Fail(conversion, AccessFailure(conversion.Left, out _));
         }
 
         var within = this.PathOrigin(conversion.Left) is { Dereferences: true } path ? path.Origin : null;

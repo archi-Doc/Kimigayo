@@ -419,9 +419,9 @@ public sealed partial class Binding
     // exclusive reference grants Read and Write but not Take, as no case of a pair layer does (SPEC 13.5.5; only a pair layer adds the
     // owner case), a writable part of a special receiver that SPEC lends exclusively but its row does not yet is unsupported
     // (Receiver, SPEC 6.3.4), and otherwise the binding itself forbids the access, also through a selection whose receiver it cannot
-    // exclusively acquire, or an object payload offers no Take.
-    private static BindingFailure AccessFailure(Koto target, bool take = false)
-        => PathAuthority(target, [], out _, out var layers) switch
+    // exclusively acquire, or an object payload offers no Take. `layers` are the cases of the layers the path passes (PathAuthority).
+    private static BindingFailure AccessFailure(Koto target, out SemanticsMask layers, bool take = false)
+        => PathAuthority(target, [], out _, out layers) switch
         {
             SemanticsKind.Ref => BindingFailure.SharedPathAccess,
             SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
@@ -527,7 +527,7 @@ public sealed partial class Binding
         => (this.LendsPlace(place, scope, exclusive, out var staticRoot) && staticRoot is not null, exclusive) switch
         {
             (true, _) => BindingFailure.Unsupported,
-            (_, true) => AccessFailure(place),
+            (_, true) => AccessFailure(place, out _),
             _ => BindingFailure.InvalidAssignment,
         };
 

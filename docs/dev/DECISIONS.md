@@ -6959,6 +6959,16 @@ resumed by R4-M86 (2026-10-20).
     without one keeps `NotIndexable_Kd`, and with a failed key the limit rests on the key, as the pair-layered sequence's limit
     does. Rejected: a second conformance test in the fallback (a copy of the indexer's rule). Temporary: removed by G179's
     selection through the layer, as `TryPairReceiver` selects receivers.
+  - Amendment (2026-11-03, R4 after its exit, BU reviewing; PLAN G181 (1), the owner's option (a), verbatim 「2すべてa」 and
+    「3案の通り」, read by the planning session as N'): a Take past a layer of a receiver's own Type keeps `AccessFailure`'s code, and
+    its record names the layer that offers no Take. `ExclusivePathTake_Kd`'s fixed Message is layer-neutral ("reached through a layer
+    that offers no Take"); each record's Note names the layer from the cases `AccessFailure` gives (the mask `PathAuthority` already
+    computes), recorded by `FailTake` and formed by `ReportTake` in `Binding.Diagnostics.Takes`: owner among them a pair layer
+    admitting owner, obj an object payload, else an exclusive reference or view. `InvalidAssignment_Kd`'s Message stays; at an object
+    payload its Note names the payload. The explicit forms (`p@follow.inner@move`, `h@follow@move`) pass the same layers and get the
+    same Note. Why: the old Message named an exclusive reference past an owner-only pair layer and `InvalidAssignment_Kd` named only
+    assignment. Rejected: a Message argument (a catalog argument) and a Note under the old Message (still a wrong layer). `LayerCases`'
+    walk (PLAN G181 (2)) stays BU's.
 - **BU-17** (2026-10-21; the BU planning session; PLAN G163 under the full process: designs A and B, the chosen design, a design
   review (APPROVE WITH CHANGES), two revisions after the implementer's robustness rows, design review round 2 (APPROVE WITH
   CHANGES); the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole destruction receiver, is

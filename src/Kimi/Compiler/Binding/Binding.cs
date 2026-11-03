@@ -900,6 +900,10 @@ public sealed partial class Binding
         {
             this.ReportWrite(issue.Node, target, requirement, issue.Code);
         }
+        else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
+        {
+            this.ReportTake(issue.Node, takeCases, requirement, issue.Code);
+        }
         else if (this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
         {
             this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
