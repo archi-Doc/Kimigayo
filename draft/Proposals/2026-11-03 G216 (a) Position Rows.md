@@ -63,7 +63,9 @@ U2j-a, U2j-b, G388, U3 and G391 are one missing representation: the selected sol
    and argument joins; the survey path goes.
 6. **Record site from the solve** (D-1 and 「混合のままでよい」): a Type or length slot records at the argument whoever fixes it; an Origin
    records at the argument only where the call's solve opens it (the leaf part related); an Origin fixed by another input's equality
-   records at the part's own fit (S3).
+   records at the part's own fit (S3). The rule covers well-formedness rows; a fit relation keeps DIAGNOSTICS' site, the result's fit
+   at the call (BU-51's pin): when a parameter's row is a bound the solve satisfies and the result's fit then fails, the record is the
+   call's (revision 2, 2026-11-03: U0's re-review R1).
 7. **A form the rule does not cover is a located `Unsupported_Kd` at the argument**, never a clause or a case.
 
 ### 3.1 Reading 1: Result per position (mk2 invalid, id valid)
