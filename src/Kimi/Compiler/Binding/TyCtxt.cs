@@ -231,13 +231,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
-    // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets), discarded
-    // together at an edit (Binding.Invalidate; DECISIONS R5-M61).
+    // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets, Copy facts),
+    // discarded together at an edit (Binding.Invalidate; DECISIONS R5-M61, BU-88).
     internal void ResetViews()
     {
         this.ResetRetentions();
         this.ResetInstances();
         this.ResetDispatch();
+        this.copies.Clear();
     }
 
     // Intern's guard of PairBindings: whether a Component's subtree states a raw Origin (BoundType.CarriesRawOrigin), so any other instance

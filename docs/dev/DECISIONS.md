@@ -10185,8 +10185,8 @@ resumed by R4-M86 (2026-10-20).
 - **BU-88 The validator's Copy rule** (2026-11-03; R6-check Q8-3 on `claude/r6-flip`, after H1, BU-84; the owner's Q8 approval, R5-M23,
   design `draft/Sketches/R5 Step 0/Q8-package.md` §3.9; H0's division, R5-M182)
   - Rule and owner: `MirValidator`, the builder's one validator (`MirValidator.Rvalues.cs`, the operand visitor's `Operand`). A `Copy`
-    operand of a known Type is valid iff `TyCtxt.Copy(body.Key.Decl, type)` holds: Binding's published proof under the body
-    definition's premises. The validator proves nothing and has no fallback. A finding is `MirViolation.Operation` (an operand its
+    operand of a known Type is valid iff the body definition's Copy facts hold for it (`TyCtxt.Copies(body.Key.Decl).Copy(type)`):
+    Binding's proof under the body definition's premises. The validator proves nothing and has no fallback. A finding is `MirViolation.Operation` (an operand its
     kind does not admit; no new violation), so the build reports `InternalInvariant_Kd` and refuses generation: the builder or
     Binding broke its contract.
   - Exemption: the operands of a case site, read from the one `caseSites` list that `Views` resolves (an Adapt whose Places and token
@@ -10195,7 +10195,13 @@ resumed by R4-M86 (2026-10-20).
   - It covers H1's flip: Binding judges TransferRequired (BU-84), so a bare non-Copy Place can no longer reach MIR as a `Copy`.
   - Test bodies keep to the contract: a Value callee is a shared borrow of its Function, as the builder forms it; a compiled body is
     validated with its own compilation's `TyCtxt`.
-  - Cost: one Copy lookup per `Copy` operand of each built body. A warm validation still allocates nothing.
+  - Cost (the coordinator's decision after the first A/B: validation B/A 1.28, build+validate 1.12): every `TyCtxt.Copy` call
+    re-proved; 21.2 ms for the census's 76,975 Copy operands. 3.4 ms of that was `EffectPremises`' scope walk, 17.8 ms the proof. One
+    representation of the verdict now: `TyCtxt.CopyFacts`, one per node a definition's premises are read at (`Binding.DefinitionUse`).
+    It holds the premises, resolved once, and each Type's answer, proven at its first question and keyed by the interned Type. It is
+    a TyCtxt view (R5-M61), cleared in `ResetViews`. The Checker takes its body's facts once (`Copies`). `MirEffects`,
+    `MirTypes.Destruction` and code generation read the same facts. `TyCtxt.Copy(definition, type)` is gone. No second cache.
+    A warm validation still allocates nothing.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

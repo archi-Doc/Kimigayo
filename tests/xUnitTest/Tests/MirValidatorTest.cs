@@ -792,7 +792,7 @@ public sealed class MirValidatorTest
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
-    // DECISIONS BU-88 (Q8-3): a Copy operand's Type is Copy by Binding's proof under the body definition's premises (TyCtxt.Copy): a Use's
+    // DECISIONS BU-88 (Q8-3): a Copy operand's Type is Copy by Binding's proof under the body definition's premises (TyCtxt.Copies): a Use's
     // Copy of a Point, which is not Copy, is an Operation finding at its syntax (fail-before: none), its twin's of an i32 none; the case
     // sites' operands are exempt: a PairAcquire's and a per-view Adapt's Copy of the pair's payload, which f's premises do not prove Copy.
     [Theory]
@@ -819,7 +819,7 @@ public sealed class MirValidatorTest
         body.Push(entry, MirStatement.Assign(place, rvalue, Broken));
         body.Terminate(entry, MirTerminator.Goto(exit, At));
         body.Terminate(exit, MirTerminator.Return(At));
-        Assert.False(c.Types.Copy(body.Key.Decl, types.Point) || c.Types.Copy(body.Key.Decl, body.TypeOf(layer)!)); // Under f's premises.
+        Assert.False(c.Types.Copies(body.Key.Decl).Copy(types.Point) || c.Types.Copies(body.Key.Decl).Copy(body.TypeOf(layer)!)); // Under f's premises.
         MirViolation[] expected = form == "owned" ? [MirViolation.Operation] : [];
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }

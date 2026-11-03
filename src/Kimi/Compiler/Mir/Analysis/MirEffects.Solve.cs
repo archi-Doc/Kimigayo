@@ -341,7 +341,7 @@ internal sealed partial class MirEffects
     {
         if (this.reader < 0 || types.RecursiveBase(this.definition, type))
         {
-            this.found |= kind == Drop && types.Copy(this.definition, type) ? (byte)0 : Unknown;
+            this.found |= kind == Drop && types.Copies(this.definition).Copy(type) ? (byte)0 : Unknown;
             return;
         }
 

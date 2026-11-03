@@ -152,6 +152,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         HashSet<BoundType> parts,
         TyCtxt types) : IMirUses
     {
+        private readonly TyCtxt.CopyFacts copies = types.Copies(body.Key.Decl); // The body definition's, resolved once per body (BU-88).
         private SourceInfo at;
         private int opaqueValues;
         private int named; // The roots of the Opaque site being walked that are still to come (MirValidator.Statics).
