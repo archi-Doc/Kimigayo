@@ -72,8 +72,8 @@ fn addresses @25
   bb1:
       return @25
   bb2:
-      _0 = move _10 @62 s2
-      goto bb1 @62 s2
+      _0 = move _10 @25
+      goto bb1 @25
   bb3:
       StorageDead(_2) @30 s1
       goto bb2 @25

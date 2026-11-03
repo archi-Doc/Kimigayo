@@ -32,8 +32,8 @@ fn pick @4
   bb1:
       return @4
   bb2:
-      _0 = move _7 @19 s1
-      goto bb1 @19 s1
+      _0 = move _7 @4
+      goto bb1 @4
   bb3:
       StorageDead(_3) @11 s1
       StorageDead(_2) @8 s1

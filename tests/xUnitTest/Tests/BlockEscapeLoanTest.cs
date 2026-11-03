@@ -196,6 +196,26 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
+    // SPEC 16.2.2, 15.6.6 on MIR (DECISIONS R5-M50, DIAGNOSTICS A6 `Use`): the delivery after the Scope Exit is the target's, whichever
+    // exit builds it first, so the value keeping the Loan is used at the label block, never at an exit delivering another source; the
+    // Anchor is the escaping exit's Borrow (the later one where both escape).
+    [Theory]
+    [InlineData(OtherFirst)]
+    [InlineData(BothExits)]
+    [InlineData(GenericRequirement)]
+    [InlineData(GenericReborrow)]
+    [InlineData(AbstractHolder)]
+    public void TheMirLoanIsUsedAtTheLabelBlock(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var index = Assert.Single(Enumerable.Range(0, program.Problems.All.Length), x => program.Problems.All[x].Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.Equal(
+            [("Anchor", source.LastIndexOf("n@ref", StringComparison.Ordinal)), ("Use", source.IndexOf("do\n", StringComparison.Ordinal))],
+            program.Problems.Facts(index).ToArray().Select(x => ($"{x.Kind}", c.SyntaxOf(x.Site).Span.Start)));
+    }
+
     // SPEC 15.6.6: the plain escape is one record, at the destruction.
     [Fact]
     public void ThePlainEscapeIsOneRecord()

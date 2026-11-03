@@ -100,8 +100,8 @@ fn area @28
   bb14:
       return @28
   bb15:
-      _0 = move _14 @32 s1
-      goto bb14 @32 s1
+      _0 = move _14 @28
+      goto bb14 @28
   bb16:
       StorageDead(_2) @33 s1
       goto bb15 @28
@@ -175,8 +175,8 @@ fn classify @71
   bb11:
       return @71
   bb12:
-      _0 = move _9 @77 s1
-      goto bb11 @77 s1
+      _0 = move _9 @71
+      goto bb11 @71
   bb13:
       StorageDead(_2) @78 s1
       goto bb12 @71
@@ -224,8 +224,8 @@ fn code @98
   bb6:
       return @98
   bb7:
-      _0 = move _6 @102 s1
-      goto bb6 @102 s1
+      _0 = move _6 @98
+      goto bb6 @98
   bb8:
       drop _1 -> bb9 [keep] @99
   bb9:
@@ -305,8 +305,8 @@ fn guarded @114
   bb7:
       return @114
   bb8:
-      _0 = move _8 @131 s3
-      goto bb7 @131 s3
+      _0 = move _8 @114
+      goto bb7 @114
   bb9:
       drop _1 -> bb10 [elide] @115
   bb10:
@@ -444,8 +444,8 @@ fn half @151
   bb4:
       return @151
   bb5:
-      _0 = move _7 @165 s2
-      goto bb4 @165 s2
+      _0 = move _7 @151
+      goto bb4 @151
   bb6:
       StorageDead(_2) @158 s1
       goto bb5 @151
@@ -516,8 +516,8 @@ fn quarter @175
   bb7:
       return @175
   bb8:
-      _0 = move _8 @203 s3
-      goto bb7 @203 s3
+      _0 = move _8 @175
+      goto bb7 @175
   bb9:
       StorageDead(_2) @182 s1
       goto bb8 @175
