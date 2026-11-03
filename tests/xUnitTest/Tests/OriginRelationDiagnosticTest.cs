@@ -290,20 +290,23 @@ public partial class OriginRelationDiagnosticTest
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence whose nested Origin is not proven to outlive the outer one is a wellFormed record at
-    // that occurrence, independent of the fit of the initializer, which is its own record.
+    // that occurrence (U-W, DECISIONS BU's entry), independent of the fit of the initializer, which is its own record: since the MIR
+    // decides acceptance (H5, DECISIONS R5-M185) the fit is at the declaration (H3b T45: at `slot` before), so it is published first.
     [Fact]
     public void AWellFormednessRelationIsRecordedAtItsTypeOccurrence()
     {
-        var source = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n    let r: ref/(ref/i32 during b) during a = slot\n    return 0\n" + Main;
+        const string occurrence = "ref/(ref/i32 during b) during a";
+        var source = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n    let r: " + occurrence + " = slot\n    return 0\n" + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Equal(2, errors.Length);
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), x.Code));
-        Assert.Equal(("ref/(ref/i32 during b) during a", "wellFormed"), (Text(source, errors[0].Span), errors[0].Reason![3].Value));
-        Assert.Equal(("slot", "fit"), (Text(source, errors[1].Span), errors[1].Reason![3].Value));
+        Assert.All(errors, static x => Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "requires b outlives a, which is not proven"), (x.Code, x.Label)));
+        var wellFormed = Assert.Single(errors, x => x.Span!.Value.Start == source.IndexOf(occurrence, StringComparison.Ordinal));
+        Assert.Equal((occurrence, "relation=outlives longer=b shorter=a source=wellFormed"), (Text(source, wellFormed.Span), Reason(wellFormed)));
         // SPEC 23.1: only the fit names its destination Type.
-        Assert.Equal(["relation", "longer", "shorter", "source"], errors[0].Reason!.Select(static x => x.Name));
-        Assert.Equal(["relation", "longer", "shorter", "source", "destination"], errors[1].Reason!.Select(static x => x.Name));
-        Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
+        Assert.Equal(
+            [("let r: " + occurrence + " = slot", "relation=outlives longer=b shorter=a source=fit destination=ref/ref/i32 during a"), (occurrence, Reason(wellFormed))],
+            errors.Select(x => (Text(source, x.Span), Reason(x))));
+
+        static string Reason(CheckDiagnostic error) => string.Join(' ', error.Reason!.Select(static x => $"{x.Name}={x.Value}"));
     }
 
     // SPEC 15.3.2, 15.3.4, 15.6.1 (DECISIONS BU-26): a declaration's Type occurrence (a Field's, payload's or base's declared Type, a nested
