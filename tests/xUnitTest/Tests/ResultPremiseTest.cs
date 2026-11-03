@@ -256,7 +256,13 @@ public partial class ResultPremiseTest
         Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], records.Select(static x => x.Code));
         var loan = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd));
         Assert.Equal("let local: i32 = 5", Text(pinned, loan.Span));
-        Assert.Equal([("borrow", "local@ref"), ("loan", "return pair.1")], loan.Related!.Select(x => (x.Role, Text(pinned, x.Span))));
+        // Its `loan` is A6's `Use`, the next use of g's result in transit: the delivery to the caller, which U-T1 sites at g's declaration
+        // (DECISIONS R5-M50's amendment; R4's verdict on U-T2's witness, 2026-11-04; T-28 pinned `return pair.1` before U-T1). The
+        // whole-declaration span is PLAN G311's open issue; this row moves when G311 narrows it.
+        var declaration = pinned[pinned.IndexOf("g() ->", StringComparison.Ordinal)..(pinned.LastIndexOf("return pair.1", StringComparison.Ordinal) + "return pair.1".Length)];
+        Assert.Equal(
+            [("borrow", "local@ref", "borrow that created the loan"), ("loan", declaration, "later use of the value retaining the conflicting loan")],
+            loan.Related!.Select(x => (x.Role, Text(pinned, x.Span), x.Label)));
         var call = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "fr(local@ref)"), (call.Code, Text(pinned, call.Span)));
         Assert.Equal("requires the borrow local@ref outlives static, which is false", call.Label);
