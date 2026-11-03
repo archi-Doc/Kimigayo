@@ -54,7 +54,7 @@ public class OwnershipAnalysisBenchmark
     /// <summary>Rebuilds both control-flow analyses and ownership plans with retained storage.</summary>
     /// <returns>The ownership verification summary.</returns>
     [Benchmark]
-    public OwnershipResult Analyze() => this.compilation.Ownership.Analyze();
+    public OwnershipResult Analyze() => this.compilation.AnalyzeLegacyOwnership().Analyze();
 
     /// <summary>Measures Binding and both analyses together, without reparsing.</summary>
     /// <returns>The ownership verification summary.</returns>

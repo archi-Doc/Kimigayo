@@ -256,7 +256,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   forwarding properties (R7, their Parsing and root-helper reads at R6-check; DECISIONS R5-M9); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137); the `Compilation.Analyzed` event, the difference
-  ledger's observation point, and `Binding.IsEffectRecord` and `Binding.IsTwinRecord`, the ledger's old-side effect and twin subsets (R6, the
+  ledger's observation point, and `Binding.IsTwinRecord`, the ledger's old-side twin subset (R6, the
   twin set with the twins at H11; DECISIONS R4-M17, R4-M23, R4-M111); the old analysis's receiver-dependence gate, its
   `CallPlan.ReceiverDependentResult` fact, `ReceiverDependentListed` flag and `Binding.ValueCallGate` (R6-check; DECISIONS
   R4-M152); F1's located `Unsupported_Kd` at a returned Closure's call, `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's

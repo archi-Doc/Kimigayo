@@ -151,13 +151,14 @@ public partial class Compilation
     [Transitional("R6-check", Reason = "Its readers migrate off by H8a–c and H9; H10b deletes it with the old analysis.")]
     internal OwnershipAnalysis AnalyzeLegacyOwnership()
     {
+        var ownership = this.ownership ??= new(this);
         if (!this.legacyAnalyzed)
         {
-            this.Ownership.Analyze();
+            ownership.Analyze();
             this.legacyAnalyzed = true;
         }
 
-        return this.Ownership;
+        return ownership;
     }
 
     internal void InvalidateOwnership()

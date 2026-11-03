@@ -42,7 +42,7 @@ public class MatchOwnershipBenchmark
     /// <summary>Rebuilds and solves ownership plus result flow using retained Binding.</summary>
     /// <returns>The verification summary.</returns>
     [Benchmark]
-    public OwnershipResult Analyze() => this.compilation.Ownership.Analyze();
+    public OwnershipResult Analyze() => this.compilation.AnalyzeLegacyOwnership().Analyze();
 
     /// <summary>Rebinds and runs both analyses without reparsing.</summary>
     /// <returns>The verification summary.</returns>

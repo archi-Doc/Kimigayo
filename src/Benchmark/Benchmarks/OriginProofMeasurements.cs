@@ -90,7 +90,7 @@ internal static class OriginProofMeasurements
         start = Stopwatch.GetTimestamp();
         var verified = compilation.AnalyzeLegacyOwnership().Result.IsVerified;
         var ownership = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        var codes = compilation.Binding.Issues.Select(static x => x.Code.ToString()).Concat(compilation.Ownership.Issues.Select(static x => x.Code.ToString())).ToArray();
+        var codes = compilation.Binding.Issues.Select(static x => x.Code.ToString()).Concat(compilation.AnalyzeLegacyOwnership().Issues.Select(static x => x.Code.ToString())).ToArray();
         var cold = new
         {
             bindingMilliseconds = binding,

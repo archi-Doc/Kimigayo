@@ -114,7 +114,7 @@ public sealed partial class OwnershipAnalysis
             this.collector.Visit(module.RootKoto);
         }
 
-        this.AnalyzeLibraryBodies(0);
+        this.AnalyzeLibraryBodies();
         if (this.stops.Count != 0)
         {
             return this.Stopped();
@@ -145,7 +145,6 @@ public sealed partial class OwnershipAnalysis
 
         this.bodies.Clear();
         this.libraryBodies.Clear();
-        this.templateBodies.Clear();
         this.witnessTypes.Clear();
         this.fixedArrayWitnesses = false;
         this.integerPositionWitness = false;
@@ -265,7 +264,6 @@ public sealed partial class OwnershipAnalysis
             }
 
             this.body = this.bodyPool[this.bodies.Count];
-            this.templateBodies[function] = this.body;
             this.bodies.Add(this.body);
         }
 
@@ -1478,6 +1476,16 @@ public sealed partial class OwnershipAnalysis
                     this.CollectLibraryBody(specialization);
                 }
             }
+        }
+    }
+
+    // Library bodies are analyzed as calls reach them; analyzing one may reach further ones.
+    private void AnalyzeLibraryBodies()
+    {
+        for (var i = 0; i < this.libraryBodies.Count; i++)
+        {
+            this.flow!.Append(this.libraryBodies[i]);
+            this.collector.Visit(this.libraryBodies[i]);
         }
     }
 
