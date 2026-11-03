@@ -51,7 +51,7 @@ public sealed partial class MirBorrowsTest
             public func addO(self: uniq/Self, x: i32 = State.touchOther()) => ()
             public func addR(self: uniq/Self, x: i32 = State.peekCount()) => ()
         group Lim
-            public func run() => _ = Nest<i32>.init(value: 1)
+            public func run() => _ = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39)
         group State
             public var counter: Counter = Counter.init()
             public var other: Counter = Counter.init()

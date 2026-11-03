@@ -514,18 +514,16 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        K is {premise}\n        _ = table.tryGet(key)\n" +
                 WithField("boxes: Dictionary<Box<Key>, i32> = [:]") + $"        {statement}\n        return .Ok(())\n"));
 
-    // SPEC 15.3.5, 16.3.3, 8.15: a growing recursive Type, Nest<(T, T)> below a Sealed rc payload, ends at the destruction walk's bound,
-    // since the payload's walk goes on below its handle: a body destroying one is analyzed (it hung before), and where it owes confined
-    // that destruction is a limit, OwnershipDepthLimit_Kd (the owner's 「G272: (1)」, R4-M153).
+    // SPEC 15.3.5, 16.3.3, 8.15: a growing recursive Type, Nest<(T, T)> below a Sealed rc payload, is destroyed by its declaration's
+    // summary (PLAN G349, the planning session's O1): a body destroying one is analyzed (it hung before), and where it owes confined that
+    // destruction is exact, no record (before G349, OwnershipDepthLimit_Kd at the walk's bound; MirEffectsTest.Indirection).
     [Fact]
-    public void AGrowingRecursiveDestructionEndsAtTheBound()
+    public void AGrowingRecursiveDestructionUsesItsSummary()
     {
         const string Nest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
             "        self.value = value@move\n        self.next = .None\n";
         Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
-        Assert.Equal(
-            ["OwnershipDepthLimit_Kd Self is Sink 1"],
-            Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
+        Assert.Empty(Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
     }
 
     // SPEC 16.3, 15.3.5 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a recursive Type that repeats through
@@ -552,16 +550,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal([Failed], Problems(Sink + Loud + wide + Witness + "        var w = Wide.init()\n        let s = w.x64.0@move\n        return .Ok(())\n"));
     }
 
-    // SPEC 15.3.5, 8.15 (DECISIONS R4-M58): a chain that grows through a destructor's composed atom, D's T as G<(U, U)>, terminates:
-    // Binding's storage instantiation bounds the growing instance (TyCtxt.Apply gives none), so the first composition is a limit, the
-    // located Unsupported_Kd where it owes confined.
+    // SPEC 15.3.5, 8.15 (DECISIONS R4-M58): a chain that grows through a destructor's composed atom, D's T as G<(U, U)>, terminates; below
+    // the rc it is D's and G's declaration summaries (PLAN G349, O1), whose atoms read the instance's stored Types, so no check rests on
+    // Binding's storage bound there (before G349, the located Unsupported_Kd where it owes confined): its regular twin's records.
     [Fact]
-    public void AChainGrowingThroughADestructorIsALimit()
+    public void AChainGrowingThroughADestructorUsesItsSummary()
     {
         const string Chain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
             "        self.next = .None\n";
         Assert.Empty(Problems(Chain + "func release(g: G<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
+        var twin = Chain.Replace("Option<rc/D<G<(U, U)>>>", "Option<rc/D<G<U>>>", StringComparison.Ordinal);
+        Assert.NotEqual(Chain, twin);
+        const string Body = "        _ = G<i32>.init()\n        return .Ok(())\n";
+        Assert.Equal(Problems(Sink + Loud + twin + Witness + Body), Problems(Sink + Loud + Chain + Witness + Body));
     }
 
     // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies

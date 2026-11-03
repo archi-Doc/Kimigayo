@@ -150,5 +150,11 @@ public sealed partial class MirEffectsTest
         public bool Visit(BoundType type, int depth) => false;
 
         public bool Deep(BoundType type) => false;
+
+        public bool Below(BoundType? part, int depth)
+        {
+            var walk = this;
+            return MirTypes.Destruction(part, ref walk, depth + 1);
+        }
     }
 }

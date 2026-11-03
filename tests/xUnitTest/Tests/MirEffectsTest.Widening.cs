@@ -108,7 +108,8 @@ public sealed partial class MirEffectsTest
                 "    U is Copy\n    U.(Tree).Child is U\n    apply(func [u] () => Trees.walk(u, 2))\n"));
 
     // SPEC 15.6.4 (S5): the fixed point needs no bound: a walk whose recursion grows T to T.Child takes no more evaluations than one that
-    // recurses on T itself (before, it took one round per projection step up to G128's bound of 64).
+    // recurses on T itself (before, it took one round per projection step up to G128's bound of 64), but for the parts its destruction
+    // walks enter, which Evaluations counts since PLAN G349 (the planning session's §6): T.Child's few, a constant.
     [Fact]
     public void AGrowingSummaryNeedsNoBound()
     {
@@ -127,6 +128,6 @@ public sealed partial class MirEffectsTest
             evaluations[i] = effects.Evaluations;
         }
 
-        Assert.True(evaluations[0] <= evaluations[1] + 2, $"evaluations {evaluations[0]} (growing), {evaluations[1]} (on T)");
+        Assert.True(evaluations[0] <= evaluations[1] + 16, $"evaluations {evaluations[0]} (growing), {evaluations[1]} (on T)");
     }
 }

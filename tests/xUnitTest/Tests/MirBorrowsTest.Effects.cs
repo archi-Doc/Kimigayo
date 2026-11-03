@@ -16,8 +16,8 @@ namespace XunitTest;
 public sealed partial class MirBorrowsTest
 {
     // The effect rule's Types and group State: statics, an initializer that writes another static (x's), destructors that read, write or
-    // pass A4's Deep (Lim.run destroys a growing Nest<i32>, past the destruction walk's bound; R4-M153), and helpers that read and write
-    // statics.
+    // pass A4's Deep (Lim.run destroys a Tuple nested 40 levels, past the destruction walk's bound; R4-M153; a growing Nest<i32> before
+    // PLAN G349, exact below its rc since), and helpers that read and write statics.
     private const string EffectTypes = """
         struct Counter
             public var n: i32 = 0
@@ -60,7 +60,7 @@ public sealed partial class MirBorrowsTest
             public init() => ()
             drop => Lim.run()
         group Lim
-            public func run() => _ = Nest<i32>.init(value: 1)
+            public func run() => _ = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39)
         group State
             public var counter: Counter = Counter.init()
             public let limits: Counter = Counter.init()

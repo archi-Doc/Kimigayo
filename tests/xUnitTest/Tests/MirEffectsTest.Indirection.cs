@@ -64,8 +64,8 @@ public sealed partial class MirEffectsTest
         => Assert.Equal(expected, CollectorRecords(IndirectionForm(form), site));
 
     // Problem statement §4: the pins whose growing Nest (a Field Option<rc/Nest<(T, T)>>) passes the depth bound below its rc handle give
-    // their regular twin's records (Option<rc/Nest<T>>, exact on dev): AGrowingRecursiveDestructionEndsAtTheBound and the G272 rows' "nest"
-    // form (MirEffectsTest.DepthLimit), whose OwnershipDepthLimit_Kd the change removes; those pins take this verdict with it.
+    // their regular twin's records (Option<rc/Nest<T>>, exact on dev): AGrowingRecursiveDestructionUsesItsSummary (was EndsAtTheBound) and the G272 rows' "nest"
+    // form (MirEffectsTest.DepthLimit, removed: tuple40 represents its rules), whose OwnershipDepthLimit_Kd the change removed.
     [Fact]
     public void AGrowingNestGivesItsRegularTwinsRecords()
     {

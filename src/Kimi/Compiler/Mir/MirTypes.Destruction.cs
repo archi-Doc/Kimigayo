@@ -29,6 +29,16 @@ internal interface IMirDestruction
     /// <param name="type">The part's Type.</param>
     /// <returns>Whether the walk stops.</returns>
     bool Deep(BoundType type);
+
+    /// <summary>The one step of every destruction walk below an indirection (SPEC 16.3.3, 8.15.3): a Sealed handle's payload, which the
+    /// visitor's own <see cref="Visit"/> passes here, and an Array's or a Dictionary's element (<see cref="MirTypes.Parts"/>). Only an
+    /// indirection lets a declaration's instances grow (inline storage is finite), so a visitor that keeps declarations' destruction
+    /// summaries composes each struct or enum instance below it through the instance's arguments, a fixed point per declaration that needs
+    /// no depth (15.3.5, 15.6.4); a visitor that keeps none yet walks the part one level deeper (<see cref="MirTypes.Destruction"/>).</summary>
+    /// <param name="part">The payload or element; null destroys nothing.</param>
+    /// <param name="depth">The indirection's depth in the walk.</param>
+    /// <returns>Whether the walk stops.</returns>
+    bool Below(BoundType? part, int depth);
 }
 
 // The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds.
@@ -132,11 +142,12 @@ internal static partial class MirTypes
     internal static bool Parts<TVisitor>(BoundType type, ref TVisitor visitor, int depth)
         where TVisitor : struct, IMirDestruction
     {
-        var parts = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
+        var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // Its elements lie below an indirection.
+        var parts = sequence || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
             ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
-            if (Destruction(parts[i], ref visitor, depth + 1))
+            if (sequence ? visitor.Below(parts[i], depth) : Destruction(parts[i], ref visitor, depth + 1))
             {
                 return true;
             }
@@ -153,7 +164,8 @@ internal static partial class MirTypes
         return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
     }
 
-    // MayNeedDrop's visitor: any reported part, each Type once per query, past the bound too (a Type met before reports nothing).
+    // MayNeedDrop's visitor: any reported part, each Type once per query, past the bound too (a Type met before reports nothing). It
+    // stops at an indirection's handle or sequence, a reported part, before any instance below it.
     private readonly struct AnyPart(HashSet<BoundType> seen) : IMirDestruction
     {
         public bool First(BoundType type, int depth) => seen.Add(type);
@@ -161,6 +173,8 @@ internal static partial class MirTypes
         public bool Visit(BoundType type, int depth) => true;
 
         public bool Deep(BoundType type) => seen.Add(type);
+
+        public bool Below(BoundType? part, int depth) => true;
     }
 
     // Observation's visitor: the Join of the reported parts' outcomes, a part that may observe decided (the walk stops), an abstract part
@@ -190,7 +204,7 @@ internal static partial class MirTypes
             }
 
             var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
-            return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : Destruction(payload, ref this, depth + 1));
+            return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : this.Below(payload, depth));
         }
 
         public readonly bool Deep(BoundType type)
@@ -198,6 +212,9 @@ internal static partial class MirTypes
             MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _));
             return false;
         }
+
+        // PLAN G349 U2: the Observer keeps no declaration summary yet; it walks the instance (R4-M153's bound below an indirection).
+        public bool Below(BoundType? part, int depth) => Destruction(part, ref this, depth + 1);
 
         // A part known to observe: the decided answer, the Join's top, where the walk stops.
         private bool Decide()

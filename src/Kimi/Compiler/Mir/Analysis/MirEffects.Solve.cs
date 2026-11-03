@@ -14,7 +14,10 @@ internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
     private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
-    private readonly Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths).
+    private readonly Dictionary<BindingSymbol, int> declarationNodes = new(ReferenceEqualityComparer.Instance); // Each declaration's destruction node (PLAN G349).
+    private Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths),
+    private Dictionary<BoundType, byte> spare = new(ReferenceEqualityComparer.Instance); // and a judged obligation's, kept while a new node is solved.
+    private BoundType[] declarationTypes = []; // Each declaration node's Type in its own parameters, by its node after the body views'.
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
     private int[] atomCounts = [];
@@ -28,11 +31,17 @@ internal sealed partial class MirEffects
     private MirProgram program = null!;
     private BindingSymbol? definition; // The definition whose premises resolve atoms: the evaluated node's, or an obligation's.
     private int reader; // The evaluated node, -1 while judging an obligation, whose atoms are resolved at once.
+    private int bodyNodes; // The run's body view nodes; each declaration node the run adds follows them (DeclarationNode).
+    private bool below; // Whether the walked value lies below an indirection, where every struct or enum instance composes its declaration.
+    private int nodes; // All nodes of the run.
+    private int head; // The ring of queued nodes over queue: its first and its length; a node is queued at most once at a time.
+    private int length;
     private int atomCount;
     private int scratchCount;
     private int dependentCount;
 
-    /// <summary>Gets the node evaluations of the last <see cref="Run"/>, linear in the program's calls (V16).</summary>
+    /// <summary>Gets the work of the last <see cref="Run"/>: its node evaluations and the parts their destruction walks enter, linear in
+    /// the program's calls and declarations (V16).</summary>
     internal int Evaluations { get; private set; }
 
     // The current evaluation's classes: what it found, with Deep where its destruction walks met a part past the bound whose Type they
@@ -49,6 +58,8 @@ internal sealed partial class MirEffects
         this.program = program;
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
         var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
+        (this.bodyNodes, this.nodes, this.head, this.length) = (count, count, 0, count);
+        this.declarationNodes.Clear();
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
         MirDataflow.Grow(ref this.atomCounts, count);
@@ -71,28 +82,16 @@ internal sealed partial class MirEffects
             this.queue[node] = node;
         }
 
-        // A ring of the queued nodes, seeded in program order: a node is queued at most once at a time.
-        var (head, length) = (0, count);
-        while (length > 0)
-        {
-            var node = this.queue[head];
-            (head, length) = (head + 1 == count ? 0 : head + 1, length - 1);
-            this.queued[node >> 6] &= ~(1UL << node);
-            for (var d = this.Evaluate(node) ? this.dependentHeads[node] : -1; d >= 0; d = this.dependents[d].Next)
-            {
-                var dependent = this.dependents[d].Node;
-                if ((this.queued[dependent >> 6] & (1UL << dependent)) == 0)
-                {
-                    this.queued[dependent >> 6] |= 1UL << dependent;
-                    this.queue[(head + length++) % count] = dependent;
-                }
-            }
-        }
-
+        this.Solve(); // The ring is seeded in program order.
         this.keyWords = words;
         if (words > 0)
         {
-            this.Spread(count);
+            // A declaration node has no local keys; it joins the keys of the nodes it reads.
+            MirDataflow.Grow(ref this.keys, this.nodes * words);
+            MirDataflow.Grow(ref this.keyEnds, this.nodes);
+            this.keys.AsSpan(count * words, (this.nodes - count) * words).Clear();
+            this.keyEnds.AsSpan(count, this.nodes - count).Fill(count == 0 ? 0 : this.keyEnds[count - 1]);
+            this.Spread(this.nodes);
         }
 
         this.Obligations(report);
@@ -119,15 +118,102 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A node's summary from its local facts and its callees' current summaries: whether it grew.
+    // The worklist: each queued node evaluated, its readers queued where it grew.
+    private void Solve()
+    {
+        while (this.length > 0)
+        {
+            var node = this.queue[this.head];
+            (this.head, this.length) = (this.head + 1 == this.queue.Length ? 0 : this.head + 1, this.length - 1);
+            this.queued[node >> 6] &= ~(1UL << node);
+            for (var d = this.Evaluate(node) ? this.dependentHeads[node] : -1; d >= 0; d = this.dependents[d].Next)
+            {
+                var dependent = this.dependents[d].Node;
+                if ((this.queued[dependent >> 6] & (1UL << dependent)) == 0)
+                {
+                    this.Enqueue(dependent);
+                }
+            }
+        }
+    }
+
+    // A node queued at the ring's end, the ring grown in its order where full.
+    private void Enqueue(int node)
+    {
+        if (this.length == this.queue.Length)
+        {
+            var grown = new int[Math.Max(16, 2 * this.queue.Length)];
+            for (var i = 0; i < this.length; i++)
+            {
+                grown[i] = this.queue[(this.head + i) % this.queue.Length];
+            }
+
+            (this.queue, this.head) = (grown, 0);
+        }
+
+        this.queue[(this.head + this.length++) % this.queue.Length] = node;
+        this.queued[node >> 6] |= 1UL << node;
+    }
+
+    // PLAN G349 (SPEC 16.3.3, 15.3.5, 15.6.4): the destruction node of a struct or enum declaration, its summary in its own parameters,
+    // added and queued once per run where an instance below an indirection is first met; one met while an obligation is judged is solved
+    // at once, the judged row's state kept.
+    private int DeclarationNode(BindingSymbol declaration)
+    {
+        if (this.declarationNodes.TryGetValue(declaration, out var known))
+        {
+            return known;
+        }
+
+        var node = this.nodes++;
+        this.declarationNodes.Add(declaration, node);
+        MirDataflow.Grow(ref this.classes, this.nodes);
+        MirDataflow.Grow(ref this.atomStarts, this.nodes);
+        MirDataflow.Grow(ref this.atomCounts, this.nodes);
+        MirDataflow.Grow(ref this.readers, this.nodes);
+        MirDataflow.Grow(ref this.dependentHeads, this.nodes);
+        MirDataflow.Grow(ref this.queued, (this.nodes + 63) >> 6);
+        MirDataflow.Grow(ref this.declarationTypes, this.nodes - this.bodyNodes);
+        MirDataflow.Grow(ref this.keys, this.nodes * this.keyWords); // Keys are composed once Spread solved them (a node met while judging).
+        this.keys.AsSpan(node * this.keyWords, this.keyWords).Clear();
+        (this.classes[node], this.atomStarts[node], this.atomCounts[node], this.readers[node], this.dependentHeads[node]) = (0, 0, 0, -1, -1);
+        this.declarationTypes[node - this.bodyNodes] = types.DeclarationType(declaration);
+        this.queued[node >> 6] &= ~(1UL << node);
+        this.Enqueue(node);
+        if (this.reader < 0)
+        {
+            var (found, definition, below) = (this.found, this.definition, this.below);
+            (this.glued, this.spare) = (this.spare, this.glued);
+            this.Solve();
+            (this.glued, this.spare) = (this.spare, this.glued);
+            (this.found, this.definition, this.below, this.reader, this.scratchCount) = (found, definition, below, -1, 0);
+            cases.Deselect();
+        }
+
+        return node;
+    }
+
+    // A node's summary from its local facts and its callees' current summaries: whether it grew. A declaration node's local input is the
+    // destruction of its Type in its own parameters, under no definition's premises.
     private bool Evaluate(int node)
     {
-        var body = this.program.Bodies[this.owners[node]];
         this.Evaluations++;
-        cases.Select(body, node - this.bases[this.owners[node]]);
-        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
         this.glued.Clear();
-        this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
+        this.below = node >= this.bodyNodes;
+        if (node < this.bodyNodes)
+        {
+            var body = this.program.Bodies[this.owners[node]];
+            cases.Select(body, node - this.bases[this.owners[node]]);
+            (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
+            this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
+        }
+        else
+        {
+            cases.Deselect();
+            (this.definition, this.reader, this.found, this.scratchCount) = (null, node, 0, 0);
+            this.Process(this.declarationTypes[node - this.bodyNodes], Drop);
+        }
+
         var found = this.Found;
         if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
@@ -161,26 +247,51 @@ internal sealed partial class MirEffects
     {
         for (var mask = views; mask != 0; mask &= mask - 1)
         {
-            var node = this.bases[body] + BitOperations.TrailingZeroCount(mask);
-            if (this.reader >= 0 && this.readers[node] != this.reader)
-            {
-                this.readers[node] = this.reader;
-                MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
-                this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node]);
-                this.dependentHeads[node] = this.dependentCount++;
-            }
-
-            this.found |= this.classes[node];
-            _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.keyWords), this.keys.AsSpan(node * this.keyWords, this.keyWords));
-            for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
-            {
-                var atom = this.atoms[a];
-                // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
-                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
-                var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement);
-            }
+            this.Read(this.bases[body] + BitOperations.TrailingZeroCount(mask), subst);
         }
+    }
+
+    // A node's current summary composed through a substitution into the current evaluation; a reading node records the reader.
+    private void Read(int node, Subst? subst)
+    {
+        if (this.reader >= 0 && this.readers[node] != this.reader)
+        {
+            this.readers[node] = this.reader;
+            MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
+            this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node]);
+            this.dependentHeads[node] = this.dependentCount++;
+        }
+
+        this.found |= this.classes[node];
+        _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.keyWords), this.keys.AsSpan(node * this.keyWords, this.keyWords));
+        var (below, declaration) = (this.below, node >= this.bodyNodes);
+        this.below |= declaration; // A declaration's atoms are parts of a value below an indirection.
+        for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
+        {
+            var atom = this.atoms[a];
+            // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
+            // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit. A declaration's atom is a part of the
+            // instance's stored Types, read as AdtDef reads its Fields, with no storage verdict of its own (PLAN G349): below an indirection
+            // a growing instance meets Binding's storage bound (PLAN G128), on which no destruction rests.
+            var type = subst is null ? atom.Type : declaration ? types.Instance(atom.Type, subst).Type : types.ReadableInstance(atom.Type, subst);
+            this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement);
+        }
+
+        this.below = below;
+    }
+
+    // PLAN G349 (SPEC 16.3.3, 15.3.5): a struct or enum instance below an indirection, but the evaluated declaration's own Type at its
+    // root: its declaration's node composed through the instance's arguments, exact at any depth of the instance.
+    private bool Declaration(BoundType type)
+    {
+        if (!this.below || !(AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) ||
+            (this.reader >= this.bodyNodes && ReferenceEquals(type, this.declarationTypes[this.reader - this.bodyNodes])))
+        {
+            return false;
+        }
+
+        this.Read(this.DeclarationNode(type.Symbol!), type.Components.Count == 0 ? null : types.Arguments(type));
+        return true;
     }
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
@@ -322,10 +433,17 @@ internal sealed partial class MirEffects
         }
         else if (type.Kind == BoundTypeKind.Semantics)
         {
-            var glue = new Glue(this);
-            var proven = types.Sealed(this.definition, type.Components[0]);
+            // A declaration's summary decides no premise: a handle over its abstract payload is an atom, Sealed decided at use (8.7.2).
+            var payload = type.Components[0];
+            var proven = types.Sealed(this.definition, payload);
+            if (!proven && payload.IsAbstract && this.reader >= this.bodyNodes)
+            {
+                this.AddAtom(type, Drop);
+                return;
+            }
+
             this.found |= proven ? (byte)0 : Unknown;
-            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue, depth + 1);
+            _ = new Glue(this).Below(proven ? payload : null, depth);
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
@@ -371,7 +489,7 @@ internal sealed partial class MirEffects
         this.reader = -1;
         foreach (var row in this.rows)
         {
-            (this.found, this.scratchCount, this.definition) = (0, 0, row.Definition);
+            (this.found, this.scratchCount, this.definition, this.below) = (0, 0, row.Definition, false);
             this.glued.Clear();
             if (row.Callable is { } callable)
             {
@@ -421,10 +539,26 @@ internal sealed partial class MirEffects
         }
     }
 
-    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow (Deep).
+    // The destruction walk's visitor: each part reached, each entered part counted as work, past the walk's depth bound a part this
+    // implementation does not follow (Deep), and below an indirection a struct or enum instance its declaration's node composed through
+    // the instance's arguments (PLAN G349).
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
-        public bool First(BoundType type, int depth) => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _), depth);
+        public bool First(BoundType type, int depth)
+        {
+            var enters = MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _), depth);
+            owner.Evaluations += enters ? 1 : 0;
+            return enters && !owner.Declaration(type);
+        }
+
+        public bool Below(BoundType? part, int depth)
+        {
+            var (below, glue) = (owner.below, this);
+            owner.below = true;
+            MirTypes.Destruction(part, ref glue, depth + 1);
+            owner.below = below;
+            return false;
+        }
 
         public bool Visit(BoundType type, int depth)
         {

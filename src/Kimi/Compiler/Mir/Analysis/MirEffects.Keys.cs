@@ -37,7 +37,7 @@ internal sealed partial class MirEffects
     {
         cases.Select(body, view);
         var (items, edges) = (this.itemCount, this.edgeCount);
-        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, -1, 0, 0);
+        (this.definition, this.reader, this.found, this.scratchCount, this.below) = (body.Key.Decl, -1, 0, 0, false);
         this.glued.Clear();
         this.keyScratch.AsSpan(0, this.keyWords).Clear();
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);

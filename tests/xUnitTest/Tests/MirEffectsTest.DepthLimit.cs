@@ -9,7 +9,7 @@ namespace XunitTest;
 /// Language record, and none at a shallow depth.</summary>
 public sealed partial class MirEffectsTest
 {
-    // AGrowingRecursiveDestructionEndsAtTheBound's growing Type.
+    // AGrowingRecursiveDestructionUsesItsSummary's growing Type (MirEffectsTest.Indirection: its regular twin's records).
     private const string GrowingNest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
         "        self.value = value@move\n        self.next = .None\n";
 
@@ -29,19 +29,8 @@ public sealed partial class MirEffectsTest
     public void NoCheckRestingOnTheBoundGivesNoRecord(string form)
         => Assert.Empty(DepthRows(form).Select(static x => $"{x.Line} {x.Code}"));
 
-    // AGrowingRecursiveDestructionEndsAtTheBound's witness: its located Unsupported_Kd, A4's Limit for the bound, becomes the limit record
-    // (problem r2: A4's Limit for the bound becomes this record), and nothing else is recorded; that pin's expectation changes with it.
-    [Theory]
-    [InlineData("nest")]
-    public void TheBoundsLocatedRecordsBecomeTheLimitRecord(string form)
-    {
-        Assert.Equal([MirBorrowsTest.DepthLimit], DepthRows(form).Select(static x => x.Code.ToString()));
-        MirBorrowsTest.AssertTheDepthLimitIsAResourceError();
-    }
-
     // Problem r2 §3, a row a design may decide (scored apart): A4's limit record at the obligation, where its Limit's Unsupported_Kd lies.
     [Theory]
-    [InlineData("nest", "Self is Sink OwnershipDepthLimit_Kd")]
     [InlineData("tuple40", "Self is Sink OwnershipDepthLimit_Kd")]
     public void TheLimitRecordsLocationLeftToTheDesign(string form, string expected)
         => Assert.Equal(
@@ -53,7 +42,6 @@ public sealed partial class MirEffectsTest
     {
         var (declarations, body) = form switch
         {
-            "nest" => (GrowingNest, "        _ = Nest<i32>.init(value: 1)\n"),
             "tuple40" => (string.Empty, $"        _ = {Nested(40)}\n"),
             "tuple10" => (string.Empty, $"        _ = {Nested(10)}\n"),
             _ => throw new ArgumentOutOfRangeException(nameof(form), form, null),

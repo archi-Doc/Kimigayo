@@ -450,6 +450,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         public readonly bool Visit(BoundType type, int depth) => false;
 
         public readonly bool Deep(BoundType type) => false;
+
+        public bool Below(BoundType? part, int depth) => MirTypes.Destruction(part, ref this, depth + 1);
     }
 
     // A walk that reports nothing and counts the Types it enters by the outcome walks' memo (MirDepths).
@@ -473,5 +475,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _));
             return false;
         }
+
+        public bool Below(BoundType? part, int depth) => MirTypes.Destruction(part, ref this, depth + 1);
     }
 }
