@@ -282,7 +282,8 @@ internal sealed partial class MirEffects
     // SPEC 4.9.6, 8.11.3: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
     // the definition's premises declare it confined, else the summary's atom, composed at the callers (unknown at the top). Any other Type
     // runs each target Binding resolves under those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's leaf
-    // witnesses, a witness body as a dynamic edge), and none resolving (a composite with an abstract part) is a limit.
+    // witnesses, a witness body as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in target keeps its
+    // requirement's declaration), and none resolving (a composite with an abstract part) is a limit.
     private void Require(BoundType type, BindingSymbol requirement)
     {
         if (type.IsAbstract)
@@ -300,7 +301,14 @@ internal sealed partial class MirEffects
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, declaring) = this.targets[i];
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+            if (target.CompilerFunction == CompilerFunctionKind.None && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
+            {
+                this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
+            }
+            else
+            {
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+            }
         }
 
         this.targets.RemoveRange(start, this.targets.Count - start);
