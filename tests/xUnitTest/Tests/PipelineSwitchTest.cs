@@ -388,6 +388,30 @@ public sealed class PipelineSwitchTest
         Assert.Equal(reported, TestDiagnostics.Of(c).Select(static x => x.ToString()));
     }
 
+    // R6-check H5 (DECISIONS R5-M185): the MIR decides acceptance on every pipeline. A program it rejects fails Analysis, its problem in
+    // Problems and published by ReportAnalysis, where the old analysis accepted it (A5 P1's part borrow); a program it accepts is
+    // verified with no problem, where the old analysis rejected it (`f()`'s result keeps no Loan live, PLAN G147 (7)).
+    [Theory]
+    [InlineData("var n = 7\nlet item = (n@ref, 5)\nlet x = item.1@ref\nn = 9\nrequire x == 5 else => $abort(\"part\")", "n = 9")]
+    [InlineData("func use(x: uniq/i32, f: ref/(() -> ref/i32 during x)) -> i32\n    var old = x@follow@ref\n    let view = f()\n    x@follow = 9\n    return view@follow\npublic func main() => ()", null)]
+    public void TheMirDecidesAcceptance(string source, string? conflict)
+    {
+        foreach (var pipeline in Pipelines)
+        {
+            var c = Compilation.CreateForTest();
+            c.Pipeline = pipeline;
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.Equal((conflict is null, conflict is null ? 0 : 1), (c.Analyze().IsVerified, c.Analysis.ErrorCount));
+            string[] expected = conflict is null ? [] : [$"{DiagnosticCode.ComparisonLoanConflict_Kd} {conflict}"];
+            Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+            c.ReportAnalysis();
+            Assert.Equal(expected, TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}"));
+        }
+    }
+
     // Tests read a failure that OwnershipIssue.Code maps to several codes through one helper each: its codes are exactly the images
     // of that failure, whatever the issue's other facts.
     [Fact]

@@ -3,12 +3,12 @@
 // Owns the public entry path for post-Binding phases and their Problem records.
 // Input: a prepared compilation. Output: analysis, the validated and analyzed MIR with its checked set, and diagnostics, the same on every
 // pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
-// Until R6 the legacy path decides acceptance; the MIR's construction records, validator findings and every record of its checked set join
-// it through Core's publisher of MIR records (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184); its analysis
-// problems stay unpublished (R4-M1, until H5).
-// Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
-// Analyze runs the old analysis until the flip (H5); its test and benchmark readers reach it through AnalyzeLegacyOwnership, which runs it
-// once per version (R6-check H0b §2.1, review B3; H0c D-c1; removal H10b).
+// The MIR decides acceptance (DECISIONS R5-M185): Analysis is verified when the MIR of the version exists and its rows hold no Error, its
+// rows being every merged problem of its report (construction and collection records, the analyses' problems) and its validator findings,
+// which Problems gives and Core's publisher publishes (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184).
+// Observers of Analyzed (R4-M17, removal H10a) are read-only; no compiler code subscribes.
+// Analyze runs no old analysis; its test and benchmark readers reach it only through AnalyzeLegacyOwnership, which runs it once per version
+// (R6-check H0b §2.1, review B3; H0c D-c1; removal H10b).
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
 using Kimi.Compiler.Parsing;
@@ -17,32 +17,36 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // The analysis entry points (plan 12.1, 13.2), the one way to run and read the analyses after Binding and startup (generation has its own
-// entry, Compilation.Generation.cs): until R6 the old path decides; on every pipeline the MIR is built, validated, analyzed beside the old
-// path and collected, and its construction records, validator findings and checked set's records are analysis Errors (DECISIONS R5-M156;
-// its analysis problems stay unpublished, R4-M1).
+// entry, Compilation.Generation.cs): on every pipeline the MIR is built, validated, analyzed and collected, and it decides (DECISIONS
+// R5-M156, R5-M185).
 public partial class Compilation
 {
     private readonly List<Problem> problems = [];
     private Mir.MirBuilder? mirBuilder;
     private Mir.MirAnalysis? mirAnalysis;
     private Backend.InstanceCollector? instances;
-    private Mir.MirProgram? collected; // The program the latest collection recorded into; null before one and after invalidation.
     private Mir.MirProgram? mir; // The MIR of the latest Analyze; null before one and after invalidation.
     private bool legacyAnalyzed; // Whether the old analysis ran for this version (AnalyzeLegacyOwnership); invalidation clears it.
 
-    /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and the MIR's of the
-    /// version are final: the one observation point of the difference ledger (R4-M17). Observers only read.</summary>
-    [Transitional("R6", Reason = "The difference ledger compares the old path with the MIR until R6 deletes the old path.")]
+    /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the MIR's rows of the version are final: the one
+    /// observation point of the difference ledger (R4-M17), which runs the old analysis through <see cref="AnalyzeLegacyOwnership"/>.
+    /// Observers only read.</summary>
+    [Transitional("R6", Reason = "The difference ledger compares the old analysis with the MIR until R6-check H10a deletes it.")]
     internal static event Action<Compilation>? Analyzed;
 
-    /// <summary>Gets the result of the latest <see cref="Analyze"/>.</summary>
+    /// <summary>Gets the result of the latest <see cref="Analyze"/>: verified when its MIR exists and no row of <see cref="Problems"/> is an
+    /// Error (DECISIONS R5-M185); not verified before an analysis and after invalidation.</summary>
     public AnalysisResult Analysis
     {
         get
         {
-            var result = this.Ownership.Result;
-            var records = this.MirRecords(null);
-            return new(result.IsVerified && records == 0, result.BodyCount, result.ErrorCount + records);
+            var errors = 0;
+            foreach (var problem in this.Problems)
+            {
+                errors += DiagnosticEntries.TryGet(problem.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error ? 1 : 0;
+            }
+
+            return new(this.mir is not null && errors == 0, errors);
         }
     }
 
@@ -50,44 +54,53 @@ public partial class Compilation
     /// null.</summary>
     internal Backend.CheckedSet? Instances => this.instances?.Set;
 
-    /// <summary>Gets the problems of the latest <see cref="Analyze"/>: the old path's in its order, then the MIR's records. The list is
-    /// reused by the next read.</summary>
+    /// <summary>Gets the rows of the latest <see cref="Analyze"/> in the publisher's order (DECISIONS R5-M185): each merged problem of its
+    /// MIR's report with its code, then each validator finding as <c>InternalInvariant_Kd</c>; none before an analysis and after
+    /// invalidation. A derived problem publishes as <c>PrerequisiteUnavailable_Kd</c> (Compilation.Publication.cs). The list is reused by
+    /// the next read.</summary>
     internal IReadOnlyList<Problem> Problems
     {
         get
         {
             this.problems.Clear();
-            var issues = this.Ownership.Issues;
-            for (var i = 0; i < issues.Count; i++)
+            if (this.mir is { } program)
             {
-                this.problems.Add(new(issues[i].Code, SourceRef.Of(issues[i].Source)));
+                foreach (var problem in program.Problems.Merged)
+                {
+                    this.problems.Add(new(problem.Code, problem.Subject));
+                }
+
+                foreach (var finding in program.Findings)
+                {
+                    this.problems.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
+                }
             }
 
-            this.MirRecords(this.problems);
             return this.problems;
         }
     }
 
-    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). The MIR is built, validated, analyzed and its checked
-    /// set collected first, on every pipeline (SPEC 8.15.3; DECISIONS R5-M156); then <see cref="Analyzed"/> occurs.</summary>
+    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9): the MIR is built, validated, analyzed and its checked
+    /// set collected, on every pipeline (SPEC 8.15.3; DECISIONS R5-M156, R5-M185); then <see cref="Analyzed"/> occurs.</summary>
     /// <returns>The analysis result.</returns>
+    /// <exception cref="InvalidOperationException">The latest Binding pass is not final.</exception>
     public AnalysisResult Analyze()
     {
+        if (this.Binding.Result.Mode != BindingMode.Final)
+        {
+            throw new InvalidOperationException("Analysis requires final Binding.");
+        }
+
+        this.Diagnostics.Invalidate(DiagnosticPartition.ControlFlow);
+        this.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
         this.mir = this.BuildMir();
-        this.Ownership.Analyze();
-        this.legacyAnalyzed = true;
         Analyzed?.Invoke(this);
         return this.Analysis;
     }
 
-    /// <summary>Records the diagnostics of the latest <see cref="Analyze"/>: control flow, the MIR's records in the control-flow
-    /// partition (Core's publisher, Compilation.Publication.cs), then ownership.</summary>
-    public void ReportAnalysis()
-    {
-        this.Ownership.ControlFlow!.ReportDiagnostics();
-        this.PublishMirRecords();
-        this.Ownership.ReportDiagnostics();
-    }
+    /// <summary>Records the diagnostics of the latest <see cref="Analyze"/>: its rows, through Core's publisher (Compilation.Publication.cs;
+    /// DECISIONS R5-M184, R5-M185).</summary>
+    public void ReportAnalysis() => this.PublishMirRecords();
 
     /// <summary>Gets the syntax a <see cref="SourceRef"/> of this compilation names.</summary>
     /// <param name="source">The reference.</param>
@@ -95,8 +108,8 @@ public partial class Compilation
     internal Koto SyntaxOf(SourceRef source)
         => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
 
-    /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass (R4: beside the old path, which still
-    /// decides), and collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
+    /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass, and collects its checked set after the
+    /// analyses, whatever they found (K package 4.3).</summary>
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
     internal Mir.MirProgram BuildMir()
     {
@@ -125,23 +138,17 @@ public partial class Compilation
         this.ownership?.Invalidate();
         this.legacyAnalyzed = false;
         this.mir = null;
-        this.collected = null;
     }
 
-    // The checked set of a built and validated program, on every pipeline (SPEC 8.15.3: its layout obligations are judged at check), the
-    // one the records of the latest Analyze come from.
-    private void Collect(Mir.MirProgram program)
-    {
-        (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
-        this.collected = program;
-    }
+    // The checked set of a built and validated program, on every pipeline (SPEC 8.15.3: its layout obligations are judged at check), whose
+    // records join the program's report.
+    private void Collect(Mir.MirProgram program) => (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
 }
 
 /// <summary>The summary of a compilation's analysis.</summary>
-/// <param name="IsVerified">Whether every analyzed body is verified without an analysis Error.</param>
-/// <param name="BodyCount">The number of analyzed bodies.</param>
-/// <param name="ErrorCount">The number of analysis problems.</param>
-public readonly record struct AnalysisResult(bool IsVerified, int BodyCount, int ErrorCount);
+/// <param name="IsVerified">Whether the MIR of the version exists and no analysis row is an Error.</param>
+/// <param name="ErrorCount">The number of analysis rows of Error severity.</param>
+public readonly record struct AnalysisResult(bool IsVerified, int ErrorCount);
 
 /// <summary>A problem of an analysis (plan decision 7): its code and its subject.</summary>
 /// <param name="Code">The code.</param>

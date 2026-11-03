@@ -194,7 +194,6 @@ public class OwnershipAnalysisTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let other: string\nConsole.writeLine(other)");
         c.Bind();
         Assert.False(c.Analysis.IsVerified);
-        Assert.Equal(0, c.Analysis.BodyCount);
         Assert.False(c.Analyze().IsVerified);
     }
 
@@ -213,7 +212,6 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nConsole.writeLine(\"x\")");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        Assert.Equal(1, c.Analysis.BodyCount);
     }
 
     [Fact]

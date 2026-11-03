@@ -3,25 +3,23 @@
 // Owns Core's one publisher of MIR records (R6-check H3-2; DECISIONS R5-M184): it decides how a MIR record is published, never whether it
 // exists, whether it is dependent or its requirement (the recording rule's, R5-M23); and the one location form, Locate, which code
 // generation's records take too (DECISIONS R5-M65).
-// Input: the program of the latest Analyze, its construction records (MirProgram.Records with MirRecordClass.Construction, R6-check H3-1)
-// and validator findings, and the program the latest collection recorded into, its collection records (MirRecordClass.Collection), the
-// library's as well as the source modules'; for Publish, a program's MirReport.Merged problem, its members' bodies, binders and views,
-// its merged facts, the C1-F4 rows a Relation fact names (TyCtxt.OriginRows) and, for a Binding cause, Binding.FailureCauses at its site.
+// Input: the program of the latest Analyze: its report's MirReport.Merged problems (its construction and collection records among them,
+// MirRecordClass, R6-check H3-1; the analyses' problems), their members' bodies, binders and views, their merged facts, the C1-F4 rows a
+// Relation fact names (TyCtxt.OriginRows) and, for a Binding cause, Binding.FailureCauses at its site; and its validator findings.
 // Output: adapter calls only (DiagnosticCollection.ReportLocation, Koto.Report and Koto.ReportDerived, in the subject's collection); no table
-// of its own. MirRecords is the one selection of the records, which Analysis, Problems, the generation gate and PublishMirRecords read.
-// Invariants: until H5, which publishes every merged problem and removes the selection, the publisher publishes today's rows only, on every
-// pipeline (DECISIONS R5-M156): the construction records, the findings as InternalInvariant_Kd, then the collection records, each located
-// in the ControlFlow requirement. A record is a code without facts, so its location is its subject (DIAGNOSTICS 4.1, DECISIONS R4-M71): the
-// records of two nodes at one location, such as the siblings a for expansion synthesizes with its span, are one problem. The MIR analyses'
-// problems stay unpublished until H5 (R4-M1). Publish maps one merged problem (design 3.1-3.4): Located (a record class, or a code of
-// category Unsupported, Resource or Internal without Arguments) by its location, which carries no fact, any other at its subject with its
-// Ordinal as the condition; KeyOf is the key either form records, so a Cause names its problem's record; a problem with Cause facts is
-// PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding cause's (-1) Binding's; a located problem with a
-// fact, a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts, InternalInvariant_Kd at
-// the subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per MirFactKind: a site fact is a related
-// location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations, Required, Limit
-// and Table OwnershipStorageLimit_Kd's arguments and table; the case text is Binding.CaseFact's over the members' masked views, only when
-// every member gives the same (Binding renders it). Publish has no production caller until H5.
+// of its own.
+// Invariants: PublishMirRecords publishes every merged problem through Publish, then each finding as InternalInvariant_Kd located in the
+// ControlFlow requirement, on every pipeline (DECISIONS R5-M156, R5-M185): the rows Compilation.Problems gives, in its order. A record is a
+// code without facts, so its location is its subject (DIAGNOSTICS 4.1, DECISIONS R4-M71): the records of two nodes at one location, such as
+// the siblings a for expansion synthesizes with its span, are one problem. Publish maps one merged problem (design 3.1-3.4): Located (a
+// record class, or a code of category Unsupported, Resource or Internal without Arguments) by its location, which carries no fact, any
+// other at its subject with its Ordinal as the condition; KeyOf is the key either form records, so a Cause names its problem's record; a
+// problem with Cause facts is PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding cause's (-1) Binding's;
+// a located problem with a fact, a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts,
+// InternalInvariant_Kd at the subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per MirFactKind: a site
+// fact is a related location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations,
+// Required, Limit and Table OwnershipStorageLimit_Kd's arguments and table; the case text is Binding.CaseFact's over the members' masked
+// views, only when every member gives the same (Binding renders it).
 // Must not: be steered by a pipeline mode, flag or optional parameter, or publish a MIR record any other way.
 
 using Kimi.Compiler.Parsing;
@@ -39,7 +37,7 @@ public partial class Compilation
 
     /// <summary>Publishes one merged problem of a program's report (R6-check H3-2, design 3.1-3.4): a located problem by its location, any
     /// other at its subject with its Ordinal as the condition, a derived one as <c>PrerequisiteUnavailable_Kd</c> naming its causes' keys;
-    /// a broken contract as <c>InternalInvariant_Kd</c> at the subject. No production caller until H5.</summary>
+    /// a broken contract as <c>InternalInvariant_Kd</c> at the subject.</summary>
     /// <param name="program">The program whose report holds the problem.</param>
     /// <param name="merged">The problem's index in the report's <c>Merged</c>.</param>
     internal void Publish(Mir.MirProgram program, int merged)
@@ -141,14 +139,23 @@ public partial class Compilation
         => problem.Class is not null || (DiagnosticEntries.TryGet(problem.Code, out var entry) && entry.Arguments is null &&
             entry.Category is DiagnosticCategory.Unsupported or DiagnosticCategory.Resource or DiagnosticCategory.Internal);
 
-    // The MIR's records of the latest Analyze, each located in the ControlFlow requirement, in MirRecords' order (today's rows, until H5).
+    // The rows of the latest Analyze (Compilation.Problems' order): every merged problem through Publish, then each validator finding as
+    // InternalInvariant_Kd located in the ControlFlow requirement; none before an analysis and after invalidation.
     private void PublishMirRecords()
     {
-        this.problems.Clear();
-        this.MirRecords(this.problems);
-        foreach (var problem in this.problems)
+        if (this.mir is not { } program)
         {
-            this.Locate(DiagnosticRequirement.ControlFlow, problem.Code, problem.Subject);
+            return;
+        }
+
+        for (var i = 0; i < program.Problems.Merged.Length; i++)
+        {
+            this.Publish(program, i);
+        }
+
+        foreach (var finding in program.Findings)
+        {
+            this.Locate(DiagnosticRequirement.ControlFlow, DiagnosticCode.InternalInvariant_Kd, finding.Subject);
         }
     }
 
@@ -230,36 +237,5 @@ public partial class Compilation
         var node = this.SyntaxOf(problem.Subject);
         return !Located(problem) ? node.KeyOf(problem.Requirement, (ushort)problem.Ordinal)
             : node.DiagnosticCollection?.LocationKey(problem.Requirement, node.Span, node.CodeContext.SourceDocument) ?? DiagnosticKey.Unresolved;
-    }
-
-    // The MIR records of the latest Analyze, added to the list when one is given: the construction records and validator findings, the
-    // library's as well as the source modules', and every record of the checked set (SPEC 23.2.2: check reports every error of the checked
-    // set, its layout obligations among them; DECISIONS R5-M156), on every pipeline.
-    private int MirRecords(List<Problem>? into)
-    {
-        var count = 0;
-        if (this.mir is { } program)
-        {
-            count = Add(program.Records(Mir.MirRecordClass.Construction), into);
-            count += program.Findings.Count;
-            foreach (var finding in program.Findings)
-            {
-                into?.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
-            }
-        }
-
-        return this.collected is { } collected ? count + Add(collected.Records(Mir.MirRecordClass.Collection), into) : count;
-
-        static int Add(Mir.MirProgram.RecordRows rows, List<Problem>? into)
-        {
-            var count = 0;
-            foreach (var row in rows)
-            {
-                count++;
-                into?.Add(row);
-            }
-
-            return count;
-        }
     }
 }

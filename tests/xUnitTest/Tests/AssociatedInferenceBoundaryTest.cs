@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -149,6 +150,24 @@ public class AssociatedInferenceBoundaryTest
         Assert.False(Definition(c, external ? "D" : "P").IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c, external ? "D" : "P").IsVerified);
+    }
+
+    // R6-check H5 (DECISIONS R5-M185): Binding checks no effect bound, so an implementation over its bound leaves its path,
+    // and the associated evidence inferred through it, verified (Binding.Contracts invalidates the evidence of the paths it rejects; the
+    // repeated invalidation after the old check went with it), and the MIR's A4 rejects the program at the obligation.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnEffectBoundOverrunLeavesTheEvidenceToTheMir(bool external)
+    {
+        const string contracts = "contract P\n    associate Item\ncontract C: P\n    func read() -> Self.Item\n        effect confined\n";
+        var c = MinimalEmissionTest.Analyze(contracts + (external
+            ? "struct Origin\n    Self is C\n    public func read() -> i32\n        Console.writeLine(\"effect\")\n        return 1\ncontract D\n    associate Value\n    func make() -> Self.Value\nstruct S\n    Self is D\n    public func make() -> Origin.(P).Item => 1"
+            : "struct S\n    Self is C and P\n    public func read() -> i32\n        Console.writeLine(\"effect\")\n        return 1"));
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.True(Definition(c, external ? "D" : "P").IsVerified);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, Assert.Single(c.Problems).Code);
     }
 
     [Theory]

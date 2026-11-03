@@ -31,12 +31,12 @@ internal static class LegacyRecords
             yield return (DiagnosticRequirement.Binding(BindingFailure.None), code, node);
         }
 
-        foreach (var issue in compilation.Ownership.ControlFlow?.Issues ?? [])
+        foreach (var issue in compilation.AnalyzeLegacyOwnership().ControlFlow?.Issues ?? [])
         {
             yield return (DiagnosticRequirement.ControlFlow, issue.Code, issue.Node);
         }
 
-        foreach (var issue in compilation.Ownership.Issues)
+        foreach (var issue in compilation.AnalyzeLegacyOwnership().Issues)
         {
             yield return (DiagnosticRequirement.Ownership(issue.Failure), issue.Code, issue.Source);
         }

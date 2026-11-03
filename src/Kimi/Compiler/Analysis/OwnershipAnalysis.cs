@@ -65,9 +65,6 @@ public sealed partial class OwnershipAnalysis
             throw new InvalidOperationException("Ownership analysis requires final Binding.");
         }
 
-        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.ControlFlow);
-        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
-
         this.Invalidate();
         this.supportedTypes.Clear();
         this.visitingTypes.Clear();
@@ -118,7 +115,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.AnalyzeLibraryBodies(0);
-        this.ValidateEffectBounds();
         if (this.stops.Count != 0)
         {
             return this.Stopped();

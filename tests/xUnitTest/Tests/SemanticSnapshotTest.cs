@@ -250,7 +250,7 @@ public sealed class SemanticSnapshotTest
             var body = startup.Kind == StartupKind.Implicit ? compilation.Kotonoha.GeneratedFunction : startup.Symbol?.Declaration;
             text.Append("= binding ").Append(binding.Mode).Append(' ').Append(binding.ResolvedCount).Append('/').Append(binding.UnresolvedCount).Append('/').Append(binding.InvalidCount)
                 .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(LegacyRecords.Location(body))
-                .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.BodyCount).Append('/').Append(ownership.ErrorCount).Append('\n');
+                .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.ErrorCount).Append('\n');
             foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
             {
                 text.Append(requirement.Partition switch

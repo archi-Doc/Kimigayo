@@ -321,12 +321,12 @@ public class MinimalEmissionTest
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
-    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location),
-    // the problems with their Op, the MIR's records among them on every pipeline (DECISIONS R5-M156), and the generation records of the
-    // Emission partition (Compilation.Generate's). It only reads, since a message argument is evaluated whether or not the assertion fails.
+    // The failure message of an analysis or generation assertion: the results, Binding's issues (failure, code and location), the
+    // analysis rows with their Op (DECISIONS R5-M185), and the generation records of the Emission partition (Compilation.Generate's). It
+    // only reads, since a message argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c)
         => $"Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
             string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; Emission=" +
             string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
                 .Select(static x => $"{x.Code} {x.Span}"));

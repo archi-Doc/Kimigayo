@@ -16216,6 +16216,8 @@ structure is recorded here by the unit that first implements it.
     sites every Binding cause at its failed node' (the null rule stays; the order goes); H0a-8's 'fixed in R4's chain before H3-2'; H0's
     unit-table prerequisite of H3-2 'R4's exit with A6, G11, Q17, Q8-6, OQ11', of which only 'with A6' goes; H0 §5's chain 'R4's exit (A6
     2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
+  - Amended (the H5 split plan's ruling X1, 2026-11-03): PD29 holds per merge: F stops both old producers; the dead code goes in D1-D3 of
+    the same group merge.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -16274,6 +16276,22 @@ structure is recorded here by the unit that first implements it.
     call meets both, the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay, counted, until R7 removes G128's
     bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
     Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
+- **R5-M185 MIR decides acceptance (R6-check H5, G:R6-check-flip with H1, H1b and Q8-3)** (2026-11-03, R5; H0b §2.1, §2.3 and §11, the H5
+  split plan's unit F; the two `Binding.cs` lines BU's, its consent relayed by R5; under R5-M182 and Q13) Major.
+  - Rule: `Analysis` is verified when the MIR of the version exists and its rows hold no Error. The rows are every `MirReport.Merged`
+    problem (construction and collection records, the analyses' problems) and the validator findings as `InternalInvariant_Kd`;
+    `Problems` gives them in the publisher's order and `ReportAnalysis` publishes them through `PublishMirRecords` (R5-M184), on every
+    pipeline. `Analyze` invalidates the ControlFlow and Ownership partitions and builds the MIR; it no longer runs the old analysis,
+    which runs only through `Compilation.AnalyzeLegacyOwnership()` for its test and benchmark readers until H10b (review B3).
+    Generation's gate step 1 is `Accepts`; `AnalysisResult` is `(IsVerified, ErrorCount)`.
+  - Stopped: Binding's effect checks (its pass calls `CollectCallableEffectUses()` where it called `ValidateEffectBounds`, and no
+    `ValidateVirtualEffectBounds`; the repeated `InvalidateAssociatedEvidence` goes with them, `ValidateConformances` runs it), the old
+    analysis's effect check and both old `ReportDiagnostics` (ruling R2): A4 publishes the effect records at the obligation subject.
+    `MirRecords` and its "until H5" invariants go (R5-M184's removal condition). The dead code goes in D1-D3 and BU's B-del, PD12's
+    refusal in G, hover's old read in H6, the Old sides in S, within the group's one merge (R5-M182's X1 line).
+  - Supersedes R5-M156's 'the old path decides', R4-M1 for the default pipeline, R5-M184's selection until H5 and R4-M112's kept
+    `UnprovenConstraint_Kd` ledger row (successor H1b). Rejected: an analysis verdict reading `LintErrors` (a second copy of Binding's
+    decision); the old analysis as a shadow in every check (review B3); a throwaway rehearsal; a production check of the library's rows.
 
 ## R7, R8 and R9 (adopted 2026-11-03)
 

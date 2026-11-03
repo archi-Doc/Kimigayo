@@ -11,10 +11,9 @@
 // A broken contract checked without a subject throws (a closed table without a row, a missing fact, a framework operation's contract); it
 // ends generation unrecorded here, and the command renders it as the Emission result's fault, CheckFaulted_Kd (DIAGNOSTICS rule 9;
 // DECISIONS R5-M169), as the front end's.
-// Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and the checked set's records, on every
-// pipeline; DECISIONS R5-M156). They are analysis Errors that check publishes (Compilation.Publication.cs), so the refusal adds none, and,
-// like every request, clears the partition first. MIR code generation then needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2,
-// which Project's check reads too).
+// Gate, step 1 (PD12; DECISIONS R5-M185): the acceptance check decided (Accepts, SPEC 23.2.2, which Project's check reads too); every
+// MIR row of Error severity fails Analysis, and check publishes it (Compilation.Publication.cs), so the refusal adds none, and, like every
+// request, clears the partition first.
 // Gate, step 2 (PD12; DECISIONS R5-M96): applied as each body item is written (FunctionCodegen.Write): a body A1 or A2 left inexact
 // (MirDropTable.Incomplete, R4-M102) is not written and its problem's code is recorded at its subject, every other item still written so
 // its gaps are recorded too, and no module (package C 3.8, 3.9); until H5, which decides acceptance by MIR.
@@ -63,7 +62,7 @@ public partial class Compilation
     internal bool Generate(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission); // The partition is the latest request's (DECISIONS R5-M165).
-        if (this.MirRecords(null) > 0 || !this.Accepts)
+        if (!this.Accepts)
         {
             return false;
         }

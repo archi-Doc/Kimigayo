@@ -59,10 +59,8 @@ public class NormalizedConstraintProofBindingTest
         AssertProof(c, expected);
     }
 
-    // OldRule B3.3 (DECISIONS R4-M115, R4-M50): the [3 of i32] and i32 rows are Refuted under SPEC 8.2.3 (a constant length or a head
-    // differs); the default pipeline still gives Unknown until PLAN G170's C2-C4.
+    // Pins Binding's proof value Unknown for the [3 of i32] and i32 rows, which SPEC 8.2.3 refutes, pending PLAN G170's C2-C4 (R4-M115).
     [Theory]
-    [Trait("OldRule", "B3.3")]
     [InlineData("Source.Origin.Item and Copy", "i32 and Copy", ConstraintProof.Proven)]
     [InlineData("not (Source.Origin.Item and string)", "not i32", ConstraintProof.Unknown)]
     [InlineData("not (Source.Origin.Item and string)", "not (i32 and string)", ConstraintProof.Proven)]

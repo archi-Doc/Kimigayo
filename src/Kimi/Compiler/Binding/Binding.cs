@@ -508,7 +508,7 @@ public sealed partial class Binding
         this.ValidateConformances(mode, true);
         this.ValidateConstraintUses(mode);
         this.ClearCapabilityResults();
-        this.ValidateEffectBounds();
+        this.CollectCallableEffectUses();
         this.InvalidateProjectionCertificates(mode);
         this.ValidateIterationWitnesses();
         this.ValidateExpressionProjectionInputs(mode);
@@ -520,7 +520,6 @@ public sealed partial class Binding
         }
 
         this.ValidateVirtualOverrideConditions();
-        this.ValidateVirtualEffectBounds();
         this.GuardPendingVirtualDeclarations();
     }
 

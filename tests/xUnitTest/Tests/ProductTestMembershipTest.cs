@@ -20,7 +20,7 @@ public class ProductTestMembershipTest
         Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.True(compilation.Binding.Startup.IsComplete);
         Assert.True(compilation.Analysis.IsVerified);
-        Assert.Equal(1, compilation.Analysis.BodyCount);
+        Assert.Single(compilation.BuildMir().Bodies.ToArray(), static x => x.Source.Module == 0); // The startup body, no test body.
     }
 
     [Theory]
