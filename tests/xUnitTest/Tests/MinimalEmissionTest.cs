@@ -303,7 +303,8 @@ public class MinimalEmissionTest
 
     // The evidence of a verdict through the published pipeline (SPEC 23.2.2): the program analyzed for `output`, then reported and generated
     // as a build runs them, has the verdict `accepted`. An accepted program has no analysis problem and is generated, with a generated body
-    // for each function it declares and for its top-level statements (null), of which it has at least one. A Library generates every root
+    // for each function it declares with a body and for its top-level statements (null), of which it has at least one; a Contract's
+    // requirement declares none (SPEC 8.6.1: no default implementation; a written one is a syntax error). A Library generates every root
     // (K11); an Application generates what its startup reaches, so its source is top-level statements that reach every declared function
     // (not an explicit `main`). A rejected program is not generated. The result is the declaration names of the generated bodies.
     internal static string?[] GeneratedBodies(string source, OutputKind output, bool accepted)
@@ -321,7 +322,7 @@ public class MinimalEmissionTest
         var set = c.Instances!;
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
             .Select(x => set.Items[x].Key.Body.Def.Decl).ToArray();
-        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => !x.IsRequirement).ToArray();
         Assert.NotEmpty(functions);
         Assert.All(functions, f => Assert.Contains(bodies, x => x?.Declaration == (f == c.Kotonoha.GeneratedFunction ? null : f)));
         return [.. bodies.Select(static x => x?.Name)];
