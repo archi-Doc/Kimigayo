@@ -6394,6 +6394,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Q4: one record per row, as the Unclassed limit is per row (the rows are what goes unjudged), not one per initializer.
   - Rejected: a rows-only judge for layers beside `Judge` (a second judging path); widening the limit to every initializer of such a
     layer (it would refuse valid forms like `= 0` without a census).
+- **R4-M169 An activation meets shared Loans at its parent Loans' Places (H3b U-A3, T63)** (2026-11-03; R4's implementer under the
+  planning session's U-A3 brief; for review). SPEC 15.6.3 and 15.6.7 judge overlap through the Loans an argument carries, its parent
+  Loans included, so `change(entries[1])` meets `found`'s shared Loan on `entries` through indexUniq's receiver Loan in its result, a
+  record of its own beside indexUniq's (SPEC 23.1.2; DictionaryStoredReferenceTest, as the old analysis). The check set already holds
+  that Loan (trace: Based, taken); A3's err(activate) compared only the reservation's Place (`**_13`), never the Loan's root. Rule (A5's
+  one owner, `MirBorrows.Activated`): after the reservation's Place, each Loan its holder carries unique (`UniqueIn`, A3 5's mode, shared
+  with `Consider`) is checked at its Place on the same set as the conflicts relation's row `ActivateThrough`: shallow, meeting a Loan
+  whose mode is shared and no reservation (R4-M68: an exclusive parent that hits a reservation was met where the later Borrow was formed
+  or activated, so `giveTwo(x@uniq, c)` keeps its one record). Moves: A3 rows 28d and 131c gain the activation record the old analysis
+  has. Rejected: seeding the check set with the holders the parent Loans name (adds no Loan there; the set holds `found`'s already).
+  Cost (review B1, 2026-11-04): each parent root's candidates are scanned once per activation, and a shared candidate is tested against
+  all of the root's parents through one prefix trie of their steps (`Parents`, `Through`: each step inserted once under `StepKey`, Meets'
+  relation as a key, so the trie is linear in the parents' steps; the index ambiguity is resolved at the walk, an Index step of the
+  candidate visiting the node's index children, each a parent step it meets), so the work is the check set's plus the parents' steps, not
+  parents × candidates; the first conflicting candidate in the root's order is the record's. Rejected: one scan per distinct parent
+  Place (N parents on N Fields of one root are N scans, cubic); comparing the parents' interned Places (a Reborrow's Loan has more steps
+  than its Place, and Index steps meet by kind, not by Place); inserting an index step under a wildcard key too (2^k nodes for k index
+  steps, review B2).
 - **R4-M170 An abstract part reaches what its holder's Loans and addresses reach, writing only through exclusive routes (G264 (S); overrides Q1 (a) of 2026-10-25)**
   (2026-11-04; the owner, R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」 with the plan
   「計画書：抽象部分の到達規則（(S)）」 and its premises 「SPEC 改訂を行います」, 「Q1 (a)（2026-10-25）を上書きします。」 and
@@ -11690,6 +11708,9 @@ structure is recorded here by the unit that first implements it.
   a drop tree of its own (one drop tree per target); a result temp for every construct (MIR on every path, not only where a scope
   is left); the delivery block, temp and scope as new Target parameters (the record already has seven; its Destination and Break
   take the first two, an init property the scope).
+  - Amended (R6-check H3b round 2, U-T1, 2026-11-04): the delivery is the target's: its Move and goto take the target's source and
+    scope (the label construct; a function's declaration), as its result temp does, not the first transfer's, which was one exit of
+    several, so A5's `Use` of a delivered value names the label block (DIAGNOSTICS A6), never an exit delivering another source.
 - **R5-M56 The difference ledger compares the requirement** (2026-10-18, planning session; plan Q17, Q8 package §3.6, under R5-M23
   and R4-M67; supersedes R4-M17's "a MIR problem takes its code's analysis" and R4-M3a's `-` requirement on the MIR side) A MIR
   problem's ledger row carries its own requirement (R4-M67); a MIR construction record or validator finding names none (`-`) until

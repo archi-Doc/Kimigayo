@@ -152,8 +152,8 @@ fn methods @93
   bb6:
       return @93
   bb7:
-      _0 = move _15 @119 s1
-      goto bb6 @119 s1
+      _0 = move _15 @93
+      goto bb6 @93
   bb8:
       StorageDead(_7) @109 s1
       goto bb7 @93
@@ -196,8 +196,8 @@ fn same @128
   bb2:
       return @128
   bb3:
-      _0 = move _6 @137 s1
-      goto bb2 @137 s1
+      _0 = move _6 @128
+      goto bb2 @128
   bb4:
       drop _2 -> bb5 [keep] @134
   bb5:
@@ -235,8 +235,8 @@ fn apply @141
   bb2:
       return @141
   bb3:
-      _0 = move _3 @155 s1
-      goto bb2 @155 s1
+      _0 = move _3 @141
+      goto bb2 @141
   bb4:
       StorageDead(_2) @156 s1
       goto bb3 @141
@@ -351,8 +351,8 @@ fn indexed @186
   bb4:
       return @186
   bb5:
-      _0 = move _18 @199 s1
-      goto bb4 @199 s1
+      _0 = move _18 @186
+      goto bb4 @186
   bb6:
       StorageDead(_17) @200 s1
       StorageDead(_16) @202 s1
@@ -512,8 +512,8 @@ fn chosen @214
   bb15:
       return @214
   bb16:
-      _0 = move _23 @272 s1
-      goto bb15 @272 s1
+      _0 = move _23 @214
+      goto bb15 @214
   bb17:
       StorageDead(_4) @223 s1
       StorageDead(_3) @219 s1
@@ -593,8 +593,8 @@ fn exited @276
       _8 = const () @295 s2
       goto bb2 @295 s2
   bb5:
-      _6 = move _11 @298 s3
-      goto bb1 @298 s3
+      _6 = move _11 @293 s1
+      goto bb1 @293 s1
   bb6:
       StorageDead(_7) @294 s1
       goto bb5 @276
@@ -667,8 +667,8 @@ fn exited @276
       StorageDead(_23) @333 s1
       goto bb20 @333 s1
   bb23:
-      _18 = move _22 @329 s7
-      goto bb20 @329 s7
+      _18 = move _22 @326 s1
+      goto bb20 @326 s1
   bb24:
       StorageDead(_20) @328 s1
       goto bb23 @276
@@ -691,8 +691,8 @@ fn exited @276
   bb29:
       return @276
   bb30:
-      _0 = move _25 @338 s1
-      goto bb29 @338 s1
+      _0 = move _25 @276
+      goto bb29 @276
   bb31:
       StorageDead(_4) @285 s1
       StorageDead(_3) @281 s1
@@ -779,8 +779,8 @@ fn tried @357
   bb7:
       return @357
   bb8:
-      _0 = move _13 @391 s3
-      goto bb7 @391 s3
+      _0 = move _13 @357
+      goto bb7 @357
   bb9:
       StorageDead(_2) @364 s1
       goto bb8 @357
@@ -887,8 +887,8 @@ fn received @404
   bb9:
       return @404
   bb10:
-      _0 = move _14 @435 s1
-      goto bb9 @435 s1
+      _0 = move _14 @404
+      goto bb9 @404
   bb11:
       StorageDead(_3) @414 s1
       StorageDead(_2) @408 s1
@@ -960,8 +960,8 @@ fn called @445
   bb5:
       return @445
   bb6:
-      _0 = move _10 @458 s1
-      goto bb5 @458 s1
+      _0 = move _10 @445
+      goto bb5 @445
   bb7:
       StorageDead(_3) @453 s1
       StorageDead(_2) @449 s1
@@ -1025,8 +1025,8 @@ fn shared @471
   bb5:
       return @471
   bb6:
-      _0 = move _8 @484 s1
-      goto bb5 @484 s1
+      _0 = move _8 @471
+      goto bb5 @471
   bb7:
       StorageDead(_4) @480 s1
       StorageDead(_3) @476 s1

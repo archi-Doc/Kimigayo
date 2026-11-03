@@ -241,10 +241,10 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(expected, Incomplete(c, program, "f")[0]);
     }
 
-    // SPEC 16.2.2 (DECISIONS R5-M50): a transfer leaving a cleanup delivers its result through a temp (written and moved at its jumps) in
-    // its target's scope, not the jump's: an `exit` out of a defer body past a local with a cleanup (SPEC 16.1), through one in the scope
-    // that registered the defer, and a `yield` out of an `if` arm, through one in the scope the `if` opened in, both `t`'s; a `return`
-    // past `t`, through one in the function's own scope.
+    // SPEC 16.2.2 (DECISIONS R5-M50): a transfer leaving a cleanup delivers its result through a temp (written at its jumps, moved by the
+    // target's delivery at the temp's own source) in its target's scope, not the jump's: an `exit` out of a defer body past a local with a
+    // cleanup (SPEC 16.1), through one in the scope that registered the defer, and a `yield` out of an `if` arm, through one in the scope
+    // the `if` opened in, both `t`'s; a `return` past `t`, through one in the function's own scope.
     [Theory]
     [InlineData("func f(c: bool)\n    let t = \"t\"\n    defer\n        let s = \"s\"\n        if c\n            exit\n        _ = s@ref\n    _ = t@ref\n", false)]
     [InlineData("func f(c: bool)\n    let t = \"t\"\n    let v = if c\n        let s = \"s\"\n        yield 1\n    else\n        yield 2\n    _ = t@ref\n    _ = v\n", false)]
@@ -258,13 +258,17 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f" && x.Key.Kind == MirBodyKind.Fn);
         var jumps = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<JumpKoto>().Select(static x => SourceRef.Of(x)).ToHashSet();
         var (locals, operands) = (body.Locals.ToArray(), body.Operands.ToArray());
-        var atJumps = body.Statements.ToArray().Where(x => x.Kind == MirStatementKind.Assign && jumps.Contains(x.Source.Syntax)).ToArray();
-        var written = atJumps.Select(static x => x.Place.Root).ToHashSet();
-        var delivered = atJumps.Where(x => x.Rvalue.Kind == MirRvalueKind.Use && operands[x.Rvalue.Start] is { Kind: MirOperandKind.Move } moved &&
-            written.Contains(moved.Place.Root)).Select(x => locals[operands[x.Rvalue.Start].Place.Root]).ToArray();
+        var assigns = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign).ToArray();
+        var written = assigns.Where(x => jumps.Contains(x.Source.Syntax)).Select(static x => x.Place.Root).ToHashSet();
+        var deliveries = assigns.Where(x => x.Rvalue.Kind == MirRvalueKind.Use && operands[x.Rvalue.Start] is { Kind: MirOperandKind.Move } moved &&
+            written.Contains(moved.Place.Root)).ToArray();
         var scope = returns ? 0 : locals.Single(static x => x.Name == "t").Source.Scope;
-        Assert.NotEmpty(delivered);
-        Assert.All(delivered, x => Assert.Equal(scope, x.Source.Scope));
+        Assert.NotEmpty(deliveries);
+        Assert.All(deliveries, x =>
+        {
+            var temp = locals[operands[x.Rvalue.Start].Place.Root].Source;
+            Assert.Equal((scope, temp), (temp.Scope, x.Source)); // The temp lies in the target's scope; its delivery is at the temp's source.
+        });
     }
 
     // V16 (plan "New V-checks"): A2 is linear in the body: N 16/32/64 locals each initialized on one branch need N flags, and the cold analysis

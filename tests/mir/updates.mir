@@ -109,8 +109,8 @@ fn counters @11
   bb1:
       return @11
   bb2:
-      _0 = move _23 @47 s1
-      goto bb1 @47 s1
+      _0 = move _23 @11
+      goto bb1 @11
   bb3:
       StorageDead(_7) @28 s1
       StorageDead(_5) @24 s1
@@ -159,8 +159,8 @@ fn divergentReplacement @52
   bb1:
       drop _1[0] -> bb14 @61 s1
   bb2:
-      _3 = move _4 @73 s2
-      goto bb1 @73 s2
+      _3 = move _4 @66 s1
+      goto bb1 @66 s1
   bb3:
       StorageLive(_5) @68 s2
       StorageLive(_6) @70 s3
@@ -255,8 +255,8 @@ fn divergentReplacementIndex @75
       EndBorrow(_4) @85 s1
       drop _1[_15] -> bb14 @84 s1
   bb2:
-      _5 = move _6 @96 s2
-      goto bb1 @96 s2
+      _5 = move _6 @89 s1
+      goto bb1 @89 s1
   bb3:
       StorageLive(_7) @91 s2
       StorageLive(_8) @93 s3
@@ -342,8 +342,8 @@ fn noncompletingWrite @99
       _0 = const () @100 s1
       return @100
   bb4:
-      _1 = move _6 @109 s2
-      goto bb3 @109 s2
+      _1 = move _6 @101 s1
+      goto bb3 @101 s1
   bb5:
       StorageDead(_2) @102 s1
       goto bb4 @99

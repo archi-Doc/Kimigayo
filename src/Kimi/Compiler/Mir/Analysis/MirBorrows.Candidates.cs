@@ -22,6 +22,9 @@ internal sealed partial class MirBorrows
     private (int Stamp, int Via)[] markDropped = []; // By marker: the check whose drop tier first saw it, and that tier's holder.
     private int candidateCount;
 
+    // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
+    private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
+
     // A state found in a holder (-1: a transit value, a state of one part) by the pass: its elements, in ascending order.
     private void Scan(ulong found, int via)
     {
@@ -89,7 +92,7 @@ internal sealed partial class MirBorrows
         }
 
         ref readonly var loan = ref this.loans[index];
-        var unique = loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
+        var unique = UniqueIn(loan, via);
         var key = (2 * index) + (unique ? 1 : 0);
         if (this.loanMarks[key] != this.stamp)
         {

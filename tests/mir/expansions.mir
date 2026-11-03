@@ -95,8 +95,8 @@ fn format @29
   bb9:
       return @29
   bb10:
-      _0 = move _20 @40 s1
-      goto bb9 @40 s1
+      _0 = move _20 @29
+      goto bb9 @29
   bb11:
       StorageDead(_19) @218 s1
       StorageDead(_18) @50 s1
@@ -276,8 +276,8 @@ fn pick @88
   bb3:
       return @88
   bb4:
-      _0 = move _12 @99 s1
-      goto bb3 @99 s1
+      _0 = move _12 @88
+      goto bb3 @88
   bb5:
       drop _1 -> bb6 [keep] @89
   bb6:
