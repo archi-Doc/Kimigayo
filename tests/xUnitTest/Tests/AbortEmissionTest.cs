@@ -78,15 +78,16 @@ public class AbortEmissionTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // Code after $abort is unreachable: its first use of a Local is one location-only Unsupported at that use.
+    // SPEC 14.10.3: code after $abort is unreachable and checked in the assumed-path state, where $abort completes after its operands: a
+    // use of a Local Moved by its operand or never initialized is that Language error at the use (R6-check H5; class 3, R4's verdict).
     [Theory]
-    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text")]
-    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x")]
-    public void UnreachableLocalUseIsUnsupported(string source, string at)
+    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x", DiagnosticCode.UninitializedPlace_Kd)]
+    public void AnUnreachableLocalUseIsCheckedOnTheAssumedPath(string source, string at, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var issue = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
+        Assert.Equal((code, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

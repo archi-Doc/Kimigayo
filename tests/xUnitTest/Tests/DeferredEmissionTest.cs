@@ -153,32 +153,35 @@ public class DeferredEmissionTest
         Assert.Equal(depth + 2, body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local));
     }
 
+    // An expansion past the old analysis's deferred-cleanup limit (its 8192 operations, read through its legacy entry until H10b) has no
+    // MIR counterpart: since the MIR decides acceptance (R6-check H5; 1a, the owner 2026-11-03, DECISIONS R5-M182's O-2), check accepts
+    // it with no record, DeferredExpansionLimit_Kd included, and generates its module, on every analysis.
     [Fact]
-    public void ExcessiveExpansionReportsAnExplicitLimitAndCanReanalyze()
+    public void AnExpansionPastTheOldLimitIsGeneratedOnEveryAnalysis()
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(8));
         for (var i = 0; i < 2; i++)
         {
-            Assert.False(c.Analyze().IsVerified);
-            Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DeferredExpansionLimit_Kd);
+            c.Analyze();
+            Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+            Assert.Empty(c.Problems);
             Assert.Equal(OwnershipAnalysis.DeferredOperationLimit, c.AnalyzeLegacyOwnership().Bodies[0].Operations.Count);
             using var writer = new StringWriter();
-            Assert.False(c.Generate(writer));
-            Assert.Empty(writer.ToString());
+            Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
+            Assert.NotEmpty(writer.ToString());
         }
 
         c.ReportAnalysis();
-        var issue = Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DeferredExpansionLimit_Kd);
-        Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Message.Contains("8192", StringComparison.Ordinal));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.DeferredExpansionLimit_Kd));
     }
 
     [Fact]
     public void DeferredDiagnosticsAreDeduplicatedBeforePublication()
     {
         // The deferred body's bare move is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84): one record, however often the
-        // body is emitted.
+        // body is emitted; it rejects the program (R6-check H5).
         var c = MinimalEmissionTest.Analyze("var flag = true\nloop\n    defer\n        let moved = (\"first\", \"last\").0\n    if flag => exit\n    continue");
-        Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.Accepts);
         c.Binding.ReportDiagnostics();
         Assert.Equal([nameof(DiagnosticCode.TransferRequired_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
     }

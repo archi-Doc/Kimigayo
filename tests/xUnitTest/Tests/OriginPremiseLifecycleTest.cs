@@ -55,7 +55,7 @@ public class OriginPremiseLifecycleTest
     }
 
     // SPEC 15.3.6: each Compilation proves from its own premises; alternating an accepted and a rejected program, and a large one
-    // before a small one, changes neither result.
+    // before a small one, changes neither result: check's verdict (R6-check H5) and the rejected one's Binding record.
     [Fact]
     public void CompilationsKeepTheirOwnPremises()
     {
@@ -64,10 +64,11 @@ public class OriginPremiseLifecycleTest
         var small = MinimalEmissionTest.Analyze(OriginProofWorkloads.Create("proven", 1));
         for (var i = 0; i < 3; i++)
         {
-            foreach (var (c, verified) in new[] { (accepted, true), (rejected, false), (small, true) })
+            foreach (var (c, valid) in new[] { (accepted, true), (rejected, false), (small, true) })
             {
                 Reanalyze(c);
-                Assert.Equal(verified, c.Analysis.IsVerified);
+                Assert.Equal(valid, c.Accepts);
+                Assert.Equal(valid ? [] : [DiagnosticCode.UnprovenOriginRelation_Kd], c.Binding.Issues.Select(static x => x.Code));
                 Assert.False(c.Binding.OriginPremiseStorage.Retains);
             }
         }

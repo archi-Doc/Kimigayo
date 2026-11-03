@@ -16,21 +16,27 @@ public class OriginObligationVerdictTest
     public static TheoryData<string, string?> Families => OriginProofScalingTest.Families;
 
     // SPEC 15.6.1: each obligation is judged once per analysis; reading the verdicts again judges nothing, and a rebind judges each
-    // of its obligations once more.
+    // of its obligations once more. Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), the verdicts counted are the old
+    // analysis's, which runs only through its legacy entry (until H10b), and check's verdict is Accepts with the family's one record:
+    // Binding's, or the analysis rows' on a complete Binding.
     [Theory]
     [MemberData(nameof(Families))]
     public void EachObligationIsJudgedOncePerAnalysis(string family, string? code)
     {
         var (c, metrics) = Analyze(OriginProofWorkloads.Create(family, 2));
         var count = c.Binding.Result.IsComplete ? c.Binding.Obligations.Count : 0; // Ownership analyzes only a complete Binding.
+        c.AnalyzeLegacyOwnership();
         Assert.Equal(count, metrics.Verdicts);
-        Assert.Equal(code is null, c.Analysis.IsVerified);
+        Assert.Equal(code is null, c.Accepts);
+        Assert.Equal(code is null ? [] : [Enum.Parse<DiagnosticCode>(code)], c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
         c.ReportAnalysis();
+        c.AnalyzeLegacyOwnership();
         Assert.Equal(count, metrics.Verdicts);
 
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
+        c.AnalyzeLegacyOwnership();
         Assert.Equal(2 * count, metrics.Verdicts);
     }
 
