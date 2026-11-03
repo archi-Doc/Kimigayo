@@ -77,20 +77,16 @@ public class ContentUpdateTest
         NativeAllocationAudit.WriteFixture("ContentUpdatePayload", source, 1, 1, 24);
     }
 
-    // The first row expects the rule before Loan identity by base (A5 S1): `replace` of the base `slot` now ends the child
-    // (SPEC 15.6.3), so the row is valid; the default pipeline keeps the old rule until R6-check.
+    // Loan identity by base (A5 S1): `replace` of the base `slot` ends the child (SPEC 15.6.3), so the first row is valid.
     [Theory]
-    [Trait("OldRule", "S1")]
     [InlineData("    let child = slot\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    _ = child@follow")]
-    [InlineData("    let view = slot@ref\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    _ = view@follow@follow")]
-    public void OldContentAndSlotViewsCannotSurviveReplacement(string operations)
+    [InlineData("    let view = slot@ref\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    _ = view@follow@follow", "Kimi.Intrinsics.replace(slot@uniq, with: b)")]
+    public void OldContentAndSlotViewsCannotSurviveReplacement(string operations, string? mir = null)
     {
         var source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a\n" + operations;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
-        Assert.DoesNotContain(c.Problems, static issue => issue.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
-        Assert.False(c.Generate(TextWriter.Null));
+        MirTargetSide.Check(c, mir is null ? [] : [(DiagnosticCode.CallActivationConflict_Kd, new(mir))]);
     }
 
     [Fact]
@@ -110,20 +106,16 @@ public class ContentUpdateTest
         Assert.DoesNotContain(c.Problems, static issue => issue.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 
-    // The `replace` row expects the rule before Loan identity by base (A5 S1): `replace` of the base now ends the child
-    // (SPEC 15.6.3), so the row is valid; the default pipeline keeps the old rule until R6-check.
+    // Loan identity by base (A5 S1): `replace` of the base ends the child (SPEC 15.6.3), so the `replace` row is valid.
     [Theory]
-    [Trait("OldRule", "S1")]
     [InlineData("Kimi.Intrinsics.replace(slot@uniq, with: b)")]
-    [InlineData("_ = Kimi.Intrinsics.exchange(slot@uniq, with: b)")]
-    [InlineData("var other = b\n    Kimi.Intrinsics.swap(slot@uniq, other@uniq)")]
-    [InlineData("let target = slot@uniq\n    target@follow = b")]
-    public void ExclusiveContentChildrenBlockEveryUpdate(string update)
+    [InlineData("_ = Kimi.Intrinsics.exchange(slot@uniq, with: b)", "slot@uniq")]
+    [InlineData("var other = b\n    Kimi.Intrinsics.swap(slot@uniq, other@uniq)", "slot@uniq")]
+    [InlineData("let target = slot@uniq\n    target@follow = b", "slot@uniq")]
+    public void ExclusiveContentChildrenBlockEveryUpdate(string update, string? mir = null)
     {
         var source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a\n    let child = slot\n    " + update + "\n    child@follow = 3";
-        var result = DiagnosticCorpus.Check(source);
-        Assert.Contains(result.Diagnostics, static d => d.Code == "ComparisonLoanConflict_Kd");
-        Assert.DoesNotContain(result.Diagnostics, static d => d.Code.Contains("Unsupported", StringComparison.Ordinal));
+        MirTargetSide.Check(source, mir is null ? [] : [(DiagnosticCode.ComparisonLoanConflict_Kd, new(mir))]);
     }
 
     [Theory]
@@ -185,37 +177,6 @@ public class ContentUpdateTest
         const string item = "struct Item {a}\n    public let source: ref/i32 during a\n    public let id: i32\n    public init(source: ref/i32 during a, id: i32)\n        self.source = source\n        self.id = id\n    drop => Console.writeLine(Text.toString(self.id))\n";
         var source = item + Generic + "func run(n: ref/i32 during a)\n    var slot = Item.init(n, 1)\n    let old = change(slot@uniq, Item.init(n, 2))\n    var other = Item.init(n, 3)\n    flip(slot@uniq, other@uniq)\n    put(slot@uniq, old@move)\n    Console.writeLine(\"updated\")\nlet n = 7\nrun(n@ref)";
         ScalarEmissionTest.EmitFixture("ContentUpdateDestruction", source, "3\nupdated\n2\n1\n");
-    }
-
-    // Expects the rule before Loan identity by base (A5 S1): `replace` of the base `slot` now ends the child (SPEC 15.6.3),
-    // so the program is valid; the default pipeline keeps the old rule until R6-check.
-    [Fact]
-    [Trait("OldRule", "S1")]
-    public void OldContentConflictExplainsTheCauseInEveryAdapter()
-    {
-        const string source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a\n    let child = slot\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    child@follow = 3";
-        var path = Path.GetFullPath("content-update.kimi");
-        var c = MinimalEmissionTest.Analyze(source, path);
-        c.ReportAnalysis();
-        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
-        var result = c.Diagnostics.Finalize();
-        var record = Assert.Single(result.Diagnostics);
-        Assert.Equal("ComparisonLoanConflict_Kd", record.Code);
-        Assert.Equal("This operation conflicts with an active loan", record.Message);
-        Assert.Equal("Kimi.Intrinsics.replace(slot@uniq, with: b)", source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
-        var loan = Assert.Single(record.Related!);
-        Assert.Equal("loan", loan.Role);
-        Assert.Equal("let child = slot", source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length));
-        var console = new DiagnosticContractTest.DiagnosticConsole();
-        new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
-        var identity = SourceIdentity.FromPath(path);
-        foreach (var related in new[] { false, true })
-        {
-            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
-            Assert.Equal((record.Display!.Range, record.Code), (sent.Range, sent.Code));
-            Assert.Contains(record.Message, sent.Message, StringComparison.Ordinal);
-        }
     }
 
     [Theory]

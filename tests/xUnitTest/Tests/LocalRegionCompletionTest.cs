@@ -15,11 +15,9 @@ public class LocalRegionCompletionTest
     private const string Empty = "match a\n    .Some(_) => $abort(\"a\")\n    .None => ()\nmatch b\n    .Some(_) => $abort(\"b\")\n    .None => ()";
     private const string Joined = "let choose = func [] (flag: bool, a: ref/i32, b: ref/i32)\n    var first = a\n    var second = b\n    return if flag => first else => second\n";
 
-    // IndirectReplacement and IndirectLoop expect the old path's strong update: `slot@follow = .None` ended b's Loan on n.
-    // A write through a reference ends none (SPEC 15.6, S4), so `n = 3` conflicts; the default pipeline keeps the old rule
-    // until R6-check.
+    // In IndirectReplacement and IndirectLoop a write through a reference ends no Loan (SPEC 15.6, S4), so `n = 3` conflicts and
+    // they have no fixture.
     [Theory]
-    [Trait("OldRule", "S4")]
     [InlineData("LocalFunctionTuple", "let f: ((ref/i32, i32)) -> i32 = func (pair) => pair.0@follow + pair.1\nlet a = 3\nlet b = 4\nrequire f((a@ref, 2)) + f((b@ref, 1)) == 10 else => $abort(\"tuple\")")]
     [InlineData("LocalFunctionNested", "let f: (ref/(ref/i32)) -> i32 = func (value) => value@follow@follow\nlet n = 7\nlet view = n@ref\nrequire f(view@ref) == 7 else => $abort(\"nested\")")]
     [InlineData("LocalFunctionItem", "func read(pair: (ref/i32 during source, i32)) -> i32 => pair.0@follow + pair.1\nlet f: ((ref/i32, i32)) -> i32 = read\nlet n = 3\nrequire f((n@ref, 2)) == 5 else => $abort(\"item\")")]
@@ -31,15 +29,18 @@ public class LocalRegionCompletionTest
     [InlineData("IndirectLoop", "func none() -> Option<ref/i32 during source> => .None\nvar a = none()\nvar b = none()\nvar slot = a@uniq\nvar i = 0\nwhile i < 2\n    slot = b@uniq\n    i += 1\nslot = b@uniq\nvar n = 2\nslot@follow = .Some(n@ref)\nslot@follow = .None\nn = 3\nmatch a\n    .Some(_) => $abort(\"old target\")\n    .None => ()\nmatch b\n    .Some(_) => $abort(\"new target\")\n    .None => ()")]
     public void CompletedRegionsComposeWithoutReopeningTheirType(string name, string source)
     {
-        ScalarEmissionTest.EmitFixture("LocalRegionCompletion" + name, source, string.Empty);
-
-        // The MIR side: S4's conflicts. A Function Type annotation's omitted inner Origins form no row of the evaluating body (its
-        // signature's premise, proven at each call; PLAN G216, DECISIONS R4-M137), so LocalFunctionNested has no located limit.
+        // A Function Type annotation's omitted inner Origins form no row of the evaluating body (its signature's premise, proven at each
+        // call; PLAN G216, DECISIONS R4-M137), so LocalFunctionNested has no located limit.
         (DiagnosticCode, SyntaxLocation)[] mir = name switch
         {
             "IndirectReplacement" or "IndirectLoop" => [(DiagnosticCode.ComparisonLoanConflict_Kd, new("n = 3"))],
             _ => [],
         };
+        if (mir.Length == 0)
+        {
+            ScalarEmissionTest.EmitFixture("LocalRegionCompletion" + name, source, string.Empty);
+        }
+
         MirTargetSide.Check(source, mir);
     }
 
@@ -89,13 +90,10 @@ public class LocalRegionCompletionTest
         }
     }
 
-    // The first row expects the old path's strong update through `slot`, as above (S4).
     [Theory]
-    [InlineData(Slots + "slot@follow = .Some(n@ref)\nslot@follow = .None\nn = 3\n" + Empty, "n = 3")]
     [InlineData("func read(pair: (ref/i32 during source, i32)) -> i32 => pair.0@follow + pair.1\nlet f: ((ref/i32, i32)) -> i32 = read\nlet n = 3\n_=f((n@ref, 2))")]
     [Trait("Purpose", "Allocation")]
-    [Trait("OldRule", "S4")]
-    public void RepeatedCompletionReusesItsStorage(string source, string? mir = null)
+    public void RepeatedCompletionReusesItsStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var expected = CompilationTestHelper.WriteIr(c);
@@ -106,6 +104,6 @@ public class LocalRegionCompletionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
-        MirTargetSide.Check(c, mir is null ? [] : [(DiagnosticCode.ComparisonLoanConflict_Kd, new(mir))]);
+        MirTargetSide.Check(c);
     }
 }

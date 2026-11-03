@@ -21,12 +21,10 @@ public class DefaultAccessTest
     public void PreparedInputsAreSharedAndIndependentLocalsAreWritable(string name, string source)
         => ScalarEmissionTest.EmitFixture("DefaultAccess" + name, source, string.Empty);
 
-    // The `x@follow@ref` row expects the rule before Loan identity by base (A5 S1): the default keeps a new Borrow of the preceding
-    // argument. A Borrow past a shared dereference forms no Loan of its own (SPEC 15.6.3), so the default Copies an existing shared
-    // borrow, which SPEC 7.2.3 allows (`MirBorrowsTest.ATemplateMayInspectItsSlots`); the default pipeline keeps the old rule until
-    // R6-check. Each row's MIR side is its record, none for that row.
+    // Each row's MIR side is its record. In the `x@follow@ref` row a Borrow past a shared dereference forms no Loan of its own (SPEC
+    // 15.6.3, A5 S1), so the default Copies an existing shared borrow, which SPEC 7.2.3 allows (`MirBorrowsTest.ATemplateMayInspectItsSlots`):
+    // no record.
     [Theory]
-    [Trait("OldRule", "S1")]
     [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd", "increment(x)", "x")]
     [InlineData("func f(x: uniq/i32, y: i32 = label work: do\n    x@follow = 9\n    exit to work 1\n) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd", "x@follow = 9")]
     [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd", "a = x)", "x")]
@@ -37,10 +35,6 @@ public class DefaultAccessTest
     [InlineData("func choose(c: bool, x: ref/i32 during a, z: ref/i32 during a) -> ref/i32 during a => if c => x else => z\nfunc f(x: uniq/i32 during a, z: ref/i32 during a, y: ref/i32 during a = choose(true, x, z)) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd", "choose(true, x, z)", "x")]
     public void PreparedAccessFailuresExplainTheForbiddenOperation(string source, string code, string? mir = null, string? subject = null)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(code, error.Code);
-        Assert.Contains("prepared argument", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Single(error.Related!);
         MirTargetSide.Check(source, mir is null ? [] : [(Enum.Parse<DiagnosticCode>(code), MirTargetSide.At(mir, subject))]);
     }
 

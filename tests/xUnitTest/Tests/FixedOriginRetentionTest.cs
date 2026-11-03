@@ -133,11 +133,9 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
     }
 
-    // The `false` row expects the rule before SPEC 15.6.4's retention per argument (A5 P4, with P1's holders): `r` kept only
-    // the pair's `x` Loans. Now it carries every Loan of the pair, so writing `w` conflicts; the default pipeline keeps the
-    // old rule until R6-check.
+    // SPEC 15.6.4's retention per argument (A5 P4, with P1's holders): `r` carries every Loan of the pair, so writing `z` or `w`
+    // conflicts.
     [Theory]
-    [Trait("OldRule", "P4")]
     [InlineData(false)]
     [InlineData(true)]
     public void CompleteTypePositionsKeepIndependentSources(bool conflict)
@@ -147,7 +145,6 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    let r = first((z@follow@ref, w@follow@ref))\n    " + (conflict ? "z" : "w") + "@follow = 42\n    return r@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new((conflict ? "z" : "w") + "@follow = 42")));
     }
 
@@ -225,17 +222,15 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
     }
 
-    // The valid rows expect the rule before SPEC 15.6's holders (A5 P1): writing `holder`'s first part ended the Loan
-    // `store` added. Now it ends none, so `z@follow = 42` conflicts; the default pipeline keeps the old rule until R6-check.
+    // SPEC 15.6's holders (A5 P1): writing a part of `holder` ends no Loan `store` added, so `z@follow = 42` conflicts.
     [Theory]
-    [Trait("OldRule", "P1")]
-    [InlineData("Tuple", 0, true)]
-    [InlineData("Tuple", 1, false)]
-    [InlineData("Array", 0, true)]
-    [InlineData("Array", 1, false)]
-    [InlineData("Struct", 0, true)]
-    [InlineData("Struct", 1, false)]
-    public void PartialReplacementPreservesTheOtherParts(string form, int replaced, bool valid)
+    [InlineData("Tuple", 0)]
+    [InlineData("Tuple", 1)]
+    [InlineData("Array", 0)]
+    [InlineData("Array", 1)]
+    [InlineData("Struct", 0)]
+    [InlineData("Struct", 1)]
+    public void PartialReplacementPreservesTheOtherParts(string form, int replaced)
     {
         var prefix = form == "Struct" ? "struct Pair {source}\n    public var first: ref/i32 during source\n    public var second: ref/i32 during source\n    public init(value: ref/i32 during source)\n        self.first = value\n        self.second = value\n" : string.Empty;
         var declaration = form == "Tuple" ? "var holder = (x, x)" : form == "Array" ? "var holder: [2 of ref/i32 during x] = [x, x]" : "var holder = Pair.init(x)";
@@ -247,13 +242,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             " = x\n    z@follow = 42\n    return " + first + "@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("z@follow = 42")));
-        if (valid)
-        {
-            source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 7 else => $abort(\"replacement\")";
-            ScalarEmissionTest.EmitFixture("FixedOriginRetentionPart" + form, source, string.Empty);
-        }
     }
 
     [Theory]
