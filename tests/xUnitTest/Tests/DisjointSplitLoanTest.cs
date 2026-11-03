@@ -77,7 +77,7 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
-        Assert.Equal("a.value", error.Text);
+        Assert.Equal("a.value = 3", error.Text);
         Assert.False(c.Generate(TextWriter.Null));
     }
 
@@ -102,7 +102,7 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
-        Assert.Equal(target + ".value", error.Text);
+        Assert.Equal(target + ".value = 3", error.Text);
         Assert.False(c.Generate(TextWriter.Null));
     }
 
@@ -205,16 +205,18 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
-        Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
+        string[] conflicts = independent ? ["a@follow = 3", "a@follow = 5"] : ["a@follow = 3"];
+        Assert.Equal(conflicts, result.Diagnostics.Select(x => source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
         foreach (var error in result.Diagnostics)
         {
             Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
             Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-            Assert.Equal("a", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
             Assert.Equal("This operation conflicts with an active loan", error.Message);
-            var retained = Assert.Single(error.Related!);
-            Assert.Equal("loan", retained.Role);
-            Assert.Contains("child", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+            Assert.Equal(["borrow", "loan"], error.Related!.Select(static x => x.Role));
+            Assert.Equal(["a@follow@ref", "child == 1"], error.Related!.Select(x => source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
+            Assert.Equal(
+                ["borrow that created the loan", "later use of the value retaining the conflicting loan"],
+                error.Related!.Select(static x => x.Label));
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -230,7 +232,9 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
                 Assert.Equal(result.Diagnostics[i].Display!.Range, sent[i].Range);
                 if (related)
                 {
-                    Assert.Equal(result.Diagnostics[i].Related![0].Range, Assert.Single(sent[i].RelatedInformation!).Location.Range);
+                    Assert.Equal(
+                        result.Diagnostics[i].Related!.Select(static x => x.Range!.Value),
+                        sent[i].RelatedInformation!.Select(static x => x.Location.Range));
                 }
                 else
                 {

@@ -47,17 +47,19 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
-        Assert.Equal("item.value", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        var related = Assert.Single(error.Related!);
-        Assert.Equal("loan", related.Role);
-        Assert.Contains("view", source.Substring(related.Span!.Value.Start, related.Span.Value.Length), StringComparison.Ordinal);
+        Assert.Equal("item.value = seen + 1", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal(["borrow", "loan"], error.Related!.Select(static x => x.Role));
+        Assert.Equal(["item@follow@ref", "view.item.value"], error.Related!.Select(x => source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
+        Assert.Equal(
+            ["borrow that created the loan", "later use of the value retaining the conflicting loan"],
+            error.Related!.Select(static x => x.Label));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
         Assert.Equal(error.Display!.Range, sent.Range);
-        Assert.Equal(related.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+        Assert.Equal(error.Related!.Select(static x => x.Range!.Value), sent.RelatedInformation!.Select(static x => x.Location.Range));
         output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
     }
 
@@ -82,7 +84,7 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         {
             var error = Assert.Single(c.Problems);
             Assert.True(error.Code.IsLoanConflict(), error.Code.ToString());
-            Assert.Equal("left.value", c.SyntaxOf(error.Subject).ToString());
+            Assert.Equal("left.value = 9", c.SyntaxOf(error.Subject).ToString());
         }
     }
 
@@ -96,7 +98,7 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var error = Assert.Single(c.Problems);
         Assert.True(error.Code.IsLoanConflict(), error.Code.ToString());
-        Assert.Equal(parent + ".value", c.SyntaxOf(error.Subject).ToString());
+        Assert.Equal(parent + ".value = seen", c.SyntaxOf(error.Subject).ToString());
     }
 
     [Trait("Purpose", "Allocation")]
