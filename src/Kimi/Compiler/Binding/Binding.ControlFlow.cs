@@ -318,6 +318,7 @@ public sealed partial class Binding
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
             if (conflict && this.IsArgumentJoin(node))
             {
+                this.RecordArgumentJoin(node, null);
                 context.Outcome = JoinOutcome.Waiting;
                 return Complete(node, null); // SPEC 10.5.1: no complete Type without its call's expectation; its call decides it.
             }

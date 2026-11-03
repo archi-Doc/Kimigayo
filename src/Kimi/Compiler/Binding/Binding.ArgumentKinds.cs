@@ -39,7 +39,8 @@ namespace Kimi.Compiler;
 //   (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the Constraints over it
 //   (Prove); F1 (DECISIONS R4-M164), what each argument's position contributes to its selected call, one closed Contribution
 //   (Evidence, Signature, Result): PartContribution by the part's recorded kind, and SlotSolution.Contribute, which writes each
-//   candidate's contributions once its expected result has solved its slots, read by SolveLate and JudgeSelectedCall.
+//   candidate's contributions once its expected result has solved its slots, read by SolveLate and JudgeSelectedCall;
+//   IsRootArgumentJoin, the one root test (BU-80 B3a).
 // - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
 //   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
 //   row (every kind awaits but Literal), TakeArgument the one writer of Taken, and a writer of another column keeps the rest of the
@@ -50,7 +51,7 @@ namespace Kimi.Compiler;
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
 //   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
-//   selected candidate; a Never-typed part is no evidence (SPEC 10.8).
+//   selected candidate; a Never-typed part is no evidence (SPEC 10.8). RecordArgumentJoin is the one writer of Root.
 //   Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part is a wildcard: it fits every candidate and is no evidence; only a node's own
 //   verdict over a failed child is suppressed (a join's DecideRest, its position and kind, CompleteJoinResults), and every other
 //   record of the call is reported: Ambiguous, UnboundTypeArgument, NoApplicable and an unselected call's part records.
@@ -66,14 +67,16 @@ public sealed partial class Binding
 
     // A recorded part's relation to its call (DECISIONS BU-74), a column of its record, one writer and one reader per bit: Awaits, its
     // producer recorded it as awaiting its call (RecordPart's row; Awaits); Taken, on a call argument's own record, its call has
-    // selected and takes it (TakeArgument; TakenByCall). Taken ends no Awaits: a taken Join argument stays Join for TryCandidate's
-    // re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
+    // selected and takes it (TakeArgument; TakenByCall); Root, on the probe's own record, its join is the root argument join, recorded
+    // Join where IsProbeJoin decides that it waits (RecordArgumentJoin; IsRootArgumentJoin). Taken ends no Awaits: a taken Join argument
+    // stays Join for TryCandidate's re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
     [Flags]
     private enum CallRelation : byte
     {
         None = 0,
         Awaits = 1,
         Taken = 2,
+        Root = 4,
     }
 
     private enum PartKind : byte
@@ -197,8 +200,8 @@ public sealed partial class Binding
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 RecordArgumentJoin), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one
-    // row: every recorded kind awaits its call but Literal. It keeps Taken, since RecordArgumentJoin and DeferNestedCall re-record the probe
-    // while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
+    // row: every recorded kind awaits its call but Literal. It drops Root and keeps Taken, since RecordArgumentJoin and DeferNestedCall
+    // re-record the probe while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
     private ref ArgumentPart RecordPart(Koto part, PartKind kind)
     {
         ref var record = ref this.PartRecord(part);
@@ -263,19 +266,30 @@ public sealed partial class Binding
     private bool IsProbeJoin(Koto join)
         => this.argumentProbe is { } probe && ReferenceEquals(ControlFlowExpression(probe), join) && this.IsArgumentJoin(join);
 
-    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): P4, the record of the probe's own argument join, written
-    // once where it waits for its call (IsProbeJoin, AwaitsWithoutCandidate) and never at its completion: Join, its results classified
-    // position by position; a scalar join of literals (no Tuple or array results, `shape`, and no part awaiting its call) keeps the
-    // Literal its survey gave it (a failed or unknown source beside its literals leaves none, U1.6h site 4; G383 B3b). A Join record
-    // names the root join only: a waiting nested join is a waiting source through WaitingResult (U2j reads it through ComposedJoin).
+    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43, BU-80 B3a): P4, the record of an argument join that waits
+    // for its call, written once where it is decided to wait and never at its completion. The probe's own join (IsProbeJoin,
+    // AwaitsWithoutCandidate) is Join and Root, its results classified position by position; a scalar join of literals (no Tuple or
+    // array results, `shape`, and no part awaiting its call) keeps the Literal its survey gave it (a failed or unknown source beside its
+    // literals leaves none, U1.6h site 4; G383 B3b). A nested one waits only on a conflict among its sources (DecideResult), which is
+    // its call's: Join without Root, which an enclosing aggregate argument completes through AwaitsCall (g046, g122) until G383 B3c.
     private void RecordArgumentJoin(Koto join, Koto? shape)
     {
         var probe = this.argumentProbe!;
-        if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsPartAwaitingCall(join) || this.RecordedPart(probe).Kind != PartKind.Literal)
+        if (!this.IsProbeJoin(join))
         {
-            this.RecordPart(probe, PartKind.Join);
+            this.RecordPart(join, PartKind.Join);
+        }
+        else if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsPartAwaitingCall(join) || this.RecordedPart(probe).Kind != PartKind.Literal)
+        {
+            ref var record = ref this.RecordPart(probe, PartKind.Join);
+            record = record with { Relation = record.Relation | CallRelation.Root };
         }
     }
+
+    // SPEC 10.5.1 (DECISIONS BU-80 B3a): the one root test, whether the part is its call's root argument join: its record holds Root,
+    // which RecordArgumentJoin writes on the probe's record where IsProbeJoin decides that its join waits, and which any later record
+    // drops. It reads that record alone; a nested argument join's Join record (a conflict wait) never makes it true.
+    private bool IsRootArgumentJoin(Koto part) => (this.RecordedPart(part).Relation & CallRelation.Root) != 0;
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other
     // source must fit once it applies.

@@ -10074,12 +10074,17 @@ resumed by R4-M86 (2026-10-20).
     source of the probe before its call takes it, the probe's own join or one its argument-source walk enters (UnderArgumentProbe:
     results, Tuple and array elements, nested joins). A conflict among such a join's sources is its call's (U1.6g (a)), so the join
     waits; ConflictWaits is deleted. The probe's own join (IsProbeJoin) has no common-Type search before selection; ClassifiedByCall
-    is deleted, its record now RecordArgumentJoin's one condition (a scalar Literal keeps its survey kind until B3b). The published
-    fact U2j reads (through ComposedJoin and PartContribution): `RecordedPart(PartCore(p)).Kind == Join` names the probe's own (root)
-    argument join only, (1) written once, where IsProbeJoin decides that it waits (DeferNestedCall no longer records the probe's join),
-    (2) never rewritten at its completion, (3) never on a nested join (ConflictWaits' record is gone; a waiting nested join is a
-    waiting source through WaitingResult); ORDT OnlyTheRootArgumentJoinIsRecordedJoin pins it. B3c publishes the same row for the
-    nested argument joins the selected candidate completes. A clean nested
+    is deleted, its record now RecordArgumentJoin's one condition (a scalar Literal keeps its survey kind until B3b). Under option (a)
+    (BU and R4, 2026-11-03; it replaces condition (3), "never on a nested join", which the gate refuted: g046 and g122, a conflicting
+    join inside an array or Tuple argument, complete only through its Join record): RecordArgumentJoin is P4's one writer, (1) of the
+    root's Join record once, where IsProbeJoin decides that it waits (DeferNestedCall no longer records the probe's join), (2) never
+    rewritten at its completion, and (3') of a nested join's Join record only when it waits on a conflict among its sources
+    (DecideResult). (4) The one root test U2j's readers (ComposedJoin, PartContribution) call is ArgumentKinds' `IsRootArgumentJoin(p)`:
+    it reads only the record's new bit `CallRelation.Root`, which RecordArgumentJoin writes with the root's Join record and any later
+    RecordPart drops; never `argumentProbe`, KindOf, BoundType or syntax, and never `Kind == Join`, which a nested conflict wait also
+    holds. ORDT OnlyTheRootArgumentJoinPassesTheRootTest pins it (true for the root, false for a conflicting nested waiting join with
+    its Join record and for a clean nested join); ORDT g046 and g122 stay valid. A conflicting nested waiting join stays outside U2j-a
+    (G390, U2j-b after B3c). B3c publishes the same row for the nested argument joins the selected candidate completes. A clean nested
     join keeps its own formation, which OneFormation makes the same Types: making it wait left it uncompleted at the selected Type
     (CallRelation g236, g254, g090, g038ms, g090m and q1h PrerequisiteUnavailable_Kd, g161 InternalInvariant_Kd, the held trial), so
     B3c also owns "a selected candidate completes clean nested argument joins". Moves: none (records unchanged); those rows stay valid

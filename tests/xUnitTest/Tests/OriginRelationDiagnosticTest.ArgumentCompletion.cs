@@ -387,6 +387,8 @@ public partial class OriginRelationDiagnosticTest
     // candidate (fs_root_refS_refS_fi) or the one an anonymous function's header selects (fs_root_refS_anonHeader_fov; 10.5.4).
     // SPEC revision B (DECISIONS BU-80; the owner's "Accept as is", 2026-11-02): g050, class (1)'s erasure form: `twice` and `gv1`
     // fit only `Array<(i64) -> i64>`, which is selected.
+    // B3a (DECISIONS BU-80): a nested join inside an array (g046) or Tuple (g122) argument whose sources conflict waits for its call,
+    // which completes it through its Join record.
     [Theory]
     [InlineData("U1.5", "wj_pick", IdentityT + Pick + "func k(c: bool, v: i64) -> i64\n    return pick(" + WJoin + ", v)\n")]
     [InlineData("U1.5", "wj_ctor_exp", IdentityT + BoxInit + KHead + "    let b: Box<i64> = Box.init(" + WJoin + ")\n    return 0\n")]
@@ -408,6 +410,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.3", "fs_root_refS_refS_fi", Twice + Thrice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\n" + KHead + "    return f(if c => idg else => idg)\n")]
     [InlineData("U1.3", "fs_root_refS_anonHeader_fov", Twice + Thrice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc f(x: (bool) -> bool) -> i32 => 1\n" + KHead + "    return f(if c => idg else => func [] (v: i64) -> i64 => v)\n")]
     [InlineData("B2b-1", "g050", Twice + Idg + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool) -> i32\n    return f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])\n")]
+    [InlineData("B3a", "g046", Twice + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool, c4: bool, c5: bool, gv6: (i64) -> i64, c7: bool, c8: bool) -> i32\n    return f([if c7 => func [] (v) => v else if c8 => (if c4 => (if c2 => gv1@move else if c3 => func [] (v: i64) -> i64 => v else => twice) else if c5 => func [] (v) => v else => func [] (v: i64) -> i64 => v) else => gv6@move, func [] (v) => v])\n")]
+    [InlineData("B3a", "g122", Twice + Idg + FFnPair + "func k(gv1: (i64) -> i64, c2: bool, c3: bool, c4: bool, c5: bool) -> i32\n    return f((if c4 => idg else if c5 => (if c2 => twice else if c3 => idg else => gv1@move) else => func [] (v) => v, 3))\n")]
     public void AWaitingJoinPositionIsCompletedByTheSelectedCandidate(string unit, string form, string body)
         => AssertRecords($"{form} [{unit}]", body, string.Empty, null);
 
@@ -475,23 +479,33 @@ public partial class OriginRelationDiagnosticTest
         }
     }
 
-    // SPEC 10.5.1 (B3a, DECISIONS BU-80; U2j reads the record through ComposedJoin and PartContribution): the producer record of an
-    // argument join is Join for the probe's own join only, written where IsArgumentJoin decides that it waits and kept after its call
-    // completes it (`one(if c => identity(1) else => 2)`); a nested join that waits on a conflict among its sources, whose conflict is its
-    // call's, is a waiting source through WaitingResult and has no record (`fo(if c => (if d => x else => b) else => x)`).
+    // SPEC 10.5.1 (B3a, DECISIONS BU-80; U2j's readers, ComposedJoin and PartContribution, call the root test): IsRootArgumentJoin is
+    // true for the probe's own join only, recorded where IsProbeJoin decides that it waits and kept after its call completes it
+    // (`one(if c => identity(1) else => 2)`, `fo(if c => (if d => x else => y) else => x)`); false for a clean nested join, which has no
+    // record, and for a nested join that waits on a conflict among its sources, whose conflict is its call's, though it holds a Join
+    // record (`fo(if c => (if d => x else => b) else => x)`). The BU/R4 decision (2026-11-03, option (a)) replaced "no nested Join record".
     [Fact]
-    public void OnlyTheRootArgumentJoinIsRecordedJoin()
+    public void OnlyTheRootArgumentJoinPassesTheRootTest()
     {
-        var recorded = typeof(Binding).GetMethod("RecordedPart", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        object Record(Compilation c, string join) => recorded.Invoke(
-            c.Binding, [KotoTree.Walk(c.SourceModules[0].RootKoto).OfType<IfKoto>().Single(x => x.ToString().StartsWith(join, StringComparison.Ordinal))])!;
+        const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var recorded = typeof(Binding).GetMethod("RecordedPart", Private)!;
+        var rootTest = typeof(Binding).GetMethod("IsRootArgumentJoin", Private)!;
+        IfKoto Join(Compilation c, string join)
+            => KotoTree.Walk(c.SourceModules[0].RootKoto).OfType<IfKoto>().Single(x => x.ToString().StartsWith(join, StringComparison.Ordinal));
+        object Record(Compilation c, string join) => recorded.Invoke(c.Binding, [Join(c, join)])!;
+        string? Kind(Compilation c, string join) => Record(c, join) is var r ? r.GetType().GetProperty("Kind")!.GetValue(r)!.ToString() : null;
+        bool Root(Compilation c, string join) => (bool)rootTest.Invoke(c.Binding, [Join(c, join)])!;
         var valid = MirBuildTest.Compile(IdentityT + "func one(x: i64) -> i32 => 0\nfunc k(c: bool) -> i32\n    return one(if c => identity(1) else => 2)\n" + Main);
         Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid)); // Its call completed it.
-        var root = Record(valid, "if c => identity(1)");
-        Assert.Equal("Join", root.GetType().GetProperty("Kind")!.GetValue(root)!.ToString());
-        var conflict = MirBuildTest.Compile("func fo(x: i64) -> i32 => 0\nfunc fo(x: bool) -> i32 => 1\n" +
-            "func k(c: bool, d: bool, x: i64, b: bool) -> i32\n    return fo(if c => (if d => x else => b) else => x)\n" + Main);
-        Assert.Equal(Activator.CreateInstance(recorded.ReturnType), Record(conflict, "if d => x")); // No record.
+        Assert.Equal(("Join", true), (Kind(valid, "if c => identity(1)"), Root(valid, "if c => identity(1)")));
+        const string Fo = "func fo(x: i64) -> i32 => 0\nfunc fo(x: bool) -> i32 => 1\nfunc k(c: bool, d: bool, x: i64, y: i64, b: bool) -> i32\n";
+        var clean = MirBuildTest.Compile(Fo + "    return fo(if c => (if d => x else => y) else => x)\n" + Main);
+        Assert.True(clean.Binding.Result.IsComplete, MinimalEmissionTest.Describe(clean));
+        Assert.True(Root(clean, "if c =>"));
+        Assert.Equal(Activator.CreateInstance(recorded.ReturnType), Record(clean, "if d => x")); // No record.
+        Assert.False(Root(clean, "if d => x"));
+        var conflict = MirBuildTest.Compile(Fo + "    return fo(if c => (if d => x else => b) else => x)\n" + Main);
+        Assert.Equal(("Join", false), (Kind(conflict, "if d => x"), Root(conflict, "if d => x"))); // A conflict wait's Join record.
     }
 
     // SPEC revision B (the group review's B5): a warm rebind of a reference join at a call argument, whose sources revision B fits one
