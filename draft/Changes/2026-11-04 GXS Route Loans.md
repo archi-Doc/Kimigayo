@@ -15,21 +15,24 @@ Closure, `count<S>` and `hold<C>` under S2). PLAN G148 (2) proposed leaving such
 
 ## 2. The rule (SPEC text, §15.6.4 and §15.8.2)
 
-- **Layer 1.** A call's store reaches at its first step the holders the argument's own Loan and addresses name; a holder only a parent
-  Loan names is reached past layer 1. Reason: a parent Loan protects the route; it does not make the argument refer to that holder.
-- **Direct Loans** naming a holder: access path from the holder, no dereference; own or parent.
+- **Layer 1.** A call's store reaches at its first step the holders the argument's own value names (its Loans other than its parent
+  Loans, and its addresses); a holder only a parent Loan names is reached past layer 1. Reason: a parent Loan protects the route; it
+  does not make the argument refer to that holder.
+- **Direct Loans** naming a holder: access path from the holder, no dereference, implicit receiver Borrows included; own or parent.
 - **S1.** A holder a store reaches past layer 1 retains none of the direct Loans naming it, unless its Type may refer into itself.
-- **S2 (Type condition).** A Type may refer into itself where a reference or raw layer it holds by value has a referent agreeing (3.8,
-  Origins aside) with it or an inline part (the raw clause, kept conservatively: OQ-2), or where an exclusive layer it holds by value lies
-  beside another reference or is repeated (fixed arrays of length other than 1, 4.9 collections). An abstract Type or part only where
-  the premises make it such a reference (a later borrow's fresh Origin cannot outlive the Type's own, 8.15.1). The extension: an
-  abstract part never refers into its holder's Loan from a shared borrow (S0's route 1 already gives it); exclusive-element collections
-  keep the Loan by the repeated clause.
-- **S5 (E as one node).** E reached by S0's routes 2 and 3 (parameter, capture, read through an exclusive borrow; static storage)
-  retains no exclusive route Loan: its Types are fixed outside the body, so a value carrying a body-local route Loan cannot fit (15.6.1).
-  Routes 4 and 5 (a raw layer without an Origin, an untied result) keep them.
-- **S6 (15.8.2).** A Closure's call retains a capture's own value only where the storage can hold the capture's Type or a borrow formed
-  through it, as 15.6.4 retains a part an argument holds by value.
+- **S2 (Type condition; fix round 1).** Three cases: a reference layer held by value or past an own step (a payload, a `during self`
+  layer, 4.9 elements) whose referent is identical, Origins aside (3.8, 15.6.1), to the Type or storage it holds the same way (B1:
+  elementBad); such a layer beside an abstract part; an exclusive layer beside another reference layer or repeated (a fixed array whose
+  length may be other than 1, a 4.9 collection). An abstract referent by identity premises (8.2.3); an abstract Type or part with no
+  reference beside it only by premises, a handed callable likewise (N10). Raw layers count in no case (N3, a precision choice; OQ-2's
+  raw clause is replaced by it). The extension: an abstract part never refers into its holder's Loan from a shared borrow (S0's route
+  1); exclusive-element collections keep the Loan by the repeated clause.
+- **S5 (E as one node; fix round 1).** A store's route Loans are the exclusive direct Loans by which it steps between the body's own
+  holders. E retains none of them where every step of the route from the parameter, capture or static root dereferences a safe borrow
+  (S0's items 2 and 3; B2), and keeps them where a raw layer without an Origin or an untied result's part lies on the route (items 4
+  and 5). Any other Loan the route's holders carry stays (B3: a Reborrow of a parameter's referent, leakBad).
+- **S6 (15.6.4 and 15.8.2; B4).** From a Closure's call receiver, a capture's own value is carried only where the result or storage can
+  hold the capture's Type or a borrow formed through it (15.6.4's per-argument sentence states the exception); 15.8.2 points there.
 
 ## 3. Soundness
 
@@ -37,7 +40,8 @@ A left-out Loan cannot be observed through the target: the stored value either r
 through it into storage the route's other Loans still guard; two exclusive routes to one referent need S2's second clause and keep it.
 S5: no route-2/3 storage can hold a value bounded by a body-local borrow. S6: storage that cannot hold the capture's Type cannot keep its
 own Loan. Must stay errors (phase A checked): laterWriterBad, chainBad, clearRcOk, laterAlloc and the raw forms, keptLentBad,
-1cfd105abdf6's `values@ref`, the exclusive twin (SPEC's `twinBad`), route cycles at depth 3, Types that refer into themselves, layer-1
+1cfd105abdf6's `values@ref`, the exclusive twin (SPEC's `twinBad`) and elementBad (both measured as errors in every mode in fix
+  round 1), leakBad, route cycles at depth 3, Types that refer into themselves, layer-1
 targets, addresses, raw stores and E by routes 4 and 5. Without E's route provenance, S5 would accept two raw forms (Raw twoLayers,
 viaUniqMixed): A5 needs E's route first (OQ-1).
 
@@ -45,13 +49,16 @@ viaUniqMixed): A5 needs E's route first (OQ-1).
 
 | Part | Where |
 | --- | --- |
-| Layer 1, direct Loans, S1, S2, S5 | SPEC §15.6.4 "Route Loans" paragraph; examples twoLayersRead/acrossLayersRead (valid) and twinBad |
-| S6 | SPEC §15.8.2, after the environment-retention sentence; example `outer<s/T>` (U-A1's cr1, valid) |
+| Layer 1, direct Loans, S1, S2, S5 | SPEC §15.6.4 "Route Loans" paragraphs; examples twoLayersRead/acrossLayersRead (valid), twinBad, elementBad, leakBad |
+| S6 | SPEC §15.6.4's per-argument sentence (the Closure-receiver exception) and §15.8.2; example `outer<s/T>` (U-A1's cr1, valid) |
 | `count<S>`'s comment | SPEC §15.6.4: its holder keeps no Loan naming it (S1, the lent item under S2) |
 | A5 H+C (Full) | S1, S2, S6 in `MirBorrows.Calls.Keep` and `MirTypes` (`Refers`); spec-cases `15.6.4-route-layers` and `15.8.2-capture-retention` land with it |
 | A5 E (Full) | S5 with E's route (OQ-1, an owner question: a route-2/3 marker or BU's raw steps) |
 | S2 (G264 U1) | after both, re-measured |
 | (e) | twoLent and replTOk, verbatim 「Add both to (e)」 (the owner, 2026-11-04) |
 
-Rejected: GXS as written in G148 (2) alone (it leaves E as one node and misses the exclusive twin); dropping route Loans from every E
-without provenance (the two raw forms above).
+Rejected: GXS as written in G148 (2) alone (it leaves E as one node and names only the target's direct Loans; its exclusive-reference
+clause is kept as S2's third case); dropping route Loans from every E without provenance (the two raw forms above).
+
+Fix round 1 (the SPEC review's REVISE, B1–B5 and N1–N10): the designer's replacement text for the "Route Loans" paragraph and for 15.6.4's
+per-argument sentence (B4) and 15.8.2's sentence, the examples elementBad and leakBad, and the records (R4-M73's line, R4-M170's note).

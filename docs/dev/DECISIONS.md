@@ -2117,6 +2117,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     order as A5's access scans on the states it reads (V16; MirBorrowsTest's shape: work 121596, 204840, 513216 at N = 32, 64, 128); a
     warm run allocates nothing.
   - Found, not this unit: rule G's raw clause misses Loans stored through raw pointers that W does not name (PLAN G160).
+  - Superseded in part by R4-M171 (GXS, 2026-11-04, the owner): "Rejected: ... GXS" and the "no loss" of a self-row returning a
+    route's Loan to its holder (twoLayersRead) and of E as one node no longer hold: SPEC 15.6.4's route Loans leave them out.
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0; its PD21 and §3.7
   superseded by DEC Q9) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
@@ -6451,6 +6453,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     on `claude/a5-g264-u1`, not on dev, and S2 removes it there); S3 (c80, a payload the final release frees) a separate unit after the
     owner's choice; S4 the pre-publication checks. Order S0, S1′, S2, S4, all before H5.
   - BU-52's interim: which of its shadow-only false errors S1′ resolves is recorded from S1′'s ledger comparison when S1′ lands.
+  - Note (R4-M171, the GXS SPEC review's N1): under S2 (G264 U1), `count<S>`'s validity also needs R4-M171's S1 for the lent item's
+    erased destruction past layer 1 (g264-s2-design §1): next, its item's destruction and the Iterator's write only the Iterator's
+    holder, which keeps no Loan naming it.
   - The owner's reading of the text (R7 plan RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」 (2026-11-04, R5's dialog, relayed by
     R5), after the SPEC review's re-check 3 ACCEPT on 6f7af7358. Made after that reading, without changing meaning (round 5): the
     soundness note that `later<T>` and `chain<T>` also err through item 5; the clause above on a raw layer past an exclusive layer;
@@ -6477,25 +6482,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
   session's OQ-4 (one SPEC revision with layer 1, S1, S2, S5 and S6) and OQ-2 (S2's raw clause kept, conservative); OQ-1, E's route, is
   A5's and does not change the text; proposal `draft/Changes/2026-11-04 GXS Route Loans.md`; class Owner, one SPEC review, the text to
   the owner before it lands, R7 plan RQ10 (a)) SPEC 15.6.4, 15.8.2.
-  - Rule (15.6.4 "Route Loans"): layer 1 is the holders the argument's own Loan and addresses name (a parent Loan's holder is past it);
-    the direct Loans naming a holder start at it and dereference nothing, own or parent; (S1) a holder a store reaches past layer 1
-    retains none of them unless its Type may refer into itself; (S2) a Type may where a reference or raw layer it holds by value has a
-    referent agreeing (3.8, Origins aside) with it or an inline part, or where an exclusive layer it holds by value lies beside another
-    reference or is repeated (a fixed array of length other than 1, a 4.9 collection); an abstract Type or part only where the premises
-    make it such a reference (a later borrow's fresh Origin cannot outlive the Type's own, 8.15.1); the extension's shared-borrow clause
-    is S0's route 1; (S5) E reached by S0's routes 2 and 3 retains no exclusive route Loan, routes 4 and 5 keep them. 15.8.2 (S6): a
-    Closure's call retains a capture's own value only where the storage can hold the capture's Type or a borrow formed through it.
-    S0's write routes (R4-M170) are unchanged.
-  - Replaces PLAN G148 (2) (GXS as first written: it named only the direct Loans of the target and left E as one node).
-  - Examples: 15.6.4's twoLayersRead and acrossLayersRead (valid), twinBad (errs at `t.0@follow = 3` and `inspect(t.1@follow@ref)`: S2's
-    exclusive clause), `count<S>`'s comment (its holder keeps no Loan naming it); 15.8.2's `outer<s/T>` (U-A1's cr1, valid). Spec-case
-    `15.6.4-route-twin` lands now (dev's MIR gives both records; the old path rejects the call by its earlier reservation rule, class
-    (a)); `15.6.4-route-layers` and `15.8.2-capture-retention` land with A5 H+C, since dev's MIR rejects them and MirCensusTest's
-    accepted-variant census would fail.
+  - Rule (15.6.4 "Route Loans", the designer's text after the SPEC review, B1-B5 and N1-N10): layer 1 is the holders the argument's
+    own value names (its Loans other than its parent Loans, and its addresses); a parent Loan's holder is past it. The direct Loans
+    naming a holder start at it and dereference nothing (a Borrow of it or an inline part, implicit receiver Borrows included), own or
+    parent. (S1) A holder a store reaches past layer 1 retains none of them unless its Type may refer into itself. (S2) Three cases: a
+    reference layer it holds by value or past an own step (a payload, a `during self` layer, 4.9 elements) has a referent identical,
+    Origins aside (3.8, 15.6.1), to the Type or storage it holds the same way (B1: elementBad); such a layer beside an abstract part; an
+    exclusive layer beside another reference layer or repeated (a fixed array whose length may be other than 1, a 4.9 collection). An
+    abstract referent is identical where the identity premises make it so (8.2.3); an abstract Type or part with no reference beside it
+    only where the premises make it such a reference, a handed callable likewise (N10), a binding's own store refuted by 8.15.1. Raw
+    layers count in no case (N3: a precision choice; raw access is 5.2.1's obligation). (S5) A store's route Loans are the exclusive
+    direct Loans by which it steps between the body's own holders; E retains none of them where every step from the parameter, capture
+    or static root dereferences a safe borrow (items 2, 3; B2), and keeps them where a raw layer without an Origin or an untied result's
+    part lies on the route (items 4, 5); any other Loan stays (B3: a Reborrow of a parameter's referent, leakBad). 15.6.4 (B4): from a
+    Closure's call receiver a capture's own value is carried only where the result or storage can hold the capture's Type or a borrow
+    formed through it; 15.8.2 (S6) points there. S0's write routes (R4-M170) are unchanged.
+  - Supersedes in part R4-M73 (its "Rejected: ... GXS" and the "no loss" of twoLayersRead's self-row and E as one node).
+  - Replaces PLAN G148 (2) (GXS as first written: it named only the direct Loans of the target and left E as one node); PLAN is the
+    planning session's to update. STATUS records the SPEC-valid examples the MIR still rejects through H5's Rec unit, per the (e) list.
+  - Examples: 15.6.4's twoLayersRead and acrossLayersRead (valid), twinBad (errs at `t.0@follow = 3` and `inspect(t.1@follow@ref)`,
+    S2's exclusive case) and elementBad (errs at `h.0.clear()` and `inspect(h.1)`, S2's owned-storage case), leakBad (errs at
+    `p@follow.clear()`, B3), `count<S>`'s comment (next, its item's destruction and the Iterator's write only the Iterator's holder);
+    15.8.2's `outer<s/T>` (U-A1's cr1, valid). The designer measured twinBad and elementBad as errors in every mode (N8). Spec-cases
+    `15.6.4-route-twin` (twinBad and elementBad) and `15.6.4-route-leak` land now (dev's MIR gives the records; the old path differs,
+    class (a)); `15.6.4-route-layers` and `15.8.2-capture-retention` land with A5 H+C, since dev's MIR rejects them and MirCensusTest's
+    accepted-variant census would fail. Twins that stay errors (MirBorrowsTest.Raw): twoLayers's `var b` and viaUniqMixed's `var w`
+    (items 4 and 5), with leakBad and c80.
   - Units: A5 H+C (Full: S1, S2, S6 in `MirBorrows.Calls.Keep` and `MirTypes`; F9 ×2, InputDependentValueCall, U-A1 ×4, `count<S>`
     and `hold<C>`), then A5 E (Full: S5 with E's route, OQ-1, an owner question; F15, MemberThroughLayers and S2's ForKoto rows; the
     two raw STOP rows stay), then S2 (G264 U1).
   - (e): twoLent (S5's Origin form) and replTOk (a 16.3.1 sentence), the owner, verbatim 「Add both to (e)」 (2026-11-04).
+  - For H+C (the designer's fix round 1): S1 covers every direct Loan, shared and exclusive, receiver Borrows included, so R4-M148's
+    views-3 records of pairStore*, pairCell*, selfPair and selfPairChild move (`v@follow = x` stays); the Type condition counts owned
+    storage, a reference beside an abstract part, no raw layer, and compares by identity (`MirTypes.Agree` or an identity premise);
+    layer 1 counts only the argument's own Loans and addresses; new rows elementBad, elementOk, exposeBad, twinBad (all errors).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
