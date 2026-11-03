@@ -13,6 +13,9 @@
 // wholly absent on every path, the flag mirroring the path's own bit; Open where a part may be missing: the components without a child
 // path follow the own bit, each child path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per
 // view. Flags are numbered in path order per body, so a subtree's flags are one range.
+// Invariant: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one its index names, of its code
+// at its subject, or for -1 its template's of that code and subject (an inline copy's, R4-M69) or MirReport's InternalInvariant_Kd (a merge
+// naming another requirement); generation's gate reads the mark.
 // Must not rewrite MIR, judge a Drop only check edges reach (SPEC 14.10.3), read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
