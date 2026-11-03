@@ -486,24 +486,45 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             (error.Code, Text(source, error.Span), error.Note));
     }
 
-    // SPEC 10.8, 8.10: with T bound by another argument, the Callable proof decides. A reference's Origin leaves only its Origin part
-    // Unknown (its own record at the argument); an overload that the other argument makes applicable is selected, since the environment
-    // result is no evidence and n binds T; a closure whose result is not over its environment is valid.
+    // SPEC 10.8, 8.10: with T bound by a reference to another place, the Callable proof decides; only its Origin part is Unknown, so the
+    // record is that proof's own, at the argument.
     [Fact]
-    public void AnEnvironmentResultLeavesABoundSlotToTheCallableProof()
+    public void ABoundSlotsReferenceIsJudgedByTheCallableProof()
     {
-        var declaration = "func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\n";
-        var reference = declaration + EnvironmentClosure + "    let n = values@ref\n    let r = make(c@ref, n, 2)\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(reference).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@ref"), (error.Code, Text(reference, error.Span)));
+        var source = "func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\n" + EnvironmentClosure +
+            "    let w: Array<i32> = [1]\n    let n = w@ref\n    let r = make(c@ref, n, 2)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@ref"), (error.Code, Text(source, error.Span)));
         Assert.StartsWith("F is Callable<() -> T> is not proven", error.Note, StringComparison.Ordinal);
+    }
 
-        var overload = "func make<T, U, F>(f: ref/F, t: T, u: U) -> i32\n    F is Callable<() -> T>\n    return 1\nfunc make<F>(f: ref/F, t: i32, u: i64) -> i32\n    return 2\n" +
-            EnvironmentClosure + "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n";
-        Assert.Empty(DiagnosticCorpus.Check(overload).Diagnostics);
+    // SPEC 10.8, 10.1 steps 4-5: when another argument or the expected result binds T, the environment result is no evidence and the
+    // candidate is judged by its proof: refuted (SPEC 8.10), so the overload applies (rows 1-2), or proven for a closure whose result is
+    // not over its environment (row 3).
+    [Theory]
+    [InlineData("func make<T, U, F>(f: ref/F, t: T, u: U) -> i32\n    F is Callable<() -> T>\n    return 1\nfunc make<F>(f: ref/F, t: i32, u: i64) -> i32\n    return 2\n" + EnvironmentClosure, "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n")]
+    [InlineData("func make<T, U, F>(f: ref/F, u: U) -> T\n    F is Callable<() -> T>\n    return $abort(\"x\")\nfunc make<F>(f: ref/F, u: i64) -> i32\n    return 2\n" + EnvironmentClosure, "    let r: i32 = make(c@ref, 2)\n")]
+    [InlineData("func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\npublic func main() -> ()\n    let c = func [] () => 5\n", "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n")]
+    public void ABoundEnvironmentSlotLeavesTheCandidateToItsProof(string declarations, string body)
+        => Assert.Empty(DiagnosticCorpus.Check(declarations + body).Diagnostics);
 
-        var twin = declaration + "public func main() -> ()\n    let c = func [] () => 5\n    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n";
-        Assert.Empty(DiagnosticCorpus.Check(twin).Diagnostics);
+    // SPEC 10.8 (traversal order never chooses a solution; DECISIONS BU-86): the environment judgment that decides is that of the first
+    // unsolved slot in slot order, whatever the order of the arguments. T is bound by n, U only by e's environment result, so each order
+    // twin, with or without an overload, is pending on U.
+    [Theory]
+    [InlineData("f: ref/F, g: ref/G", "c@ref, e@ref", false)]
+    [InlineData("g: ref/G, f: ref/F", "e@ref, c@ref", false)]
+    [InlineData("f: ref/F, g: ref/G", "c@ref, e@ref", true)]
+    [InlineData("g: ref/G, f: ref/F", "e@ref, c@ref", true)]
+    public void TheEnvironmentJudgmentIsChosenBySlotOrder(string closures, string arguments, bool overload)
+    {
+        var source = "func make<T, U, V, F, G>(" + closures + ", t: T, v: V) -> i32\n    F is Callable<() -> T>\n    G is Callable<() -> U>\n    return 1\n" +
+            (overload ? "func make<F, G>(" + closures + ", t: i32, v: i64) -> i32\n    return 2\n" : string.Empty) + EnvironmentClosure +
+            "    let w: Array<i32> = [1]\n    let e = func [w@move] () => w@ref\n    let n: i32 = 1\n    let r = make(" + arguments + ", n, 2)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(
+            (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(" + arguments + ", n, 2)", "The result of e over its environment is no evidence for U"),
+            (error.Code, Text(source, error.Span), error.Note));
     }
 
     [Trait("Purpose", "Allocation")]
