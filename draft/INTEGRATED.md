@@ -1286,3 +1286,17 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   「R9後でもいい？そしたら、draft/Proposalに計画書を書いて、今後の予定としてください。」. Binding publishes its Copy verdicts and the MIR validator,
   MirEffects, MirTypes.Destruction and code generation read them (units U0–U3b, after R9). No SPEC or IMPL mapping; nothing frozen; PLAN G406.
   Adoption implies no implementation support.
+
+## 2026-11-04 — Abstract-part reach integrated (G264 (S) S0)
+
+- No proposal file: the owner's instruction (R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」, the plan
+  「抽象部分の到達規則（(S)）」) maps to SPEC 15.6.4 (a value of an abstract Type reaches what its holder's Loans and addresses
+  reach, writing by provenance, never through a shared Loan, an untied result's E included (the owner's 「Yes, writable」); examples
+  `count<S>`, `later<T>`, `laterAlloc<T>` and `chain<T>`), 16.3.3 (such a part's destruction
+  stores within that reach; a handle payload whose View Target is an abstract Type is erased unless proven Sealed, Copy not emptying
+  it) and 5.7 (an access through a hidden raw layer beyond that reach is the declaring code's, 5.2.1); DECISIONS R4-M170, which
+  overrides Q1 (a) by (S), neither (a) nor (b). SPECJ follows in this unit (RQ10 (a)); GUIDE is not refreshed. Integration implies no
+  implementation support (S1′, S2). Revised after the one SPEC review's REVISE (B1–B5, N1) and its re-check (B6), with the owner's answer on untied results, and its re-check 2 (B7). Round 4 adds the owner's 15.6.4 sentence on raw layers an argument holds by value (the Q11 ruling on S1′'s
+  B2′, verbatim 「この方針で」; DECISIONS R4-M170), and `chain<T>` shows B7's reach through retention (its store
+  while another Loan lives is 5.2.1's raw access). The owner read the text (RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」
+  (2026-11-04); round 5's alignments change no meaning.

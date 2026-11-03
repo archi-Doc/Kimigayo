@@ -44,14 +44,17 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], out _))).ToArray());
     }
 
-    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4, 15.3.5; DECISIONS R4-M73, R4-M147): a call may write past a value that may hold, past no shared
-    // layer, an exclusive reference to storage that may hold a Loan: an exclusive reference, in an Array, a payload or a Field, a
-    // UniqSlice's elements, a Function value, a raw parameter's pointee, an abstract part (the owner's Q1 (a)) and a pair layer's exclusive
-    // case (the guard); not past a shared reference, through an exclusive reference or a raw pointer to Loan-free storage (a scalar,
+    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4, 15.3.5; DECISIONS R4-M73, R4-M147, R4-M170): a call may write past a value that may hold, past no
+    // shared layer, an exclusive reference to storage that may hold a Loan: an exclusive reference, in an Array, a payload or a Field, a
+    // UniqSlice's elements, a Function value, a raw parameter's pointee and a pair layer's exclusive case, an abstract one included (layer)
+    // (the guard); not past a shared reference, through an exclusive reference or a raw pointer to Loan-free storage (a scalar,
     // Utf8Writer's Loan<uniq/u8> and raw Fields), or through a struct's or enum's Type argument, which has no address (an iterator's, a
-    // Loan's). A stored raw layer is read by its step on its instance: a slot kept only by `ref` writes nothing past it, another slot its
-    // pointee and its exclusive members' referents (uniqKept), `during self` the holding instance's Type arguments by their actual Types
-    // (owned, ownedUniq), and an Origin-less layer its declaration states the write fact (cursor).
+    // Loan's). An abstract part in the value's own storage (value) writes by provenance, the named fact (SPEC 15.6.4's reach rule): an
+    // owner-decision reversal, the owner's G264 (S) instruction of 2026-11-04 (R4-M170) overriding the owner's Q1 (a) of 2026-10-25 (an
+    // abstract part may be an exclusive reference, Through). A stored raw layer is read by its step on its instance: a slot kept only by
+    // `ref` writes nothing past it, another slot its pointee and its exclusive members' referents (uniqKept), `during self` the holding
+    // instance's Type arguments by their actual Types (owned, ownedUniq), and an Origin-less layer its declaration states the write fact
+    // (cursor).
     [Fact]
     public void TheGuardSaysWhatACallMayWritePastAValue()
     {
@@ -74,7 +77,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             [("borrow", MirWrites.None), ("scalar", MirWrites.None), ("writer", MirWrites.None), ("shared", MirWrites.None),
                 ("unique", MirWrites.Through), ("array", MirWrites.Through), ("option", MirWrites.Through), ("slot", MirWrites.Through),
                 ("view", MirWrites.Through), ("scalars", MirWrites.None), ("action", MirWrites.Through), ("toRaw", MirWrites.Through),
-                ("value", MirWrites.Through), ("layer", MirWrites.Through), ("iterator", MirWrites.None),
+                ("value", MirWrites.Named), ("layer", MirWrites.Through), ("iterator", MirWrites.None),
                 ("loan", MirWrites.None), ("raw", MirWrites.Through), ("rawScalar", MirWrites.None), ("number", MirWrites.None),
                 ("refKept", MirWrites.None), ("uniqKept", MirWrites.Through), ("owned", MirWrites.None),
                 ("ownedUniq", MirWrites.Through), ("cursor", MirWrites.Through)],
@@ -182,9 +185,11 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     }
 
     // SPEC 15.8.2, IMPL 21.1.2 (DECISIONS R4-M148): a Closure value holds its environment's parts, a Tuple of its bindings: a captured
-    // exclusive reference to storage that may hold a Loan (exclusive), an abstract binding (abstract) and a Function value (function) let a
-    // call write past it; a shared reference, a `var` one included (shared), and an exclusive reference to a scalar (scalar) do not; a stored
-    // raw layer stepping Exclusive with unpublished members leaves it undecided (limit); scalars only hold no Loan (none).
+    // exclusive reference to storage that may hold a Loan (exclusive) and a Function value (function) let a call write past it; an abstract
+    // binding (abstract) writes by provenance (Named, SPEC 15.6.4: an owner-decision reversal, the owner's G264 (S) instruction of
+    // 2026-11-04, R4-M170, overriding the owner's Q1 (a)); a shared reference, a `var` one included (shared), and an exclusive reference to
+    // a scalar (scalar) do not; a stored raw layer stepping Exclusive with unpublished members leaves it undecided (limit); scalars only
+    // hold no Loan (none).
     [Fact]
     public void AClosureHoldsItsEnvironmentsParts()
     {
@@ -203,7 +208,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Empty(c.Binding.Issues);
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
-            ["Through", "None", "None", "no Loan", "Through", "Through", "Limit"],
+            ["Through", "None", "None", "no Loan", "Named", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
                 .Select(x => MirTypes.HoldsLoans(x.ClosureDefinition!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
     }

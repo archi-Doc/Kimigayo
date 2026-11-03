@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // Responsibility: the input fold of the one walk (StorageWalk; DECISIONS R4-M154, r2.3): the Value sources of each input
 // (RetentionSources, Source, Through: a value of its Type, of a part it holds by value, or a borrow formed through it, each named by its
 // layer's node with the layers it is formed through), whether a position can hold one (CanHold, Holds, Borrows, Fits), and whether an
-// abstract part keeps a raw input's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
+// abstract part keeps a raw source's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
 // them into a storage's Value kinds and pairs, and the hold walk reads HoldsRaw.
 // Inputs: the contract's instantiated inputs, the walk's visits, the nodes of a Type's own layers and arguments (OwnNodes), the parts a
 // value holds (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
@@ -233,15 +233,15 @@ public sealed partial class Binding
         return holds;
     }
 
-    // Whether an abstract part can hold a raw input's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
-    // callable the call may run may retain it there (rule 3), a fill of the input (retentionFills) at any part or at a carrier that,
-    // Origins erased, is the part or occurs in it (an associated projection's base); no premise makes an abstract part storage that can
-    // hold it (rule 2's one test, Storages: a carrier's closure reaches only the relations of those callables).
-    private bool HoldsRaw(BoundType part, int input)
+    // Whether an abstract part can hold a raw source's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
+    // callable the call may run may retain it there (rule 3), a fill (retentionFills) at any part or at a carrier that, Origins erased, is
+    // the part or occurs in it (an associated projection's base); no premise makes an abstract part storage that can hold it (rule 2's one
+    // test, Storages: a carrier's closure reaches only the relations of those callables).
+    private bool HoldsRaw(BoundType part)
     {
-        foreach (var (filled, at) in this.retentionFills)
+        foreach (var at in this.retentionFills)
         {
-            if (filled == input && (at is null || this.Occurs(part, at, 0)))
+            if (at is null || this.Occurs(part, at, 0))
             {
                 return true;
             }

@@ -151,8 +151,7 @@ public sealed partial class Binding
             shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation.Use));
             if (!ReferenceEquals(longer, shorter))
             {
-                var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed
-                    : obligation.Discharge == OriginDischarge.CallBorrows ? OriginRowSource.CallBorrows : OriginRowSource.Fit;
+                var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed : OriginRowSource.Fit;
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
                 unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask));

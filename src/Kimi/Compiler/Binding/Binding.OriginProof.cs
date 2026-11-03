@@ -22,12 +22,11 @@ public sealed partial class Binding
     // bounds of Origins omitted in open initializers are recorded for that call (FitsOriginOutlives).
     private bool collectingFits;
 
-    // SPEC 15.6.1, 23.1: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
-    // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or of a
-    // callee's result at its call (RequireResultPremises), or a Type's clause substituted at its occurrence (AddTypeClauseObligations),
-    // a declared relation.
-    internal static bool IsFitObligation(in BindingObligation obligation)
-        => obligation.Clause is null && !obligation.WellFormed && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
+    // SPEC 15.6.1, 23.1: whether an Origin obligation is a fit, reported at the value with the source `fit` and its destination. Its
+    // producer states any other kind where it forms it: `Clause` for a declared relation (a Type's clause substituted at its occurrence,
+    // AddTypeClauseObligations, or a written clause), `WellFormed` for the well-formedness of a Type occurrence (RetainInnerOutlives), of a
+    // callee's result at its call (RequireResultPremises) or of an input's instantiated Type (RequireInputPremises).
+    internal static bool IsFitObligation(in BindingObligation obligation) => obligation.Clause is null && !obligation.WellFormed;
 
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
