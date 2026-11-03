@@ -140,10 +140,11 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
-    // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222), while the same Move through a reference Field has no Move Path,
-    // also inside a raw Place. A Place a function publishes never offers Take, whatever root holds its reference: its bare Move is SPEC
-    // 3.5's error and its explicit one a shared path's (SPEC 15.1.5), both Binding's since R6-check H1 (TransferJudgmentTest), so no MIR
-    // Move Path is asked.
+    // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222). A Place a function publishes never offers Take, whatever root
+    // holds its reference: its bare Move is SPEC 3.5's error and its explicit one a shared path's (SPEC 15.1.5), both Binding's since
+    // R6-check H1 (DECISIONS BU-84; TransferJudgmentTest), so no MIR Move Path is asked. A referent through a reference Field offers no
+    // Take either, also inside a raw Place: its bare Move is Binding's TransferRequired_Kd since H1 (G222's MIR StaticMovePathRequired_Kd
+    // before).
     [Fact]
     public void AMoveNeedsAMovePath()
     {
@@ -154,9 +155,12 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Empty(Problems("func take(s: string) => ()\nfunc f(pointer: raw/string)\n    unsafe\n        let first = (*pointer)@move\n" +
             "        let second = (*pointer)@move\n        take(first@move)\n        take(second@move)\n"));
         Assert.Empty(Problems(Lens + "func f(lens: uniq/Lens)\n    unsafe => _ = (*lens.at)@move\n"));
+        var lent = MirBuildTest.Compile(
+            Lens + "func f(lens: uniq/Lens)\n    let s = lens.to@follow\nfunc g(p: raw/Lens)\n    unsafe\n        let s = (*p).to@follow\n");
         Assert.Equal(
-            ["StaticMovePathRequired_Kd lens.to@follow 1", "StaticMovePathRequired_Kd (*p).to@follow 1"],
-            Problems(Lens + "func f(lens: uniq/Lens)\n    let s = lens.to@follow\nfunc g(p: raw/Lens)\n    unsafe\n        let s = (*p).to@follow\n"));
+            ["TransferRequired_Kd lens.to@follow", "TransferRequired_Kd (*p).to@follow"],
+            lent.Binding.Issues.Select(static x => $"{x.Code} {x.Node.ToString().Split('\n')[0]}"));
+        Assert.Empty(Problems(lent));
         Assert.Equal(
             ["StaticMovePathRequired_Kd values[i] 1", "StaticMovePathRequired_Kd values[i] 1"],
             Problems("func take(s: string) => ()\nfunc f(values: Array<string>, i: isize)\n    take(values[i]@move)\n    take(values[i]@move)\n"));
