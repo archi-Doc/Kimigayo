@@ -129,13 +129,9 @@ public class IteratorOriginEffectsTest
     // An immutable local holding the item is not destroyed when the very next statement transfers it, directly or as a match
     // Subject whose arms transfer the payload.
     [Theory]
-    [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("let first = self.inner.next()\n        return first@move")]
     [InlineData("let first = self.inner.next()\n        self.steps += 1\n        return first@move")] // G28: effects that cannot leave the block
     [InlineData("var first = self.inner.next()\n        self.steps += 1\n        return first@move")]
-    [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        loop\n            i += 1\n            if i == 2 => exit\n        self.steps += i\n        match first@move\n" +
-        "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
-    [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("let first = self.inner.next()\n        label outer: loop\n            loop\n                if self.steps > 5 => exit to outer\n                exit\n            exit\n        return first@move")] // A Label inside the gap
     [InlineData("let first = self.inner.next()\n        let step: i32 = if self.steps > 0\n            self.steps -= 1\n            yield 1\n        else => 0\n        self.steps += step\n        return first@move")] // A yield inside the gap
     [InlineData("let first = self.inner.next()\n        defer => self.steps += 1\n        return first@move")] // The destructions are the planned cleanups, so a defer,
@@ -143,13 +139,19 @@ public class IteratorOriginEffectsTest
     [InlineData("var first = self.inner.next()\n        while self.steps < 0\n            let skipped = first@move\n            self.steps += 1\n            return skipped@move\n        return first@move")] // or a transfer inside one is not a syntactic boundary.
     public void AWrapperMayHoldAnItemInALocalBeforeTransferringIt(string body)
     {
-        var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
-            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
-        var source = Counter + wrapper + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
-            "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
-        var c = Bounded(source);
+        var c = Bounded(HoldSource(body));
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
+
+    // H3b T32a: the forms of AWrapperMayHoldAnItemInALocalBeforeTransferringIt that match the held item, under PLAN G220 (see
+    // AssertRefusedPendingG220).
+    [Theory]
+    [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        loop\n            i += 1\n            if i == 2 => exit\n        self.steps += i\n        match first@move\n" +
+        "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
+    public void AWrapperMatchingItsHeldItemIsRefusedPendingG220(string body)
+        => AssertRefusedPendingG220(Bounded(HoldSource(body)), "Hold");
 
     // G28: an item held across effects executes, and the effects run once per step.
     [Fact]
@@ -271,7 +273,7 @@ public class IteratorOriginEffectsTest
     public void ALoopMayContinueWithItsReinitializedItem()
     {
         var c = Bounded(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        AssertRefusedPendingG220(c, "LoopRetry"); // H3b T32a, PLAN G220 (see AssertRefusedPendingG220)
     }
 
     // A `continue` that leaves a match arm drops the payload bound there.
@@ -353,7 +355,7 @@ public class IteratorOriginEffectsTest
     public void AnArmValueStoringThePayloadIsAccepted()
     {
         var c = Bounded(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        AssertRefusedPendingG220(c, "Pick"); // H3b T32a, PLAN G220 (see AssertRefusedPendingG220)
     }
 
     // An arm that yields another value, or a match result left to its scope, destroys the payload.
@@ -382,12 +384,16 @@ public class IteratorOriginEffectsTest
 
     [Theory]
     [InlineData("match self.steps\n            0 => first@move\n            _ => first@move\n        return chosen@move\n")]
-    [InlineData("match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n")]
     public void AMatchDeliveringTheItemIsAccepted(string tail)
     {
         var c = Bounded(Choose + tail);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
+
+    // H3b T32a: AMatchDeliveringTheItemIsAccepted's form that matches the held item, under PLAN G220 (see AssertRefusedPendingG220).
+    [Fact]
+    public void AMatchOfTheHeldItemIsRefusedPendingG220()
+        => AssertRefusedPendingG220(Bounded(Choose + "match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n"), "Choose");
 
     // A branch that delivers another value leaves the item to its scope.
     [Theory]
@@ -510,6 +516,23 @@ public class IteratorOriginEffectsTest
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n            " + arm + "\n            .None => return .None\n";
         var c = Bounded(source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    private static string HoldSource(string body)
+        => Counter + "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n" +
+            "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
+
+    // H3b T32a, PLAN G220 (behind GXS, per R4): A1/A2 keep no selected-Case fact at an owned match Subject, so in an arm whose Case
+    // leaves no payload A4 still composes the payload's unknown destructor at the Subject's destruction, and the conformance to the
+    // confined Feed is refused: one IncompatibleContractImplementation_Kd at `type`'s `Self is Feed`, where the old analysis verified it.
+    // H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): G220's fix restores the acceptance and re-points these rows back.
+    private static void AssertRefusedPendingG220(Compilation c, string type)
+    {
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Analysis.IsVerified);
+        MirTargetSide.Check(c, (DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At($"struct {type}<I>\n    I is Feed\n    Self is Feed", "Self is Feed")));
     }
 
     private static Compilation Bounded(string source)
