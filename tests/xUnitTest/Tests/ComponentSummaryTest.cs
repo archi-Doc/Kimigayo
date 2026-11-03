@@ -231,7 +231,9 @@ public class ComponentSummaryTest
     // meets the existing generation limits with it, as with any value of that Type, on every pipeline (DECISIONS R5-M156): each call
     // requesting an instance over Chain<i32>, whose storage walk passes Binding's bound, is the capability table's storage-nesting gap
     // (PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle, Chain<(T, T)> at each step, so the collector
-    // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form.
+    // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form. Since the MIR
+    // decides acceptance (R6-check H5), A5's walk over the value also meets its depth bound at each call, a located OwnershipDepthLimit_Kd
+    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13).
     [Fact]
     public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
@@ -240,7 +242,9 @@ public class ComponentSummaryTest
             "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(
-            "Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move) | GenerationResourceLimit_Kd c@move", MinimalEmissionTest.Problems(c));
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | " +
+                "Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move) | GenerationResourceLimit_Kd c@move",
+            MinimalEmissionTest.Problems(c));
     }
 
     // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing, a family's settled limit included.

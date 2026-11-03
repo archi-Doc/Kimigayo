@@ -158,7 +158,13 @@ public class GenericDefaultTest
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), DiagnosticSeverity.Error, DiagnosticCategory.Language), (record.Code, record.Severity, record.Category));
         Assert.Equal(source.IndexOf("copied = x\n    exit", StringComparison.Ordinal), record.Span!.Value.Start);
-        Assert.Contains(record.Related!, related => related.Role == "loan" && related.Span is { } span && source.Substring(span.Start, span.Length) == "let r = copied@ref");
+
+        // A5's record (R6-check H5; H3b T49, class 3) relates the borrow that created the Loan and the later use of the value retaining it,
+        // as A5 publishes them, not the holder's declaration `let r = copied@ref`, and has no Note.
+        Assert.Equal(
+            [("borrow", "copied@ref", "borrow that created the loan"), ("loan", "inspect(r)", "later use of the value retaining the conflicting loan")],
+            record.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Null(record.Note);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
