@@ -96,6 +96,10 @@ public class Utf8TryWriteTest
         NativeAllocationAudit.WriteFixture("Utf8TryWriteReturn", Source + "\n" + Print, 0, 0, 0, "prefix\n");
     }
 
+    // SPEC 14.10.3, 15.6.4 (H3b F14): a Never writer operand forms no argument, so the formatting row keeps a declared atom no argument
+    // replaces and A2 records its located limit; the MIR rejects this valid program and generation refuses it (the old analysis accepted and
+    // ran it). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1, question 3; BU's PLAN G410): G410's Binding fix restores the
+    // acceptance and re-points this test back to its run.
     [Fact]
     public void FirstOperandCanTransferControlWithoutAcquiringAWriter()
     {
@@ -104,7 +108,11 @@ public class Utf8TryWriteTest
                 _ = $tryWrite(do => return 7, "\(42)")
             require run() == 7 else => $abort("first operand")
             """;
-        ScalarEmissionTest.EmitFixture("Utf8TryWriteFirstNever", Source, string.Empty);
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.Unsupported_Kd, new("$tryWrite(do => return 7, \"\\(42)\")")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -156,7 +164,11 @@ public class Utf8TryWriteTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
-    [Trait("Purpose", "Allocation")]
+    // SPEC 15.6.4 (H3b T30, F15): the acquired writer keeps the direct Loans naming its own target past layer 1, so the MIR rejects this
+    // valid program by the SPEC's letter (at the ends of `bytes` and `buffer` and at `buffer.text()`) and generation refuses it; the old
+    // analysis accepted it, and the fixture's native audit ran it with no allocation ("acquire\n42true\n"). A refused program has no run
+    // to audit, so the audit and the Allocation purpose wait with it. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1):
+    // PLAN G148 (2), GXS adopted with its extension, restores the acceptance and re-points this test back to its zero-allocation audit.
     [Fact]
     public void BorrowedWriterExpressionEvaluatesOnce()
     {
@@ -169,7 +181,13 @@ public class Utf8TryWriteTest
         var source = Prefix + "\n" + Setup + "_ = $tryWrite(acquire(writer@uniq), \"\\(42)\\(true)\")\n" + Print;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        NativeAllocationAudit.WriteFixture("Utf8TryWriteAcquire", source, 0, 0, 0, "acquire\n42true\n");
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var bytes = [64 of 0@u8]")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var buffer = Text.fixed(bytes@uniq)")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("match buffer.text()", "buffer")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
