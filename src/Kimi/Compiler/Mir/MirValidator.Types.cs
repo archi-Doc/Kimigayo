@@ -7,11 +7,11 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, Agrees: MirTypes.Agree, modulo Origins, or as the body's premises
 //   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts); every Semantics case view resolves each Adapt (Views), whose exclusive borrow there is W1 rule 1's
-//   (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
+//   Adapts); every Semantics case view resolves each Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule
+//   1's (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
-// - Outputs: Type, Operation and SharedPath findings; the Adapts whose Places and token are in range, for Views; the unknown mask Unknown
-//   gives the checker (a flag per local).
+// - Outputs: Type, Operation and SharedPath findings; the Adapts whose Places and token are in range and the PairAcquire Uses whose Place
+//   is, for Views; the unknown mask Unknown gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
 // - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures', but
@@ -71,7 +71,9 @@ internal sealed partial class MirValidator
     {
         // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), a borrow or an address takes a
         // Place of its reference's referent Type there, and an exclusive borrow passes no shared layer under the view's cases (W1 rule 1,
-        // MirValidator.SharedPaths); one finding per Adapt, at the first view that breaks one of them.
+        // MirValidator.SharedPaths); a PairAcquire's Place, where the view makes it Reborrow (MirCases.Reborrows; SPEC 3.5's rows, the owner
+        // case's target included, DECISIONS R5-M139's (b2) line), passes none either; one finding per Adapt or PairAcquire, at the first
+        // view that breaks one of them.
         internal void Views(MirCases cases)
         {
             var views = MirCases.Count(body);
@@ -81,6 +83,18 @@ internal sealed partial class MirValidator
                 for (var view = 0L; view < views; view++)
                 {
                     var assignment = cases.Select(body, view);
+                    if (adapt.Kind == MirRvalueKind.Use)
+                    {
+                        ref readonly var acquire = ref body.Operands[adapt.Start];
+                        if (cases.Reborrows(acquire) && this.IsSharedPath(acquire.Place, assignment))
+                        {
+                            this.Report(MirViolation.SharedPath);
+                            break;
+                        }
+
+                        continue;
+                    }
+
                     var resolved = cases.Adapt(adapt, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
@@ -221,6 +235,10 @@ internal sealed partial class MirValidator
                 {
                     adapts.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
                 }
+            }
+            else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire && this.IsValid(acquire.Place))
+            {
+                adapts.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
             }
 
             for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)
