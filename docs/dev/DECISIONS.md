@@ -6374,17 +6374,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     of independent records does not occur); copyRcLate errs (payload not proven Sealed; head's acceptance was a regression); a T built
     from a `Raw.allocate` result keeps E by provenance (allocBad, SPEC 15.6.4's `laterAlloc<T>`: x derives from the raw pointer m through
     no shared layer, so setQ and the erased drop may store q in E, and `y@follow = 6` errs); a drop writing a Loan into a static Field keeps the unknown environment effect
-    (a raw write to static storage then used is 5's undefined behavior); `chain<T>` (x addresses pp, pp addresses slot, then `x.setQ` while
-    `rs = slot@ref` lives) errs at `x.setQ` through item 1's reach on from pp (the review's B7; dev's MIR accepts it, a spec-case
-    Mir difference S1′ removes); 1cfd105abdf6 (AC-U1's read while the item lives) stays a
+    (a raw write to static storage then used is 5's undefined behavior); `chain<T>` (x addresses pp, pp addresses slot, `x.setQ(q: w@raw@raw/u8)`,
+    `consume(x@move)`) errs at `y@follow = 5` through item 1's reach on from pp (the review's B7; dev's MIR gives it too, no Mir
+    difference); its concrete twin (`HoldP`'s `setQ` doing `unsafe => **self.p = q` while `rs = slot@ref` lives) and directRsBad
+    (`unsafe => *pp = slot` while rs lives) are accepted on dev (S1′'s designer, dev 358761f2b, `g264s1p-probe/b7c.kimi`): a raw store
+    conflicting with a live shared Loan on its target is 5.2.1 condition 4's undefined behavior, no compile check, and not S1′'s; 1cfd105abdf6 (AC-U1's read while the item lives) stays a
     correct error and is a row S1′'s ledger must keep. The review's tries (a borrow the binding turns into a hidden pointer, a pointer
     stashed in static storage, Loan-carrying values stored in E) fall under 5.2.1 conditions 3 and 5 and the claims rule.
   - Units: S0 this SPEC revision, its examples (15.6.4's `count<S>` valid, `later<T>` invalid at `y@follow = 5` and `laterAlloc<T>` at
-    `y@follow = 6`, and `chain<T>` at `x.setQ`; spec-cases `15.6.4-abstract-writer` and `15.6.4-abstract-chain`), SPECJ and INTEGRATED. S1′ (Major), replacing S1, whose "Loan facts only" accepted laterWriterBad and
+    `y@follow = 6`, and `chain<T>` at `y@follow = 5`; spec-cases `15.6.4-abstract-writer` and `15.6.4-abstract-chain`), SPECJ and INTEGRATED. S1′ (Major), replacing S1, whose "Loan facts only" accepted laterWriterBad and
     stopped (its finding): `MirTypes.Holding.Holds` reads an abstract part as reaching the holders its Loans and addresses name, writing
     by 15.6.4's provenance list (its design Revision 1: Φ_W, E reached through no shared layer, issued at every E provenance with Φ_E
     and stripped by reads through a shared Loan; the named step writes the holders of exclusive Loans and addresses, and E where Φ_W, and W goes on past a named holder by reads
-    through no shared layer, as SPEC 15.6.4's item 1 says: `chain<T>`, which dev's A5 accepts, must err at `x.setQ`),
+    through no shared layer, as SPEC 15.6.4's item 1 says: the chain reach needs no new code (W walks x → pp → slot), pinned by chainBad
+    and the spec-case `15.6.4-abstract-chain`'s error at `y@follow = 5`),
     never E on account of the hidden layer; it records from its
     ledger the change of R4-M148's rule-G self-store bullet ("which R4-M147's Q1 (a) lets be an exclusive reference") and BU-49's
     "R4-M147 Q1 (a)"; it adds the spec-case `15.6.4-abstract-reach` (`count<S>`: it lands with S1′, since MirCensusTest's

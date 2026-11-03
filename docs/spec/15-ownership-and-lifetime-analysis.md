@@ -680,19 +680,23 @@ func laterAlloc<T>(y: uniq/i32)
     unsafe => Raw.release(m)
 ```
 
+Writes go on past the holders a value's addresses name by reads through no shared layer (item 1). A store that a binding makes in such a holder while another Loan on it lives is its raw access under [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) (condition 4), as in a concrete method, not an error of the call; what the call may store there is retained:
+
 ```kimi
 contract MakeP
     func make(p: raw/(raw/(raw/u8))) -> Self
     func setQ(self: uniq/Self, q: raw/u8)
 
-func chain<T>()
+func chain<T>(y: uniq/i32)
     T is MakeP
+    let w = y@follow@ref
     var slot: raw/u8 = null
     var pp: raw/(raw/u8) = slot@raw     // pp addresses slot.
     var x = T.make(p: pp@raw)           // x addresses pp.
-    let rs = slot@ref
-    // x.setQ(q: null)                  // Error: setQ may write slot, reached on from pp by a read, while rs is live.
-    inspect(rs)
+    x.setQ(q: w@raw@raw/u8)             // setQ may store q in slot, reached on from pp by a read.
+    consume(x@move)
+    // y@follow = 5                     // Error: slot may retain w's address, reached on from pp; slot is used below.
+    usep(slot)
 ```
 
 **Effect summaries.** A callable's **effect summary** lists the static Fields ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) whose storage it may access with its reads, borrows, writes, replacements, destructions and first-access initializations. It includes the effects of its callees, of every implementation in its closed explicit-specialization set ([§12.7.2](12-expressions.md#1272-implementation-families)), and of defaults, accessors, lazy initialization and cleanup. It is computed once per declaration, in terms of its own Type parameters, as the least fixed point over recursive calls. Its **parameter-dependent effects** are those it keeps in terms of a Type parameter or an associated-Type projection: destructions of such a Type not proven Copy ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)), the user-code effects of published operations on such a Type ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)) and calls through Callable inputs. When a summary would keep one on a projection one of whose bases (its base, that base's base, and so on) the premises of the summary's declaration prove to conform to a recursive Contract ([§8.3.3](08-generics-constraints-and-contracts.md#833-recursion-and-finality)), it has unknown environment effects instead. The other parameter-dependent effects have a bounded projection depth, so the fixed point is finite. Calls through Callable inputs are recorded once per input and receiver mode and composed with the actual arguments at each use. Conformance effect bounds are checked against the completed summaries ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)).
