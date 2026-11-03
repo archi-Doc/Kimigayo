@@ -66,12 +66,19 @@ public class RequireRecoveryDiagnosticTest
 
     // SPEC 23.1.2: a written failure body is judged on its own also inside an expression whose own check failed: an indented do body
     // supplies Unit (SPEC 14.2), which does not fit the default's i32, and that failure does not explain the failure body that completes.
+    // Since the MIR decides acceptance (H5, DECISIONS R5-M185) that independent RequireFallthrough_Kd at `()` is lost: Binding's HIR
+    // publisher keeps no resolved part under an Error (R5-M63's residual line), so the body reaches A3 Opaque. H5's (e) list (the owner,
+    // 2026-11-04, 「(a) H5 の (e) 一覧に加える」, board O-5): PLAN G414 restores the record, and this row then asserts it again.
     [Fact]
     public void AFailureBodyInARejectedExpressionIsJudgedOnItsOwn()
     {
-        var published = Publish(MinimalEmissionTest.Analyze("func value(c: bool, y: i32 = (do\n    require c else => ()\n    7\n)) -> i32 => y\nlet v = value(true)"));
-        Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.RequireFallthrough_Kd)], published.Select(static x => x.Code));
-        Assert.Equal("()", Assert.Single(published, static x => x.Code == nameof(DiagnosticCode.RequireFallthrough_Kd)).Text);
+        const string source = "func value(c: bool, y: i32 = (do\n    require c else => ()\n    7\n)) -> i32 => y\nlet v = value(true)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Accepts);
+        var published = Publish(c);
+        var mismatch = Assert.Single(published);
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), source.IndexOf("do\n", StringComparison.Ordinal), "do\n    require c else => ()\n    7"), (mismatch.Code, mismatch.Span.Start, mismatch.Text));
+        Assert.DoesNotContain(published, static x => x.Code == nameof(DiagnosticCode.RequireFallthrough_Kd));
     }
 
     [Theory]
