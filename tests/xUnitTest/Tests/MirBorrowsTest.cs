@@ -1972,7 +1972,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var program = Analyze(c);
         Assert.Equal(
             ["OwnershipDepthLimit_Kd Nest<ref/i32 during a>", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"], // The parameter's at its Type (BU-48 (a)).
-            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
@@ -2493,7 +2493,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // A program's problems of some codes in its own bodies: function and the subject's first line, with the code unless it is a comparison's.
     private static string[] Problems(Compilation c, MirProgram program, DiagnosticCode[] codes)
     {
-        return [.. program.Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
+        return [.. program.Problems.All.ToArray().Where(x => !x.IsRecord && codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;

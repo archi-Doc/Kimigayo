@@ -42,10 +42,17 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
     internal const byte Deep = 16;
 
+    /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
+    /// a call through it.</summary>
+    internal const byte Drop = 0;
+
+    /// <summary>An atom's kind: a call through its Type with a shared borrow, as a published row's Callable input is called.</summary>
+    internal const byte Shared = 1 + (int)SemanticsKind.Ref;
+
+    /// <summary>An atom's kind: a published requirement on its Type (SPEC 4.9.6).</summary>
+    internal const byte Requires = byte.MaxValue;
+
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
-    private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
-    private const byte Shared = 1 + (int)SemanticsKind.Ref; // (a published row's Callable input is called through a shared borrow),
-    private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
@@ -408,8 +415,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return cases.Views(body, subst);
     }
 
-    // An atom of a summary or a local input: a Type and a kind (Drop, 1 + a call's receiver, or Requires with its requirement).
-    private readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement);
+    /// <summary>An atom of a summary or a local input: a Type and a kind (<see cref="Drop"/>, 1 + a call's receiver, or
+    /// <see cref="Requires"/> with its requirement).</summary>
+    /// <param name="Type">The Type.</param>
+    /// <param name="Kind">The kind.</param>
+    /// <param name="Requirement">The requirement of a <see cref="Requires"/> atom.</param>
+    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement);
 
     // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);

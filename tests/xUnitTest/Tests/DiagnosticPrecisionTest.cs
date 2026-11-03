@@ -209,8 +209,10 @@ public class DiagnosticPrecisionTest
     }
 
     // SPEC 4.7.1, 5.3, 23.1.2: an index key that fits no conformance, Dictionary key or pointer offset is reported once, with
-    // both Types at the key or at the index expression, and a receiver without indexing is a Language error.
+    // both Types at the key or at the index expression, and a receiver without indexing is a Language error; a user index through
+    // a pair layer is the located limit (PLAN G179).
     [Theory]
+    [InlineData("func g<s/T>(value: s/T, x: s/View)\n    s is owner or uniq\n    let a = x[0]", "Unsupported_Kd", "x[0]", null)]
     [InlineData("let a = v[^1]", "NoApplicableOverload_Kd", "v[^1]", null)]
     [InlineData("let n: i32 = 0\nlet a = v[n]", "NoApplicableOverload_Kd", "v[n]", null)]
     [InlineData("let a = v[0..1]", "NotIndexable_Kd", "v[0..1]", null)]

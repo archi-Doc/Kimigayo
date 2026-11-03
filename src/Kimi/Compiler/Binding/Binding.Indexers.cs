@@ -83,10 +83,11 @@ public sealed partial class Binding
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {
         result = null;
-        var core = receiver;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        var core = receiver is null ? null : ComparisonReferent(receiver); // SPEC 3.4.3: selection continues at the referent.
+        var layered = core;
+        if (TryPairLayer(core, out _, out _))
         {
-            core = core.Components[0]; // SPEC 3.4.3: selection continues at the referent.
+            core = ComparisonReferent(this.ComparisonThroughPairs(source.Left, core!)); // SPEC 13.5.5: and past each followable pair layer.
         }
 
         // SPEC 4.7, 4.7.1: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
@@ -138,6 +139,14 @@ public sealed partial class Binding
         else
         {
             return false;
+        }
+
+        if (!ReferenceEquals(core, layered))
+        {
+            // A user index selected through a pair layer is not implemented (PLAN G179); the key is still bound for its own failures.
+            this.BindNode(source.Right, scope);
+            result = this.Fail(source, BindingFailure.Unsupported);
+            return true;
         }
 
         this.uniqIndexing[source] = new(exclusiveAvailable, uniq);

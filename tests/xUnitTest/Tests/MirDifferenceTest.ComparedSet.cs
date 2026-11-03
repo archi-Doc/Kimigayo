@@ -96,7 +96,7 @@ public sealed partial class MirDifferenceTest
     [Fact]
     public void MirProblemsNameRequirementsOfTheComparedSet()
     {
-        var problems = MirBuildTest.Compile(MirAnalysisTest.Requirements).BuildMir().Problems.All.ToArray();
+        var problems = MirBuildTest.Compile(MirAnalysisTest.Requirements).BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord).ToArray();
         Assert.NotEmpty(problems);
         Assert.All(problems, static x => Assert.True(MirDifferenceLedger.MirAnalysisOf(x.Requirement, x.Code) is not null, $"{x.Code} {x.Requirement}"));
     }

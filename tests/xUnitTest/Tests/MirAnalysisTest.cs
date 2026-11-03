@@ -141,6 +141,33 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, report.All.Length);
     }
 
+    // R6-check H3-1 (R4 review B1): a construction or collection record is a ControlFlow problem of every view whose body is its class, once
+    // per class, code and subject, so a construction and a collection record at one subject stay two, as today's two lists keep them, and
+    // neither merges with a NoBody problem there (an A4 limit); a class's rows are MirProgram.Records', and Clear resets them with the bodies.
+    [Fact]
+    public void ARecordIsAProblemOfItsClass()
+    {
+        var program = new MirProgram();
+        var site = new SourceRef(0, 5);
+        program.Report(site);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1));
+        program.Report(site);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        Assert.Equal(
+            [
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, ulong.MaxValue),
+                new MirProblem(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1),
+            ],
+            program.Problems.All.ToArray());
+        Assert.Equal([true, true, false], program.Problems.All.ToArray().Select(static x => x.IsRecord));
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Construction));
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Collection));
+        program.Clear();
+        Assert.Equal(0, program.Problems.All.Length);
+    }
+
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
     // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]
@@ -266,7 +293,7 @@ public sealed class MirAnalysisTest
                 "ComparisonLoanConflict_Kd a = 2 1", "MovedPlace_Kd s 1", "MovedPlace_Kd var box = Box.init(make()) 1",
                 "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: z@ref) 1", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: z@ref) 3",
             ],
-            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            c.BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}").Order(StringComparer.Ordinal));
     }
 
@@ -336,7 +363,7 @@ public sealed class MirAnalysisTest
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
                 "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
             ],
-            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            c.BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
     }
 
@@ -360,7 +387,7 @@ public sealed class MirAnalysisTest
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
                 "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
-            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
     }
@@ -410,9 +437,10 @@ public sealed class MirAnalysisTest
     {
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        var views = program.Bodies.ToArray().Select(x => program.Drops.ViewsOf(x.Ordinal)).ToArray();
+        var analyzed = c.BuildMir();
+        Assert.Empty(analyzed.Findings);
+        var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
         program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
         broken.HasFinding = true;
@@ -467,6 +495,42 @@ public sealed class MirAnalysisTest
         }
     }
 
+    // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
+    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem its index names, of its code at its subject, or for
+    // an inline default copy's (-1) its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
+    // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
+    [Fact]
+    public void AMarkedBodyHasAnError()
+    {
+        var arena = "func f(flag: bool) -> i32\n" + string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    var v{n} = {n}\n")) +
+            string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    if flag => v{n} = 1\n")) + "    return 0\n";
+        var marks = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var source in new[] { Requirements, MirDropTest.Indices, arena })
+        {
+            var program = MirBuildTest.Compile(source).BuildMir();
+            var problems = program.Problems.All.ToArray();
+            foreach (var body in program.Bodies.ToArray())
+            {
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at, var index))
+                {
+                    var subject = body.Subject(at);
+                    var kept = index >= 0 ? (problems[index].Code, problems[index].Subject, problems[index].Body) == (code, subject, body.Ordinal)
+                        : Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
+                    var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
+                    Assert.True(kept && error, $"{body.Key.Kind} {code} #{index}");
+                    marks.Add($"{body.Key.Kind} {code} {(index >= 0 ? "own" : "copy")}");
+                }
+            }
+        }
+
+        Assert.Equal(
+            [
+                "DefaultTemplate MovedPlace_Kd own", "Fn MovedPlace_Kd copy", "Fn MovedPlace_Kd own", "Fn OwnershipStorageLimit_Kd own",
+                "Fn ReassignedLet_Kd own", "Fn StaticMovePathRequired_Kd own", "Fn UninitializedPlace_Kd own",
+            ],
+            marks);
+    }
+
     // G308 S3 (V16): the analyses (A1-A6) of the program of P_n's equality (MirBuildTest.Dag) at n = 16 and 20 have no problem. Fails before
     // G308: the comparison's body builds its 2^n leaves, whose arena exceeds A1's, OwnershipStorageLimit_Kd at n = 16.
     [Fact]
@@ -497,13 +561,13 @@ public sealed class MirAnalysisTest
         Assert.True(c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
         Assert.True(c.Bind().IsComplete);
-        var program = c.BuildMir();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         var library = c.SourceModules.Length;
         Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
         new MirAnalysis(c.Types).Run(program, library + 1);
-        Assert.Equal([], program.Records.Select(x => $"record {x.Code} {Line(c, x.Subject)}")
+        Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
             .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
-            .Concat(program.Problems.All.ToArray().Select(x =>
+            .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
                 $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Bodies[x.Body].Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
     }
 

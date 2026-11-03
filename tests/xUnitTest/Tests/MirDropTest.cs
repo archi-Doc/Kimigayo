@@ -14,15 +14,15 @@ namespace XunitTest;
 /// verdict groups and each location's flag points, without source suffixes) and the problems <c>Compilation.BuildMir</c> finds.</summary>
 public sealed partial class MirDropTest(ITestOutputHelper output)
 {
+    // A default holding ledger row a1-whole-incomplete's form (a fixed array's length read after an element's Move, SPEC 4.7.3), inline in f.
+    internal const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
+        "    for i in a.indices => ()\n    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
+
     private const string Resource = "struct Resource\n    var name: string\n    public init(name: string) => self.name = name@move\n" +
         "func make() -> Resource => Resource.init(\"r\")\nfunc consume(r: Resource) => ()\n";
 
     private const string Box = Resource + "struct Box\n    public var value: Resource\n    public init(value: Resource) => self.value = value@move\n" +
         "    drop => ()\n";
-
-    // A default holding ledger row a1-whole-incomplete's form (a fixed array's length read after an element's Move, SPEC 4.7.3), inline in f.
-    private const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
-        "    for i in a.indices => ()\n    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
 
     // SPEC 16.2.1: a value initialized on every path is destroyed (Keep); one moved on every path is not (Elide), and needs no flag.
     [Fact]

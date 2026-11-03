@@ -33,7 +33,7 @@ public sealed partial class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(source);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.Equal(records, string.Join("|", c.BuildMir().Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
     // PLAN G157 (47) (DECISIONS R5-M149): a need past a pair layer is laid out only where the item's case makes the layer leave its root's
@@ -52,7 +52,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct S\n    public var n: i32\n    public var u: ()\nfunc f<s/T>(a: s/T, e: s/(S, i32)) -> i32\n" +
             $"    s is value or valueborrow\n    {read}\nfunc g({g}\nlet zz = 1\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.Equal(records, string.Join("|", c.BuildMir().Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
     // SPEC 8.15.3, 23.2.2 (PLAN G157 (47)'s finding): where the read past a Deref and then the layer, `((*r)@b0).1`, is the only use of

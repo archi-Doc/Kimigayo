@@ -2,7 +2,8 @@
 
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
-// Output: its Problems for that version, which the analyses add through MirReport.
+// Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear resets
+// them with the bodies, R6-check H3-1).
 // Runs them once per version, after build and validation, in a fixed order, one line per step (a judged body's steps 1 and 2 together,
 // another body's step 2 only); a step's details are in the comment of the method that runs it or in its analysis's contract:
 // 1. per judged body, A3;
@@ -55,8 +56,8 @@ internal sealed class MirAnalysis
         this.borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins); // A4's keys (R4-M92), rule W's causes (R4-M132).
     }
 
-    /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and a body with a validator
-    /// finding is not analyzed (DECISIONS R5-M183).</summary>
+    /// <summary>Analyzes a program unless this version already was: a new version starts with its construction records only (MirProgram.Clear),
+    /// and a body with a validator finding is not analyzed (DECISIONS R5-M183).</summary>
     /// <param name="program">The built and validated program.</param>
     /// <param name="rootModules">The number of root modules, whose bodies steps 1 and 4 judge (DECISIONS R5-M168).</param>
     /// <returns>The program.</returns>
@@ -68,7 +69,6 @@ internal sealed class MirAnalysis
         }
 
         this.version = program.Version;
-        program.Problems.Clear();
         program.Drops.Clear();
         foreach (var body in program.Bodies)
         {

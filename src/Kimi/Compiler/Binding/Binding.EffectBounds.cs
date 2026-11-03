@@ -297,8 +297,8 @@ public sealed partial class Binding
             return this.Finish();
         }
 
-        // The obligation of a definition's own body (a virtual function under its slot's bound, a published operation under its row) checks
-        // that body; all calls inside it still use their own dispatch kind.
+        // The obligation of a definition's own body (a virtual function under its slot's bound) checks that body; all calls inside it
+        // still use their own dispatch kind.
         internal bool CheckBody(BindingSymbol definition, BindingScope scope, bool destructions)
         {
             this.Begin(scope, destructions);
@@ -710,11 +710,6 @@ public sealed partial class Binding
                 return;
             }
 
-            if (ReferenceEquals(type, this.publishedCallable))
-            {
-                return; // SPEC 4.9.6: the calls of the Callable input the operation's row publishes.
-            }
-
             if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
             {
                 this.stepUse = use;
@@ -918,11 +913,6 @@ public sealed partial class Binding
             var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
                 ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
             var confined = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
-            if (ReferenceEquals(requirement.BoundSymbol, this.published))
-            {
-                return; // SPEC 4.9.6: the parameter-dependent effect the operation's row publishes.
-            }
-
             if (this.stepUse is { } use && !confined)
             {
                 confined = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract);

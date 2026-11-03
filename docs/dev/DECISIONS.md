@@ -737,7 +737,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
   (code, subject, Reason)); a merge keeps the first problem's facts (superseded by R4-M132: a merged problem is derived only when
   every report it groups is, its causes the union). Construction records keep their own merge in
-  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger).
+  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger; done, with the collector's records, by R6-check H3-1,
+  R5-M182's amendment of 2026-11-03).
   No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
   make old-path vocabulary a shared concept (this naming clause is superseded by R5-M24: Diagnostics owns the kinds as
   `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
@@ -6246,6 +6247,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G147 (2) (BU), G160's remainder, G263; G216 (a)'s unjudged forms and record sites (G388-G392, U3), G216 (b), G215; the
     ledger's per-row closure; X-5's non-blocking findings.
   - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
+- **R4-M167 A published operation's body is held within its row by a test over A4's items (R6-check H4)** (2026-11-03; H0b-8 (A),
+  answer R4-8 with N6 and N7, R4 r2 N2; the planning session's choice of option 3 for `appendAll`). SPEC 4.9.6 makes a row an
+  operation's complete user-code effect: callers compose it, never the body, and the library implementation stays within it. The
+  check is test-level (`MirEffectsTest.EachRowOperationsBodyStaysWithinItsRow`): a Kimi body's atoms are the row's requirement on the
+  Type below `On`, a shared call through `Calls`, or a destruction that the walk of the Type below `Destroys` reaches, the Callable
+  input, or a Type the premises prove Copy; an Unknown is only a call of the row's requirement on that Type, attributed site by site
+  through `MirEffects.Keys` in the body and the row-less bodies it enters; no other class. A4 gains the read accessor
+  `MirEffects.Items` (the solved node's classes and atoms; `Atom`, `Drop`, `Shared`, `Requires` internal), no mode and no new record.
+  - Rows: `Row: None` on the compiler functions `append`, `insertAt`, `pop`, `removeAt` (A4 already gave them `Inputs`) and on the
+    Kimi-bodied `insert`, `appendAll`, `appendCopies` and four new `KimiDeclarationId` members, `ArrayRemovePosition` (`remove`),
+    `ArraySwapPositions` (`swap`), `ArraySwapRemove` (`swapRemove`), `ArrayReverse` (`reverse`). A4 now reads their rows. The other
+    SPEC 4.9.6 "None" families (access, view, position, metadata, capacity) stay body-composed (R4 r2 N2).
+  - Exception (one, named and located in the test; PLAN G400): `appendAll` pops every element of the source it consumes, then drops
+    the empty source; A2 does not see the emptiness, so A4 keeps `Drop(T)` for its body. Removal: A2 proves that the drop of an Array
+    emptied by pops destroys no element, or the library body is rewritten so that its items stay within None. A4's verdict moves
+    toward SPEC 4.9.6: a `confined` witness calling `appendAll` over elements with a printing `drop` was rejected by A4 and A4 accepts
+    it (`MirEffectsTest.ACallerComposesAnArrayOperationsRow`, A4's problems; controls `append` accepted, `truncate` rejected). The
+    user-visible false rejection remains on both pipelines: Binding's `EffectSummary` still enters `appendAll`'s body and rejects
+    the witness, BU's follow-up under G400.
+  - Deleted: `Binding.SummarizePublishedOperation` (`Binding.PublishedOperations.cs`) and its two cover branches in
+    `Binding.EffectBounds`; `EffectBoundImplementationTest`'s two row tests move to `MirEffectsTest`.
+  - Rejected: a production judgment of each reached row body in A4 (cost on every check for a record no valid input reaches, H0b §4
+    (B)); a premise mode in A4 covering the row's effects (N6: a mode steering a function).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6927,6 +6951,14 @@ resumed by R4-M86 (2026-10-20).
   `Unsupported_Kd` (D5). Tuple and fixed-array elements through a pair layer stay Binding's `Unsupported_Kd` (`Binding.Elements`).
   Library, milestones and the diagnostic corpus unchanged. Open: PLAN G164 (valid element writes below a pair-layer receiver) and
   G179 (a user index through a pair layer). Not temporary.
+  - Amendment (2026-11-03, R4 after its exit, BU reviewing; PLAN G179, the owner's option (a), verbatim 「2すべてa」 and
+    「3案の通り」): a user index through a followable pair layer (`x: s/Collection<i32>`: `x[0] = 5`, `let y = x[0]`) is Binding's
+    located `Unsupported_Kd` at the index expression, no longer `NotIndexable_Kd`. `TryBindIndexer`, which decides a user index,
+    passes the receiver's reference layers and, on a pair layer, its followable pair layers (`ComparisonThroughPairs`, as
+    `BindElement`'s fallback reads them), and reports the limit when that core has an Indexable conformance or fact; a core
+    without one keeps `NotIndexable_Kd`, and with a failed key the limit rests on the key, as the pair-layered sequence's limit
+    does. Rejected: a second conformance test in the fallback (a copy of the indexer's rule). Temporary: removed by G179's
+    selection through the layer, as `TryPairReceiver` selects receivers.
 - **BU-17** (2026-10-21; the BU planning session; PLAN G163 under the full process: designs A and B, the chosen design, a design
   review (APPROVE WITH CHANGES), two revisions after the implementer's robustness rows, design review round 2 (APPROVE WITH
   CHANGES); the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole destruction receiver, is
@@ -16003,6 +16035,16 @@ structure is recorded here by the unit that first implements it.
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
+  - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner, relayed by the planning
+    session): the folded records take two body values, `MirRecordClass.Construction` and `MirRecordClass.Collection` (both no body,
+    distinct from `NoBody`; an enum, so a class is a checked selector, R5's review N2/N3), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's `Sides`,
+    `VerifiedSpecExampleTest` and `MirDump` read construction records only, and today's two `reported` sets keep a construction and a
+    collection record at one (code, site) apart. `MirProgram.Report(site, code, recordClass)` adds a ControlFlow problem of every view; the
+    `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(recordClass)` is the one path to a
+    class's rows (R5's condition), and a reader of the analyses' problems skips records by `MirProblem.IsRecord`, the one definition.
+    `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
+    "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or
+    Collection" where H0a §2 says "body `Records`".
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
