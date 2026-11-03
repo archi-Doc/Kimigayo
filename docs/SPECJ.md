@@ -4,7 +4,7 @@
 
 翻訳元：`8ee50bf7e36708f32cf308145c5cb0debca005bd`（2026年10月23日確認）。表記は[SPECJ_TERMINOLOGY](SPECJ_TERMINOLOGY.md)に従う。本書は非規範的な翻訳であり、解釈が異なる場合は英語の定義を優先する。コード、識別子、文字列、文法、JSONは原文の綴りを保つ。
 
-部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
+部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
 
 ## 目次
 
@@ -1845,7 +1845,7 @@ Originが「共有Loanだけを保つ」とは、各許容Semanticsの場合で�
 
 **スロットと所有。** raw Originは変性上は共変だが、スロットのLoan要件・Phantom判定における使用には数えない。rawが示すスロットはPhantomであってはならない。during selfの参照先はスロット特性・OwnedOriginsで格納内容と数え、その値のLoanを所有値の保持先に保つ。インライン記憶にduring self層を持つstruct・enumはCopyにならない。ただしraw層の型と、それを含むタプル・固定長配列の型はCopyで、そのPlaceは上の書込み規則と明示的Moveに従う。
 
-**呼出し。** Origin付きraw経由では、そのOriginが属する各借用の参照先型が許す値を格納できる。selfなら保持値型、staticならraw参照先型を使う。Loanを形成せず、借用と同じ保持を行う。Originなしrawパラメーターはその参照先型が許す値を格納できる。結果型のOriginなしrawは、タプル・Option・型引数内部を含め、任意の引数を通じて届く記憶と、本体が所有しない記憶を指せる。名前付き結果型のフィールド内ポインターはその型のフィールド宣言だけで定まり、隠れたポインターには到達範囲条件を適用する。抽象型（[§8.2.3](#s-8-2-3)）の束縛が保持し抽象型には現れないraw層は、それを記述する宣言で、その宣言自身のOriginと契約に対して検査する（[§8.15.1](#s-8-15-1)）。ジェネリック本体はその検査に依拠し、そのraw層を通じては到達しない（[§15.6.4](#s-15-6-4)）。
+**呼出し。** Origin付きraw経由では、そのOriginが属する各借用の参照先型が許す値を格納できる。selfなら保持値型、staticならraw参照先型を使う。Loanを形成せず、借用と同じ保持を行う。Originなしrawパラメーターはその参照先型が許す値を格納できる。結果型のOriginなしrawは、タプル・Option・型引数内部を含め、任意の引数を通じて届く記憶と、本体が所有しない記憶を指せる。名前付き結果型のフィールド内ポインターはその型のフィールド宣言だけで定まり、隠れたポインターには到達範囲条件を適用する。抽象型（[§8.2.3](#s-8-2-3)）の束縛が保持し抽象型には現れないraw層を通じて、ジェネリック本体が到達するのは[§15.6.4](#s-15-6-4)が抽象型の値に許す範囲だけで、書込みは排他Loanとアドレスを通じてだけ行う。それを超えるそのraw層経由のアクセスは宣言側のコードの責任で、[§5.2.1](#s-5-2-1)に従う。条件3は共有経路以後に書込み権限を与えず、条件5は本体が追跡できないポインターによるLoanを運ぶ値の読み書きを禁じる。格納したポインターを参照へ戻すには主張が要る（上の型合わせと主張）。
 
 ```kimi
 struct Lens<T> {source}
@@ -7262,28 +7262,31 @@ func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>
 
 raw引数もポインター先を参照先として同様に扱い、その型内Originを保持し得るものは読取りが運ぶものを運ぶ。ただし引数値自身（Loanと指す保持元）を保持するのは、その型の値を格納できる結果・領域、または引数の領域内で形成する結果だけ。ポインターは自身のポインター先の一部でなく、raw引数経由で書く領域は引数値自身を保持しない。Origin付きraw層は、そのOriginの借用と同様のものをLoanなしで保持する。Originなし入力raw層はポインター先型が許す保持を許し、名目型フィールド外の結果raw層は全引数（rawでは経由読取りのものも）を保持し得て本体外領域へ届く。共有層以後に届くraw層を通じて呼出しが書くことはない。
 
-抽象型（[§8.2.3](#s-8-2-3)の型パラメーター・関連型射影・ペア対象・ContractのSelf）の値は、ハンドルのペイロードとしても、その保持元が運ぶLoanとアドレスが名指す保持元にだけ到達する。抽象型の束縛が持ち得て型には現れないraw層を理由に本体外領域へは到達しない。そのraw層は、それを記述する宣言が責任を負う（[§5.7](#s-5-7)）。本体外領域へは、他の値と同じく[§15.6](#s-15-6)の規則でだけ到達する。型に現れるraw層（抽象部分を保持する部分のフィールド・Caseペイロード・要素を含む）は本節と[§5.7](#s-5-7)で読む。抽象部分の破棄はこの到達範囲に格納する（[§16.3.3](#s-16-3-3)）。
+抽象型（[§8.2.3](#s-8-2-3)の型パラメーター・関連型射影・ペア対象・ContractのSelf）の値は、ハンドルのペイロードとしても、その保持元が運ぶLoanとアドレスを運ぶ参照が到達する範囲に到達する（[§15.6](#s-15-6)）。ペイロードの保持元は、それに到達する経路のハンドルの保持元とする。書込みは排他Loanかアドレスを通じて到達する範囲だけに行い、共有Loanまたはそこから派生する共有借用を通じてだけ到達する範囲には読取りだけで到達する（[§5.2.1](#s-5-2-1)の条件3）。抽象型の束縛が持ち得て型には現れないraw層は、本体外領域を含め、独自の到達を加えない。この範囲を超えるそのraw層経由のアクセスは宣言側のコードの責任である（[§5.7](#s-5-7)）。型に現れるraw層（抽象部分を保持する部分のフィールド・Caseペイロード・要素を含む）は本節と[§5.7](#s-5-7)で読む。抽象部分の呼出しと破棄はこの範囲に格納する（[§16.3.3](#s-16-3-3)）。
 
 ```kimi
 func count<S>(items: S) -> i32
     S is Iterable
     var n: i32 = 0
-    for _ in items                          // Valid: the Iterator carries only items' Loan and writes only what it reaches.
+    for _ in items                  // Valid: the Iterator's Loan on items is shared, so next and its destruction write only its own holder.
         n += 1
     return n
 ```
 
 ```kimi
-contract MakeR
-    func make(p: raw/(raw/u8), q: raw/u8) -> Self
+// consume<T>(x: T) destroys x.
+contract MakeS
+    func make(p: raw/(raw/u8)) -> Self
+    func setQ(self: uniq/Self, q: raw/u8)
 
-func resetAny<T>(y: uniq/i32)
-    T is MakeR
+func later<T>(y: uniq/i32)
+    T is MakeS
     let w = y@follow@ref
     var slot: raw/u8 = null
-    var x = T.make(p: slot@raw, q: w@raw@raw/u8)    // x carries slot's address and what q reaches, w and its Loan.
-    x = T.make(p: slot@raw, q: null)                // The old x's erased drop may store its content in slot, which x addresses.
-    // y@follow = 5                                 // Error: slot may retain w's Loan and is used below.
+    var x = T.make(p: slot@raw)     // x carries slot's address; make stores no Loan in slot.
+    x.setQ(q: w@raw@raw/u8)         // setQ may store q, which addresses w, in slot: x reaches slot.
+    consume(x@move)                 // x's destruction may store its content in slot too.
+    // y@follow = 5                 // Error: slot may retain w's address, and w carries y's Loan; slot is used below.
     usep(slot)
 ```
 
@@ -7723,7 +7726,7 @@ owner/Tは正確にTとして破棄する。obj/Tはオブジェクトを破棄�
 
 ハンドル破棄の対象Placeはハンドルだけで、live Loanと比較する。ペイロード借用は到達元ハンドルのLoanを保持するため、所有するオブジェクト領域自体を対象にしない。rc・arc解放は最終解放の可能性があり、ペイロード破棄の観測と、staticなど他領域への後処理効果を要約に含む。呼出し先が所有ハンドル入力を破棄する場合も同じ。
 
-動的型・環境型が静的に不明な破棄は未知効果。View Target自身のdropや宣言済み派生型だけからは求めない。SealedでないView Targetのobj・rc・arc（open基底、実行時Contract）と共通関数型環境、またそれらを成分に持つ値が該当する。可変staticの全live Loanと競合し、confinedでは分類不能。Sealed対象ハンドルとowner/Tはその型の破棄要約を使う。ジェネリック本体でCopy未証明の型パラメーター・関連型射影の破棄は、本体内検査ではLoan観測可能・未知環境効果とし、要約では実型と合成するパラメーター依存効果として公開する（[§15.6.4](#s-15-6-4)で広げる場合を除く）。この破棄は、破棄する部分を指す`uniq/Self`レシーバを`self`とする`drop`の呼出しとして保持し（[§16.3.1](#s-16-3-1)）、部分の内容（そのLoanと指す保持元）を、[§15.6.4](#s-15-6-4)の抽象型の値の規則で部分が到達する範囲にだけ格納し得る。staticへの効果は未知のまま。そのような型をView Targetとするハンドルのペイロードは、View TargetがSealedと証明されない限り消去された破棄で、同様に保持する。Copyと証明してもこの破棄は空にならない。派生型はCopyを個別に選ぶためである（[§3.5.2](#s-3-5-2)）。
+動的型・環境型が静的に不明な破棄は未知効果。View Target自身のdropや宣言済み派生型だけからは求めない。SealedでないView Targetのobj・rc・arc（open基底、実行時Contract）と共通関数型環境、またそれらを成分に持つ値が該当する。可変staticの全live Loanと競合し、confinedでは分類不能。Sealed対象ハンドルとowner/Tはその型の破棄要約を使う。ジェネリック本体でCopy未証明の型パラメーター・関連型射影の破棄は、本体内検査ではLoan観測可能・未知環境効果とし、要約では実型と合成するパラメーター依存効果として公開する（[§15.6.4](#s-15-6-4)で広げる場合を除く）。この破棄は[§15.6.4](#s-15-6-4)の`drop`呼出しと同様に保持し、部分の内容（そのLoanと指す保持元）を、同節の抽象型の値の規則で部分が書ける範囲にだけ格納する。staticへの効果は未知のまま。View Targetが抽象型（[§8.2.3](#s-8-2-3)）であるハンドルのペイロードは、Copyと証明されていてもいなくても、View TargetがSealedと証明されない限り、同様に保持する消去された破棄で破棄する。Copyと証明してもこの破棄は空にならない。派生型はCopyを個別に選ぶためである（[§3.5.2](#s-3-5-2)）。
 
 ペイロード全体置換は旧内容をその場で破棄し、領域・カウント・ライフサイクル状態を保つ。領域はUninitializedになるがlet初期化履歴は戻さず、コンストラクター・初期化子・セッターなしで新値を置く。exchangeは旧内容を結果へ移す。同じアドレスでも旧内容依存は終わる。借用・rawポインター破棄は参照先を破棄せず、Scalarに破棄処理はない。
 
