@@ -14,8 +14,14 @@ public partial class ResultPremiseTest
 
     private const string ResultCall = "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n";
 
+    // An enclosing body's local whose value Origin a named nested signature names (BU-56's unannotated class).
+    private const string LocalR = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let r = arr[0]\n";
+
     // A nested result relating Origins its inputs do not relate is the declaration's record where it is written, whether or not the
-    // body calls it (z1 beside `return q`, r3, r3_call, v2, v3; DECISIONS R4-M162); t7 is ResultPremiseTest's Type-clause half.
+    // body calls it (z1 beside `return q`, r3, r3_call, v2, v3; DECISIONS R4-M162); t7 is ResultPremiseTest's Type-clause half. An
+    // enclosing body's Origin the declaration names is a fixed Origin of it (SPEC 15.3.4; DECISIONS BU-89): r3loc and rootloc (a
+    // document-local) are Binding's record, and a relation of it with another enclosing Origin needs the declaration's clause, in either
+    // direction (encloc, encloc_rev; dev accepted both, and gave rootloc UnsatisfiedOriginRelation_Kd).
     [Theory]
     [InlineData("t7", StaticClause + ResultCall + "    let o = f()\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("t7_c", StaticClause + ResultCall + "    origin q outlives static\n    let o = f()\n    return 0\n", "")]
@@ -28,6 +34,10 @@ public partial class ResultPremiseTest
     [InlineData("v2", NestedResult + "i32 => 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("v3", NestedResult + "i32\n    let o = f()\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("v3_c", NestedResult + "i32\n    origin q outlives r\n    let o = f()\n    return 0\n", "")]
+    [InlineData("r3loc", LocalR + "    func k(cb: (ref/i32) -> Option<ref/(ref/i32 during r)>) -> i32 => 0\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during r)")]
+    [InlineData("encloc", LocalR + "    func k(cb: () -> Option<ref/(ref/i32 during r) during a>) -> i32 => 0\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during r) during a")]
+    [InlineData("encloc_rev", LocalR + "    func k(cb: () -> Option<ref/(ref/i32 during a) during r>) -> i32 => 0\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during a) during r")]
+    [InlineData("rootloc", "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r = arr[0]\nfunc k(cb: (ref/i32) -> Option<ref/(ref/i32 during r)>) -> i32 => 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during r)")]
     public void ANestedResultIsJudgedWhereItIsWritten(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
