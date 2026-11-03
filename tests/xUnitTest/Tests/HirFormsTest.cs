@@ -16,8 +16,8 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
-    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the old
-    // path accepts too (Binding records none), the library and the milestone programs.
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the MIR
+    // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
     {
         get
@@ -27,7 +27,7 @@ public sealed partial class HirFormsTest
             {
                 for (var i = 0; i < example.Variants.Length; i++)
                 {
-                    if (example.Variants[i] is { Expected.Length: 0 } variant && (variant.Old?.Records.Length ?? 0) == 0)
+                    if (example.Variants[i] is { Expected.Length: 0 } variant && (variant.Mir?.Records.Length ?? 0) == 0)
                     {
                         data.Add($"spec/{example.Name}/{i}");
                     }

@@ -9,8 +9,7 @@ namespace XunitTest;
 
 /// <summary>SPEC 8.15 Semantics cases: the family corpus of <c>tests/diagnostics/pair-cases.json</c>, written from the SPEC. A generic
 /// definition is rejected at definition, with owner-only callers, exactly in the cases the SPEC rejects (at the stated operation with
-/// the stated Loan holder), and the valid families run natively in every instance. A row's <c>Old</c> states the verdicts and run of the
-/// default pipeline, which keeps a rule an adopted SPEC revision replaced until R6-check; those are checked here (DECISIONS R4-M60).</summary>
+/// the stated Loan holder), and the valid families run natively in every instance.</summary>
 public class GenericOwnershipCaseTest
 {
     // The units of plan C that have landed; a row of a later unit is not judged yet, and a `Limit` row is a located limit.
@@ -43,7 +42,7 @@ public class GenericOwnershipCaseTest
             var data = new TheoryData<string>();
             foreach (var row in Rows.Value.Values)
             {
-                if (Array.IndexOf(Landed, row.Unit) >= 0 && (row.Old?.Run ?? row.Run) is not null)
+                if (Array.IndexOf(Landed, row.Unit) >= 0 && row.Run is not null)
                 {
                     data.Add(row.Name);
                 }
@@ -60,23 +59,9 @@ public class GenericOwnershipCaseTest
         var row = Rows.Value[name];
         var c = MinimalEmissionTest.Analyze(row.Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(row.Old is null || (row.Old.Rule is { Length: > 0 } && row.Old.Expected.Keys.All(row.Expected.ContainsKey)), $"{name}: Old names its revision item and cases of the row.");
         var rejected = false;
-        foreach (var (semantics, written) in row.Expected)
+        foreach (var expected in row.Expected.Values)
         {
-            var expected = written;
-            if (row.Old is { } old && old.Expected.TryGetValue(semantics, out var kept))
-            {
-                // The SPEC verdict that the default pipeline does not decide yet differs from the kept one and is located in the source.
-                Assert.NotEqual(written.GetRawText(), kept.GetRawText());
-                if (written.ValueKind != JsonValueKind.String)
-                {
-                    Locate(row.Source, written);
-                }
-
-                expected = kept;
-            }
-
             if (expected.ValueKind == JsonValueKind.String)
             {
                 continue;
@@ -99,7 +84,7 @@ public class GenericOwnershipCaseTest
     public void ValidFamiliesRunInEveryInstance(string name)
     {
         var row = Rows.Value[name];
-        var run = (row.Old?.Run ?? row.Run)!;
+        var run = row.Run!;
         ScalarEmissionTest.EmitFixture("GenericCase" + name.Replace("-", string.Empty, StringComparison.Ordinal), run.Source, run.Stdout);
     }
 
@@ -141,11 +126,7 @@ public class GenericOwnershipCaseTest
         return line;
     }
 
-    private sealed record PairCaseRow(string Name, string Family, string Unit, string[] Spec, string Source, Dictionary<string, JsonElement> Expected, PairCaseRun? Run, PairCaseOld? Old);
+    private sealed record PairCaseRow(string Name, string Family, string Unit, string[] Spec, string Source, Dictionary<string, JsonElement> Expected, PairCaseRun? Run);
 
     private sealed record PairCaseRun(string Source, string Stdout);
-
-    // What the default pipeline decides where it differs from the SPEC, under the rule that the revision item `Rule` (an id of R4-M50's
-    // trait) replaced: the verdicts of those Semantics cases and the native run, the row's when absent. Removed at R6-check.
-    private sealed record PairCaseOld(string Rule, Dictionary<string, JsonElement> Expected, PairCaseRun? Run);
 }
