@@ -188,8 +188,9 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData(Drain + "var values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nlet second = drain.take()", "values", "values.iterateUniq())\nlet second", "borrow 18:48 values | loan 20:14 drain")]
     [InlineData(Drain + "func replace<J>(drain: uniq/Drain<J>, fresh: J)\n    J is Iterator\n    drain.reset(fresh@move)\nvar values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\nreplace(drain@uniq, values.iterateUniq())\nlet second = drain.take()", "values", "values.iterateUniq())\nlet second", "borrow 21:48 values | loan 23:14 drain")]
     [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet n = keeper.peek()", "s", "s.lend())\nlet n", "borrow 18:26 s | loan 20:9 keeper")]
-    // `keeper` has no later use, so the value retaining the Loan is related at its declaration (DIAGNOSTICS A6's `Store` witness; the
-    // U-T2 amendment of DECISIONS R4-M57); H3b T46: CallActivationConflict_Kd at `s.lend()` before.
+    // The access's one chain runs to the Return with no use of `keeper`'s own slot (`reset` activates a reference formed before it), so
+    // U-T2's condition, no next use in the access's chain, relates `keeper` at its declaration (DIAGNOSTICS A6's `Store` witness; the
+    // U-T2 amendment of DECISIONS R4-M57; R4's verdict, 2026-11-04); H3b T46: CallActivationConflict_Kd at `s.lend()` before.
     [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet z = 1", "s", "s.lend())\nlet z", "borrow 18:26 s | loan 18:1 var keeper = Keeper.init(s.lend())" + Retaining)]
     public void AnImplicitReceiverMeetingARetainedLoanConflictsOnceAtTheInput(string body, string input, string at, string related)
         => this.AssertOneRecord(Cell + body, "ComparisonLoanConflict_Kd", input, LoanConflict, related, at);
