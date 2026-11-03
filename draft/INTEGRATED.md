@@ -1291,8 +1291,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 
 - No proposal file: the owner's instruction (R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」, the plan
   「抽象部分の到達規則（(S)）」) maps to SPEC 15.6.4 (a value of an abstract Type reaches what its holder's Loans and addresses
-  reach, writing only through exclusive Loans and addresses; examples `count<S>` and `later<T>`), 16.3.3 (such a part's destruction
+  reach, writing only through exclusive Loans, addresses and raw pointers it derives from through no shared layer; examples
+  `count<S>`, `later<T>` and `laterAlloc<T>`), 16.3.3 (such a part's destruction
   stores within that reach; a handle payload whose View Target is an abstract Type is erased unless proven Sealed, Copy not emptying
   it) and 5.7 (an access through a hidden raw layer beyond that reach is the declaring code's, 5.2.1); DECISIONS R4-M170, which
   overrides Q1 (a) by (S), neither (a) nor (b). SPECJ follows in this unit (RQ10 (a)); GUIDE is not refreshed. Integration implies no
-  implementation support (S1′, S2). Revised after the one SPEC review's REVISE (B1–B5, N1).
+  implementation support (S1′, S2). Revised after the one SPEC review's REVISE (B1–B5, N1) and its re-check (B6).
