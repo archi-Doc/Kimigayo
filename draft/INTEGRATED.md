@@ -1274,3 +1274,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   expected result solved; SPEC 10.5.1 with 14.9.2 step 2: a control-flow argument supplies child positions by structure whether or not
   the join waited) are readings of the current text; if U6 finds that 10.5.1 needs a sentence for the second, that revision is proposed
   separately and recorded here. Adoption implies no implementation support.
+
+## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
+
+- [Published Copy Verdicts Plan](Proposals/2026-11-03%20Published%20Copy%20Verdicts%20Plan.md): 一部取り込み (open). A working plan, not a
+  specification proposal: the owner decided Q8-3's cost, verbatim 「Binding の判定結果を公開して、検証器はそれを読むだけにする」, and then, verbatim
+  「R9後でもいい？そしたら、draft/Proposalに計画書を書いて、今後の予定としてください。」. Binding publishes its Copy verdicts and the MIR validator,
+  MirEffects, MirTypes.Destruction and code generation read them (units U0–U3b, after R9). No SPEC or IMPL mapping; nothing frozen; PLAN G406.
+  Adoption implies no implementation support.
