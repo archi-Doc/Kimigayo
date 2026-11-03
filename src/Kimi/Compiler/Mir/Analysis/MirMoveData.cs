@@ -6,10 +6,10 @@
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and argument;
 // a constructor's _0 has a child per Field and its base. A PairLayer step is transparent: it is the Place itself in the owner case, and the
 // accesses of a reference case end before it (MirInit). Deref and Index end a path: an access through them is an access of the prefix's
-// path, and a Move through them has no Move Path, except through a raw pointer (an untracked Take). Roots whose events all lie in one chain
-// from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow roots, so a head
-// stores only the flow paths. A path admits one placement when its root is a let binding or it lies in a constructor's Field placed once
-// (SPEC 15.1.1, 11.7).
+// path, and a Move through them has no Move Path, except through a raw pointer, however read (an untracked Take). Roots whose events all
+// lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow
+// roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it lies in a constructor's
+// Field placed once (SPEC 15.1.1, 11.7).
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -152,7 +152,9 @@ internal sealed class MirMoveData
     }
 
     // The path of a Place by creation index << 2 | access, its prefix's first: a Base of depth d is d steps of depth 1, a PairLayer is its
-    // prefix's path, and Deref and Index end the path.
+    // prefix's path, and Deref and Index end the path. A Deref's access is its pointer's, whatever its prefix's: Raw through a raw pointer
+    // (SPEC 5.2: `*p` is a raw Place however `p` is read; PLAN G222), else NoPath (a referent or payload, also inside a raw Place, never
+    // offers Take, SPEC 15.1.5); below a Raw or NoPath Place, any other step keeps that access.
     private int Resolve(MirPlace place)
     {
         if (place.Projection == 0)
@@ -168,17 +170,14 @@ internal sealed class MirMoveData
         var row = this.body.Projections[place.Projection];
         var prefix = place with { Projection = row.Prefix };
         found = this.Resolve(prefix);
-        if ((found & 3) == Direct && row.Kind != MirProjectionKind.PairLayer)
+        found = row.Kind switch
         {
-            var path = found >> 2;
-            found = row.Kind switch
-            {
-                MirProjectionKind.Deref => (path << 2) | (this.body.TypeOf(prefix)?.Semantics == SemanticsKind.Raw ? Raw : NoPath),
-                MirProjectionKind.Index => (path << 2) | NoPath,
-                MirProjectionKind.Base => this.Bases(path, row.Arg) << 2,
-                _ => this.Child(path, row.Kind, row.Arg) << 2,
-            };
-        }
+            MirProjectionKind.Deref => (found & ~3) | (this.body.TypeOf(prefix)?.Semantics == SemanticsKind.Raw ? Raw : NoPath),
+            _ when (found & 3) != Direct || row.Kind == MirProjectionKind.PairLayer => found,
+            MirProjectionKind.Index => found | NoPath,
+            MirProjectionKind.Base => this.Bases(found >> 2, row.Arg) << 2,
+            _ => this.Child(found >> 2, row.Kind, row.Arg) << 2,
+        };
 
         this.places.Add(place, found);
         return found;
