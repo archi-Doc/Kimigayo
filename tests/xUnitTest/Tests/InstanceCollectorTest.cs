@@ -463,9 +463,11 @@ public sealed partial class InstanceCollectorTest
                 .Order(StringComparer.Ordinal)];
     }
 
-    // K 4.3: a repeated run of a program version keeps its set, and a program with validator findings has an empty one.
+    // K 4.3: a repeated run of a program version keeps its set. DECISIONS R5-M183 (the owner's (a), replacing "a program with validator
+    // findings has an empty set"): a body with a finding is no root (the root loop) and no item of a call (Admit: host calls plain), and
+    // every other item stays.
     [Fact]
-    public void AVersionIsCollectedOnceAndFindingsEmptyTheSet()
+    public void AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem()
     {
         var c = MirBuildTest.Compile(Source);
         var program = c.BuildMir();
@@ -474,8 +476,46 @@ public sealed partial class InstanceCollectorTest
         var items = set.Items.Length;
         Assert.Same(set, collector.Run(program, 1));
         Assert.Equal(items, set.Items.Length);
-        program.Findings.Add(new(MirViolation.Callee, program.Bodies[0].Source));
-        Assert.Equal(0, new InstanceCollector(c.Types, c.Layout).Run(program, 1).Items.Length);
+        var labels = set.Items.ToArray().Select(x => Label(program, x)).ToArray();
+        Assert.Contains("Fn plain", labels);
+        Break(program, "plain", MirBodyKind.Fn);
+        var broken = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(labels.Where(static x => x != "Fn plain"), broken.Items.ToArray().Select(x => Label(program, x)));
+    }
+
+    // SPEC 23.1.2, DECISIONS R5-M183 (the owner's (a)): what rests on a body with a finding has no record: f's own uses and the instance
+    // of h that f alone requests (OversizedLayout_Kd at its T), and a broken static's own A3b gap (the Templates walk); every other body's
+    // records stay: static k's InvalidCLayout_Kd use and its static-storage gap (A3b's declaration row; an i128 division is Binding's
+    // Opaque until H7). Fail-before: the findings emptied the set.
+    [Fact]
+    public void ABodyWithAFindingDropsOnlyWhatRestsOnIt()
+    {
+        var c = MirBuildTest.Compile(CLayoutP + "func h<T>(value: T) => ()\nfunc f(value: " + Huge + ") => h(value@move)\n" +
+            "group J\n    public var j: i32 = 0\ngroup K\n    public var k: i32 = P.init(1, ()).n\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Break(program, "f", MirBodyKind.Fn);
+        Break(program, "j", MirBodyKind.StaticInit);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(
+            "InvalidCLayout_Kd P.init(1, ())|Unsupported_Kd public var k: i32 = P.init(1, ()).n",
+            string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}").Order(StringComparer.Ordinal)));
+    }
+
+    // DECISIONS R5-M183: Admit refuses a target with a finding only after the checks that read the request alone, so the EnclosingInstance
+    // gap at a call into a nested function whose body has one stays (its record rests on the request, not on the body). Fail-before: the
+    // findings emptied the set.
+    [Fact]
+    public void ARequestsOwnGapAtABodyWithAFindingStays()
+    {
+        var c = MirBuildTest.Compile(InBlock + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        Break(program, "inner", MirBodyKind.Fn);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "inner(x)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn inner", StringComparison.Ordinal));
     }
 
     // KD1, KD3: a generic callee is an instance keyed by its definition and erased substitution, represented by the substitution that first
@@ -850,7 +890,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
         Assert.Equal(issues, string.Join(' ', c.Binding.Issues.Select(static x => x.Code)));
         var program = c.BuildMir();
-        Assert.True(program.Findings.Count == 0, name); // A program with findings has an empty checked set.
+        Assert.True(program.Findings.Count == 0, name); // A body with a finding is no item (DECISIONS R5-M183).
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }
@@ -1934,7 +1974,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(source);
         Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
         var program = c.BuildMir();
-        Assert.Empty(program.Findings); // A program with findings is never collected, so the check would not run.
+        Assert.Empty(program.Findings); // A body with a finding is no template, so the check would not run in it (DECISIONS R5-M183).
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.NotEqual(0, set.Items.Length);
         Assert.Empty(set.Records);
@@ -1974,7 +2014,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nfunc keep() -> i32 => 1\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
-        Assert.Empty(program.Findings); // A program with findings is never collected, so the check would not run.
+        Assert.Empty(program.Findings); // A body with a finding is no template, so the check would not run in it (DECISIONS R5-M183).
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.NotEqual(0, set.Items.Length);
         Assert.Empty(set.Records);
@@ -2445,6 +2485,14 @@ public sealed partial class InstanceCollectorTest
 
     private static int Item(MirProgram program, CheckedSet set, string label)
         => Enumerable.Range(0, set.Items.Length).Single(x => Label(program, set.Items[x]) == label);
+
+    // A validator finding located in a body of a built program and the body's verdict, as MirValidator gives them (DECISIONS R5-M183).
+    private static void Break(MirProgram program, string name, MirBodyKind kind)
+    {
+        var body = program.Bodies.ToArray().Single(x => x.Key.Kind == kind && x.Key.Decl?.Name == name);
+        program.Findings.Add(new(MirViolation.Callee, body.Source));
+        body.HasFinding = true;
+    }
 
     // A Type of `depth` nested wrappers around a leaf, as Box^3<i32> = Box<Box<Box<i32>>>.
     private static string Nest(string wrapper, int depth, string leaf)

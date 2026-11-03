@@ -74,8 +74,9 @@
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
 // targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
-// run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
-// program as large as an earlier one allocates nothing.
+// run of a version is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS R5-M183: the Templates
+// walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a program as large as
+// an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
 // (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
 
@@ -139,15 +140,10 @@ internal sealed partial class InstanceCollector
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
         (this.program, this.rootModules, this.Work) = (program, rootModules, 0);
-        if (program.Findings.Count > 0)
-        {
-            return set;
-        }
-
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
+            if (!body.HasFinding && body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
             {
                 var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
                 set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });

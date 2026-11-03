@@ -4,7 +4,8 @@
 // location order, each with whether a runtime path from the body's entry reaches it, which replaying an item's template resolves.
 // Input: a built, validated MirProgram; the number of root modules; the Target and Need columns of the intrinsic rows; LayoutNeeds and
 // Layout.Indirect (DECISIONS R5-M149).
-// Output: each body's sites, `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads; and its layout needs
+// Output: each body's sites (none for a body with a finding, MirBody.HasFinding), `sites` from `starts[body.Ordinal]` to
+// `starts[body.Ordinal + 1]`, which Replay reads; and its layout needs
 // past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads.
 // Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
@@ -73,7 +74,8 @@ internal sealed partial class InstanceCollector
         return false;
     }
 
-    // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
+    // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each; a body with a
+    // finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is not read.
     private void Templates(MirProgram program)
     {
         var bodies = program.Bodies;
@@ -88,7 +90,7 @@ internal sealed partial class InstanceCollector
         foreach (var body in bodies)
         {
             (this.starts[body.Ordinal], this.needStarts[body.Ordinal]) = (count, this.needCount);
-            count = this.Template(body, count);
+            count = body.HasFinding ? count : this.Template(body, count);
         }
 
         (this.starts[bodies.Length], this.needStarts[bodies.Length]) = (count, this.needCount);
