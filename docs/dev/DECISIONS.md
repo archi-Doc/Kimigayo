@@ -10146,6 +10146,24 @@ resumed by R4-M86 (2026-10-20).
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
 
+- **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after
+  the joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03
+  (PLAN G396); design `bu\g335\design.md` §1, §2)
+  - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
+    at each question, so it grew as program size × nesting depth on nested joins (V16).
+  - Owner: ResultPropagation. The fact is a per-pass column beside the outcome on the pooled `ResultContext`, reset by `Clear` at
+    each rent. Its one writer is `ResultContext.Wait(awaiting)`, the one writer of `JoinOutcome.Waiting`: both Waiting sites
+    (`AwaitsWithoutCandidate`, `DecideResult`'s `ConflictWaits`) publish `SourcesAwait` once, when the join's sources are reached and
+    each held join's own fact is published. The one event that changes what a Waiting join awaits without deciding it, its call
+    taking its parts (`TakeWaiting`), republishes: `DecideTaken`'s `PublishAwaiting` publishes the argument's held Waiting joins
+    innermost first, a loop over the held-part walk (`AddHeldParts`, G368 (3)), with no copied walk. Every other change leaves
+    Waiting, after which the fact is not read.
+  - Readers: `AwaitsFor`'s result-target row (a Waiting join answers with the fact; every AwaitsFor and AwaitsPosition caller reads
+    it) and `BoundSince` (Deferred), whose Waiting row is the outcome: Waiting implies every waited source is failed or Deferred.
+  - Removed: the re-walk of held Waiting joins and `BoundSince`'s walk over a Waiting join's waited sources (G335's "Completed").
+    No removal condition: the fact is canonical. AwaitsFor's other rows (literal parts, AwaitsCall, an Unvisited literal) stay
+    structural per-node answers; a column for them would be a second representation.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
