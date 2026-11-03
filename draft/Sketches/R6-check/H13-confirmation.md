@@ -198,3 +198,20 @@ vocabulary entry or HIR contract change.
   `Call` reaches `Evaluate` (a built-in selection's key not applied directly, on an identity premise) was not probed; if it does, the
   fix builds that construction call's code and records, a behavior change with a regression test (`MirBuildTest`), else it is
   behavior-preserving.
+
+## Review (2026-11-03): ACCEPT, with notes folded in here
+
+The independent review of `70d1872d9` reproduced the counts (94) and found no missed construct (`or`/`and`/`not` patterns, nested
+property patterns, generic arguments, `typeof`, `nameof`, `GetType`, `.Parent`: none in Mir/Build). Its notes, which amend the text
+above:
+- V2 is unreachable through a `Call`-published `^x` by reading: the element path applies every written `^x` directly
+  (`TryBindKeyedSelection` completes it with its FromEnd Type and no call, `Binding.Ranges.cs` about 185-196); a direct range's bounds
+  are completed only once the range is known to be direct (`DirectBoundary`); a constructed range reaches `Evaluate` as its
+  `RangeKoto`; a parenthesized `^x` is no `FromEndIndexKoto` at the test. So V2's fix is expected to be behavior-preserving.
+- V1's stop condition: a local's `Declaration` is its `FieldKoto` (`Binding.Expressions.cs:52`). If a duplicate declaration (`var h`
+  twice) does not own its symbol, the published fact does not decide that node, and the fix needs a Binding publication (not Minor).
+- Two helper calls count as references: `KotoHelper.UnwrapParentheses` (`Expansions.cs:140`, `Values.cs:303`), a `ParenthesizedKoto`
+  test by proxy, and `CompoundOperation`, a token read. Both are syntax data (D).
+- Rows 7-9 are syntax data (D), not child casts (C): R5-M79 names `Published`'s value-child switch as syntax data.
+Totals after the notes: 47 syntax data (+2 helpers, +3 from rows 7-9), 44 child casts, 2 violations. The fixes are R5's Minor units on
+`claude/r5-h13fix` (R4's consent, 2026-11-03).
