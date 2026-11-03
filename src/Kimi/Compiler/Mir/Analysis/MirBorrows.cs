@@ -38,7 +38,7 @@
 // reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
 // indirect markers, an ending removes (Φ_E, Φ_W, the per-local markers of the role table, Marker, and rule W's indirect markers,
 // MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170). An
-// Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
+// Opaque site's value is {Φ_E, Φ_W}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
 // Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
 // (E3), named by its whole Place, a raw Place borrow's, past a raw Deref, its fresh anchor's, which no access reaches (SPEC 5.2.2,
 // R4-M156); an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as a direct Loan does,
