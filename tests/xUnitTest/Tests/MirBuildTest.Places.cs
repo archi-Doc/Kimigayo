@@ -206,8 +206,9 @@ public sealed partial class MirBuildTest
     // located Unsupported_Kd at the selection on every pipeline, its Opaque site naming only the receiver's root, decided before anything
     // reads the receiver, with no projection or length the MIR validator rejects and no InternalInvariant_Kd (fail-before: a typeless
     // projection or Len, a validator finding and InternalInvariant_Kd beside Unsupported_Kd at the member, for ^x and a key at the
-    // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). Each row: the Type parameters, the
-    // premises, the parameters, the statement and the selection.
+    // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). A ^x Binding applied directly (Op Range), a position or a
+    // range's boundary, is built as its offset (R5-M10: by its Op). Each row: the Type parameters, the premises, the parameters, the
+    // statement and the selection.
     [Theory]
     [InlineData("T", "T is Array<Pair>", "s: ref/T, t: string", "return s[pos(t@move)].a", "s[pos(t@move)]")]
     [InlineData("T", "T is (Pair, i32)", "s: ref/T", "return s.0.a", "s.0")]
@@ -216,6 +217,7 @@ public sealed partial class MirBuildTest
     [InlineData("T", "T is [2 of Pair]", "s: ref/T", "return s[^1].a", "s[^1]")]
     [InlineData("T", "T is Array<Pair>", "s: ref/T, k: FromEnd<isize>", "return s[k].a", "s[k]")]
     [InlineData("T", "T is Array<Pair>", "s: ref/T, t: string", "let r = s[0..pos(t@move)]\n    return 0", "s[0..pos(t@move)]")]
+    [InlineData("T", "T is [4 of Pair]", "s: ref/T, t: string", "let r = s[0..^pos(t@move)]\n    return 0", "s[0..^pos(t@move)]")]
     [InlineData("T, U", "T is U\n    U is Array<Pair>", "s: ref/T, t: string", "return s[pos(t@move)].a", "s[pos(t@move)]")]
     [InlineData("T, U", "T is U\n    U is Pair", "s: ref/T", "return s.a", "s.a")]
     public void AnIdentityPremisesSelectionIsOneUnsupported(string types, string premises, string parameters, string statement, string selection)
