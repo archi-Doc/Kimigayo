@@ -41,15 +41,6 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Gets whether a failed bound check stopped at an effect this implementation cannot classify yet, which is reported as
-    /// the located Unsupported_Kd, never as a violation of the bound (plan rule 5).</summary>
-    /// <param name="use">The conformance, the Callable use or the virtual function of the failed check.</param>
-    /// <returns>Whether the recorded violation is an implementation limit.</returns>
-    internal bool IsEffectLimit(Koto use)
-        => (this.effectViolations?.TryGetValue(use, out var conformance) == true && conformance.Kind == EffectViolation.Limit) ||
-            (this.callableEffectViolations.TryGetValue(use, out var callable) && callable.Kind == EffectViolation.Limit) ||
-            (use is FunctionKoto function && this.virtualEffectViolations?.TryGetValue(function, out var slot) == true && slot.Kind == EffectViolation.Limit);
-
     // SPEC 8.11.3: a conformance checks the complete transitive effect summary of every witness against the bounds that
     // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.6).
     // Binding checks the environment the implementation reaches and the calls it makes. Which values it destroys is known only
@@ -63,7 +54,7 @@ public sealed partial class Binding
         {
             if (this.EffectBoundViolation(this.activeConformancePaths[i], false) is { } path)
             {
-                var limit = this.IsEffectLimit(path.Use);
+                var limit = this.effectViolations![path.Use].Kind == EffectViolation.Limit;
                 this.Fail(path.Use, limit ? BindingFailure.Unsupported : BindingFailure.IncompatibleImplementation, limit);
             }
         }

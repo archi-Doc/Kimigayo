@@ -61,9 +61,7 @@ public sealed partial class Binding
             var original = function.IsVirtual ? function : this.virtualOverrides.GetValueOrDefault(function).Slot.Original;
             var bounded = original is not null && this.virtualEffectBounds.GetValueOrDefault(original) is not null;
 
-            // R6: likewise the old virtual effect check's violations, until R6 deletes it.
-            if (bounded && function.BoundSymbol is { } symbol &&
-                (function.BindingFailure == BindingFailure.None || this.virtualEffectViolations?.ContainsKey(function) == true))
+            if (bounded && function.BoundSymbol is { } symbol && function.BindingFailure == BindingFailure.None)
             {
                 var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.VirtualEffectBound);
                 rows.Add(new(SourceRef.Of(function), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, symbol, null, default, Owner: false));

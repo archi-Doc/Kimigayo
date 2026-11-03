@@ -801,10 +801,6 @@ public sealed partial class Binding
         {
             this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd && issue.Node is FunctionKoto effectImplementation)
-        {
-            this.ReportVirtualEffectViolation(effectImplementation, requirement);
-        }
         else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
         {
             virtualFunction.Report(requirement, issue.Code, span: virtualFunction.DispatchModifierSpan, evidence: [this.virtualDeclarationFailures![virtualFunction]], related: [("declaration", virtualFunction, "the virtual or override declaration")]);
