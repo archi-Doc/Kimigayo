@@ -12168,6 +12168,9 @@ structure is recorded here by the unit that first implements it.
     constraint solver: another contract).
   - Amended by R5-M166 (provisional, G308): A4 now reads `TyCtxt.Comparison` directly for a tuple operator's call (its distinct leaves),
     while its `Require` on a composite Type keeps the legacy plan (`TyCtxt.Witnesses`) until A-12: A4 holds both resolvers until then.
+  - Superseded in part by BU-90 (2026-11-04, H5's B-del, X1): `DictionaryComparison`, and `RequirementImplementation`'s CallPlan
+    overload with `TryResolveFormattingCallback`, went at B-del instead of H11, since their readers went with the old walk (B2).
+    `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest` (D-c8).
 - **R5-M67 Requirement edges of the checked set** (2026-10-19, planning session; plan K6, the K package's §4.3 and §4.5 row 3 with its
   witness results, package F §4.5, S2-S4 X14, X16, X28; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1; `MonoKind.Builtin`,
   `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11, `ExclusiveInheritedWitness` being KD10's and
