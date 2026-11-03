@@ -225,6 +225,35 @@ public class CurrentControlFlowTest
         }
     }
 
+    // R6-1: the MIR builder asks the guess rule at every require's failure body. In a pass that left the call of each of N sibling
+    // failure bodies unresolved, each body rests on its call, and the guess walk's work grows with N, not with its square.
+    [Fact]
+    public void GuessWalkOverSiblingRequiresIsLinear()
+    {
+        long[] work = [Work(8), Work(16), Work(32)];
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"guess walk {string.Join(", ", work)}");
+
+        static long Work(int count)
+        {
+            var source = new System.Text.StringBuilder("func run(flag: bool)\n");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    require flag else => missing()\n");
+            }
+
+            var c = Parse(source.ToString());
+            Assert.False(c.Bind().IsComplete);
+            var before = c.Binding.GuessCompletionWork;
+            foreach (var require in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>())
+            {
+                var nodes = c.Binding.GuessedCompletionNodes(require.ElseBody, require.ElseBody);
+                Assert.True(nodes.Length == 1 && nodes[0] == require.ElseBody, require.ToString());
+            }
+
+            return c.Binding.GuessCompletionWork - before;
+        }
+    }
+
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();
