@@ -45,7 +45,8 @@ internal enum MirViolation : byte
     // Types a Tuple's token, its text a string).
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
-    // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).
+    // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), or
+    // a Copy, other than a case site's operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
     // or, over the program, its static without a StaticInit body (G191).
     Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names (G191).
@@ -61,8 +62,9 @@ internal enum MirViolation : byte
 /// <param name="Subject">The syntax.</param>
 internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject);
 
-/// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
-/// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
+/// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands
+/// (a Copy's Type Copy by Binding's proof, but a case site's, DECISIONS BU-88), rvalues and arities, the Types values flow between
+/// (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
 /// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
 /// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90), the statics its Places access (G191) and the
 /// shared layers a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each staticEnsure names
@@ -156,6 +158,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
         private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
+        private bool byCase; // Whether they are a case site's, which its views acquire (Views), the Copy rule's one exemption (BU-88).
 
         // Gets a value indicating whether the scope table or a location's scope cannot be walked, a Scope finding; only Entries needs them.
         internal bool Unscoped { get; private set; }

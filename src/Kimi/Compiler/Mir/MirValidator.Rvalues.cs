@@ -6,12 +6,14 @@ namespace Kimi.Compiler.Mir;
 // - Responsibility: an rvalue's kind row, operand range, marked Use (a PairAcquire's only, A3 E13 (4)), Opaque site and arity by its
 //   kind and Type (Rvalue, Arity), a Discriminant's enum Place and a Len's sequence Place (IsSequence); and each operand MirUses
 //   reports (Operand): its kind row, a constant in range, a PairAcquire only as a marked Use's whole rvalue and of its Place's pair
-//   binder, a function item constant only as an Assign's Use (G154).
+//   binder, a function item constant only as an Assign's Use (G154), and a Copy, but a case site's (Views), only of a Type Binding
+//   proves Copy under the body definition's premises (TyCtxt.Copy; DECISIONS BU-88).
 // - Inputs: an Assign's rvalue with its destination's Type; each location's operands, with the positions Statement marks.
 // - Outputs: UnknownKind, OperandRange, Operation, Opaque, Arity, Discriminant, Len, Const and Binder findings; each Opaque value
 //   counted for Finish; an rvalue whose arity holds goes to the Type tier (MirValidator.Types).
 // - Invariants: Rvalue returns false when its operands or its Opaque site are out of range, which MirUses then does not walk.
-// - Prohibitions: no Type agreement (MirValidator.Types) and no Call rule (MirValidator.Calls).
+// - Prohibitions: no Type agreement (MirValidator.Types), no Call rule (MirValidator.Calls) and no proof of its own: a Copy reads
+//   Binding's.
 internal sealed partial class MirValidator
 {
     private partial struct Checker
@@ -39,6 +41,10 @@ internal sealed partial class MirValidator
                 PairBinderOf(body.TypeOf(operand.Place))))
             {
                 this.Report(MirViolation.Binder);
+            }
+            else if (operand.Kind == MirOperandKind.Copy && !this.byCase && this.TypeOf(operand) is { } type && !types.Copy(body.Key.Decl, type))
+            {
+                this.Report(MirViolation.Operation); // DECISIONS BU-88: Binding's proof under the definition's premises, read, never made.
             }
         }
 

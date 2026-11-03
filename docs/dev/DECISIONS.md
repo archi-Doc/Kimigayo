@@ -10182,6 +10182,20 @@ resumed by R4-M86 (2026-10-20).
     stays for an explicit `a@move` until H10b), and `OwnershipRequirement.TransferRequired` (the kinds after it shift).
   - Until H5 the old analysis skips a program whose Binding is incomplete, so a program H1 rejects loses the old analysis's other
     records there; H5 restores them (PD29).
+- **BU-88 The validator's Copy rule** (2026-11-03; R6-check Q8-3 on `claude/r6-flip`, after H1, BU-84; the owner's Q8 approval, R5-M23,
+  design `draft/Sketches/R5 Step 0/Q8-package.md` §3.9; H0's division, R5-M182)
+  - Rule and owner: `MirValidator`, the builder's one validator (`MirValidator.Rvalues.cs`, the operand visitor's `Operand`). A `Copy`
+    operand of a known Type is valid iff `TyCtxt.Copy(body.Key.Decl, type)` holds: Binding's published proof under the body
+    definition's premises. The validator proves nothing and has no fallback. A finding is `MirViolation.Operation` (an operand its
+    kind does not admit; no new violation), so the build reports `InternalInvariant_Kd` and refuses generation: the builder or
+    Binding broke its contract.
+  - Exemption: the operands of a case site, read from the one `caseSites` list that `Views` resolves (an Adapt whose Places and token
+    are in range, a PairAcquire's Use). `Statement` marks a location's operands `byCase` when its rvalue joined that list; the list is
+    not restated. A PairAcquire operand is no `Copy` operand anyway.
+  - It covers H1's flip: Binding judges TransferRequired (BU-84), so a bare non-Copy Place can no longer reach MIR as a `Copy`.
+  - Test bodies keep to the contract: a Value callee is a shared borrow of its Function, as the builder forms it; a compiled body is
+    validated with its own compilation's `TyCtxt`.
+  - Cost: one Copy lookup per `Copy` operand of each built body. A warm validation still allocates nothing.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
