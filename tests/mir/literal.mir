@@ -104,8 +104,8 @@ fn floats @20
   bb1:
       return @20
   bb2:
-      _0 = move _23 @111 s1
-      goto bb1 @111 s1
+      _0 = move _23 @20
+      goto bb1 @20
   bb3:
       StorageDead(_21) @107 s1
       StorageDead(_20) @103 s1

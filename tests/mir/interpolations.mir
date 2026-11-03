@@ -118,8 +118,8 @@ fn format @9
   bb17:
       return @9
   bb18:
-      _0 = move _32 @20 s1
-      goto bb17 @20 s1
+      _0 = move _32 @9
+      goto bb17 @9
   bb19:
       StorageDead(_31) @121 s1
       StorageDead(_30) @33 s1
@@ -356,8 +356,8 @@ fn show @47
   bb10:
       return @47
   bb11:
-      _0 = move _14 @56 s1
-      goto bb10 @56 s1
+      _0 = move _14 @47
+      goto bb10 @47
   bb12:
       drop _2 -> bb13 [elide] @57 s1
   bb13:
@@ -688,8 +688,8 @@ fn early @97
   bb7:
       return @97
   bb8:
-      _0 = move _12 @105 s2
-      goto bb7 @105 s2
+      _0 = move _12 @97
+      goto bb7 @97
   bb9:
       StorageDead(_11) @103 s1
       StorageDead(_10) @101 s1

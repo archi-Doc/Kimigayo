@@ -122,8 +122,8 @@ fn follow @78
   bb1:
       return @78
   bb2:
-      _0 = move _7 @94 s1
-      goto bb1 @94 s1
+      _0 = move _7 @78
+      goto bb1 @78
   bb3:
       StorageDead(_3) @85 s1
       goto bb2 @78
@@ -173,8 +173,8 @@ fn count @98
   bb4:
       return @98
   bb5:
-      _0 = move _7 @110 s1
-      goto bb4 @110 s1
+      _0 = move _7 @98
+      goto bb4 @98
   bb6:
       StorageDead(_6) @111 s1
       StorageDead(_5) @111 s1
@@ -253,8 +253,8 @@ fn nestedProjections @158
   bb1:
       return @158
   bb2:
-      _0 = move _7 @186 s1
-      goto bb1 @186 s1
+      _0 = move _7 @158
+      goto bb1 @158
   bb3:
       StorageDead(_5) @177 s1
       StorageDead(_4) @170 s1

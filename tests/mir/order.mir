@@ -83,8 +83,8 @@ fn inner @34
   bb1:
       return @34
   bb2:
-      _0 = move _3 @46 s1
-      goto bb1 @46 s1
+      _0 = move _3 @34
+      goto bb1 @34
   bb3:
       drop _1 -> bb4 [elide] @41
   bb4:

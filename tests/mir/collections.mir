@@ -45,8 +45,8 @@ fn grow @4
   bb2:
       return @4
   bb3:
-      _0 = move _10 @22 s1
-      goto bb2 @22 s1
+      _0 = move _10 @4
+      goto bb2 @4
   bb4:
       StorageDead(_9) @23 s1
       goto bb3 @4
@@ -239,8 +239,8 @@ fn iterate @37
   bb24:
       return @37
   bb25:
-      _0 = move _27 @63 s1
-      goto bb24 @63 s1
+      _0 = move _27 @37
+      goto bb24 @37
   bb26:
       StorageDead(_2) @44 s1
       goto bb25 @37

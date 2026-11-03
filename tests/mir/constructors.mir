@@ -109,8 +109,8 @@ fn make @54
   bb8:
       return @54
   bb9:
-      _0 = move _8 @99 s1
-      goto bb8 @99 s1
+      _0 = move _8 @54
+      goto bb8 @54
   bb10:
       drop _5 -> bb11 [keep] @87 s1
   bb11:

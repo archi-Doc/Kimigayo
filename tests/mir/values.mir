@@ -39,8 +39,8 @@ fn arithmetic @13
   bb1:
       return @13
   bb2:
-      _0 = move _11 @46 s1
-      goto bb1 @46 s1
+      _0 = move _11 @13
+      goto bb1 @13
   bb3:
       StorageDead(_7) @41 s1
       StorageDead(_6) @37 s1
@@ -99,8 +99,8 @@ fn conversions @54
   bb1:
       return @54
   bb2:
-      _0 = move _11 @91 s1
-      goto bb1 @91 s1
+      _0 = move _11 @54
+      goto bb1 @54
   bb3:
       StorageDead(_9) @86 s1
       StorageDead(_8) @80 s1
@@ -178,8 +178,8 @@ fn aggregates @105
   bb1:
       return @105
   bb2:
-      _0 = move _7 @136 s1
-      goto bb1 @136 s1
+      _0 = move _7 @105
+      goto bb1 @105
   bb3:
       StorageDead(_5) @131 s1
       StorageDead(_4) @123 s1
@@ -258,8 +258,8 @@ fn replace @164
   bb3:
       return @164
   bb4:
-      _0 = move _8 @184 s1
-      goto bb3 @184 s1
+      _0 = move _8 @164
+      goto bb3 @164
   bb5:
       drop _2 -> bb6 [elide] @166
   bb6:
@@ -377,8 +377,8 @@ fn unfinished @199
   bb9:
       return @199
   bb10:
-      _0 = move _21 @214 s1
-      goto bb9 @214 s1
+      _0 = move _21 @199
+      goto bb9 @199
   bb11:
       drop _2 -> bb12 [elide] @202 s1
   bb12:
@@ -541,8 +541,8 @@ fn settled @234
   bb7:
       return @234
   bb8:
-      _0 = move _7 @244 s1
-      goto bb7 @244 s1
+      _0 = move _7 @234
+      goto bb7 @234
   bb9:
       StorageDead(_3) @239 s1
       goto bb8 @234
