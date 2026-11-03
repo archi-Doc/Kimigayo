@@ -1063,6 +1063,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
   slot tables when it reads them. Not temporary. Its SPEC 4.9.6 sentence, `ArrayClear`/`Replace` clause and composite Limit are
   refined by R4-M28.
+  - Amendment (2026-11-03, H3b T32b, unit U-B2; the planning session): a Requirement call whose Self is not abstract (an inline
+    default copy's instance, SPEC 8.13) is decided by Solve's `Require` through the instance's witnesses; a virtual witness is judged
+    by its slot's bound (SPEC 6.4.6), not by the witness body; an abstract Self keeps the caller-premise path (X2).
 - **R4-M23** (2026-10-12, planning session; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
   listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or
