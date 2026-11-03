@@ -6,8 +6,8 @@
 // unclassed; and, for the Loan stratum's rule W, each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
-//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its findings
-//   (TyCtxt.OriginFindings).
+//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part), its findings
+//   (TyCtxt.OriginFindings) and its layer units with rows (TyCtxt.OriginLayers), beside the program's constructor bodies.
 // - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
 //   (Ownership.UnprovenOrigin) at a chain's last edge's site (a row's Site, or the Ref's statement for a containment edge), with Reason
 //   (finite source, fixed end, false) of the view's
@@ -20,7 +20,8 @@
 //   ends (SPEC 23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a body whose arena MirDataflow.Within refuses, through
 //   MirDataflow.StorageLimit with its arguments (G213), which the stratum then skips (D20); and, which Findings adds once per program
 //   after step 4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the view's findings, a broken view contract
-//   in a complete compilation (R4-M101 E2, E4).
+//   in a complete compilation (R4-M101 E2, E4), and Unsupported_Kd (Ownership.Unsupported, NoBody, every view) at each row of a layer
+//   whose rows no constructor body's slice includes, G215's located limit (R4-M168; removal condition: a body of the layer's own).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
 //   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge
@@ -43,6 +44,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     private readonly MirSteps steps = new(cases);
     private readonly List<Pending> pending = []; // The problems Judge found, in order, with their class's views.
     private readonly List<MirFact> pendingFacts = [];
+    private readonly HashSet<ExecutableBody> included = []; // Findings: the layers some constructor body's slice includes.
     private MirStep[] walk = [];
     private Ref[] refs = []; // The body's Refs with an Origin outside every Inlined scope, in body order.
     private int[] anchors = []; // Per table index below anchorCount: the first of those Refs whose Origin it is, or -1.
@@ -129,16 +131,49 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         this.IndexCauses();
     }
 
-    /// <summary>Adds the C1-F4 view's findings, each a broken view contract in a complete compilation, as one InternalInvariant_Kd at its
-    /// site in every view (R4-M101 E2, E4): once per program, after step 4's reads of the view.</summary>
+    /// <summary>Adds, once per program after step 4's reads of the view, the C1-F4 view's findings, each a broken view contract in a
+    /// complete compilation, as one InternalInvariant_Kd at its site in every view (R4-M101 E2, E4); and G215's located limit, one
+    /// Unsupported_Kd in every view at each row of a layer whose rows no constructor body's slice includes (R4-M168): no MIR body judges
+    /// them until the layer has a body of its own.</summary>
+    /// <param name="program">The program, whose constructor bodies' slices name the layers they include.</param>
     /// <param name="report">The program's problems.</param>
-    internal void Findings(MirReport report)
+    internal void Findings(MirProgram program, MirReport report)
     {
         var findings = types.OriginFindings;
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
         for (var i = 0; i < findings.Count; i++)
         {
             report.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, findings[i], MirProblem.NoBody, ulong.MaxValue));
+        }
+
+        var layers = types.OriginLayers;
+        if (layers.Count == 0)
+        {
+            return;
+        }
+
+        this.included.Clear();
+        foreach (var body in program.Bodies)
+        {
+            if (AdtDef.IsConstructor(body.Key.Decl))
+            {
+                this.included.Add(types.OriginRows(body.Key.Body).Layer); // The view decides which slice includes a layer (E4).
+            }
+        }
+
+        requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+        for (var l = 0; l < layers.Count; l++)
+        {
+            if (this.included.Contains(layers[l]))
+            {
+                continue;
+            }
+
+            var rows = types.OriginRows(layers[l]).Rows;
+            for (var r = 0; r < rows.Count; r++)
+            {
+                report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, rows[r].Site, MirProblem.NoBody, ulong.MaxValue));
+            }
         }
     }
 

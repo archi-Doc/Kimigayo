@@ -326,17 +326,21 @@ MIR default expansion (R3; published on every pipeline, DECISIONS R5-M156) repor
 
 An effect problem (err(effect), or a mutable static's destruction against its own effects) carries exactly one effect fact, chosen by what decided it: the first of a write key, an unknown effect and a read key that the initialization proof leaves (R4-M92). Its related location is the met Field's declaration, the source of the Field's StaticInit body, which holds its initializer; every static a body accesses has one (a missing one is `InternalInvariant_Kd`, and no problem is recorded), so the fact never renders as a note.
 
-| Fact | Decided by | Related location: wording |
+| Fact | Decided by | Related location (role): wording |
 | --- | --- | --- |
-| `EffectWrite` | A write key of the Field in the site's key row | The Field's declaration: the call or destruction may write this static |
-| `EffectUnknown` | An unknown environment effect or an erased destruction (SPEC §15.6.4, §16.3.3) | The Field's declaration: the call's or destruction's effects are unknown, so they may access this static |
-| `EffectRead` | A read key of the Field | The Field's declaration: the call or destruction may read this static |
+| `EffectWrite` | A write key of the Field in the site's key row | The Field's declaration (`declaration`): the call or destruction may write this static |
+| `EffectUnknown` | An unknown environment effect or an erased destruction (SPEC §15.6.4, §16.3.3) | The Field's declaration (`declaration`): the call's or destruction's effects are unknown, so they may access this static |
+| `EffectRead` | A read key of the Field | The Field's declaration (`declaration`): the call or destruction may read this static |
 
 A Loan problem found in an inline default copy is its template's, and the body omits it, when every event taking part lies in one evaluation of one copy: its operation, the issues of its Loan and of its activation's reservation, and none of these Loans carried into that copy's entry from an earlier evaluation (a loop); err(ended) needs the cleanup and the candidate in one copy, R3 its Drop in one (R4-M97). The template reports it at its own declaration (Defaults, above). Every other failure is the body's, with exactly one `Evaluated` fact; a limit record (the depth limit, A4's Limit, the initialization proof) stays at its operation inside a copy. A1's and A2's problems in a copy keep R4-M69's `Inlined` fact, which `MirReport` drops, until R4's unit 2g-6.
 
-| Fact | Names | Related location: wording |
+| Fact | Names | Related location (role): wording |
 | --- | --- | --- |
-| `Evaluated` | The operation, in the default's source, of a Loan problem a body owns inside an inline default copy (R4-M97) | The default's operation: the default this call omits, evaluated here, does this |
+| `Anchor` | The Loan's anchor: its Borrow, a default's parameter (its Type node), or the first Ref whose Origin is an Origin problem's source | The anchor (`borrow`, as escaped borrows' Borrow, §4.4): borrow that created the loan |
+| `Use` | The witness: the holder's next use, or the access that takes the value | The use (`loan`, the value keeping the Loan, §4.4): later use of the value retaining the conflicting loan |
+| `Store` | The witness: a transit value's or E's store | The store (`loan`): value retaining the conflicting loan |
+| `Reservation` | An activation's or destruction's reservation | The reservation (`reservation`): conflicting exclusive call reservation |
+| `Evaluated` | The operation, in the default's source, of a Loan problem a body owns inside an inline default copy (R4-M97) | The default's operation (`default`): the default this call omits, evaluated here, does this |
 | `Cause` | A Refuted Origin relation problem a derived Loan problem is caused only by (rule W; its index in the report, R4-M132) | None: publication makes it a prerequisite (`DerivedFrom`) |
 
 In a default template a preceding parameter is the caller's pending slot: the template's Deref of its `PreparedInput` is the slot itself (design A3 E17, R4-M98), so a Borrow of the slot is a Loan of the template, which the two default rows report; a copy reaches its pending slots only past the prologue's shared borrows, where no Loan forms (E3); a failure found in a copy is its template's only within one evaluation of it, and any other is the body's at the omitting call (R4-M97, above). The omitting call ends those inspection Loans before its checks (R-a, R4-M96): its Moves of its slots meet none, and a Loan a copy's value keeps from a slot's value is the caller's problem at its access. `DefaultArgumentMove_Kd` is A1's (R4-M69). The old path reports the default codes until R6-check.

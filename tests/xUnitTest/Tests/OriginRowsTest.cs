@@ -213,8 +213,9 @@ public sealed partial class OriginRowsTest
         Assert.Empty(c.Types.OriginFindings);
     }
 
-    // The recorded limit of DECISIONS R4-M101 E4 (PLAN, STATUS): a layer whose struct has no constructor (its omitted base clause
-    // selects none) keeps its Field-initializer rows, which no body's slice includes, so no MIR analysis judges them.
+    // G215's boundary, A5's located limit (DECISIONS R4-M168; removal condition: a body of the layer's own): a layer whose struct has no
+    // constructor (its omitted base clause selects none) keeps its Field-initializer rows, which no body's slice includes; the view lists
+    // it among the layers with rows (OriginLayers), as it lists FieldInit's, whose constructors include it.
     [Fact]
     public void AConstructorlessLayersRowsLieInNoBodysSlice()
     {
@@ -224,6 +225,11 @@ public sealed partial class OriginRowsTest
         var leaf = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Leaf").SymbolOf()!;
         Assert.Equal(2, c.Types.OriginRows(new ExecutableBody(leaf)).Rows.Count);
         Assert.DoesNotContain(Bodies(c), x => AdtDef.IsConstructor(x.Key.Decl) && ReferenceEquals(x.Key.Decl!.Scope.Owner.SymbolOf(), leaf));
+        Assert.Contains(new ExecutableBody(leaf), c.Types.OriginLayers);
+
+        c = MirBuildTest.Compile(FieldInit + Main);
+        var s = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
+        Assert.Contains(new ExecutableBody(s), c.Types.OriginLayers);
     }
 
     // 2a0-D D2: a row's CaseMask numbers the body's pair binders (MirBody.Binders), renumbered from those in scope of its Use.

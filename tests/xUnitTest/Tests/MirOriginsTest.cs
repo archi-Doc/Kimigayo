@@ -97,12 +97,32 @@ public sealed partial class MirOriginsTest
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
 
+    // Field initializers forming layer rows (PLAN G215's probes): a local's Borrow annotated into the layer's Origin `a` (Refuted), the
+    // same through an exclusive layer (a Reborrow), and a written Type well formed only when `b outlives a` (Unknown without the clause).
+    private const string LocalInit = "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 during a = x@ref\n" +
+        "        yield 0\n    else => 0\n";
+
+    private const string ReborrowInit = "    public var n: i32 = if true\n        var x = 1\n        var r = x@uniq\n" +
+        "        let t: ref/i32 during a = r@follow@ref\n        yield 0\n    else => 0\n";
+
+    private const string PairInit = "    public let p: ref/i32 during a\n    public var n: i32 = if true\n" +
+        "        let t: Option<ref/(ref/i32 during b) during a> = Option.None\n        yield 0\n    else => 0\n";
+
+    private const string HolderP = "struct Holder {a}\n    public let p: ref/i32 during a\n";
+
+    private const string InitP = "    public init(p: ref/i32 during a) => self.p = p\n";
+
+    // A base whose two constructors have every parameter defaulted, so a derived struct's omitted base clause selects none.
+    private const string NoBase = "open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\n" +
+        "struct Leaf {a}: Base\n";
+
     // SPEC 15.6.5: a finite Origin never outlives a fixed one, so each chain from a finite source into a fixed Origin is a problem at its
     // last edge's site (DECISIONS R4-M113's Site rule: a row's Site, or the Ref's statement for a containment edge), whether or not that
     // site is reachable (j-unreach), through a local region (j-region, m-scope), a nested function's own body (n-inner), a guard candidate
     // and the subject it binds (rv/guard-annot), the destruction receiver's part and its helper borrow (G161), shared and exclusive layers
     // a Ref is reached through (SPEC 15.6.3's containment), an object's own step, a mutable static's storage (row 7), and FailedClause's
-    // body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart).
+    // body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart), and a Field initializer's layer rows in a
+    // declared or synthesized constructor's slice (AConstructorlessLayersRowsAreTheLocatedLimit's twins).
     [Theory]
     [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref")]
     [InlineData(Region, "view")]
@@ -116,6 +136,9 @@ public sealed partial class MirOriginsTest
     [InlineData("struct Cell\n    public var value: i32\n    public init(value: i32) => self.value = value\nfunc own(input: ref/i32) -> ref/i32 during input\n    let h: obj/Cell = Cell.init(value: 5)@obj\n    return h.value@ref\n", "return h.value@ref")]
     [InlineData(Storage + "    public var item: i32 = 0\n        get() -> i32 => Util.keepStatic(storage@ref)\n        set(value: i32) -> () => storage = value\n", "storage@ref")]
     [InlineData(ValidClause, "local@ref")]
+    [InlineData(HolderP + LocalInit + InitP, "let t: ref/i32 during a = x@ref")]
+    [InlineData("struct Leaf {a}\n" + LocalInit, "let t: ref/i32 during a = x@ref")]
+    [InlineData(HolderP + ReborrowInit + InitP, "let t: ref/i32 during a = r@follow@ref")]
     public void AFiniteChainIntoAFixedOriginIsRefutedAtItsLastEdge(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
@@ -238,7 +261,8 @@ public sealed partial class MirOriginsTest
     // which stops containment (a-wf), a local region holding only a local's Borrow, an immutable static's storage passed to a
     // `during static` parameter (row 7', Inferred; SPEC 11.8), which the default pipeline rejects (PLAN G197's residual, ledger (a)),
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
-    // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137).
+    // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
+    // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215).
     [Theory]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
@@ -250,6 +274,8 @@ public sealed partial class MirOriginsTest
     [InlineData(Storage + "    public let item: i32 = 0\n        get() -> i32 => Util.keepStatic(storage@ref)\n")]
     [InlineData(ValidDestructor)]
     [InlineData(ClosureHeader + "    return h(x@ref@ref)\n")]
+    [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit + InitP)]
+    [InlineData(HolderP + "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 = x@ref\n        yield t@follow\n    else => 0\n")]
     public void AValidChainHasNoOriginProblem(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -276,6 +302,23 @@ public sealed partial class MirOriginsTest
     [Theory]
     [InlineData(MeetTrans, "t@uniq")]
     public void AnUnclassedEndIsTheLocatedLimit(string source, params string[] sites)
+        => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
+
+    // PLAN G215 (DECISIONS R4-M168): a layer whose rows no constructor body's slice includes is judged by no MIR body, so each of its rows
+    // is the located limit until the layer has a body of its own, valid or not: an omitted base clause that selects no constructor (the
+    // pick call; a local's Borrow into `a`), and a Field without an initializer and no declared constructor (the written Type with and
+    // without its clause; the local's Borrow). The twins with a constructor are judged (the Refuted, Unknown and valid theories).
+    [Theory]
+    [InlineData(
+        "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" + NoBase +
+            "    public var n: i32 = Util.pick(3@ref, 4@ref)\n",
+        "3@ref",
+        "4@ref")]
+    [InlineData(NoBase + LocalInit, "let t: ref/i32 during a = x@ref")]
+    [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit, "ref/(ref/i32 during b) during a")]
+    [InlineData("struct Pair {a, b}\n" + PairInit, "ref/(ref/i32 during b) during a")]
+    [InlineData(HolderP + LocalInit, "let t: ref/i32 during a = x@ref")]
+    public void AConstructorlessLayersRowsAreTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
     // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
@@ -396,7 +439,7 @@ public sealed partial class MirOriginsTest
 
     // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
     // the view pools; the cleared report it adds to): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
-    // initializer's layer oracle and Dependent ends (FailedClause).
+    // initializer's layer oracle and Dependent ends (FailedClause); and the program's findings, a constructorless layer's limit included.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmJudgmentAllocatesNothing()
@@ -406,7 +449,8 @@ public sealed partial class MirOriginsTest
             "    var r = x\n    if c => r = l1@ref else => r = l2@ref\n    return r\nfunc layers(p: ref/i32) -> ref/i32 during p\n" +
             "    var local: i32 = 1\n    var r = local@uniq\n    let rr = r@uniq\n    return rr@follow@follow@ref\n" + R7Inv + Phantom +
             "func pair<s/T>(x: ref/i32, y: ref/i32) -> i32\n    s is owner or ref\n    let k: Option<s/(ref/i32 during x) during y> = .None\n    return 0\n" +
-            "func chain(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n" + LayerCount + FailedClause + Main);
+            "func chain(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n" + LayerCount + FailedClause +
+            NoBase + LocalInit + Main);
         var program = c.BuildMir();
         var origins = new MirOrigins(c.Types, new MirCases(c.Types));
         var bodies = program.Bodies.ToArray();
@@ -418,9 +462,12 @@ public sealed partial class MirOriginsTest
             {
                 origins.Judge(body, MirCases.Count(body), report);
             }
+
+            origins.Findings(program, report);
         }
 
         Run();
+        Assert.Contains(report.All.ToArray(), static x => x.Code == DiagnosticCode.Unsupported_Kd && x.Body == MirProblem.NoBody);
         Assert.Equal(0, AllocationMeasurement.Measure(Run));
     }
 
