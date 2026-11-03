@@ -59,13 +59,13 @@ internal sealed partial class MirBuilder
         return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
     }
 
-    // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a written ^x's offset) or a key, built for its
-    // own code and records, while nothing reads the parameter's Place.
+    // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a ^x applied directly, Op Range, as Boundary
+    // reads it: its offset) or a key, built for its own code and records, while nothing reads the parameter's Place.
     private void Evaluate(Koto? node)
     {
         if (node is not null)
         {
-            _ = this.Operand(node is FromEndIndexKoto { Operand: var offset } ? offset : node, expected: null);
+            _ = this.Operand(HirTables.Op(node) == HirOp.Range && node is FromEndIndexKoto { Operand: var offset } ? offset : node, expected: null);
         }
     }
 
