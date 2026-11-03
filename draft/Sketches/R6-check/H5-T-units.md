@@ -312,6 +312,9 @@ units of an hour or less. Amendments:
   | T-18 | 4 FailedClauses rows | T45 ×2, T47 ×2 | T50 ×2 and T51 ×2 (the two former T47 rows: the ledger does not pair them) |
   | T-19 | z1d | T45 | T50 |
   | T-19 | ANestedFunctionType | T47 | T51 (a counted record on a Binding-rejected program; it shares F-a's cause, so G216 (b)'s unit moves its pin too) |
+| T-20 | AMixedFits, APositionAfter `(local@ref, g)` and five more twins | T45 / T47 | T50 (all ten programs Binding-rejected) |
+| T-20 | the `==` rows whose forward direction is proven | T45+T47 / T47 | 3: A5 reports the failing `outlives` (SPEC 15.6.5, R4-M114); the `==` requirement is a fact A6 publishes later |
+| T-20 | ATransfer | T47 | 4 (BU-84's PD29 restore of an independent record), counted like the other PD29 restores |
 - **F-a has fifteen rows:** T-15's six, T-19's five and T-16's four (cz5, cz6, e1 and e1c), all with one signature and cause under the
   owner's O-2 decision. The G216 (b) (e) unit re-points them, names F-a and U-O3 in each comment, and lists nest1, t1j_n and
   ANestedFunctionType as rows U-O3 moves.
