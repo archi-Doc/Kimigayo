@@ -202,3 +202,26 @@ per-call end becomes the signature's declaration row, so Binding records the Lan
 
 The owner answered board O-2, verbatim 「一覧に加える」. F-a joins H5's (e) list under G216 (b), beside F13 and T36, until U-O3. Its rows
 are re-pointed by the G216 (b) (e) unit, which pins the located record and names this decision and U-O3.
+
+### Round-2 families F-b and F-c (R4's verdicts and R5's rulings, 2026-11-03)
+
+R4 reproduced each row from the base's and the head's CLI output (`r4-notes\post-exit\h3b-round2.md`).
+
+**F-b.** T-18's r05_n, T-19's AValueCallThroughAFunctionItem and T-17's two ANestedSignatures rows are **class 4**: rejected on both
+sides. The added records are correct independent records under SPEC 15.6.5 rule W's letter, since an aggregate argument's or result's
+part is not Copy. They are counted by code.
+
+**F-c.**
+
+| Row | Cause | Fix | H5 blocker |
+| --- | --- | --- | --- |
+| T-07 ×5 (BlockEscape: the loan related at the block's first exit) | `MirBuilder.Transfers` builds the shared delivery block at the first exit's site | R4's U-T1 (≤ 1 h) | yes (R5) |
+| T-07 AnUndecided, T-17 AChainBetweenBodyOrigins, T-08 AFixedInput (the loan witness missing) | the holder's next use is in a later chain | R4's U-T2 (≤ 1 h); AnUndecided's second record is 1x | yes (R5) |
+| T-17 AWellFormedness (Reason fit vs wellFormed) | a duplicated Binding rule | BU's U-W (≤ 1 h) | yes (R5) |
+| T-09 SetterMoveFailure (MovedPlace_Kd at `value.id`) | A1's general rule | none: class 3, re-pointed | no |
+| T-08 BorrowingIteration's generic row (a self-Loan) | G264 (S)'s family, class 2 | S1′ (before H5, the owner's plan) re-points it to acceptance | via S1′ |
+| ScalarDefault's span `n` -> `n + 1` | intended | none | no |
+| no live `OwnershipStorageLimit_Kd` test (T-04) | the head produces it; coverage only | a coverage note for H10a | no |
+
+R5's ruling: U-T1, U-T2 and U-W are H5 blockers under the owner's third answer (fixes of an hour or less). Pinning wrong evidence would
+weaken the stopped tests, so they stay failing until the fixes land, and then they are re-pointed.
