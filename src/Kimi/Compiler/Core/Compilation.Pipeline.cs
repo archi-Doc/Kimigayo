@@ -40,10 +40,11 @@ public partial class Compilation
     {
         get
         {
-            var errors = 0;
-            foreach (var problem in this.Problems)
+            // Indexed: the interface's enumerator of a nonempty list is boxed, and a warm Analyze reads this (T61).
+            var (rows, errors) = (this.Problems, 0);
+            for (var i = 0; i < rows.Count; i++)
             {
-                errors += DiagnosticEntries.TryGet(problem.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error ? 1 : 0;
+                errors += DiagnosticEntries.TryGet(rows[i].Code, out var entry) && entry.Severity == DiagnosticSeverity.Error ? 1 : 0;
             }
 
             return new(this.mir is not null && errors == 0, errors);
