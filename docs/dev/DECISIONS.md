@@ -737,7 +737,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
   (code, subject, Reason)); a merge keeps the first problem's facts (superseded by R4-M132: a merged problem is derived only when
   every report it groups is, its causes the union). Construction records keep their own merge in
-  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger).
+  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger; done, with the collector's records, by R6-check H3-1,
+  R5-M182's amendment of 2026-11-03).
   No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
   make old-path vocabulary a shared concept (this naming clause is superseded by R5-M24: Diagnostics owns the kinds as
   `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
@@ -15980,6 +15981,16 @@ structure is recorded here by the unit that first implements it.
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
+  - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner, relayed by the planning
+    session): the folded records take two body values, `MirProblem.Construction` and `MirProblem.Collection` (both no body, distinct from
+    `NoBody`), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's `Sides`,
+    `VerifiedSpecExampleTest` and `MirDump` read construction records only, and today's two `reported` sets keep a construction and a
+    collection record at one (code, site) apart. `MirProgram.Report(site, code, class)` adds a ControlFlow problem of every view; the
+    `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(class)` is the one path to a
+    class's rows (R5's condition), and a reader of the analyses' problems skips records by `MirProblem.IsRecord`, the one definition.
+    `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
+    "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or
+    Collection" where H0a §2 says "body `Records`".
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and

@@ -214,7 +214,7 @@ public sealed partial class MirBorrowsTest
     /// <param name="function">The enclosing function's name, or null for every record of module 0.</param>
     /// <returns>The records.</returns>
     internal static (string Line, DiagnosticCode Code)[] DepthRecords(Compilation c, MirProgram program, string? function)
-        => [.. program.Problems.All.ToArray().Where(x => x.Subject.Module == 0 && (function is null || Function(c.SyntaxOf(x.Subject)) == function))
+        => [.. program.Problems.All.ToArray().Where(x => !x.IsRecord && x.Subject.Module == 0 && (function is null || Function(c.SyntaxOf(x.Subject)) == function))
             .Select(x => (Line(c, x.Subject), x.Code)).OrderBy(static x => $"{x.Item1} {x.Code}", StringComparer.Ordinal)];
 
     /// <summary>Gets whether a code's catalog category is Language (SPEC 23.1.1), Warnings included.</summary>

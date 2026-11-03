@@ -2,6 +2,7 @@
 
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -27,9 +28,9 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirProblem.Construction));
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(program.Records(MirProblem.Collection));
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
             Assert.Equal(size + 1, Instances(set, "f"));
@@ -64,7 +65,7 @@ public partial class TypeDagScalingTest
 
         Assert.NotSame(closed[0], closed[1]);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(c.BuildMir().Records(MirProblem.Collection));
     }
 
     // DECISIONS BU-19 (R5's condition for the closing table): an edit leaves no closing answer behind, so a closure whose signature an
@@ -77,7 +78,8 @@ public partial class TypeDagScalingTest
         const string After = "func make<T>(x: T) -> ()\n    T is Copy\n    let f = func [x] () -> (T, T) => (x, x)\n    let r = f()\n    return\n";
         const string Main = "public func main() -> ()\n    make(1)\n    return\n";
         var c = MirBuildTest.Compile(Before + Main);
-        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+        new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Empty(c.BuildMir().Records(MirProblem.Collection));
         Assert.Equal("i32", Binding.DiagnosticTypeName(Result(c)));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
         var replacement = KotoTree.Walk(ParseTestHelper.ParseSuccess(After + Main).RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
@@ -106,7 +108,7 @@ public partial class TypeDagScalingTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(c.BuildMir().Records(MirProblem.Collection));
         Assert.Equal(1, Instances(set, "f"));
     }
 

@@ -112,8 +112,8 @@ public sealed partial class MirDifferenceLedger
 
     /// <summary>Lists an analyzed compilation's records by side: Binding's records outside the compared set (R4-M4), which both paths
     /// publish; the old path's A-owned records (only its subset of a pair that names one), which the ledger compares; the old analyses'
-    /// other records, which pass through; and the MIR's construction records, validator findings (as <c>InternalInvariant_Kd</c>) and
-    /// problems, one entry each (MirReport.Add keeps one per code and subject, R4-M67) with its requirement and its pair's analysis in the
+    /// other records, which pass through; and the MIR's construction records (<see cref="MirProgram.Records"/>; not its collection records),
+    /// validator findings (as <c>InternalInvariant_Kd</c>) and analysis problems, one entry each (MirReport.Add keeps one per code and subject, R4-M67) with its requirement and its pair's analysis in the
     /// compared set, or B for a pair outside it, a recording rule's defect such as MirReport's disagreement record. A derived problem, one
     /// with Cause facts (rule W, DECISIONS R4-M132), is not compared: publication suppresses it while its causes publish.</summary>
     /// <param name="compilation">The compilation after <see cref="Compilation.Analyze"/>.</param>
@@ -129,14 +129,14 @@ public sealed partial class MirDifferenceLedger
             (analysis is not null ? old : requirement.Partition == DiagnosticPartition.Binding ? common : passed).Add(new(code, requirement.Name, analysis ?? "-", node));
         }
 
-        var mir = program.Records.Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
+        var mir = program.Records(MirProblem.Construction).Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
             .Concat(program.Findings.Select(x => new Entry(DiagnosticCode.InternalInvariant_Kd, "-", "B", compilation.SyntaxOf(x.Subject)))).ToList();
         for (var i = 0; i < program.Problems.All.Length; i++)
         {
             var problem = program.Problems.All[i];
-            if (program.Problems.Facts(i) is [.., { Kind: MirFactKind.Cause }])
+            if (problem.IsRecord || program.Problems.Facts(i) is [.., { Kind: MirFactKind.Cause }])
             {
-                continue; // Derived (R4-M132): its Cause facts come last.
+                continue; // A record (above, or a collection record, not compared), or derived (R4-M132): its Cause facts come last.
             }
 
             var analysis = MirAnalysisOf(problem.Requirement, problem.Code) ?? "B";

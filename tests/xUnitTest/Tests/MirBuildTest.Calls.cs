@@ -93,7 +93,7 @@ public sealed partial class MirBuildTest
         {
             var program = Compile(Holder + $"    {statement}\n").BuildMir();
             Assert.Empty(program.Findings);
-            Assert.Empty(program.Records);
+            Assert.Empty(program.Records(MirProblem.Construction));
             var text = new StringBuilder();
             MirDump.Write(program, 0, text);
             return string.Join('\n', text.ToString().Split('\n').Select(static x => x.Split(" @")[0]));
@@ -274,7 +274,7 @@ public sealed partial class MirBuildTest
         var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
+        var record = Assert.Single(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
         Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
     }
@@ -292,7 +292,7 @@ public sealed partial class MirBuildTest
         Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
         var f = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
         Assert.False(f.HasOpaque);
         Assert.Contains(f.Blocks.ToArray(), static x => x.Terminator is

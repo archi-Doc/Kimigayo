@@ -1,9 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the problems the MIR analyses find in one program version (A6; DECISIONS R4-M3a, R5-M23, R4-M71); their records are MirProblem
-// and MirFact (MirProblem.cs, MirFact.cs).
-// Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body and its facts (related sites,
-// added by their first producer). Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
+// Owns the problems the MIR analyses find in one program version and its construction and collection records (A6; DECISIONS R4-M3a, R5-M23,
+// R4-M71; R6-check H3-1); their records are MirProblem and MirFact (MirProblem.cs, MirFact.cs).
+// Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's class:
+// MirProblem.Construction or Collection, through MirProgram.Report) and its facts (related sites, added by their first producer).
+// Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
 // D18: an Origin problem's relation, the default for other problems) with the views that have it merged, in insertion order (bodies in
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
 // facts included, and ORs the views; merged problems name one requirement, and a disagreement is a recording rule's defect, reported as

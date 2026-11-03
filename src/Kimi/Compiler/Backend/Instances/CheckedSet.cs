@@ -3,14 +3,13 @@
 namespace Kimi.Compiler.Backend;
 
 /// <summary>The checked set of a program version (SPEC 8.15.3, IMPL 21.3.1), which only <see cref="InstanceCollector"/> writes: its items in
-/// admission order, the roots first, each with its targets in its body's location order, and its instance-stage records, one per code and
-/// subject, which <c>Compilation.MirRecords</c> publishes at check on every pipeline (DECISIONS BU-48, R5-M156); at emit, its Generated
-/// column (K package 4.10), which the generation entry marks. Its arrays and lookup keep their storage, so collecting and marking a
+/// admission order, the roots first, each with its targets in its body's location order (its instance-stage records are the program's
+/// collection records, <see cref="Mir.MirProgram.Records"/>; R6-check H3-1); at emit, its Generated column (K package 4.10), which the
+/// generation entry marks. Its arrays and lookup keep their storage, so collecting and marking a
 /// program again allocate nothing.</summary>
 internal sealed class CheckedSet
 {
     private readonly Dictionary<MonoKey, int> lookup = new();
-    private readonly HashSet<Problem> reported = new();
     private MonoItem[] items = [];
     private MonoTarget[] targets = [];
     private bool[] generated = []; // The Generated column, by item.
@@ -23,11 +22,6 @@ internal sealed class CheckedSet
 
     /// <summary>Gets the number of roots, the first items.</summary>
     internal int RootCount { get; private set; }
-
-    /// <summary>Gets the records of the collection, one per code and subject: a capability gap's <c>Unsupported_Kd</c>, a limit's
-    /// <c>GenerationResourceLimit_Kd</c>, a C-layout instance's <c>InvalidCLayout_Kd</c>, a layout over 2^63 - 1 bytes' <c>OversizedLayout_Kd</c>
-    /// at a use (K 4.8), a broken contract's <c>InternalInvariant_Kd</c>, which only a complete Binding gives (DECISIONS R5-M151).</summary>
-    internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the items in admission order.</summary>
     internal ReadOnlySpan<MonoItem> Items => this.items.AsSpan(0, this.itemCount);
@@ -76,8 +70,6 @@ internal sealed class CheckedSet
     internal void Clear(ulong version)
     {
         this.lookup.Clear();
-        this.reported.Clear();
-        this.Records.Clear();
         this.generated.AsSpan(0, this.itemCount).Clear();
         (this.itemCount, this.targetCount, this.RootCount, this.Version) = (0, 0, 0, version);
     }
@@ -95,15 +87,6 @@ internal sealed class CheckedSet
         this.items[item] = entry;
         this.lookup.Add(entry.Key, item);
         return item;
-    }
-
-    // A record at its subject, once per code and subject.
-    internal void Report(DiagnosticCode code, SourceRef subject)
-    {
-        if (this.reported.Add(new(code, subject)))
-        {
-            this.Records.Add(new(code, subject));
-        }
     }
 
     // The items admitted so far are the roots.

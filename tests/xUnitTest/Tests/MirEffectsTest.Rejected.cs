@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Mir;
 using Xunit;
 
 namespace XunitTest;
@@ -49,7 +50,7 @@ public sealed partial class MirEffectsTest
                 "struct Holder\n    Self is Reset\n    var item: Bad\n    public func reset(self: uniq/Self)\n        let n = U.d(self.item@ref)\n" +
                 "group U\n    public func d<T>(x: ref/T, k: Option<T> = .None) -> i32 => 0\npublic func main() => ()\n").Replace("MISSING", part, StringComparison.Ordinal));
             var program = c.BuildMir();
-            Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+            Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
             Assert.Empty(Problems(c, program));
         }
     }
