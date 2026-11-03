@@ -663,6 +663,25 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]))}]");
     }
 
+    // SPEC 15.6.4, 23.1.1, IMPL A.4 (DECISIONS R4-M153, R4-M150; G264 U1's review B1, the planning session's record decision): a declared
+    // drop whose Binding retention passes the walk's depth bound (DQ40's Field, a Writer 40 levels down a Tuple, so the retention is
+    // Limit) is the located resource limit where the destruction is composed, as its method twin `x.flush()` is on dev: at x's
+    // reassignment and at its storage end, in the valid dq40Ok and beside dq40Bad's own `y@follow = 5` (w's Loan, which wr's slot keeps).
+    [Theory]
+    [InlineData("dq40Ok")]
+    [InlineData("dq40Bad")]
+    public void ADeclaredDropPastTheDepthBoundIsTheDepthLimit(string form)
+    {
+        var type = new string('(', 40) + "Writer" + string.Concat(Enumerable.Repeat(", i32)", 40));
+        var (first, second) = ($"var x = DQ40.init(d: {Nested("wr@move", 40)})", $"x = DQ40.init(d: {Nested("Writer.init(q: null)", 40)})");
+        var q = form == "dq40Bad" ? "w@raw@raw/u8" : "null";
+        var c = MirBuildTest.Compile(DropShapes + $"struct DQ40\n    public var d: {type}\n    public init(d: {type})\n        self.d = d\n" +
+            $"    drop\n        return\nfunc {form}(y: uniq/i32)\n    let w = y@follow@ref\n    var slot: raw/u8 = null\n" +
+            $"    var wr = Writer.init(q: {q})\n    wr.p = slot@raw\n    {first}\n    {second}\n    y@follow = 5\n    usep(slot)\n");
+        var expected = $"{first} {DepthLimit}|{second} {DepthLimit}" + (form == "dq40Bad" ? "|y@follow = 5 ComparisonLoanConflict_Kd" : string.Empty);
+        Assert.Equal(Rows(expected), DepthRecords(c, Analyze(c), form).Select(static x => $"{x.Line} {x.Code}"));
+    }
+
     // V16 (the design's §5.7; the owner's 「A) 原因を先に直す」 of 2026-10-31, with G342's rows): N locals whose drops store a parameter
     // referent's Loan through their raw slot, each destroyed by a reassignment (N = 8, 16, 32; SPEC 15.6.4's valid shape). Each Loan stays
     // live until `usep(slot)` (15.6.4's example), so the output is quadratic: the work grows at most 5 times as much from 16 to 32 as from 8

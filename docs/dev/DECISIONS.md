@@ -5259,22 +5259,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
     definition and program version in a range table (warm runs allocate nothing). No vocabulary entry.
   - An abstract part is staged (the owner, 2026-11-03, verbatim 「(A)pf を入れ、抽象部分の破棄の合成だけは Drop で当面行わない」): the
     erased destruction of a Type parameter's or associated projection's value not proven Copy (16.3.3, BU-47's `0 Content store 0`)
-    composes nothing at any site (scope ends, reassignments, `replace`, a consuming call's destruction and a published destroying call's
-    row), as on dev; one condition in `Composing`. Where only such a part observes, a destroying call keeps R4-M147's undecided store: one
+    composes nothing at either site A5 composes (a kept Drop: a scope end, a reassignment, a temporary's, `_ = x@move`; a published
+    destroying call's row: `clear`, `truncate`, `removeAll`, `replace`, `insertOrReplace`'s key), as on dev; one condition in
+    `Composing`. A consuming call's cleanup is no composition of A5's: it is in the call's own Binding rows (BU-52's rule A). Where only such a part observes, a destroying call keeps R4-M147's undecided store: one
     that would add a Loan or an address past the receiver's referents is the located `Unsupported_Kd` at the call (`Destroying`). Reason
     (measured, the first full ledger): composed by SPEC's letter under R4-M147's Q1 (a), it made every generic `for` over an abstract
     Iterable a MIR error at the loop and at its hidden iterator's storage end (19 ledger rows in 18 test sources) and abstract iterator
     and value locals errors at their storage ends (`var it = S.start(...)`, `var it = local.iterate()`, `var value = input@move`).
     Removal condition: an owner SPEC revision bounding what an erased destruction may store (E receives no Loan bounded by Self's own
     Origins or by a per-call Origin; SPEC 22.2.1's `step`); then the part is composed. Declared drops, Function values and handles whose
-    payload is not proven Sealed are composed.
+    payload is not proven Sealed are composed. The staging is the abstract part the walk visits (`type.IsAbstract`), not a handle's
+    payload: an `obj`, `rc` or `arc` handle whose payload is abstract and not proven Sealed (`rc/T`) composes `RetainsErasedDestruction(T)`
+    as any non-Sealed payload, and one whose abstract payload is proven Sealed is walked on, where the abstract part composes nothing.
   - Removed: R4-M143's destruction guard (Keep's destruction test and root-record union, its W past refs(S)); R4-M147's abstract-referent
     rule moves from Keep to `Destroying` unchanged in effect.
   - Records (the planning session's decisions): c80's four new records, the storage ends of slot2, slot, z and x (an rc payload's drop at
     a possibly final release stores into storage the body does not own; 16.3.3, 15.6.4, BU-47's row; PLAN G264's SPEC gap), accepted; the
     seven §5.6 pins keep dev's records and names under the staging (`a.clear()`, `a.truncate(0)` and `a.removeAll(...)` `Unsupported_Kd`,
     hold<C>, TheGuardReadsEachPart); the spec case 15.6.4-drop-retention/1's Mir difference goes (the MIR gives `y@follow = 5`); the V16
-    row is `Grows(work, 5)` (Loans live together, G342's class).
+    row is `Grows(work, 5)` (Loans live together, G342's class). A declared drop whose Binding retention passes the walk's depth bound
+    gets the located resource-limit record where its destruction is composed, as its method twin `x.flush()` does on dev (R4-M153;
+    IMPL A.4): `OwnershipDepthLimit_Kd` at the reassignment and at the storage end, also in a valid program (BU's review B1: dq40Ok, and
+    dq40Bad beside its own `y@follow = 5`; `MirBorrowsTest.ADeclaredDropPastTheDepthBoundIsTheDepthLimit`). A new error correct under
+    SPEC 15.6's whole-holder rule (the owner's 「(B)」, BU-67): a drop beside a borrowed sibling (BU's review N3, tupDropOk: `var x =
+    (Writer.init(q: null), y@follow@ref)`, `x.0.p = slot@raw`, x's scope end, then `y@follow = 5`): a read through the drop's receiver
+    carries every Loan the holder carries, and Writer's untied store reaches storage the body does not own.
+  - The full mir ledger after the staging (vs shared base 13366c3e6): rows 4,288 → 4,289, the one new row the spec case's
+    `y@follow = 5`; unclassified 0; open blocking 105 → 105 (no G264 form lies in the ledger's corpus); no library or milestone
+    rejection.
   - Why this candidate: one store path (the other's Drop copy of Keep/Received had to be re-adapted to R4-M160 by hand at the merge and
     was cubic without it); smaller (src +214/−56 against +539/−189); the abstract part's staging is one condition in that path.
   - Cost: the Receivers pre-pass adds about 4K Work per program as a constant; V16 8/16/32: 113,807 / 136,387 / 221,040 (3.75); G342's
