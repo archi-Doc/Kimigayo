@@ -14,6 +14,9 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 {
     private const string Len = "func len(n: ref/i32) -> i32 => n@follow\n";
 
+    // A closure whose result borrows its hidden environment receiver (SPEC 8.10, 7.7.4).
+    private const string EnvironmentClosure = "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n";
+
     [Theory]
     [InlineData("Item", "func answer() -> i32 => 42\nlet value = consume(answer)")]
     [InlineData("Closure", "let answer = func [] () -> i32 => 42\nlet value = consume(answer)")]
@@ -439,7 +442,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("func make<T>(f: () -> T) -> T => f()\n", "    let s = make(c@move)\n")]
     public void AnEnvironmentResultIsNoSlotEvidence(string declaration, string body)
     {
-        var source = declaration + "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n" + body + "    Console.writeLine(\"\\(s[0])\")\n";
+        var source = declaration + EnvironmentClosure + body + "    Console.writeLine(\"\\(s[0])\")\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         var call = body.Trim().Split('\n')[0][8..];
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), call), (error.Code, Text(source, error.Span)));
@@ -456,7 +459,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     }
 
     // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) leaves the candidate Pending
-    // on that Origin, not on the environment result that also leaves T unsolved, so the record carries no environment judgment.
+    // on that Origin, not on the environment result that also leaves T unsolved, so the record carries no environment judgment. That
+    // return has no Language fact: valid programs reach it too (`keep(.Some(x@ref))`), so the record stays fact-less (G354-1c, R2).
     [Fact]
     public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
     {
@@ -464,6 +468,42 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", null), (error.Code, Text(source, error.Span), error.Note));
         Assert.Null(error.Related);
+    }
+
+    // DECISIONS BU-86 (2026-11-03): the environment judgment decides only for a slot that no evidence binds (SPEC 10.8). Once another
+    // argument (`n: i32`) or the expected result binds T, the closure's result part is matched by no inference; the Callable Constraint
+    // at F judges it and refutes it (SPEC 8.10), so the candidate is inapplicable whatever position stays open (U's Literal).
+    [Theory]
+    [InlineData("func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\n", "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n")]
+    [InlineData("func make<T, U, F>(f: ref/F, u: U) -> T\n    F is Callable<() -> T>\n    return $abort(\"x\")\n", "    let r: i32 = make(c@ref, 2)\n")]
+    public void AnEnvironmentResultDecidesOnlyAnUnsolvedSlot(string declaration, string body)
+    {
+        var source = declaration + EnvironmentClosure + body;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var call = body[(body.LastIndexOf("= ", StringComparison.Ordinal) + 2)..^1];
+        Assert.Equal(
+            (nameof(DiagnosticCode.NoApplicableOverload_Kd), call, "make requires F is Callable<() -> T>; this condition is refuted for closure () -> ref/Array<i32>"),
+            (error.Code, Text(source, error.Span), error.Note));
+    }
+
+    // SPEC 10.8, 8.10: with T bound by another argument, the Callable proof decides. A reference's Origin leaves only its Origin part
+    // Unknown (its own record at the argument); an overload that the other argument makes applicable is selected, since the environment
+    // result is no evidence and n binds T; a closure whose result is not over its environment is valid.
+    [Fact]
+    public void AnEnvironmentResultLeavesABoundSlotToTheCallableProof()
+    {
+        var declaration = "func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\n";
+        var reference = declaration + EnvironmentClosure + "    let n = values@ref\n    let r = make(c@ref, n, 2)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(reference).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@ref"), (error.Code, Text(reference, error.Span)));
+        Assert.StartsWith("F is Callable<() -> T> is not proven", error.Note, StringComparison.Ordinal);
+
+        var overload = "func make<T, U, F>(f: ref/F, t: T, u: U) -> i32\n    F is Callable<() -> T>\n    return 1\nfunc make<F>(f: ref/F, t: i32, u: i64) -> i32\n    return 2\n" +
+            EnvironmentClosure + "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n";
+        Assert.Empty(DiagnosticCorpus.Check(overload).Diagnostics);
+
+        var twin = declaration + "public func main() -> ()\n    let c = func [] () => 5\n    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n";
+        Assert.Empty(DiagnosticCorpus.Check(twin).Diagnostics);
     }
 
     [Trait("Purpose", "Allocation")]

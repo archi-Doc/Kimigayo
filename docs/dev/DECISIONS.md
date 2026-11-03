@@ -10137,7 +10137,8 @@ resumed by R4-M86 (2026-10-20).
     `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
     parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
   - `EnvironmentResult` (L488, L531(b)): an argument whose known signature's result over its closure's environment is no evidence
-    for a slot (SPEC 8.10, 7.7.4), which stays unsolved. Writer: `Infer` (`Binding.CallSlots`), where it judges that result; the
+    for a slot (SPEC 8.10, 7.7.4) that no other evidence binds (amended 2026-11-03, below). Writer: `Infer` (`Binding.CallSlots`),
+    where it judges that result; the
     trial's flag `environmentEvidence` becomes this fact (the argument and the slot), and the two Pending returns it decides publish
     it as the trial's (`PendingOnEnvironment`): L488, and L531's result without a Type; L531's unsubstituted Origin publishes none. Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
     the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
@@ -10145,6 +10146,14 @@ resumed by R4-M86 (2026-10-20).
     and the Note "The result of c over its environment is no evidence for T".
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
+  - Amended 2026-11-03 (G354-1c; R1 of G354-1b's re-check, kept with BU by the owner, PLAN G396). The flag counted even when another
+    argument bound its slot, so a Pending return named a judgment that did not decide. Now TryCandidateCore keeps the fact after
+    `UnsolvedSlots`, with every piece of evidence in (arguments, call signatures, the expected result, SolveLate), only while its slot
+    is in `unsolvedSlots`; otherwise the Callable proof or the conversion judges the part (SPEC 10.8: only parts containing an unbound
+    slot are matched; SPEC 8.10). Named acceptance move: `make(c@ref, n, 2)` with `make<T, U, F>(f: ref/F, t: T, u: U)` (F is
+    Callable<() -> T>) beside `make<F>(f: ref/F, t: i32, u: i64)` is valid (SPEC 10.8: the environment result is no evidence and n
+    binds T, so the first candidate is refuted and the overload applies). A Literal at T is no evidence (SPEC 10.2.1), so
+    `make(c@ref, 1)` keeps the fact. L531's unsubstituted-Origin return stays fact-less: valid programs reach it (G354-1c design R2).
 
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after
   the joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03

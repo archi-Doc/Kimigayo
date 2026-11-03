@@ -14,7 +14,8 @@ public sealed partial class Binding
     private FunctionKoto? activeInferenceFunction;
 
     // Set when a known call signature's result over its closure's hidden environment receiver supplied no evidence for a slot: that slot
-    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4). The judgment, its argument and slot.
+    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4). The judgment, its argument and slot; it is
+    // kept only while no other evidence binds the slot (TryCandidateCore, after UnsolvedSlots).
     private PendingJudgment? environmentEvidence;
 
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
@@ -490,6 +491,13 @@ public sealed partial class Binding
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
             this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
+            if (this.environmentEvidence is { Slot: { } environmentSlot } && !unsolvedSlots.Contains(ContainerSlot(CallSlotOwner(function), environmentSlot)))
+            {
+                // DECISIONS BU-86: with every piece of evidence in, the environment judgment decides only a slot that no evidence binds; a
+                // bound slot's part is no inference part, and the Callable proof or the conversion judges it (SPEC 10.8, 8.10).
+                this.environmentEvidence = null;
+            }
+
             unrepresentable |= this.environmentEvidence is not null;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
                 (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
