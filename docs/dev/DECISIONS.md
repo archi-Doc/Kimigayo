@@ -5823,9 +5823,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     one leave the same fact. One channel take, `ProofClause` (the scope's clause fact at its answer), serves `SlotSolution.Prove`, the
     formation and `FormedPart`; the trial's fact is taken under `OwnFrame` (`TakeTrialClause`). The composite `ReferenceArgumentProof`
     holds each formation part's fact (`HoldClause`), so its record names the first clause at the highest rank. The declaration walk
-    hands none: removal G375, which removes the signature's re-proof at each use. Effect: rejected programs only gain facts, an
-    owner's or slot's clause at a call (Unproven, or a NoApplicable candidate's refuted Note as for a function) and a Function Item's
-    argument or container clause; `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
+    hands none: removal G375, which removes the signature's re-proof at each use. A record names the declaration that states the
+    clause where neither the member nor a container enclosing it does (`ForeignClauseOwner`: a Type argument's, "g: K requires …";
+    BU's review B1). Effect: rejected programs gain facts, an owner's or slot's clause at a call (Unproven, or a NoApplicable
+    candidate's refuted Note as for a function) and a Function Item's argument or container clause, and one dev
+    `InternalInvariant_Kd` (a refuted reference `id<K<string>>` at a fixed Function Type) becomes its `UnsatisfiedConstraint_Kd`;
+    `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.

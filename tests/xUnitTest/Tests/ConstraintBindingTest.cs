@@ -11,6 +11,7 @@ public class ConstraintBindingTest
 {
     // An owner whose clause its formation decides (PLAN G354 (2)).
     private const string OwnedHolder = "struct H<T>\n    T is Owned\n    public let t: T\n    public init(t: T) => self.t = t@move\n";
+    private const string CopyHolder = "struct K<T>\n    T is Copy\n    public let t: T\n";
     private const string CallableHolder = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
 
     [Theory]
@@ -226,15 +227,18 @@ public class ConstraintBindingTest
     }
 
     // SPEC 8.3, 23.1.2 (PLAN G354 (2)): a Type's formation publishes the clause fact it decides on, so a call or a Function Item that
-    // rests on an owner's or an argument's formation names that clause (the first at the highest rank); a callee's signature, proven
-    // again at each use, explains none until G375 (null Note).
+    // rests on an owner's or an argument's formation names that clause (the first at the highest rank) and, for a Type argument's, the
+    // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
+    // explains none until G375 (null Note).
     [Theory]
     [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "H.init(f: g@move)", "Call init requires F is Callable<(ref/i32) -> i32>; this condition cannot be proven for (ref/i32) -> i32")]
     [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: u@move)", "Call init requires T is Owned; this condition cannot be proven for U")]
     [InlineData(CallableHolder + "func use(g: i32) -> i32\n    let h = H.init(f: g)\n    return 0", "NoApplicableOverload_Kd", "H.init(f: g)", "init requires F is Callable<(ref/i32) -> i32>; this condition is refuted for i32")]
-    [InlineData(OwnedHolder + "func id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<H<ref/i32>>\n    return 0", "UnprovenConstraint_Kd", "id<H<ref/i32>>", "Function Item id requires T is Owned; this condition cannot be proven for ref/i32")]
-    [InlineData("struct H<T>\n    T is Copy\n    public let t: T\nstruct K<T>\n    T is Copy\n    public let t: T\nfunc id2<U, V>(u: U, v: V) -> i32 => 0\nfunc use() -> i32\n    let f = id2<H<string>, K<Array<i32>>>\n    return 0", "UnsatisfiedConstraint_Kd", "id2<H<string>, K<Array<i32>>>", "Function Item id2 requires T is Copy; this condition is refuted for string")]
+    [InlineData(OwnedHolder + "func id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<H<ref/i32>>\n    return 0", "UnprovenConstraint_Kd", "id<H<ref/i32>>", "Function Item id: H requires T is Owned; this condition cannot be proven for ref/i32")]
+    [InlineData("struct H<T>\n    T is Copy\n    public let t: T\nstruct K<T>\n    T is Copy\n    public let t: T\nfunc id2<U, V>(u: U, v: V) -> i32 => 0\nfunc use() -> i32\n    let f = id2<H<string>, K<Array<i32>>>\n    return 0", "UnsatisfiedConstraint_Kd", "id2<H<string>, K<Array<i32>>>", "Function Item id2: H requires T is Copy; this condition is refuted for string")]
+    [InlineData(CopyHolder + "func g<U>() -> i32 => 0\nfunc use() -> i32\n    return g<K<string>>()", "NoApplicableOverload_Kd", "g<K<string>>()", "g: K requires T is Copy; this condition is refuted for string")]
+    [InlineData(CopyHolder + "func id<U>(u: i32) -> i32 => 0\nfunc use() -> i32\n    let f: (i32) -> i32 = id<K<string>>\n    return 0", "UnsatisfiedConstraint_Kd", "id<K<string>>", "Function Item id: K requires T is Copy; this condition is refuted for string")]
     [InlineData(OwnedHolder + "func mk<U>(h: ref/H<U>) -> i32 => 0\nfunc use(h: ref/H<i32>) -> i32\n    return mk(h: h)", "UnprovenConstraint_Kd", "mk(h: h)", null)]
     public void ATypeFormationExplainsTheUseThatRestsOnIt(string source, string code, string use, string? note)
     {
