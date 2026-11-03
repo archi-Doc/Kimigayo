@@ -168,3 +168,9 @@ R4 found that T36 (U-A2) is not a fix of an hour or less (`r4-notes\post-exit\st
 Under the owner's third answer (one (e) list; H5 waits only for the fixes of an hour or less), T36 joins F13 under G216 (b) on the
 (e) list. R4's H5 blockers are now U-B1, U-A3, U-B2, U-A1 and R6-1's builder and A3 commit, beside BU's G409 (T61 has landed on the
 branch).
+- **U-A1 also moves to the (e) list** (R4, 2026-11-03, `state-h3b-ua1.md`). T30's ClosureReceiverClassification ×4 rows belong to G148 (2)'s
+  self-store family. The Exclusive call `f(y)` stores the receiver's Content into two E nodes, which leaves the shared capture's Loan where
+  it meets `g`'s StorageDead. The SPEC texts pull apart: 15.6.4's per-argument letter against 15.8.2's "retains only in its var bindings
+  and the referents of its captured exclusive references". GXS as written does not recover these rows, so GXS's proposal (owner-adopted)
+  takes them in and reconciles the two clauses. R4's H5 blockers are now U-B1 (Q-8), U-A3, U-B2 and R6-1's builder and A3 commit,
+  beside BU's G409.

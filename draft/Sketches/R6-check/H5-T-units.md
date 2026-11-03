@@ -283,3 +283,4 @@ units of an hour or less. Amendments:
     write record is gone, but the collector's StaticStorage `Unsupported_Kd` at the non-scalar statics keeps these programs rejected
     before and after the flip. That is the existing P42 limit (R5-M82, R5-M156), so the owner's 1a acceptance does not apply. Each row
     pins the collector's records and the absent old record.
+- **U-A1 moved to the (e) list** (R4, 2026-11-03; GXS's proposal takes its rows). T-23 now waits for G409 alone. Its ClosureReceiverClassification ×4 (e) rows are re-pointed to the head's records, naming the owner's decision and GXS's unit. T-23's other rows there are class 3.
