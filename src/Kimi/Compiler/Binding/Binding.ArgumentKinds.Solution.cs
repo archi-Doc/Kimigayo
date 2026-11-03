@@ -224,7 +224,7 @@ public sealed partial class Binding
 
             proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
-            var clause = binding.ScopeReads.Clause is { } kept && kept.Outcome == proof ? kept : (ClauseFact?)null; // G351a: at the trial's verdict.
+            var clause = binding.ProofClause(proof); // G351a: at the trial's verdict.
             proof = binding.EndProof(proof);
             if (fact is not null)
             {

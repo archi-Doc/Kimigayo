@@ -8,7 +8,9 @@ namespace Kimi.Compiler;
 // - Responsibility: the proof scopes (BeginProof, EndProof) and the causes they carry: the first limit (L) and Error cause a scope read,
 //   kept by the scope whose answer rests on them (ProofCause, ReadVerdict); the one failed cause a settled proof leaves for the check
 //   that failed on it (failedCause, TakeFailedCause) or for a later record (HoldCause); the reset of each pass (ClearProofScopes);
-//   the judgment that left a candidate trial Pending before its proof, carried by the trial frame to its selection (trialPending, BU-86).
+//   the judgment that left a candidate trial Pending before its proof, carried by the trial frame to its selection (trialPending, BU-86);
+//   the clause fact a scope holds at its answer (ProofClause), which a clause list and a Type's per-use formation hand on (LeaveClause,
+//   G354 (2)) and a candidate trial keeps for its evaluation (trialClause, TakeTrialClause).
 // - Inputs: a proof's answers and the causes its producers met (ICheckCause: a conformance on its specification or limited by OCC-X, a
 //   component summary's site or stored Type); the capability engine's consumer, under which a scope stays combined.
 // - Outputs: each scope's answer combined as P < U < L < R < E; where an answer is no longer combined, an L as Error resting on its site
@@ -169,8 +171,9 @@ public sealed partial class Binding
     // A clause list's clause fact (G351a): the first clause at the list's combined verdict, E > R > L > U (`Rank`), handed after the
     // list's end to its enclosing scope, or where no scope encloses it to the channel under the innermost open frame, and only when
     // the list's combined verdict is that clause's outcome (as LeaveUnknown requires Unknown). The enclosing scope keeps the first at
-    // the highest rank of the lists it holds; it hands it on no further (EndProof restores the outer scope's), so a cached verdict and a
-    // computed one leave the same facts.
+    // the highest rank of the lists it holds; it hands it on no further (EndProof restores the outer scope's) unless it is a Type's
+    // per-use formation, one judgment that hands on its lists' fact in the same way (CheckTypeConstraints, FormedPart; G354 (2)), so a
+    // cached verdict and a computed one leave the same facts.
     private void LeaveClause(ClauseFact? fact, ConstraintProof combined)
     {
         if (fact is not { } clause || clause.Outcome != combined)
@@ -273,6 +276,14 @@ public sealed partial class Binding
         return this.OwnFrame(use, fact?.Epoch) ? fact : null;
     }
 
+    // The candidate evaluation's take of its trial's clause fact (ClauseFailure, G352; G354 (2)), under the consumer rule.
+    private ClauseFact? TakeTrialClause(Koto use)
+    {
+        var fact = this.trialClause;
+        this.trialClause = null;
+        return this.OwnFrame(use, fact?.Epoch) ? fact : null;
+    }
+
     // The consumer rule of a carried fact (design-r2 Amendment 5, r2-6): true when no fact is present (a normal state) or its stamp is the
     // innermost open frame's; a present foreign fact is a broken contract, failing its use (InternalInvariant_Kd).
     private bool OwnFrame(Koto use, long? epoch)
@@ -288,6 +299,10 @@ public sealed partial class Binding
 
     // The U fact the answer of the proof scope in progress rests on (EndProof, a cache entry).
     private CallableUnknown? ProofFact(ConstraintProof proof) => proof == ConstraintProof.Unknown ? this.ScopeReads.Unknown : null;
+
+    // The clause fact the proof scope in progress holds at its answer (G351a), read before its end by the judgment that keeps it: a
+    // candidate trial (SlotSolution.Prove), a Type's formation and its memo (FormedPart; G354 (2)).
+    private ClauseFact? ProofClause(ConstraintProof proof) => this.ScopeReads.Clause is { } kept && kept.Outcome == proof ? kept : null;
 
     // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit and U fact, an Error's cause.
     private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause, CallableUnknown? fact)

@@ -748,7 +748,9 @@ public sealed partial class Binding
                 if (candidate.ConstraintFailure is { } condition)
                 {
                     var subject = ClauseSubject(condition.Constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
-                    var conditionNote = $"{candidate.Function.Name} requires {condition.Clause}; this condition is refuted for {subject}";
+                    var requirer = ForeignClauseOwner(condition.Clause, candidate.Function) is { } owner
+                        ? $"{candidate.Function.Name}: {owner}" : candidate.Function.Name;
+                    var conditionNote = $"{requirer} requires {condition.Clause}; this condition is refuted for {subject}";
                     if (this.InheritedSelfMismatchNote(condition.Constraint) is { } inherited)
                     {
                         conditionNote += $". {inherited}";

@@ -5818,6 +5818,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `HoldUnknown`), and a Constraint no judgment of its own proved takes none (`RequireUnproven`); the clause fact's consumer reads it
     at depth 0 in its own frame (`TakeClauseFact`, otherwise `InternalInvariant_Kd`); epochs are `long`. No proof decision reads a
     carried fact; record selection does.
+  - Amendment (G354 (2), 2026-11-03; BU's design `bu\g352-354\design.md` §2, the planning session's answers to Q1 and Q2): a Type's
+    formation in the per-use walk (`CheckTypeConstraints`) is one judgment and hands on its clause lists' fact as a clause list does
+    (`LeaveClause`), replacing "no further" for it; `FormedPart`'s memo caches the fact with the verdict, so a cached part and a computed
+    one leave the same fact. One channel take, `ProofClause` (the scope's clause fact at its answer), serves `SlotSolution.Prove`, the
+    formation and `FormedPart`; the trial's fact is taken under `OwnFrame` (`TakeTrialClause`). The composite `ReferenceArgumentProof`
+    holds each formation part's fact (`HoldClause`), so its record names the first clause at the highest rank. The declaration walk
+    hands none: removal G375, which removes the signature's re-proof at each use. A record names the declaration that states the
+    clause where neither the member nor a container enclosing it does (`ForeignClauseOwner`: a Type argument's, "g: K requires …";
+    BU's review B1). Effect: rejected programs gain facts, an owner's or slot's clause at a call (Unproven, or a NoApplicable
+    candidate's refuted Note as for a function) and a Function Item's argument or container clause, and one dev
+    `InternalInvariant_Kd` (a refuted reference `id<K<string>>` at a fixed Function Type) becomes its `UnsatisfiedConstraint_Kd`;
+    `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -6247,6 +6259,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G147 (2) (BU), G160's remainder, G263; G216 (a)'s unjudged forms and record sites (G388-G392, U3), G216 (b), G215; the
     ledger's per-row closure; X-5's non-blocking findings.
   - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
+- **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
+  「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; R4's planning session's GO for the design one level above
+  the supply; BU's review REVISE B1, the fix round under the owner's 「GO」)
+  - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
+    the Self the declaration writes: a Self a bound reference's argument carries from the premise's context stays the context's.
+    `InstantiatedContract` (Binding.ContractTypes) rewrites a clause's or an ancestor's bound reference so: with the supply's
+    reference, the declaration's Self first, then the reference's arguments; without one, as ContractType rewrites the clause's Types.
+    `ContractConstraint` uses it for a clause's Contract; the premise supply (ContractSupply) instantiates each ancestor of the shape's
+    declaration through the shape, supplies `self is A` and reads A's clauses through it (no second Self on a bound reference).
+  - Moves (valid, twins still rejected): the supply's clause, ancestor, refinement and expansion forms; conformance verification of a
+    concrete Type (`associate X is D<Self>`, `D2<Self, U>`, `D<E<Self>>`); implementation matching of `T is C2<Self>`; an ancestor
+    naming both Selfs (`contract C2<U>: D2<Self, U>` under `T is C2<Self>` in a Contract).
+  - Rejected: re-mapping the premise inside the supply only (a second copy of the rule); the declaration-first order for the clause's
+    Types too: it newly accepts invalid Contract declarations whose clause's requirement only its own expansion supplies (`associate X
+    is D<Self.Y>` with `contract D<U>: U is E` and no `Self.Y is E`), since an expansion's facts take the expanded Contract's
+    availability, not that of the fact expanded.
+  - Limits: a concrete Type's ancestor path is still keyed by the written `D<Self>` (PLAN G397, the identity unit after C3); a clause's
+    Types keep the earlier order, so inside a Contract's own scope an argument-dependent clause's subject is still mapped to the
+    expansion's subject (valid forms such as `T.(C2<Self>).X.(D<Self>).N` stay rejected); removed with the availability gap above.
 - **R4-M167 A published operation's body is held within its row by a test over A4's items (R6-check H4)** (2026-11-03; H0b-8 (A),
   answer R4-8 with N6 and N7, R4 r2 N2; the planning session's choice of option 3 for `appendAll`). SPEC 4.9.6 makes a row an
   operation's complete user-code effect: callers compose it, never the body, and the library implementation stays within it. The
