@@ -692,6 +692,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     }
 
     private static string[] Problems(Compilation c, MirReport report)
-        => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
+        => [.. report.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
             DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

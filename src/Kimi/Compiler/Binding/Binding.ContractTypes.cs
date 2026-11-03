@@ -6,10 +6,10 @@ namespace Kimi.Compiler;
 
 // Owns a Type's Contract environment rewrite (ContractType): a Contract's Self replaced by the conforming Type, a bound Contract
 // reference's arguments substituted, and completed associated identities normalized in a scope, without member selection, each distinct
-// part once per call (contractParts). Reads the conformance tables and the scope's facts; publishes each answer's hops (ResolutionHops):
-// the conformance paths a projection's specification resolved it through, outermost first, each with the step it resolved, written by
-// the run that made the image and carried by the memo and the associated collection's batch, so a hit never resolves again (DECISIONS
-// BU-76).
+// part once per call (contractParts); and a declaration's Contract reference instantiated for a conforming Type (InstantiatedContract).
+// Reads the conformance tables and the scope's facts; publishes each answer's hops (ResolutionHops): the conformance paths a projection's
+// specification resolved it through, outermost first, each with the step it resolved, written by the run that made the image and carried
+// by the memo and the associated collection's batch, so a hit never resolves again (DECISIONS BU-76).
 public sealed partial class Binding
 {
     // The images of ContractType's queries (DECISIONS BU-64): one outermost call is a query, its scope, Self, normalize flag,
@@ -41,6 +41,55 @@ public sealed partial class Binding
         var query = this.contractParts.Begin(this.storageVersion);
         (var image, hops) = this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
         return image;
+    }
+
+    // SPEC 8.4, 8.3.2: a Contract reference written in a Contract's declaration (a clause's Contract, an ancestor) for the conforming Type
+    // `self`, itself where unchanged. With a bound `reference` (the premise supply's), the Self the declaration writes is `self` first and
+    // the reference's arguments come after, so a Self they carry from the premise's context stays the context's (DECISIONS R4-M166).
+    private BindingSymbol InstantiatedContract(BindingSymbol contract, BindingScope scope, BoundType? self, bool normalize, BindingSymbol? reference)
+    {
+        if (!IsBoundContractReference(contract))
+        {
+            return contract;
+        }
+
+        var type = contract.Type!;
+        var image = reference is null || self is null ? this.ContractType(type, scope, self, normalize)
+            : this.ContractType(this.SubstituteContractReference(this.WithConformingSelf(type, self), reference), scope, null, normalize);
+        return ReferenceEquals(image, type) ? contract : this.BoundContractReference(image);
+    }
+
+    // `type` with each Contract's Self in it as `self` and nothing else rewritten: a declaration's Types name only its own Self and its
+    // ancestors', each the conforming Type (SPEC 8.4).
+    private BoundType WithConformingSelf(BoundType type, BoundType self)
+    {
+        if (IsContractSelf(type))
+        {
+            return self;
+        }
+
+        var count = type.Components.Count;
+        if (count == 0 || !type.HasAbstractPart)
+        {
+            return type;
+        }
+
+        var components = this.RentTypes(count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = this.WithConformingSelf(type.Components[i], self);
+                changed |= !ReferenceEquals(components[i], type.Components[i]);
+            }
+
+            return changed ? this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments) : type;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
     }
 
     // A component of a query: the associated collection's batch answers it where one is open (unchanged); otherwise a component with

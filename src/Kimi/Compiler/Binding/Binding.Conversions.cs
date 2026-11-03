@@ -110,7 +110,7 @@ public sealed partial class Binding
         if (!OffersTake(conversion.Left) ||
             (ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
-            return this.Fail(conversion, AccessFailure(conversion.Left, take: true));
+            return this.FailTake(conversion, conversion.Left);
         }
 
         if (this.HolderPlaceFailure(conversion.Left, HolderAccess.Move, null, conversion))

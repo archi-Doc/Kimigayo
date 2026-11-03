@@ -1246,3 +1246,39 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
     and `../Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md`.
   - Not implemented: 2c-D (A5-F7). STATUS records the default pipeline's rejection of D1's `let`-binding form as an old-path limit until
     R6-check. SPECJ and GUIDE are not refreshed.
+
+## 2026-11-03 — R7, R8 and R9 implementation plan
+
+- [R7, R8 and R9 Implementation Plan](Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md): 一部取り込み (open). The owner
+  adopted it on 2026-11-03 as the formal plan for R7 (Binding consolidation), R8 (library algorithms in Kimigayo, 28 intrinsics) and R9
+  (the front-end remainder, the Documentation and toolchain moves, the final documents), with its exit gates and its three-session
+  arrangement, and answered its questions RQ1–RQ17 as recommended (verbatim 「RQ1〜RQ17 を推奨どおりで承認します」; its status line, §0 and
+  §2.2 record the outcomes; DECISIONS R7-M1–R7-M3). It is a working plan: no section is integrated into SPEC or IMPL, and no text is frozen.
+- Its specification work goes separately, each as an explicit revision recorded here when it lands, its text shown to the owner first
+  (RQ10): R7-SP1 (SPEC §10.1 step 5 or §8.1.3, §10.8, §15.3.4: Origins out of applicability, T1–T4), R7-SP2 (SPEC 8.2.3, only if C3 finds
+  a gap), R8-SP1 (SPEC §22.1, §22.7, §22.9.1, §22.10.5, IMPL §21.1.3 and §21.4.4, the sections after the 72fb4b791 rewrite: the representation structs,
+  the private primitives and intrinsics, `writeLine` as a body), R8-SP2 (§6.7 and §22.1: the lang attributes as identification), R8-SP3
+  (§15.7 and §15.7.1: the whole-value updates as bodies), R8-SP4 (SETTLED's entry on representation structs), R9-B1 (IMPL §20.8.3's
+  manifest); SPEC §8.4.4's OCC revision is proposed at R9's exit (RQ14). Adoption implies no implementation support.
+- Revision 1 (2026-11-03, plan §14): R8-L0a's census corrected §5.2's unit parts and `.ll.in` dispositions, the allocation inventory and
+  SP1–SP4's citations; the plan stays 一部取り込み (open), nothing frozen.
+
+## 2026-11-03 — G216 (a) position rows
+
+- [G216 (a) Position Rows](Proposals/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
+  and its two SPEC readings in the G216 planning session (verbatim 「推奨の内容でOKです。」), fixed the policy (「その方針で確定します。」:
+  start after the flip group's sweep, this session leads the design and U0, R4 reviews, DECISIONS under BU numbers, U0 before H5) and
+  chose its placement (「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」: option A, the R7 plan's revision 2,
+  I3's content and I1's G216 (a) part). It is an implementation design: no section is integrated into SPEC or IMPL, and no text is
+  frozen. The two readings (SPEC 15.6.4 step 3 with 10.3: Result exempts only a position whose instantiated sub-Type is a slot the
+  expected result solved; SPEC 10.5.1 with 14.9.2 step 2: a control-flow argument supplies child positions by structure whether or not
+  the join waited) are readings of the current text; if U6 finds that 10.5.1 needs a sentence for the second, that revision is proposed
+  separately and recorded here. Adoption implies no implementation support.
+
+## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
+
+- [Published Copy Verdicts Plan](Proposals/2026-11-03%20Published%20Copy%20Verdicts%20Plan.md): 一部取り込み (open). A working plan, not a
+  specification proposal: the owner decided Q8-3's cost, verbatim 「Binding の判定結果を公開して、検証器はそれを読むだけにする」, and then, verbatim
+  「R9後でもいい？そしたら、draft/Proposalに計画書を書いて、今後の予定としてください。」. Binding publishes its Copy verdicts and the MIR validator,
+  MirEffects, MirTypes.Destruction and code generation read them (units U0–U3b, after R9). No SPEC or IMPL mapping; nothing frozen; PLAN G406.
+  Adoption implies no implementation support.

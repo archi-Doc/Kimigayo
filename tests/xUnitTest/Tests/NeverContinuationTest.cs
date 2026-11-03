@@ -543,6 +543,6 @@ public class NeverContinuationTest
     {
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
     }
 }

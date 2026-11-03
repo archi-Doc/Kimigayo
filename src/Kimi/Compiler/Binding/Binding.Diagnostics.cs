@@ -505,7 +505,7 @@ public sealed partial class Binding
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target), target);
+        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target, out _), target);
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
         => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
@@ -645,6 +645,7 @@ public sealed partial class Binding
         this.arithmeticDirectionFailures?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
+        this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.arityFailures?.Clear();

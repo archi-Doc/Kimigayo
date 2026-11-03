@@ -665,7 +665,7 @@
 
   + Name="ExclusivePathTake_Kd"
     Category="Language"
-    Message="This Place is reached through an exclusive reference, which grants Read and Write but not Take; exchange or replace the value with Kimi.Intrinsics instead of moving it"
+    Message="This Place is reached through a layer that offers no Take; exchange or replace the value with Kimi.Intrinsics instead of moving it"
 
   + Name="ReceiverShapeMismatch_Kd"
     Category="Language"

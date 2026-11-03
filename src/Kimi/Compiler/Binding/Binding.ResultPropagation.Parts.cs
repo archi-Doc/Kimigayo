@@ -23,7 +23,8 @@ public sealed partial class Binding
     private readonly List<BoundType> partTypes = new();
 
     // The parts a source holds at its positions (PLAN G368 (3)), appended by the one held-part walk (AddHeldParts) for its readers
-    // (HoldsWaitedResult, JudgeHeld, ReportHeldConflicts); each reader closes its own range, so a nested walk's range stacks above it.
+    // (HoldsWaitedResult, JudgeHeld, ReportHeldConflicts, PublishAwaiting); each reader closes its own range, so a nested walk's range
+    // stacks above it.
     private readonly List<Koto> heldParts = new();
 
     // What prevents a Type formed part by part: a conflict among typed parts (or shapes), among literal defaults, or a failed part
@@ -77,8 +78,8 @@ public sealed partial class Binding
             return;
         }
 
-        // A join decided Waiting (WaitingResult) holds only deferred sources until it is completed, and a source leaves that state only by
-        // its completion, so Waiting implies AwaitsPosition or BoundSince: asked first, the decided fact spares the subtree walk.
+        // A join decided Waiting (WaitingResult) is a waiting part by its outcome (BoundSince's Waiting row, DECISIONS BU-87): asked
+        // first, the decided fact spares the subtree walk.
         if (DeliversResult(part) && !this.PartFailed(part) && (this.WaitingResult(part) is not null || this.AwaitsPosition(part) || this.Deferred(part)))
         {
             this.AddResults(part);

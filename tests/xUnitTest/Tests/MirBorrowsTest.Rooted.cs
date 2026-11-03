@@ -381,6 +381,57 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
     }
 
+    // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems's rows that need a live static Loan, on rooted bodies (SPEC 23.1.2,
+    // DECISIONS R5-M183): wipe, x's initializer and pair's have a validator finding. d2's call of wipe is a Derived site (MirEffects.Views),
+    // so the Loan it would meet gives no record, while writes() meets it; r4's read of x meets the unique Loan, and the initialization
+    // proof consults x's initializer, so it rests on it and makes no record, while writes() meets the counter's Loan; at r5's readDeep() the
+    // read of pair meets the unique Loan and the proof rests on pair's initializer, so Met's first block makes no record, and its second
+    // still reports A4's Deep (Lim.run) for the shared Loan a write would meet (Root.pair, pair's stand-in, ends group Root). Fail-before:
+    // wipe(), useX() and readDeep() are conflicts.
+    [Fact]
+    public void ABodyWithAFindingLeavesOtherBodiesProblemsRooted()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public func wipe() => State.counter = Counter.init()
+                public func readDeep() -> i32
+                    Lim.run()
+                    return State.pair.1
+                public func d2()
+                    var sc = Root.counter()
+                    let lc = sc.view()
+                    wipe()
+                    _ = writes()
+                    inspect(lc)
+                public func r4()
+                    var sx = Root.x()
+                    var sc = Root.counter()
+                    let u = sx.viewU()
+                    let lc = sc.view()
+                    _ = useX()
+                    _ = writes()
+                    u@follow = 1
+                    inspect(lc)
+                public func r5()
+                    var sp = Root.pair()
+                    let u = sp.0@uniq
+                    let s = sp.1@ref
+                    _ = readDeep()
+                    u@follow = 1
+                    inspect(s)
+
+            """ + EffectRoots + "    public func pair() -> (i32, i32) => (1, 2)\n");
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        foreach (var (name, kind) in new[] { ("wipe", MirBodyKind.Fn), ("x", MirBodyKind.StaticInit), ("pair", MirBodyKind.StaticInit) })
+        {
+            program.Bodies.ToArray().Single(x => x.Key.Kind == kind && x.Key.Decl?.Name == name).HasFinding = true;
+        }
+
+        Assert.Equal(
+            ["d2: writes()", "r4: writes()", "r5: readDeep() OwnershipDepthLimit_Kd"],
+            Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]));
+    }
+
     // ALimitIsUnsupportedAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Deep (Lim's
     // destruction past the walk's bound) is the depth limit where a live mutable-static Loan would be met (e12a; the owner's 「G272: (1)」,
     // R4-M153), nothing where none is (e12b), Unknown beside it decides (e12c); a dependent of an error reports nothing by itself (e13a), a
@@ -839,7 +890,7 @@ public sealed partial class MirBorrowsTest
     private static MirProgram Sound(MirProgram program)
     {
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         return program;
     }

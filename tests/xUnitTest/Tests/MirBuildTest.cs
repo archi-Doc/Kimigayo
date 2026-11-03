@@ -96,7 +96,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 }
             }
 
-            foreach (var record in program.Records.Where(x => x.Subject.Module == module.Syntax.Module))
+            foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module.Syntax.Module))
             {
                 counts[2]++;
                 var key = Key(c.SyntaxOf(record.Subject));
@@ -326,7 +326,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         {
             var (program, body) = (programs[i], bodies[i]);
             work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
+            Assert.True(!body.HasOpaque && program.Records(MirRecordClass.Construction).Count() == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
             var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
             flow.Begin(body);
             moves.Build(body, flow);

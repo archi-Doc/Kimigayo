@@ -8,8 +8,8 @@ namespace Kimi.Compiler;
 // The Constraint records of a clause list's proof (census #25; DECISIONS R4-M155, G351), a part of RequireConstraint's shared path.
 // - Responsibility: one record per node after its clause lists' proof, from the one clause fact (the first clause at the conjunction's
 //   combined verdict, E > R > L > U; ClauseFact): a Function Item reference's (RequireClauses), a selection's pending candidate's and an
-//   overloaded reference's (FailClauseRecord); its publication (ReportClauseConstraint); the consumer's read of the fact a judgment
-//   left (TakeClauseFact).
+//   overloaded reference's (FailClauseRecord); its publication (ReportClauseConstraint), naming the declaration that states the clause
+//   where the member does not (ForeignClauseOwner); the consumer's read of the fact a judgment left (TakeClauseFact).
 // - Inputs: the clause fact the proof frame left (TakeClauseFact) or a candidate's trial kept (ClauseFailure); the U fact of the same
 //   clause.
 // - Outputs: the node's UnsatisfiedConstraint_Kd or UnprovenConstraint_Kd naming its clause, its subject and the declaration; for a
@@ -21,6 +21,27 @@ public sealed partial class Binding
 {
     // A node's clause record, published by ReportClauseConstraint.
     private Dictionary<Koto, ReferenceConstraintFailure>? clauseConstraints;
+
+    // The declaration that states a clause fact's clause when neither the member nor a container enclosing it does (G354 (2)): a Type
+    // formed for the use, such as a Type argument's, whose formation decided the fact; its record names it, not the member.
+    private static string? ForeignClauseOwner(IsKoto clause, Koto? member)
+    {
+        var owner = clause.Parent;
+        while (owner is not (null or DeclarationContainerKoto or FunctionKoto))
+        {
+            owner = owner.Parent;
+        }
+
+        for (var scope = member; scope is not null; scope = scope.Parent)
+        {
+            if (ReferenceEquals(scope, owner))
+            {
+                return null;
+            }
+        }
+
+        return (owner as DeclarationContainerKoto)?.Name ?? (owner as FunctionKoto)?.Name;
+    }
 
     // A Function Item reference's Constraint record after its proof (ReferenceArgumentProof): its clause fact's record, or the Callable
     // record when that clause's U fact names a failing condition. An Error, a fact resting on a limit (L) and a verdict without a fact at
@@ -70,16 +91,18 @@ public sealed partial class Binding
     {
         var call = fact.Declaration is not null;
         var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
+        var owner = ForeignClauseOwner(fact.Clause, (fact.Declaration ?? use.BoundSymbol)?.Declaration);
         var subject = ClauseSubject(fact.Constraint) is { } type ? DiagnosticTypeName(type) : null;
         var clause = fact.Clause.ToString();
         var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
-        var note = $"{(call ? "Call" : "Function Item")} {member} requires {clause}; this condition {outcome}" +
+        var role = owner is not null ? $"required by {owner}" : call ? "required by the called declaration" : "required by the referenced declaration";
+        var note = $"{(call ? "Call" : "Function Item")} {member}{(owner is null ? null : ": " + owner)} requires {clause}; this condition {outcome}" +
             (subject is null ? " under the supplied bindings" : $" for {subject}");
         use.Report(
             requirement,
             code,
-            evidence: subject is null ? null : [subject, member, clause],
+            evidence: subject is null ? null : [subject, owner ?? member, clause],
             note: note,
-            related: [("constraint", fact.Clause, call ? "required by the called declaration" : "required by the referenced declaration")]);
+            related: [("constraint", fact.Clause, role)]);
     }
 }

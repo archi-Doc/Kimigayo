@@ -535,6 +535,7 @@ public sealed partial class Binding
         if (container is not null)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(container, scope), true);
+            held = this.HoldClause(held); // A Type's formation leaves its clause fact (G354 (2)).
         }
 
         for (var i = 0; i < count; i++)
@@ -543,6 +544,7 @@ public sealed partial class Binding
                 ? lengths?[i] is { } length && this.ProveLength(length, scope.Function) ? ConstraintProof.Proven : ConstraintProof.Refuted
                 : this.CheckTypeConstraints(arguments[i]!, scope);
             proof = CombineProof(proof, argumentProof, true);
+            held = this.HoldClause(held);
         }
 
         // Length expressions in a declaration signature may defer formation until its arguments are fixed. A reference

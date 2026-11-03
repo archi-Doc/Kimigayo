@@ -10,8 +10,9 @@
 // of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the
 // collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
-// target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
-// Compilation.MirRecords publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156); for code generation (R5 C0b1) also an
+// target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, the program's
+// collection records (MirProgram.Report with MirRecordClass.Collection, once per code and subject; R6-check H3-1), which Compilation.MirRecords
+// publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156); for code generation (R5 C0b1) also an
 // item's Types (TypeOf), the location of a record at a site of its body (Subject)
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
@@ -100,7 +101,7 @@ internal sealed partial class InstanceCollector
     private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per run.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
-    private MirProgram? program; // The program of the latest run, whose bodies Declaration reads.
+    private MirProgram? program; // The program of the latest run, whose bodies Declaration reads and whose report takes the records.
     private int rootModules;
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
@@ -209,7 +210,7 @@ internal sealed partial class InstanceCollector
     {
         if (code != DiagnosticCode.InternalInvariant_Kd || this.types.BindingComplete)
         {
-            this.Set.Report(code, subject);
+            this.program!.Report(subject, code, MirRecordClass.Collection);
         }
     }
 }

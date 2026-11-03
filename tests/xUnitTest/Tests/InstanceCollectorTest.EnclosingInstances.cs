@@ -117,7 +117,7 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {Text(c.SyntaxOf(x.Subject))}")));
+        Assert.Equal(records, string.Join(" | ", program.Records(MirRecordClass.Collection).Select(x => $"{x.Code} {Text(c.SyntaxOf(x.Subject))}")));
         Assert.Equal(closures, set.Items.ToArray().Count(static x => x.Key.Body.Def.Kind == MirBodyKind.Closure));
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), form));
 

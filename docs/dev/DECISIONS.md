@@ -737,7 +737,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
   (code, subject, Reason)); a merge keeps the first problem's facts (superseded by R4-M132: a merged problem is derived only when
   every report it groups is, its causes the union). Construction records keep their own merge in
-  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger).
+  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger; done, with the collector's records, by R6-check H3-1,
+  R5-M182's amendment of 2026-11-03).
   No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
   make old-path vocabulary a shared concept (this naming clause is superseded by R5-M24: Diagnostics owns the kinds as
   `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
@@ -5819,6 +5820,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `HoldUnknown`), and a Constraint no judgment of its own proved takes none (`RequireUnproven`); the clause fact's consumer reads it
     at depth 0 in its own frame (`TakeClauseFact`, otherwise `InternalInvariant_Kd`); epochs are `long`. No proof decision reads a
     carried fact; record selection does.
+  - Amendment (G354 (2), 2026-11-03; BU's design `bu\g352-354\design.md` §2, the planning session's answers to Q1 and Q2): a Type's
+    formation in the per-use walk (`CheckTypeConstraints`) is one judgment and hands on its clause lists' fact as a clause list does
+    (`LeaveClause`), replacing "no further" for it; `FormedPart`'s memo caches the fact with the verdict, so a cached part and a computed
+    one leave the same fact. One channel take, `ProofClause` (the scope's clause fact at its answer), serves `SlotSolution.Prove`, the
+    formation and `FormedPart`; the trial's fact is taken under `OwnFrame` (`TakeTrialClause`). The composite `ReferenceArgumentProof`
+    holds each formation part's fact (`HoldClause`), so its record names the first clause at the highest rank. The declaration walk
+    hands none: removal G375, which removes the signature's re-proof at each use. A record names the declaration that states the
+    clause where neither the member nor a container enclosing it does (`ForeignClauseOwner`: a Type argument's, "g: K requires …";
+    BU's review B1). Effect: rejected programs gain facts, an owner's or slot's clause at a call (Unproven, or a NoApplicable
+    candidate's refuted Note as for a function) and a Function Item's argument or container clause, and one dev
+    `InternalInvariant_Kd` (a refuted reference `id<K<string>>` at a fixed Function Type) becomes its `UnsatisfiedConstraint_Kd`;
+    `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -6230,6 +6243,66 @@ and migration obligations remain in force; no numeric cap changes are authorized
       Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
       Unproven until G392.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
+- **R4-M165 R4's exit under the owner's 90% rule** (2026-11-03; the owner, R4's dialog, verbatim 「根本的な解決は後回しにする。90%の状態で良いので、R4を完成させて下さい。」, then 「先ほどの手順通りでなくても良いので、現在までの成果を活用し、早期にR4を完成させて下さい。細かい不具合は、後で修正します。」, and 「「U2j まで待つ」の撤回と、O4（一般 SPEC 規則を R4 exit 時に Unsupported で残す）はオーナー承認事項です。」;
+  the exit and its exceptions below, verbatim 「これでexit」) For R4's exit only, it supersedes COMPILER_ARCHITECTURE's R4 exit rule and the
+  A5 Step 2 plan's §5.4 gate (OQ5 (i)(a), (ii)); the evidence is `draft/Sketches/A5 Step 2/R4 exit/`.
+  - Landed: Binding, A1, A3, A4, F1-F5 and F9 (the ledger's Landed, 10 of 14), A5-F6 by Abstract Calls Reach by Paths U0-U5 (R4-M106),
+    and G216 (a)'s Part 1, U2.1 and U2.2 groups 1-3 (R4-M155, R4-M161, R4-M162, R4-M164).
+  - X-1: each of the 105 rows the ledger counts as open blocking (shared base 1eb0cbaa9) has a verdict, none an A5 miss: 73 restated
+    (the same failure at another location or under another code in the same body, a paired MIR record named), 17 (a), 15 (d) (R4-M52,
+    R4-M154). The ledger classifies by signature, so its metric stays 105 until a per-row identity (OQ10 (a), X-1a).
+  - X-2: 36 `Unsupported_Kd` producers (MIR 33, Binding 3); the 25 without a removal stage stay under DEC O4. X-3: H0c (R5-M182)
+    holds it. X-4: MIR build and A1-A6 against the old analyses, 2.0 times cold and 1.5 times warm over the 44 milestones, about 1 on
+    the generic scaling series (V16 holds), the gap the library's fixed cost (G337: accepted, its O2 deferred by the owner); warm
+    allocation 0 B; sizes in `artifacts/benchmarks/2026-11-03-r4-exit-sizes.md`. X-5: a sampled final review (nine App. A rules, ten
+    triage rows, a symptom sweep, the contracts), ACCEPT.
+  - Exceptions, carried past the exit as PLAN G396: A5-F7's last units (2c-6, 2c-7), A5-F8 and A5-F10 unlanded (F7's 3 and F8's 10
+    SPEC cases unchecked on the MIR); A6's 2g units with G105; G103, G106, G124 (an unsound acceptance on both pipelines), G126,
+    G147 (2) (BU), G160's remainder, G263; G216 (a)'s unjudged forms and record sites (G388-G392, U3), G216 (b), G215; the
+    ledger's per-row closure; X-5's non-blocking findings.
+  - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
+- **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
+  「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; R4's planning session's GO for the design one level above
+  the supply; BU's review REVISE B1, the fix round under the owner's 「GO」)
+  - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
+    the Self the declaration writes: a Self a bound reference's argument carries from the premise's context stays the context's.
+    `InstantiatedContract` (Binding.ContractTypes) rewrites a clause's or an ancestor's bound reference so: with the supply's
+    reference, the declaration's Self first, then the reference's arguments; without one, as ContractType rewrites the clause's Types.
+    `ContractConstraint` uses it for a clause's Contract; the premise supply (ContractSupply) instantiates each ancestor of the shape's
+    declaration through the shape, supplies `self is A` and reads A's clauses through it (no second Self on a bound reference).
+  - Moves (valid, twins still rejected): the supply's clause, ancestor, refinement and expansion forms; conformance verification of a
+    concrete Type (`associate X is D<Self>`, `D2<Self, U>`, `D<E<Self>>`); implementation matching of `T is C2<Self>`; an ancestor
+    naming both Selfs (`contract C2<U>: D2<Self, U>` under `T is C2<Self>` in a Contract).
+  - Rejected: re-mapping the premise inside the supply only (a second copy of the rule); the declaration-first order for the clause's
+    Types too: it newly accepts invalid Contract declarations whose clause's requirement only its own expansion supplies (`associate X
+    is D<Self.Y>` with `contract D<U>: U is E` and no `Self.Y is E`), since an expansion's facts take the expanded Contract's
+    availability, not that of the fact expanded.
+  - Limits: a concrete Type's ancestor path is still keyed by the written `D<Self>` (PLAN G397, the identity unit after C3); a clause's
+    Types keep the earlier order, so inside a Contract's own scope an argument-dependent clause's subject is still mapped to the
+    expansion's subject (valid forms such as `T.(C2<Self>).X.(D<Self>).N` stay rejected); removed with the availability gap above.
+- **R4-M167 A published operation's body is held within its row by a test over A4's items (R6-check H4)** (2026-11-03; H0b-8 (A),
+  answer R4-8 with N6 and N7, R4 r2 N2; the planning session's choice of option 3 for `appendAll`). SPEC 4.9.6 makes a row an
+  operation's complete user-code effect: callers compose it, never the body, and the library implementation stays within it. The
+  check is test-level (`MirEffectsTest.EachRowOperationsBodyStaysWithinItsRow`): a Kimi body's atoms are the row's requirement on the
+  Type below `On`, a shared call through `Calls`, or a destruction that the walk of the Type below `Destroys` reaches, the Callable
+  input, or a Type the premises prove Copy; an Unknown is only a call of the row's requirement on that Type, attributed site by site
+  through `MirEffects.Keys` in the body and the row-less bodies it enters; no other class. A4 gains the read accessor
+  `MirEffects.Items` (the solved node's classes and atoms; `Atom`, `Drop`, `Shared`, `Requires` internal), no mode and no new record.
+  - Rows: `Row: None` on the compiler functions `append`, `insertAt`, `pop`, `removeAt` (A4 already gave them `Inputs`) and on the
+    Kimi-bodied `insert`, `appendAll`, `appendCopies` and four new `KimiDeclarationId` members, `ArrayRemovePosition` (`remove`),
+    `ArraySwapPositions` (`swap`), `ArraySwapRemove` (`swapRemove`), `ArrayReverse` (`reverse`). A4 now reads their rows. The other
+    SPEC 4.9.6 "None" families (access, view, position, metadata, capacity) stay body-composed (R4 r2 N2).
+  - Exception (one, named and located in the test; PLAN G400): `appendAll` pops every element of the source it consumes, then drops
+    the empty source; A2 does not see the emptiness, so A4 keeps `Drop(T)` for its body. Removal: A2 proves that the drop of an Array
+    emptied by pops destroys no element, or the library body is rewritten so that its items stay within None. A4's verdict moves
+    toward SPEC 4.9.6: a `confined` witness calling `appendAll` over elements with a printing `drop` was rejected by A4 and A4 accepts
+    it (`MirEffectsTest.ACallerComposesAnArrayOperationsRow`, A4's problems; controls `append` accepted, `truncate` rejected). The
+    user-visible false rejection remains on both pipelines: Binding's `EffectSummary` still enters `appendAll`'s body and rejects
+    the witness, BU's follow-up under G400.
+  - Deleted: `Binding.SummarizePublishedOperation` (`Binding.PublishedOperations.cs`) and its two cover branches in
+    `Binding.EffectBounds`; `EffectBoundImplementationTest`'s two row tests move to `MirEffectsTest`.
+  - Rejected: a production judgment of each reached row body in A4 (cost on every check for a record no valid input reaches, H0b §4
+    (B)); a premise mode in A4 covering the row's effects (N6: a mode steering a function).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6911,6 +6984,24 @@ resumed by R4-M86 (2026-10-20).
   `Unsupported_Kd` (D5). Tuple and fixed-array elements through a pair layer stay Binding's `Unsupported_Kd` (`Binding.Elements`).
   Library, milestones and the diagnostic corpus unchanged. Open: PLAN G164 (valid element writes below a pair-layer receiver) and
   G179 (a user index through a pair layer). Not temporary.
+  - Amendment (2026-11-03, R4 after its exit, BU reviewing; PLAN G179, the owner's option (a), verbatim 「2すべてa」 and
+    「3案の通り」): a user index through a followable pair layer (`x: s/Collection<i32>`: `x[0] = 5`, `let y = x[0]`) is Binding's
+    located `Unsupported_Kd` at the index expression, no longer `NotIndexable_Kd`. `TryBindIndexer`, which decides a user index,
+    passes the receiver's reference layers and, on a pair layer, its followable pair layers (`ComparisonThroughPairs`, as
+    `BindElement`'s fallback reads them), and reports the limit when that core has an Indexable conformance or fact; a core
+    without one keeps `NotIndexable_Kd`, and with a failed key the limit rests on the key, as the pair-layered sequence's limit
+    does. Rejected: a second conformance test in the fallback (a copy of the indexer's rule). Temporary: removed by G179's
+    selection through the layer, as `TryPairReceiver` selects receivers.
+  - Amendment (2026-11-03, R4 after its exit, BU reviewing; PLAN G181 (1), the owner's option (a), verbatim 「2すべてa」 and
+    「3案の通り」, read by the planning session as N'): a Take past a layer of a receiver's own Type keeps `AccessFailure`'s code, and
+    its record names the layer that offers no Take. `ExclusivePathTake_Kd`'s fixed Message is layer-neutral ("reached through a layer
+    that offers no Take"); each record's Note names the layer from the cases `AccessFailure` gives (the mask `PathAuthority` already
+    computes), recorded by `FailTake` and formed by `ReportTake` in `Binding.Diagnostics.Takes`: owner among them a pair layer
+    admitting owner, obj an object payload, else an exclusive reference or view. `InvalidAssignment_Kd`'s Message stays; at an object
+    payload its Note names the payload. The explicit forms (`p@follow.inner@move`, `h@follow@move`) pass the same layers and get the
+    same Note. Why: the old Message named an exclusive reference past an owner-only pair layer and `InvalidAssignment_Kd` named only
+    assignment. Rejected: a Message argument (a catalog argument) and a Note under the old Message (still a wrong layer). `LayerCases`'
+    walk (PLAN G181 (2)) stays BU's.
 - **BU-17** (2026-10-21; the BU planning session; PLAN G163 under the full process: designs A and B, the chosen design, a design
   review (APPROVE WITH CHANGES), two revisions after the implementer's robustness rows, design review round 2 (APPROVE WITH
   CHANGES); the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole destruction receiver, is
@@ -10202,6 +10293,28 @@ resumed by R4-M86 (2026-10-20).
     a TyCtxt view (R5-M61), cleared in `ResetViews`. The Checker takes its body's facts once (`Copies`). `MirEffects`,
     `MirTypes.Destruction` and code generation read the same facts. `TyCtxt.Copy(definition, type)` is gone. No second cache.
     A warm validation still allocates nothing.
+- **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after
+  the joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03
+  (PLAN G396); design `bu\g335\design.md` §1, §2)
+  - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
+    at each question, so it grew as program size × nesting depth on nested joins (V16).
+  - Owner: ResultPropagation. The fact is a per-pass column beside the outcome on the pooled `ResultContext`, reset by `Clear` at
+    each rent. Its one writer is `ResultContext.Wait(awaiting)`, the one writer of `JoinOutcome.Waiting`: both Waiting sites
+    (`AwaitsWithoutCandidate`, `DecideResult`'s `ConflictWaits`) publish `SourcesAwait` once, when the join's sources are reached and
+    each held join's own fact is published. When a call takes a waiting argument's parts (`TakeWaiting`) and decides it again
+    (`DecideTaken`), `PublishAwaiting` republishes the argument's held Waiting joins innermost first, over the held-part walk
+    (`AddHeldParts`, G368 (3)) and each held join's waited sources, in JudgeHeld's order. Two windows take or bind parts without
+    republication: a Case construction's TakeWaiting (`Binding.Enums`) or a failing CompleteWaiting, and an enclosing root's step 3
+    before the held join's DecideWaiting; no reader of the fact was found there (G335 U1 review N1).
+  - Readers: `AwaitsFor`'s result-target row (a Waiting join answers with the fact; every AwaitsFor and AwaitsPosition caller reads
+    it) and `BoundSince` (Deferred). BoundSince's Waiting row is a decision, not a consequence of the sources: a Waiting join is
+    bound since by its outcome, whatever its sources hold since. Its effect after TakeWaiting: a held Waiting join one of whose
+    sources holds a failed Tuple element beside a function its call completed is now Deferred, where the deleted walk made it not
+    Deferred and its root rested on the cause without judging the tree. Its root now judges it (JudgeHeld), so the join's own
+    conflict among the completed functions is reported, an independent record (SPEC 23.1.2) the walk had lost.
+  - Removed: the re-walk of held Waiting joins and `BoundSince`'s walk over a Waiting join's waited sources (G335's "Completed").
+    No removal condition: the fact is canonical. AwaitsFor's other rows (literal parts, AwaitsCall, an Unvisited literal) stay
+    structural per-node answers; a column for them would be a second representation.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -16037,6 +16150,19 @@ structure is recorded here by the unit that first implements it.
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
+  - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner, relayed by the planning
+    session): the folded records take two body values, `MirRecordClass.Construction` and `MirRecordClass.Collection` (both no body,
+    distinct from `NoBody`; an enum, so a class is a checked selector, R5's review N2/N3), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's `Sides`,
+    `VerifiedSpecExampleTest` and `MirDump` read construction records only, and today's two `reported` sets keep a construction and a
+    collection record at one (code, site) apart. `MirProgram.Report(site, code, recordClass)` adds a ControlFlow problem of every view; the
+    `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(recordClass)` is the one path to a
+    class's rows (R5's condition), and a reader of the analyses' problems skips records by `MirProblem.IsRecord`, the one definition.
+    `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
+    "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or
+    Collection" where H0a §2 says "body `Records`".
+  - Amended (the R7, R8 and R9 plan, R7-M2, 2026-11-03; the owner's RQ1): the division's windows stay R5's through the flip group's
+    (H1, H1b, Q8-3, H5 with H6); from the window after it the middle session (today's R4) runs every window. H3b's rehearsal and
+    classification stay R5's.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -16065,3 +16191,105 @@ structure is recorded here by the unit that first implements it.
   - Tests: `MirValidatorTest.TheVerdictIsWhetherTheValidatorAddedAFinding`, `AnEnsuredStaticHasItsInitializer`;
     `InstanceCollectorTest.AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (was `...FindingsEmptyTheSet`: its expectation changes
     by the owner's (a)), `ABodyWithAFindingDropsOnlyWhatRestsOnIt`, `ARequestsOwnGapAtABodyWithAFindingStays`.
+  - Amended (U2, 2026-11-03; R4's consent to the design's §4 hunk, `Met`'s fall-through included): the analyses' rule landed as staged.
+    `MirAnalysis.Run`'s `Findings.Count > 0` return, U1's staged part, is deleted (its removal condition, U2, holds): a body with the fact
+    closes an empty drop-table entry through `MirDrops.Exclude` (the table's one writer) and steps 1, 2 and 4 skip it; A4's one private
+    `Views` composes it as `Derived` at `AddEdge`, `Enter` and `Owe`; `Proved` returns `bool?` and `Unproved` `(Fact, Rests)`, so `Met`'s
+    first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
+    `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
+    (the rows that need a live static Loan, which no source program has until P42).
+
+## R7, R8 and R9 (adopted 2026-11-03)
+
+Entries of the [R7, R8 and R9 Implementation Plan](../../draft/Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md) (the plan; its decisions are RP1–RP21 and its owner questions
+RQ1–RQ17, numbers that never collide with the R5 and R6 plan's PD and OQ). Units of R7, R8 and R9 record their entries here as R7-M*,
+R8-M* and R9-M* by the stage of the recording unit.
+
+- **R7-M1 Adoption** (owner, 2026-11-03, verbatim 「RQ1〜RQ17 を推奨どおりで承認します　他のエージェントに確認し、問題なければコミットしてください。」;
+  the plan's §0 and §2.2 record each outcome; the R4, R5 and BU sessions checked the plan before its commit, plan §13) The plan is the
+  formal plan for R7 (Binding consolidation), R8 (library algorithms in Kimigayo, 28 intrinsics) and R9 (the front-end remainder, the
+  Documentation and toolchain moves, the final documents), with its exit gates (plan §10) and its arrangement (R7-M2). Outcomes, each
+  as recommended:
+  - RQ1 the arrangement (R7-M2); RQ2 the plan, R7's exit measured by its structure rows and measurements, not by PLAN10's 38,000-line
+    figure (RP16; Q5).
+  - RQ3 R7's design, census, prototype and behavior-preserving units start now beside R6-check (R4 exited the same day, R4-M165), its
+    acceptance-changing units after H5 (RP4, RP5; R6-check's own deletions and the post-exit units' named acceptance moves are not R7's); supersedes PLAN10 §12.2's R7 start condition ("R6"): the reason that no longer holds is that those units
+    change no acceptance and the front session's second lane would otherwise idle through R6-check.
+  - RQ4 R8-L0 now; library or Backend-only units once the old Analysis accepts their bodies and their O2 A/B holds; units needing
+    MIR-only forms after H5 (PLAN10 §12.2 allowed library-only work after R6).
+  - RQ5 P42's design package runs in the middle and back sessions during R7's first units; its Binding part lands after R7-N1 and
+    R7-V2 (R5-M13's "first feature work after H5" keeps its place in the order; the Binding part's landing follows the declaration
+    table it would otherwise rewrite).
+  - RQ6 Full units: two candidates (Q11) for R7-C2, C3, I2, P3, O2 and R8-W2; one prototype-first candidate for R7-D2, E1, V2, Y2, T1,
+    P7 and R8-L1, each a per-unit owner exception recorded with the unit (no WORKFLOW revision); RP21, the Full-core rule (plan §5.0).
+  - RQ7 the board is the live hold record (R7-M2); RQ8 the cost stop rules (RP8, R7-M3).
+  - RQ9 the vocabulary targets: `BindingFailure` (88 members) deleted with a closed requirement enumeration in
+    `DiagnosticRequirement.tinyhand`, `IntrinsicId` 32 → 28, `CompilerFunctionKind` (76) deleted, `KimiDeclarationId` (191) → the
+    lang-item set (RP18, RP20); each unit's commit records the count.
+  - RQ10 the SPEC revisions of plan §5 (R7-SP1–SP2, R8-SP1–SP4, R9-B1's IMPL §20.8.3) by one procedure: the owning session drafts the
+    text, the owner sees it before it lands, SPECJ follows in the unit, INTEGRATED gets a row per intake, examples and tests land with it.
+  - RQ11 the representation structs (`ArrayRepr<T>`, `SliceRepr<T>`, `StringRepr` with `#Layout("C")`, the Dictionary `Slot<K, V>`)
+    and the lang attributes (`#Lang`, `#Intrinsic`, `#CallerLocation`, `#Unsupported`, identification only) as PLAN10 §5.8 and §16-9.
+  - RQ12 G128's interim `Unsupported_Kd` (BU-12; the R5 and R6 plan's PD30) ends with R7-T1: a Type past the storage bound is the
+    collector's Resource record under R5-M170; the `StorageNesting` capability row goes.
+  - RQ13 one frozen library per process (§16-8, G337 O3 with O2) is decided at R8-L1 by measurement: adopted when Hello's cold Bind is
+    10 % or more above R8's start, or the prototype saves 20 % or more of a fresh small build; otherwise recorded and declined.
+  - RQ14 SPEC §8.4.4's inherited-conformance OCC stays `Unsupported_Kd` through R7 and R8; the revision is proposed at R9's exit.
+  - RQ15 no rename of the diagnostic partitions and phases (§16-7; R5-M167 row 14's `Emission` stays).
+  - RQ16 `formatInteger128` is removed at R9, or later, by measurement.
+  - RQ17 the milestone order (P38 → P39 → P41 → OCC-X → P43, alternating with the shared-object track's P40) resumes after R7's exit
+    in the front session's lane; P42 by RQ5.
+  - RP1–RP4, RP9 and RP20 (component-level) are recorded by their first implementing units; RP5–RP8, RP10–RP19 and RP21 are in force
+    from this entry (R7-M2, R7-M3).
+- **R7-M2 The arrangement: three sessions by component, windows and the board** (owner, 2026-11-03, RQ1 and RQ7; plan §3 and §9;
+  supersedes the session names of R4-M119 and R5-M113, whose caps stand, and the hold record of R5-M7, R5-M148 and R5-M167, whose
+  protocol stands; amends R5-M182's window assignment from the window after the flip group's)
+  - The front session (Syntax and Binding: `Compiler/Lexing/**`, `Parsing/**`, `Helper/**`, `src/Kimi/Misc/**`, `Binding/**` but the
+    library index files, the root helpers `Compiler/*.cs`, `Checking/**`, `Lsp/**`, `src/Kimi/Diagnostics/**`) runs R7 and R6-check's
+    Binding side; the middle session (`Compiler/Mir/**`, the HIR columns' builder readers, `tests/mir`, `Compiler/Documentation/**`)
+    runs the post-flip analysis defects, R9, R7's HIR side and the merge windows; the back session (`Compiler/Backend/**`, the
+    templates, `src/Kimi/Library/**` with its index files, `src/Kimi/Testing/**`, the old Analysis until H10b, `C/Emission` until
+    R9-M2) runs R8 and its R6-check units. A test file follows the file it tests; a Benchmark series follows the component it measures.
+    Today's BU, R4 and R5 sessions are these three and carry their work in flight (plan §3.4; R4 has exited, R4-M165, and its session
+    carries the post-exit list G396 and R6-check's MIR consents).
+  - Windows: two or three a day, run by the middle session, each merging the queued units that passed their review and unit checks on
+    a base at most two windows old, running the heavy set once (the default Session with the affected native families and milestones,
+    the diagnostic snapshot against the base, the mir ledger until H10, the O2 kernels for Backend and library units), pushing dev and
+    publishing the shared base; a failing unit is dropped and the window re-run; no input-changing push outside a window (RP11).
+    R6-check's windows through the flip group's (H1, H1b, Q8-3, H5 with H6, one merge) stay the back session's, as H0 assigns them
+    (R5-M182, amended there); the middle session runs every window after it. A window's heavy run never starts inside a booked quiet
+    slot. Conflicting appended DECISIONS lines or entries are merged by keeping both, in order.
+  - Caps: implementers two per session, one per lane, their files disjoint, one unit changing a shared representation at a time;
+    designers or reviewers two; heavy runs three in all, a window holding one (R4-M119, R5-M113).
+  - Reviews by the owning session of the files; a unit touching two areas gets both reviewers on their hunks; a reviewer never
+    authored the unit; a unit implemented outside its files' owner holds the files and is reviewed by the owner (RP12, RP17).
+  - The board `C:\Users\bwff1\repos\archi-Doc\Kimigayo\artifacts\board\BOARD.md` (plan §9: windows, queue, holds, heavy runs, quiet
+    time, consents and questions, the owner outbox, the log; every row an id and a stamp; a session edits its own rows; the file re-read
+    before every atomic rewrite; the log append-only; a row stale after 24 hours without a state change) is the live record of holds;
+    PLAN §3 keeps area ownership (RP10). Messages between sessions only when a board row needs an answer.
+  - Rejected: sessions by stage (R7 and R6-check's Binding side would edit one file set from two sessions); per-session windows (the
+    heavy set paid per unit); a PLAN hold line per unit (a commit per hold between windows).
+- **R7-M3 Unit rules of the plan** (planning session, 2026-11-03, with the owner's RQ6 and RQ8; plan §2.1; reason: the Q11 suspensions
+  of G216 (a), bu65, G159 (2), WK, G272, 2c-5, G264 U1 and revision B, plan §8.1)
+  - RP5: an R7 unit that changes acceptance on the default pipeline lands after H5; a deletion of what the old Analysis or Parsing still
+    read lands after H10 and H14 (RP4); until then R7 lands behavior-preserving units and record-only changes within Q13's classes.
+    Both bind R7's units only: R6-check's own deletions (H1's old TransferRequired sites, with the back's consent, at H5) and the
+    post-exit units' named acceptance moves land as their own records say.
+  - RP6: a unit that replaces an owner of a rule adds, in the same commit, an ArchitectureRulesTest zero-reference row (or a falling
+    count) for the replaced path.
+  - RP7: every Full unit has a test author of neither candidate; a behavior-preserving Full unit's tests are the bp triple, the cost
+    rows and the scaling classes.
+  - RP8 (the owner's 「Relax to 1.03」 of 2026-11-02 generalized, RQ8): a front or middle unit stops for the owner when Bind with
+    publication is B/A′ > 1.03 and outside the same measurement's A′/A spread, or when warm allocation grows; cold allocation and
+    retained memory are recorded per unit and compared at the stage exit; a back unit stops when an O2 kernel moves beyond the A=A
+    variance after an address-matched control (R5-M147) or an allocation count changes; O0 is recorded.
+  - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
+  - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
+    blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
+  - RP15: every agent keeps a state file with its Q12 working-time log; every session writes a handoff at every pause with the board's
+    tables copied in.
+  - RP18: a vocabulary reduction needs no approval beyond the plan's adoption; an addition still does. RP19: D3 applies in the Problem
+    migrations, snapshot differences counted by code.
+  - RP21: a Full family's flow (problem statement, tests, candidates, choice, review) covers only its core, the shared representation
+    and its first consumer, one hour per phase per candidate; the remaining parts are Owner-class units under the chosen design, one
+    review each or one group review, never a second candidate (plan §5.0).

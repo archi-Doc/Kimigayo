@@ -748,7 +748,9 @@ public sealed partial class Binding
                 if (candidate.ConstraintFailure is { } condition)
                 {
                     var subject = ClauseSubject(condition.Constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
-                    var conditionNote = $"{candidate.Function.Name} requires {condition.Clause}; this condition is refuted for {subject}";
+                    var requirer = ForeignClauseOwner(condition.Clause, candidate.Function) is { } owner
+                        ? $"{candidate.Function.Name}: {owner}" : candidate.Function.Name;
+                    var conditionNote = $"{requirer} requires {condition.Clause}; this condition is refuted for {subject}";
                     if (this.InheritedSelfMismatchNote(condition.Constraint) is { } inherited)
                     {
                         conditionNote += $". {inherited}";
@@ -900,6 +902,10 @@ public sealed partial class Binding
         else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
         {
             this.ReportWrite(issue.Node, target, requirement, issue.Code);
+        }
+        else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
+        {
+            this.ReportTake(issue.Node, takeCases, requirement, issue.Code);
         }
         else if (this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
         {

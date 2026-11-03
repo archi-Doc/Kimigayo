@@ -86,7 +86,7 @@ public sealed partial class MirBuildTest
         var c = Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "adaptations.kimi")));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var cases = new MirCases(c.Types);
         var lines = new List<string>();
         foreach (var body in program.Bodies)
@@ -145,7 +145,7 @@ public sealed partial class MirBuildTest
         var rejected = Compile("func wrong<s/T>() -> s/i64\n    s is object\n    return 1@s/i64\n");
         var built = rejected.BuildMir();
         Assert.Empty(built.Findings);
-        Assert.Empty(built.Records);
+        Assert.Empty(built.Records(MirRecordClass.Construction));
         var wrong = built.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "wrong");
         Assert.True(wrong.HasOpaque);
         Assert.DoesNotContain(wrong.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Adapt);
@@ -182,7 +182,7 @@ public sealed partial class MirBuildTest
             Assert.Equal(count == 6 ? [] : new[] { DiagnosticCode.OwnershipCaseLimit_Kd }, c.Binding.Issues.Select(static x => x.Code));
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
-            Assert.Empty(program.Records);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
             var parts = program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && (x.Key.Decl?.Name == "f" || x.Key.Kind == MirBodyKind.Closure)).ToArray();
             var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
             Assert.Equal(count == 7, program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "g" && x.Key.Kind == MirBodyKind.DefaultTemplate).HasOpaque);

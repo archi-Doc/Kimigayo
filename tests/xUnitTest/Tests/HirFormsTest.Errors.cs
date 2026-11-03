@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 using static XunitTest.HirColumnsTest;
@@ -87,10 +88,10 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, rows);
         Assert.Equal(HirOp.Group, HirTables.Op(Reachable(c.Kotonoha).OfType<ParenthesizedKoto>().Single()));
-        Assert.Empty(c.BuildMir().Records);
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Construction));
         var ambiguous = MinimalEmissionTest.Analyze("group Config\n    public var count: i32 = 3\nstruct Settings\n    public var count: i32 = 0\n" +
             "func read(Config: ref/Settings) -> i32\n    return Config.count\n");
-        Assert.Empty(ambiguous.BuildMir().Records);
+        Assert.Empty(ambiguous.BuildMir().Records(MirRecordClass.Construction));
         var recovered = MinimalEmissionTest.Analyze(
             "func take(a: string, b: string) -> i32 => 1\nfunc g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n");
         HirTables.Publish(recovered);

@@ -557,7 +557,7 @@ public sealed partial class Binding
             }
 
             var proof = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables, unsolvedSlots);
-            var failure = ClauseFailure(this.trialClause, function.BoundSymbol); // The trial's clause fact, read before a later proof replaces it.
+            var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;

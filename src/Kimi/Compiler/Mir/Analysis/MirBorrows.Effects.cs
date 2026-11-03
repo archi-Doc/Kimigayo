@@ -21,7 +21,8 @@ namespace Kimi.Compiler.Mir;
 //   Deep without them, that answer's limit record;
 // - the initialization proof: a conflict every effect that would decide it may be the first-access initialization of a static a live
 //   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
-//   otherwise the first effect outside the proof decides the Language problem (Unproved).
+//   otherwise the first effect outside the proof decides the Language problem (Unproved); a proof that consults an initializer with a
+//   validator finding rests on it (R5-M183): Met's conflict or limit there and Destroying make no record, Met's A4 limit stays.
 // Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Limit, rank outcomes, or read keys
 // outside a Call or a Drop. A static a Loan or a Drop roots has its initializer: the validator checks that its body ensures it and that
@@ -111,9 +112,10 @@ internal sealed partial class MirBorrows
         var decided = Decided(row, classes, field);
         this.Work += 2;
         var scope = this.Source(at).Scope;
-        if (decided is not null && this.Conflict(root, [], EffectRow(decided), taking, scope, -1) != None)
+        // The proof's record; none where the proof rests on an initializer with a finding (R5-M183), and the A4 limit below stays.
+        if (decided is not null && this.Conflict(root, [], EffectRow(decided), taking, scope, -1) != None &&
+            this.Unproved(at, taking, row, classes, field) is (var fact, false))
         {
-            var fact = this.Unproved(at, taking, row, classes, field);
             var c = fact is { } unproved ? this.Conflict(root, [], EffectRow(unproved), taking, scope, -1) : None;
             if (fact is not { } kind || c == None)
             {
@@ -154,17 +156,17 @@ internal sealed partial class MirBorrows
         {
             this.Limit(this.Subject(at), MirEffects.Outcome(classes)); // No key and no Unknown: A4's Limit or Deep, if any.
         }
-        else if (this.Covered(this.Source(at).Scope, -1, -1))
+        else if (this.Covered(this.Source(at).Scope, -1, -1) || this.Unproved(at, taking, row, classes, field) is not (var fact, false))
         {
-            return; // Its template's.
+            return; // Its template's, or a proof resting on an initializer with a finding (R5-M183).
         }
-        else if (this.Unproved(at, taking, row, classes, field) is not { } fact)
+        else if (fact is not { } kind)
         {
             this.Limit(this.Subject(at), MirOutcome.Limit); // Every effect that would decide it lies in a proved initializer.
         }
         else
         {
-            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, this.Effect(fact, this.Key(~destroyed)));
+            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, this.Effect(kind, this.Key(~destroyed)));
         }
     }
 
@@ -175,8 +177,9 @@ internal sealed partial class MirBorrows
     // (MirProgram.StaticInit), which carries no key of its own static (R4-M38). Liveness is a may-property, so the Loan proves nothing on a
     // path it is absent from (e10f): a conflict every effect that would decide it is so proved is the located Unsupported_Kd, never a
     // Language problem (PD12 (ii) as written); a key both a proved initializer and the site itself may produce counts as proved, since keys
-    // do not record their source (P5).
-    private bool Proved(MirLocation at, int taking, ReadOnlySpan<ulong> row, MirFactKind fact, int field)
+    // do not record their source (P5). Null where no initializer without a validator finding proves it and one the proof consults has a
+    // finding, which no consumer reads (R5-M183): the answer rests on that finding.
+    private bool? Proved(MirLocation at, int taking, ReadOnlySpan<ulong> row, MirFactKind fact, int field)
     {
         var terminator = this.body.Blocks[at.Block].Terminator;
         MirBody? ensured = null;
@@ -186,6 +189,7 @@ internal sealed partial class MirBorrows
         }
 
         var bit = fact == MirFactKind.EffectWrite ? (2 * field) + 1 : 2 * field;
+        bool? proved = false;
         this.Work += this.body.Statics.Length;
         for (var d = 0; d < this.body.Statics.Length; d++)
         {
@@ -201,6 +205,12 @@ internal sealed partial class MirBorrows
                 continue; // The location does not first-access d.
             }
 
+            if (initializer.HasFinding)
+            {
+                proved = null; // Its summary is never read (R5-M183).
+                continue;
+            }
+
             for (var view = 0L; view < MirCases.Count(initializer); view++)
             {
                 var summary = effects.Summary(initializer, view, out var classes);
@@ -211,29 +221,31 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return false;
+        return proved;
     }
 
     // What decides an effect on the Field A4 numbers f once the initialization proof applies: the first of a write key, Unknown and a read
-    // key that no initializer the proof covers may produce (Proved); null where none is left.
-    private MirFactKind? Unproved(MirLocation at, int taking, ReadOnlySpan<ulong> row, byte classes, int field)
+    // key that no initializer the proof covers may produce (Proved); null where none is left. Rests where a proof consulted an initializer
+    // with a validator finding (R5-M183), Fact then meaningless: the initializers a proof consults do not depend on the kind, so its proofs
+    // are all true or null, or all true or false, and the first not proved decides both.
+    private (MirFactKind? Fact, bool Rests) Unproved(MirLocation at, int taking, ReadOnlySpan<ulong> row, byte classes, int field)
     {
-        if (Bit(row, (2 * field) + 1) && !this.Proved(at, taking, row, MirFactKind.EffectWrite, field))
+        if (Bit(row, (2 * field) + 1) && this.Proved(at, taking, row, MirFactKind.EffectWrite, field) is not true and var write)
         {
-            return MirFactKind.EffectWrite;
+            return (MirFactKind.EffectWrite, write is null);
         }
 
-        if ((classes & MirEffects.Unknown) != 0 && !this.Proved(at, taking, row, MirFactKind.EffectUnknown, field))
+        if ((classes & MirEffects.Unknown) != 0 && this.Proved(at, taking, row, MirFactKind.EffectUnknown, field) is not true and var unknown)
         {
-            return MirFactKind.EffectUnknown;
+            return (MirFactKind.EffectUnknown, unknown is null);
         }
 
-        if (Bit(row, 2 * field) && !this.Proved(at, taking, row, MirFactKind.EffectRead, field))
+        if (Bit(row, 2 * field) && this.Proved(at, taking, row, MirFactKind.EffectRead, field) is not true and var read)
         {
-            return MirFactKind.EffectRead;
+            return (MirFactKind.EffectRead, read is null);
         }
 
-        return null;
+        return (null, false);
     }
 
     // Whether the effect set holds a candidate on a root, in any mode.

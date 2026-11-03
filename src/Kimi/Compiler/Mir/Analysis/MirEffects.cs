@@ -13,8 +13,8 @@
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
 // G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
-// Must not read syntax or HIR, re-derive premises, bounds or obligations, or report a failure that only an Opaque site or a callee
-// Binding rejected causes (derived, R4-M10).
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
+// Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
 using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -34,18 +34,25 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
     internal const byte Limit = 4;
 
-    /// <summary>A class of a summary: an effect only an Opaque site or a callee Binding rejected causes, a dependent of that error
-    /// (R4-M10).</summary>
+    /// <summary>A class of a summary: an effect only an Opaque site, a callee Binding rejected or a body with a validator finding causes,
+    /// a dependent of that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
     /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
     /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
     internal const byte Deep = 16;
 
+    /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
+    /// a call through it.</summary>
+    internal const byte Drop = 0;
+
+    /// <summary>An atom's kind: a call through its Type with a shared borrow, as a published row's Callable input is called.</summary>
+    internal const byte Shared = 1 + (int)SemanticsKind.Ref;
+
+    /// <summary>An atom's kind: a published requirement on its Type (SPEC 4.9.6).</summary>
+    internal const byte Requires = byte.MaxValue;
+
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
-    private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
-    private const byte Shared = 1 + (int)SemanticsKind.Ref; // (a published row's Callable input is called through a shared borrow),
-    private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
@@ -392,11 +399,28 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private void AddEdge(MirBody callee, Subst? subst)
     {
         MirDataflow.Grow(ref this.edges, this.edgeCount + 1);
-        this.edges[this.edgeCount++] = new(callee.Ordinal, cases.Views(callee, subst), subst);
+        this.edges[this.edgeCount++] = new(callee.Ordinal, this.Views(callee, subst), subst);
     }
 
-    // An atom of a summary or a local input: a Type and a kind (Drop, 1 + a call's receiver, or Requires with its requirement).
-    private readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement);
+    // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
+    // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
+    private ulong Views(MirBody body, Subst? subst)
+    {
+        if (body.HasFinding)
+        {
+            this.found |= Derived;
+            return 0;
+        }
+
+        return cases.Views(body, subst);
+    }
+
+    /// <summary>An atom of a summary or a local input: a Type and a kind (<see cref="Drop"/>, 1 + a call's receiver, or
+    /// <see cref="Requires"/> with its requirement).</summary>
+    /// <param name="Type">The Type.</param>
+    /// <param name="Kind">The kind.</param>
+    /// <param name="Requirement">The requirement of a <see cref="Requires"/> atom.</param>
+    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement);
 
     // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
