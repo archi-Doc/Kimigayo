@@ -6258,11 +6258,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Kimi-bodied `insert`, `appendAll`, `appendCopies` and four new `KimiDeclarationId` members, `ArrayRemovePosition` (`remove`),
     `ArraySwapPositions` (`swap`), `ArraySwapRemove` (`swapRemove`), `ArrayReverse` (`reverse`). A4 now reads their rows. The other
     SPEC 4.9.6 "None" families (access, view, position, metadata, capacity) stay body-composed (R4 r2 N2).
-  - Exception (one, named and located in the test): `appendAll` pops every element of the source it consumes, then drops the empty
-    source; A2 does not see the emptiness, so A4 keeps `Drop(T)` for its body. Removal: A2 proves that the drop of an Array emptied by
-    pops destroys no element, or the library body is rewritten so that its items stay within None. Acceptance moves toward SPEC 4.9.6:
-    a `confined` witness calling `appendAll` over elements with a printing `drop` was rejected by A4 and is accepted
-    (`MirEffectsTest.ACallerComposesAnArrayOperationsRow`; controls `append` accepted, `truncate` rejected).
+  - Exception (one, named and located in the test; PLAN G400): `appendAll` pops every element of the source it consumes, then drops
+    the empty source; A2 does not see the emptiness, so A4 keeps `Drop(T)` for its body. Removal: A2 proves that the drop of an Array
+    emptied by pops destroys no element, or the library body is rewritten so that its items stay within None. A4's verdict moves
+    toward SPEC 4.9.6: a `confined` witness calling `appendAll` over elements with a printing `drop` was rejected by A4 and A4 accepts
+    it (`MirEffectsTest.ACallerComposesAnArrayOperationsRow`, A4's problems; controls `append` accepted, `truncate` rejected). The
+    user-visible false rejection remains on both pipelines: Binding's `EffectSummary` still enters `appendAll`'s body and rejects
+    the witness, BU's follow-up under G400.
   - Deleted: `Binding.SummarizePublishedOperation` (`Binding.PublishedOperations.cs`) and its two cover branches in
     `Binding.EffectBounds`; `EffectBoundImplementationTest`'s two row tests move to `MirEffectsTest`.
   - Rejected: a production judgment of each reached row body in A4 (cost on every check for a record no valid input reaches, H0b §4

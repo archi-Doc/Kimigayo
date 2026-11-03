@@ -11,9 +11,9 @@ namespace XunitTest;
 // the library implementation stays within, read from A4's items of the operation's own body.
 public sealed partial class MirEffectsTest
 {
-    // R4-M167: the one item outside its row. appendAll pops every element of the source it consumes before the source's drop, which
-    // destroys no element; A2 does not see the emptiness, so A4 keeps T's destruction. Removal: A2 proves that a drop of an Array emptied
-    // by pops destroys no element, or the body is rewritten so that its items stay within None.
+    // R4-M167, PLAN G400: the one item outside its row. appendAll pops every element of the source it consumes before the source's drop,
+    // which destroys no element; A2 does not see the emptiness, so A4 keeps T's destruction. Removal: A2 proves that a drop of an Array
+    // emptied by pops destroys no element, or the body is rewritten so that its items stay within None.
     private const string AppendAllDropsItsEmptiedSource = "appendAll: Drop T";
 
     // SPEC 4.9.6: each Kimi body with a row stays within it in A4's items, with abstract Type parameters: an atom is the row's requirement
@@ -123,9 +123,10 @@ public sealed partial class MirEffectsTest
         }
     }
 
-    // SPEC 4.9.6: a caller composes an Array operation's row, never its body: appendAll and append run no user code, so a confined
-    // witness may call them over elements whose destruction writes the console, and truncate destroys the elements it removes. Before
-    // appendAll had its row (R6-check H4), A4 composed its body, whose drop of the emptied source keeps T's destruction.
+    // SPEC 4.9.6: a caller composes an Array operation's row, never its body: appendAll and append run no user code, so A4 accepts a
+    // confined witness calling them over elements whose destruction writes the console, and truncate destroys the elements it removes.
+    // Before appendAll had its row (R6-check H4), A4 composed its body, whose drop of the emptied source keeps T's destruction; Binding's
+    // EffectSummary still enters that body and rejects the witness (PLAN G400, BU).
     [Theory]
     [InlineData("        var more: Array<Loud> = []\n        self.items.appendAll(more@move)\n", "")]
     [InlineData("        self.items.append(Loud.init())\n", "")]
