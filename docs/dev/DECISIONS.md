@@ -5817,6 +5817,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `HoldUnknown`), and a Constraint no judgment of its own proved takes none (`RequireUnproven`); the clause fact's consumer reads it
     at depth 0 in its own frame (`TakeClauseFact`, otherwise `InternalInvariant_Kd`); epochs are `long`. No proof decision reads a
     carried fact; record selection does.
+  - Amendment (G354 (2), 2026-11-03; BU's design `bu\g352-354\design.md` §2, the planning session's answers to Q1 and Q2): a Type's
+    formation in the per-use walk (`CheckTypeConstraints`) is one judgment and hands on its clause lists' fact as a clause list does
+    (`LeaveClause`), replacing "no further" for it; `FormedPart`'s memo caches the fact with the verdict, so a cached part and a computed
+    one leave the same fact. One channel take, `ProofClause` (the scope's clause fact at its answer), serves `SlotSolution.Prove`, the
+    formation and `FormedPart`; the trial's fact is taken under `OwnFrame` (`TakeTrialClause`). The composite `ReferenceArgumentProof`
+    holds each formation part's fact (`HoldClause`), so its record names the first clause at the highest rank. The declaration walk
+    hands none: removal G375, which removes the signature's re-proof at each use. Effect: rejected programs only gain facts, an
+    owner's or slot's clause at a call (Unproven, or a NoApplicable candidate's refuted Note as for a function) and a Function Item's
+    argument or container clause; `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
