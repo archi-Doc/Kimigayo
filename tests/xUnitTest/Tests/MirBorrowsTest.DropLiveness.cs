@@ -159,9 +159,10 @@ public sealed partial class MirBorrowsTest
     // abstract part's erased destruction (BU-47's `0 Content store 0`), which stores what the part carries within its reach: slot's address
     // and w's Loan of y (SPEC 15.6.4's reach rule), so `y = 5` errs, as clearGenOk (AReferentsDestructionIsComposedAtItsCall). R4-M147's
     // located Unsupported_Kd is gone with the composition (the owner's G264 (S) instruction of 2026-11-04). At depth 40 a's own guard is
-    // Deep (R4-M170: the part past the bound decides it), so the depth limit is reported too.
+    // Deep (R4-M170: the part past the bound decides it), so W does not pass a and the store is the depth limit at the call, a limit
+    // record in place of `y = 5`'s.
     [Theory]
-    [InlineData("deep", 40, "a.clear() OwnershipDepthLimit_Kd|y = 5 ComparisonLoanConflict_Kd")]
+    [InlineData("deep", 40, "a.clear() OwnershipDepthLimit_Kd")]
     [InlineData("deep", 10, "y = 5 ComparisonLoanConflict_Kd")]
     [InlineData("alone", 0, "y = 5 ComparisonLoanConflict_Kd")]
     public void AnAbstractPartBesideAPartPastTheBoundIsComposedAtAReferentStore(string form, int depth, string expected)
