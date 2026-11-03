@@ -37,6 +37,7 @@ public class ElementMoveEmissionTest
         { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]@move\na[0].1[1] = \"new\"\nlet whole = a[0]@move\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
         { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0@move\nvar i: isize = 0\na.1[i] = \"new\"\nConsole.writeLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
         { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0@move else => \"new\"\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
+        { "IndexSibling", "var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2\nif a.1[0] == 42 => Console.writeLine(\"ok\")", "held=1;ok=1" },
     };
 
     [Theory]
@@ -146,12 +147,13 @@ public class ElementMoveEmissionTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
-    // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
-    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
+    // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the update. The located
+    // receiver stays protected while its index operands evaluate (SPEC 4.6.3), and a move of its sibling there does not touch it, so
+    // that program is accepted (Fixtures' IndexSibling; R4's 1a verdict, the owner 2026-11-03): the old analysis's
+    // ComparisonLoanConflict_Kd went with the MIR deciding acceptance (H5).
     [Theory]
     [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", DiagnosticCode.ComparisonLoanConflict_Kd)]
-    public void MoveOfTheTargetInTheRightSideOrIndexIsRejected(string source, DiagnosticCode failure)
+    public void MoveOfTheTargetInTheRightSideIsRejected(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
