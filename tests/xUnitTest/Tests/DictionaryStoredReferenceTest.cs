@@ -33,7 +33,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 
     // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27; formerly OldRule S1 rows, R4-M50 superseded in part): `found` derives from the `index`,
     // `indexUniq` or `tryGet` result and carries that call's Loan on `entries`, which Binding names in `found`'s Type, so clearing or
-    // removing from `entries` while `found` is live is a Loan conflict on the default pipeline too. The record is at the mutation, or at
+    // removing from `entries` while `found` is live is a Loan conflict. The record is at the mutation, or at
     // `subject` in it: the Exclusive form's receiver Borrow of `entries` (the MIR's record, H5).
     [Theory]
     [InlineData("OptionalTuple", Lookup + Compound + "match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]

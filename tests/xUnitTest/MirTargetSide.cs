@@ -7,9 +7,10 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The MIR side of a test whose old rule went at R6-check H5 (DECISIONS R4-M136, refining R4-M50 and R4-M60): the Error records
-/// the MIR side has, each at its exact subject, so a changed MIR verdict fails the test. It stays until H10a, with the difference
-/// ledger.</summary>
+/// <summary>The MIR side of a test (DECISIONS R4-M136, refining R4-M50 and R4-M60; the OldRule traits went at R6-check H5): the Error
+/// records of <see cref="MirDifferenceLedger.Sides"/>' common and MIR sides, each at its exact subject, so a changed MIR verdict fails the
+/// test. They are a subset of the published records: Binding's twin records, derived MIR problems and collection records are outside it.
+/// It stays until H10a, with the difference ledger.</summary>
 internal static class MirTargetSide
 {
     /// <summary>Asserts an analyzed compilation's MIR side (<see cref="MirDifferenceLedger.Sides"/>: Binding's and the MIR's records).</summary>
@@ -22,8 +23,8 @@ internal static class MirTargetSide
         Assert.Equal(Rows(source, mir), Observed([.. common, .. records]));
     }
 
-    /// <summary>Asserts the MIR side of a source compiled as an Application without the old analysis, for a test whose own compilation is
-    /// out of reach (a native fixture's, the command line's).</summary>
+    /// <summary>Asserts the MIR side of a source compiled as an Application and bound, without <see cref="Compilation.Analyze"/>, for a
+    /// test whose own compilation is out of reach (a native fixture's, the command line's).</summary>
     /// <param name="source">The source, as the Application's one document.</param>
     /// <param name="mir">The MIR side's Error records: a code and its subject's span.</param>
     internal static void Check(string source, params (DiagnosticCode Code, SyntaxLocation At)[] mir)
