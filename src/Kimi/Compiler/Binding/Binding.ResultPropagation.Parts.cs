@@ -77,7 +77,8 @@ public sealed partial class Binding
     // Type fixed with no literal default and no call's expectation. The one test of formation membership, read by FormationRoot (which
     // parts share 14.9.2's reference-layer and literal clause) and PositionKind (a position whose aggregate sources are compared whole),
     // for a `let` and an argument alike: a part that supplies one is compared whole; parts that supply none are formed part by part.
-    // - A typed part supplies one; a literal, a part awaiting its call and a failed part (rule W: no evidence) do not.
+    // - An independently typable part supplies one; a literal, an anonymous function, a contextual Case, a part awaiting its call and a
+    //   failed part (rule W: no evidence) do not (ClassifyPart's kinds, 10.5.1).
     // - A Tuple supplies one when each element does (EachSupplies); an array literal or fill, whose elements share one element Type
     //   (4.3.1, 4.3.3), when one element does (OneSupplies); a Dictionary when one key and one value do.
     // - A selection, `do` or `loop` supplies one when one of its sources other than Never does.
@@ -134,7 +135,8 @@ public sealed partial class Binding
 
                 return supplied;
             default:
-                return IsUnfittedLiteral(part) || this.AwaitsCall(part) || this.PartFailed(part) ? Supplied.No : Supplied.Yes;
+                // SPEC 10.5.1: only an independently typable leaf: a Typed one by its form, not awaiting its call and not failed.
+                return ClassifyPart(part) == PartKind.Typed && !this.AwaitsCall(part) && !this.PartFailed(part) ? Supplied.Yes : Supplied.No;
         }
     }
 
