@@ -52,9 +52,10 @@ public class InheritedAccessorEmissionTest
     public void CompoundUpdatesReadThroughAProjectedGetter(string name, string body, string stdout)
         => ScalarEmissionTest.EmitFixture("InheritedAccessorUpdate" + name, Leveled + body, stdout);
 
+    // The update's placement activation meets the live shared borrow `r` (the MIR's record, H5).
     [Fact]
     public void ACompoundUpdateKeepsTheReceiverExclusive()
-        => Assert.Equal("ComparisonLoanConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Leveled + "var x = Leaf.init()\nlet r = x@ref\nx.level += 1\n_ = r").Diagnostics).Code);
+        => Assert.Equal("PlacementActivationConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Leveled + "var x = Leaf.init()\nlet r = x@ref\nx.level += 1\n_ = r").Diagnostics).Code);
 
     [Theory]
     [InlineData("var x = Leaf.init()\nlet r = x.view\nx.item = 0\n_ = r")]
