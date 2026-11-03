@@ -6325,6 +6325,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Q4: one record per row, as the Unclassed limit is per row (the rows are what goes unjudged), not one per initializer.
   - Rejected: a rows-only judge for layers beside `Judge` (a second judging path); widening the limit to every initializer of such a
     layer (it would refuse valid forms like `= 0` without a census).
+- **R4-M169 An activation meets shared Loans at its parent Loans' Places (H3b U-A3, T63)** (2026-11-03; R4's implementer under the
+  planning session's U-A3 brief; for review). SPEC 15.6.3 and 15.6.7 judge overlap through the Loans an argument carries, its parent
+  Loans included, so `change(entries[1])` meets `found`'s shared Loan on `entries` through indexUniq's receiver Loan in its result, a
+  record of its own beside indexUniq's (SPEC 23.1.2; DictionaryStoredReferenceTest, as the old analysis). The check set already holds
+  that Loan (trace: Based, taken); A3's err(activate) compared only the reservation's Place (`**_13`), never the Loan's root. Rule (A5's
+  one owner, `MirBorrows.Activated`): after the reservation's Place, each Loan its holder carries unique (`UniqueIn`, A3 5's mode, shared
+  with `Consider`) is checked at its Place on the same set as the conflicts relation's row `ActivateThrough`: shallow, meeting a Loan
+  whose mode is shared and no reservation (R4-M68: an exclusive parent that hits a reservation was met where the later Borrow was formed
+  or activated, so `giveTwo(x@uniq, c)` keeps its one record). Moves: A3 rows 28d and 131c gain the activation record the old analysis
+  has. Rejected: seeding the check set with the holders the parent Loans name (adds no Loan there; the set holds `found`'s already).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

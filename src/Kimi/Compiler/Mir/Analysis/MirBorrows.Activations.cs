@@ -6,7 +6,9 @@ namespace Kimi.Compiler.Mir;
 // reservation holder t activates where a Call takes t as an input (an argument, or a Value callee's operand) or the writeback writes through
 // it (R4-M37), checked on the activation's check set (MirBorrows.CheckSets): the holders live after ℓ, the values of the operation's operands
 // but t's and E, closed through the holders their direct Loans name and seeded by those σ_in(t)'s direct Loans name (E5), t left out, so the
-// inputs of one call are checked against each other. A call that destroys its target in place (`replace`) writes the target and, where its
+// inputs of one call are checked against each other, at the reservation's Place and at those of the parent Loans σ_in(t) carries unique
+// (SPEC 15.6.3, 15.6.7: overlap is judged through the Loans the argument carries, so a Loan on what a reference it was Reborrowed through
+// names is met at the activation, its own record, SPEC 23.1.2). A call that destroys its target in place (`replace`) writes the target and, where its
 // old value's destruction may observe, uses the Places past it exclusively and deeply, on the same set. A destroying call whose target is not
 // destroyed in place (the `clear`s) needs no such row: its activation is already an exclusive deep use (E3: no shared cut).
 internal sealed partial class MirBorrows
@@ -63,14 +65,13 @@ internal sealed partial class MirBorrows
     // Each reservation activated (A3 5's err(activate)) as an exclusive borrow of its Place, the destroying one as a write of its target
     // (shallow, and by E1 a destruction of the reservations it prefixes), each meeting only Loans shared in the holder found (R4-M68), whose
     // call then destroys the old value there (Destroyed, every mode).
-    private void Activations(MirLocation at)
+    private void Activations(ulong[] state, MirLocation at)
     {
         foreach (var (local, reservation, code) in this.reserving)
         {
-            var loan = this.loans[reservation];
-            var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
-            var (taking, kind) = (Activation(this.slots[local]), loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate);
-            if (this.Conflict(loan.Root, steps, kind, taking, this.Source(at).Scope, reservation) is var c and not None)
+            var (slot, loan) = (this.slots[local], this.loans[reservation]);
+            var (taking, kind) = (Activation(slot), loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate);
+            if (this.Activated(state[slot], slot, reservation, kind, taking, this.Source(at).Scope) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], kind, code), c, taking, at, reservation, null);
             }
@@ -82,6 +83,27 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += this.reserving.Count;
+    }
+
+    // The first Loan of an activation's check set its reservation conflicts with (Conflict), None for none: at the reservation's Place, then
+    // at the Place of each Loan its holder carries unique, its parent Loans (ActivateThrough; the holder's reservations are shared there,
+    // each its own activation; a shared Loan conflicts with none the activation meets).
+    private int Activated(ulong held, int slot, int reservation, AccessKind kind, int taking, int scope)
+    {
+        var loan = this.loans[reservation];
+        var c = this.Conflict(loan.Root, this.loanSteps.AsSpan(loan.Start, loan.Count), kind, taking, scope, reservation);
+        this.Work += this.Count(held);
+        foreach (var element in this.ElementsOf(held))
+        {
+            var index = element - this.loanBase;
+            if (c == None && index >= 0 && index < this.loanCount && UniqueIn(this.loans[index], slot))
+            {
+                var parent = this.loans[index];
+                c = this.Conflict(parent.Root, this.loanSteps.AsSpan(parent.Start, parent.Count), AccessKind.ActivateThrough, taking, scope, reservation);
+            }
+        }
+
+        return c;
     }
 
     // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the

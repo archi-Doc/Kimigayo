@@ -29,6 +29,7 @@ internal sealed partial class MirBorrows
         Observe,
         Activate,
         ActivateInPlace,
+        ActivateThrough, // An activation at a parent Loan's Place (SPEC 15.6.3, 15.6.7), shallow: it meets a shared Loan, no reservation (R4-M68).
         ObservePast, // err(destroy): the Loans an observing destruction hits and the destroying activation's write does not, in every mode.
         Unclassified,
         EffectRead, // A read key: it meets a unique Loan, or one the call activates (W6).
@@ -82,14 +83,18 @@ internal sealed partial class MirBorrows
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
     // destruction or write key with any mode (err(destroy) too), a read, shared borrow or read key with a unique one, an activation with
     // one shared in the holder found (R4-M68: an exclusive Loan that hits the reservation was met where the later Borrow was formed or
-    // activated, SPEC 15.6.7).
+    // activated, SPEC 15.6.7), and at a parent Loan's Place with a shared Loan alone: a reservation that exclusive parent hits was met so.
     private bool Conflicts(int c, int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking)
     {
         ref readonly var candidate = ref this.candidates[c];
         this.Work++;
-        return candidate.Takes(taking) && (kind is AccessKind.Activate or AccessKind.ActivateInPlace ? !candidate.Unique
-            : this.Unique(candidate, kind) || kind is not (AccessKind.Read or AccessKind.SharedBorrow or AccessKind.EffectRead)) &&
-            this.Hits(root, steps, kind, candidate);
+        var meets = kind switch
+        {
+            AccessKind.Activate or AccessKind.ActivateInPlace => !candidate.Unique,
+            AccessKind.ActivateThrough => this.loans[candidate.Loan].Mode == MirRefKind.Shared,
+            _ => this.Unique(candidate, kind) || kind is not (AccessKind.Read or AccessKind.SharedBorrow or AccessKind.EffectRead),
+        };
+        return candidate.Takes(taking) && meets && this.Hits(root, steps, kind, candidate);
     }
 
     // hits(A, X, k) (A3 5, E1, E3): never where X is a raw Place borrow's Loan, its fresh anchor's, compared with no Place not derived from
