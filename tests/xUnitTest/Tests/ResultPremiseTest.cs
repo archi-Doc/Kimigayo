@@ -182,9 +182,9 @@ public partial class ResultPremiseTest
         var source = methods + "func run(flag: bool) -> ()\n    let value: i32 = 7\n    let h = Holder.init(item: value@ref)\n    var other: i32 = 3\n    let r = h.pickWith(other@ref)\n" +
             "    require r@follow@follow == 7 else => $abort(\"r\")\n    Console.writeLine(\"\\(r@follow@follow)\")\n    if flag\n        let z = h.viaSlot(other@ref)\n        Console.writeLine(\"\\(z@follow@follow)\")\nrun(false)\n";
         ScalarEmissionTest.EmitFixture("ResultPremiseMethod", source, "7\n");
-        var invalid = MinimalEmissionTest.Analyze(source.Replace("        Console.writeLine(\"\\(z@follow@follow)\")", "        other = 4\n        Console.writeLine(\"\\(z@follow@follow)\")", StringComparison.Ordinal));
-        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid));
-        MirTargetSide.Check(invalid);
+        var written = MinimalEmissionTest.Analyze(source.Replace("        Console.writeLine(\"\\(z@follow@follow)\")", "        other = 4\n        Console.writeLine(\"\\(z@follow@follow)\")", StringComparison.Ordinal));
+        Assert.True(written.Binding.Result.IsComplete, MinimalEmissionTest.Describe(written));
+        MirTargetSide.Check(written);
     }
 
     // SPEC 15.3.7, 15.6.1: a fixed caller whose arguments leave the outer Origin free is valid, since the call's Origins satisfy the
