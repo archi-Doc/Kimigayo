@@ -7,11 +7,13 @@ namespace Kimi.Compiler;
 // The proof frame's failure channel (DECISIONS BU-22, N3-1; SPEC 8.3.3, 23.1.1, 23.1.2), a part of constraint validation.
 // - Responsibility: the proof scopes (BeginProof, EndProof) and the causes they carry: the first limit (L) and Error cause a scope read,
 //   kept by the scope whose answer rests on them (ProofCause, ReadVerdict); the one failed cause a settled proof leaves for the check
-//   that failed on it (failedCause, TakeFailedCause) or for a later record (HoldCause); the reset of each pass (ClearProofScopes).
+//   that failed on it (failedCause, TakeFailedCause) or for a later record (HoldCause); the reset of each pass (ClearProofScopes);
+//   the judgment that left a candidate trial Pending before its proof, carried by the trial frame to its selection (trialPending, BU-86).
 // - Inputs: a proof's answers and the causes its producers met (ICheckCause: a conformance on its specification or limited by OCC-X, a
 //   component summary's site or stored Type); the capability engine's consumer, under which a scope stays combined.
 // - Outputs: each scope's answer combined as P < U < L < R < E; where an answer is no longer combined, an L as Error resting on its site
-//   and an Error resting on its cause, left in the channel; the Use a failing check takes.
+//   and an Error resting on its cause, left in the channel; the Use a failing check takes; a Pending trial's pre-proof judgment, which its
+//   selection takes (TakeTrialPending).
 // - Invariants: scopes nest (proofNesting), each reading into its own slot of the channel's stack (ProofReads), so a closing scope
 //   leaves its enclosing scope's reads as they were and joins only what its answer rests on; a check clears the channel before
 //   its proof and takes the cause after it; each pass starts with the channel clear. A fact the frame carries is stamped with the
@@ -22,9 +24,9 @@ namespace Kimi.Compiler;
 //   OpenTrial, even inside an open frame), takes a fresh epoch from one monotonic counter, and its end pops its epoch and drops its
 //   untaken facts; a trial's own facts pass to the enclosing frame, whose selection reads them before the next trial opens, and drop
 //   with none (CloseTrial). A fact carries the epoch of the innermost open frame; a consumer compares it with the innermost open frame
-//   at its read: an absent fact is normal, a present foreign fact InternalInvariant_Kd.
+//   at its read: an absent fact is normal, a present foreign fact InternalInvariant_Kd (OwnFrame).
 // - Prohibitions: no proof decision reads a carried fact: no verdict, memo key or fixpoint equality depends on it; record selection
-//   reads it. The channel decides no proof and publishes no record.
+//   reads it. The channel decides no proof and publishes no record but a foreign fact's InternalInvariant_Kd at its consumer's use.
 public sealed partial class Binding
 {
     // The first cause a check's Error rests on (ICheckCause): a conformance resting on its specification, or one limited by OCC-X outside
@@ -47,6 +49,10 @@ public sealed partial class Binding
     // (trialClause), each diagnostic payload only; a failed candidate's explanation reads its trial's (ClauseFailure, G352).
     private ClauseFact? failedClause;
     private ClauseFact? trialClause;
+
+    // The judgment that left a candidate trial Pending before its proof (DECISIONS BU-86), diagnostic payload only; its selection reads
+    // it (EvaluateCallCandidate).
+    private PendingJudgment? trialPending;
 
     // The innermost open frame's epoch (0: none) and the monotonic counter that issues them, never reused (design-r2 Amendment 5), and
     // the frame that encloses the outermost scope's own (BeginProof, EndProof).
@@ -224,6 +230,11 @@ public sealed partial class Binding
             this.trialClause = null;
         }
 
+        if (this.trialPending.HasValue && this.trialPending.GetValueOrDefault().Epoch == epoch)
+        {
+            this.trialPending = null;
+        }
+
         this.frameEpoch = enclosing;
     }
 
@@ -232,6 +243,7 @@ public sealed partial class Binding
     {
         this.trialUnknown = null;
         this.trialClause = null;
+        this.trialPending = null;
         return this.OpenFrame();
     }
 
@@ -241,6 +253,7 @@ public sealed partial class Binding
     {
         var unknown = enclosing != 0 ? this.trialUnknown : null;
         var clause = enclosing != 0 ? this.trialClause : null;
+        var pending = enclosing != 0 ? this.trialPending : null;
         this.CloseFrame(enclosing);
         if (unknown is not null)
         {
@@ -249,6 +262,28 @@ public sealed partial class Binding
 
         this.trialUnknown = unknown;
         this.trialClause = clause is { } kept ? kept with { Epoch = enclosing } : null;
+        this.trialPending = pending is { } judged ? judged with { Epoch = enclosing } : null;
+    }
+
+    // The selection's take of its candidate trial's pending judgment (EvaluateCallCandidate, DECISIONS BU-86), under the consumer rule.
+    private PendingJudgment? TakeTrialPending(Koto use)
+    {
+        var fact = this.trialPending;
+        this.trialPending = null;
+        return this.OwnFrame(use, fact?.Epoch) ? fact : null;
+    }
+
+    // The consumer rule of a carried fact (design-r2 Amendment 5, r2-6): true when no fact is present (a normal state) or its stamp is the
+    // innermost open frame's; a present foreign fact is a broken contract, failing its use (InternalInvariant_Kd).
+    private bool OwnFrame(Koto use, long? epoch)
+    {
+        if (epoch is null || epoch == this.frameEpoch)
+        {
+            return true;
+        }
+
+        this.Fail(use, BindingFailure.Internal);
+        return false;
     }
 
     // The U fact the answer of the proof scope in progress rests on (EndProof, a cache entry).
@@ -279,6 +314,7 @@ public sealed partial class Binding
         this.trialUnknown = null;
         this.failedClause = null;
         this.trialClause = null;
+        this.trialPending = null;
         this.frameEpoch = 0;
         this.proofNesting = 0;
     }

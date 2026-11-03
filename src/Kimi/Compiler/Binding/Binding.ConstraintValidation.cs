@@ -548,9 +548,9 @@ public sealed partial class Binding
     // record through it.
     private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved)
     {
-        if (fact is not null && fact.Epoch != this.frameEpoch)
+        if (!this.OwnFrame(use, fact?.Epoch))
         {
-            return this.Fail(use, BindingFailure.Internal);
+            return null;
         }
 
         if (fact is not { Clause: { } clause } || !fact.Failure.IsCondition)

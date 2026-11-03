@@ -182,7 +182,7 @@ public sealed partial class Binding
             {
                 // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
-                this.environmentEvidence = true;
+                this.environmentEvidence ??= new(PendingJudgmentKind.EnvironmentResult, evidence.Value.Source, pattern.Symbol);
                 return true;
             }
 

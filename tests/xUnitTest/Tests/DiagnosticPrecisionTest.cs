@@ -48,6 +48,8 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    var w: Missing = .None\n    w = .Some(1)", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("func make() -> Missing => .None\npublic func main()\n    let v = make()", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("func make() -> Missing\n    return .None\npublic func main()\n    let v = make()", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<Undefined>(1)", "UnresolvedBinding_Kd", "Undefined")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\npublic func main()\n    let values = identity<[_ of i32]>([1])", "ExpectedSyntax_Kd", "_")]
     public void LimitsAndDependentChecksPublishOneSpecificError(string source, string code, string text)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -138,6 +140,8 @@ public class DiagnosticPrecisionTest
     [InlineData(Payload + "func read(o: objref/P) -> P => o@follow\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P, c: bool) -> P\n    if c => return o@follow\n    return P.init(1)\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P) -> i32\n    let p = o@follow\n    return p.v\npublic func main() => ()", "TransferRequired_Kd")]
+    // The valid twin of a failed explicit Type argument (DECISIONS BU-86): an argument that binds selects the candidate.
+    [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<i32>(1)", "")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
         => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 

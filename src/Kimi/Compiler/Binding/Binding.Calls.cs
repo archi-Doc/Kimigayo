@@ -281,6 +281,7 @@ public sealed partial class Binding
                 // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
                 return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
+                    : evaluation.PendingCount == 1 && evaluation.PendingJudgment is { } judgment ? this.FailPendingJudgment(call, judgment)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
             }
 
