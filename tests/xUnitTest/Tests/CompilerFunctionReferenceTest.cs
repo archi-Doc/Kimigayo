@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -11,12 +12,25 @@ public class CompilerFunctionReferenceTest
     [InlineData("Item", "let f = Raw.allocate<u8>\nlet p = f(2)\nunsafe => Raw.release(p)")]
     [InlineData("Erased", "let f: (isize) -> raw/u8 = Raw.allocate\nlet p = f(2)\nunsafe => Raw.release(p)")]
     [InlineData("Moved", "let f: (isize) -> raw/u8 = Raw.allocate\nlet g = f@move\nlet p = g(0)\nunsafe => Raw.release(p)")]
-    [InlineData("Callable", "func make<F>(f: ref/F) -> raw/u8\n    F is Callable<(isize) -> raw/u8>\n    return f(2)\nlet p = make(Raw.allocate<u8>)\nunsafe => Raw.release(p)")]
     [InlineData("Zero", "let f = Raw.allocate<()>\nlet p = f(10)\nunsafe => Raw.release(p)")]
     [InlineData("Generic", "func make<T>() -> raw/T\n    let f = Raw.allocate<T>\n    return f(2)\nlet p = make<u8>()\nunsafe => Raw.release(p)")]
     [InlineData("Default", "func make(f: (isize) -> raw/u8 = Raw.allocate<u8>) -> raw/u8 => f(2)\nlet p = make()\nunsafe => Raw.release(p)")]
     public void ExecutesRawAllocation(string name, string source)
         => ScalarEmissionTest.EmitFixture("CompilerReference" + name, source, string.Empty);
+
+    // SPEC 5.7, 15.6.4 (DECISIONS R4-M95 D6; R6-check H3b's 1r): `make`'s `raw/u8` result has no Origin, so it may retain every argument,
+    // and `p` keeps the Loan of the function reference's temporary past the temporary's end. The old analysis accepted and ran this program
+    // (ExecutesRawAllocation's former Callable row); since the MIR decides acceptance (H5, DECISIONS R5-M185) check rejects it with A5's
+    // record at the temporary and generation refuses it.
+    [Fact]
+    public void AnOriginlessRawResultKeepsAFunctionReferenceTemporarysLoan()
+    {
+        var c = MinimalEmissionTest.Analyze("func make<F>(f: ref/F) -> raw/u8\n    F is Callable<(isize) -> raw/u8>\n    return f(2)\nlet p = make(Raw.allocate<u8>)\nunsafe => Raw.release(p)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("Raw.allocate<u8>")));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     [Theory]
     [InlineData("Item", "let f = Raw.allocate<u8>\nlet p = f(-1)", "Hello.kimi:2:9")]
