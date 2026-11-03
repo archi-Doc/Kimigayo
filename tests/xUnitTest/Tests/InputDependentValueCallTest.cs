@@ -127,13 +127,9 @@ public class InputDependentValueCallTest
     }
 
     // G65: the original fixed-input reproductions now use ordinary retention and conflict diagnostics; an invalid row's conflict is at
-    // the statement or initializer that accesses `z` (`conflict`, the MIR's span, H5). The second row is valid, but its store through the
-    // Closure's capture `holder@uniq` keeps the direct Loan naming its own target past layer 1, so the MIR rejects it by SPEC 15.6.4's
-    // letter at `return holder@follow`'s operand (H3b T30). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2),
-    // GXS adopted with its extension, restores the acceptance and re-points the row back to valid.
+    // the statement or initializer that accesses `z` (`conflict`, the MIR's span, H5).
     [Theory]
     [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    let c = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = c(z)\n    r@follow = 1\n    return z@follow\n", true)]
-    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n", false, "holder@follow")]
     [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    func helper(b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = helper(z)\n    let view = z@follow@ref\n    r@follow = view@follow + 40\n    return view@follow\n", false, "z@follow@ref")]
     [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    func helper(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    var holder: ref/i32 during x = x\n    helper(holder@uniq, z@follow@ref)\n    z@follow = 41\n    return holder@follow\n", false, "z@follow = 41")]
     public void FixedInputsPreserveTheirActualLoans(string body, bool valid, string conflict = "")
@@ -150,6 +146,19 @@ public class InputDependentValueCallTest
             Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
             Assert.Equal(conflict, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         }
+    }
+
+    // SPEC 15.6.4 (H3b T30): G65's reproduction whose store through the Closure's capture `holder@uniq` keeps the direct Loan naming its
+    // own target past layer 1. It is valid, but the MIR rejects it by the SPEC's letter with one record at `return holder@follow`'s
+    // operand, not at the store. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS adopted with its
+    // extension, restores the acceptance and moves the row back to FixedInputsPreserveTheirActualLoans as valid.
+    [Fact]
+    public void AFixedInputStoredThroughACaptureIsRefusedPendingGxs()
+    {
+        var source = "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n" + "\npublic func main() => ()";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var at = MirTargetSide.At("return holder@follow", "holder@follow").Resolve(source);
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), at.Start, at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
     // SPEC 15.6.4: a value call through a Function Type whose result is written over an input of the enclosing function binds as an
