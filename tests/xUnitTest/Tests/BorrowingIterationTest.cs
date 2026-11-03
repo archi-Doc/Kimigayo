@@ -101,16 +101,17 @@ public class BorrowingIterationTest
     // SPEC 13.7.1, 15.6.6 (PLAN G176): `=` destroys the holder's old value before placing the new one, so where that destruction may
     // observe (a Cursor with a drop, an abstract iterator), replacing the source the old value borrows first conflicts with it, also where
     // the holder was moved out on one path only (a conditional replacement); moving the holder out first, assigning it first, also after a
-    // conditional move, or a Cursor whose destruction observes nothing is valid.
+    // conditional move, or a Cursor whose destruction observes nothing is valid. The related value is the replacement that destroys
+    // the old value (the MIR's record, H5); on the abstract twin A5 also records `var other = third@move` (`added`; counted, Q13).
     [Theory]
-    [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "var it")]
-    [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "it = other.iterate()")]
+    [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    local = second@move\n    it = other.iterate()", "it = other.iterate()")]
     [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    it = other.iterate()\n    local = second@move", null)]
-    [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "it = other.iterate()", "var other = third@move")]
     [InlineData("(first: Values, second: Values, third: Values)", true, "sink(it@move)\n    local = second@move\n    it = other.iterate()", null)]
     [InlineData("(first: Values, second: Values, third: Values)", true, "it = other.iterate()\n    local = second@move", null)]
     [InlineData("(first: Values, second: Values, third: Values)", false, "local = second@move\n    it = other.iterate()", null)]
-    public void ReplacingAHolderMayObserveItsOldValue(string signature, bool drop, string replace, string? loan)
+    public void ReplacingAHolderMayObserveItsOldValue(string signature, bool drop, string replace, string? loan, string? added = null)
     {
         var declarations = Declarations(false);
         if (drop)
@@ -121,7 +122,7 @@ public class BorrowingIterationTest
 
         var source = declarations + "func sink<T>(value: T) => ()\nfunc hold" + signature + "\n    var local = first@move\n    var other = third@move\n" +
             "    var it = local.iterate()\n    _ = it.next()\n    " + replace + "\n    _ = it.next()\npublic func main() => ()\n";
-        AssertSourceReplacement(source, loan);
+        AssertSourceReplacement(source, loan, added);
     }
 
     [Theory]
@@ -134,8 +135,9 @@ public class BorrowingIterationTest
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
-    // A source's one Loan conflict at `local = second@move`, whose Loan the value declared by `loan` keeps; no diagnostic for null.
-    private static void AssertSourceReplacement(string source, string? loan)
+    // A source's one Loan conflict at `local = second@move`, after a conflict at `added` where one is given, whose related `loan`
+    // starts with `loan`; no diagnostic for null.
+    private static void AssertSourceReplacement(string source, string? loan, string? added = null)
     {
         var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
         if (loan is null)
@@ -144,10 +146,10 @@ public class BorrowingIterationTest
             return;
         }
 
-        var record = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), record.Code);
-        Assert.Equal("local = second@move", Text(record.Span));
-        Assert.StartsWith(loan, Text(Assert.Single(record.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
+        string[] primaries = added is null ? ["local = second@move"] : [added, "local = second@move"];
+        Assert.Equal(primaries, diagnostics.Select(x => Text(x.Span)));
+        Assert.All(diagnostics, static x => Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), x.Code));
+        Assert.StartsWith(loan, Text(Assert.Single(diagnostics[^1].Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
 
         string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
     }

@@ -111,28 +111,29 @@ public class InputDependentValueCallTest
         ScalarEmissionTest.EmitFixture("FixedInputCall" + name, source, string.Empty);
     }
 
-    // A fixed input is fitted as written; a finite local cannot satisfy an enclosing fixed Origin.
+    // A fixed input is fitted as written; a finite local cannot satisfy an enclosing fixed Origin. Each row: the records in result
+    // order, by code and text. Where the callee keeps the argument, A5 also records the local's end at its declaration (the MIR's
+    // records, H5; counted by code, Q13).
     [Theory]
-    [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
-    [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
-    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let local: i32 = 5\n    return c(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
-    [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let y: i32 = 5\n        c(y@ref)")]
-    public void AFixedInputIsNoPerCallInput(string body, string code, string text)
+    [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let local: i32 = 5\n    return c(local@ref)\n", "UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", "ComparisonLoanConflict_Kd let y: i32 = 5")]
+    public void AFixedInputIsNoPerCallInput(string body, string records)
     {
         var source = body + "public func main() => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.NotEmpty(errors);
-        Assert.All(errors, x => Assert.Equal(code, x.Code));
-        Assert.Equal(text, errors[0].Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty);
+        Assert.Equal(records, string.Join("|", errors.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
     }
 
-    // G65: the original fixed-input reproductions now use ordinary retention and conflict diagnostics.
+    // G65: the original fixed-input reproductions now use ordinary retention and conflict diagnostics; an invalid row's conflict is at
+    // the statement or initializer that accesses `z` (`conflict`, the MIR's span, H5).
     [Theory]
     [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    let c = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = c(z)\n    r@follow = 1\n    return z@follow\n", true)]
     [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n", true)]
-    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    func helper(b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = helper(z)\n    let view = z@follow@ref\n    r@follow = view@follow + 40\n    return view@follow\n", false)]
-    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    func helper(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    var holder: ref/i32 during x = x\n    helper(holder@uniq, z@follow@ref)\n    z@follow = 41\n    return holder@follow\n", false)]
-    public void FixedInputsPreserveTheirActualLoans(string body, bool valid)
+    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    func helper(b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = helper(z)\n    let view = z@follow@ref\n    r@follow = view@follow + 40\n    return view@follow\n", false, "z@follow@ref")]
+    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    func helper(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    var holder: ref/i32 during x = x\n    helper(holder@uniq, z@follow@ref)\n    z@follow = 41\n    return holder@follow\n", false, "z@follow = 41")]
+    public void FixedInputsPreserveTheirActualLoans(string body, bool valid, string conflict = "")
     {
         var source = body + "\npublic func main() => ()";
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
@@ -144,7 +145,7 @@ public class InputDependentValueCallTest
         {
             var error = Assert.Single(errors);
             Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
-            Assert.Equal("z", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            Assert.Equal(conflict, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         }
     }
 

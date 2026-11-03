@@ -91,13 +91,14 @@ public class DefaultOwnershipTest
     }
 
     // SPEC 7.2.3, 13.5.3: an explicit transfer moves even a Copy prepared argument, and a default closure's `@move` capture entry is
-    // the default's own Move. Each is one DefaultArgumentMove_Kd, at the operand or at the entry, with no unsupported execution beside it.
+    // the default's own Move. Each is one DefaultArgumentMove_Kd, at the operand or at the closure that holds the entry (the MIR's
+    // span, H5), with no unsupported execution beside it.
     [Theory]
     [InlineData("func f(x: i32, y: i32 = x@move) -> i32 => x + y\n", "x")]
     [InlineData("func f(x: (i32, i32), y: i32 = x.0@move) -> i32 => y\n", "x.0")]
     [InlineData("func f<T>(x: T, y: T = x@move) -> T\n    T is Copy\n    return y\n", "x")]
-    [InlineData("func runC(offset: i32, action: (i32) -> i32 = func [offset@move] (x) => x + offset) -> i32 => action(1)\n", "offset@move")]
-    [InlineData("func runG(text: string, action: () -> () = func [text@move] () => ()) -> () => action()\n", "text@move")]
+    [InlineData("func runC(offset: i32, action: (i32) -> i32 = func [offset@move] (x) => x + offset) -> i32 => action(1)\n", "func [offset@move] (x) => x + offset")]
+    [InlineData("func runG(text: string, action: () -> () = func [text@move] () => ()) -> () => action()\n", "func [text@move] () => ()")]
     public void CopyTransfersOfPreparedSlotsAreDefaultMoves(string declaration, string text)
     {
         var source = declaration + "public func main() => ()\n";
