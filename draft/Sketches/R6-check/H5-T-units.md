@@ -299,3 +299,19 @@ units of an hour or less. Amendments:
   - F8 leaves T-26's (e) list once S1 lands.
 - **F-a's eleven rows are (e) rows under G216 (b)** (the owner, 「一覧に加える」, board O-2). The G216 (b) (e) unit re-points them
   after T-16 and T-19 land in their files. It also takes F13 and T32a (G220), as planned. T36 landed with T-15.
+- **Re-classifications the reviews confirmed** (the planning session's ruling; round 1's table showed only a row's first record). The
+  counts by code go into H5's commit message from the unit commits, not from round 1's table.
+
+  | Unit | Rows | Round 1 | Ruled |
+  | --- | --- | --- | --- |
+  | T-08 | InputDependentValueCall AFixedInput's 4th row | T51 | 3 (a location move; one record stays one) |
+  | T-08 | three T51 rows | T51 | 4, by Q13: both sides reject; Binding completes, so R5-M184 is not the reason |
+  | T-16 | rv1, rv1_call | T51 | 3 (T45's form) |
+  | T-16 | nest1 | T50 | 4: the record comes from T36's cause (G216 (b)), not a twin of Binding's row; listed with t1j_n under G216 (b) |
+  | T-17 | 9 AnOriginOnly / ADeclarations rows | T49 ×8, T45 ×1 | T50 (A5's twins); one T44 -> T45 |
+  | T-18 | 4 FailedClauses rows | T45 ×2, T47 ×2 | T50 ×2 and T51 ×2 (the two former T47 rows: the ledger does not pair them) |
+  | T-19 | z1d | T45 | T50 |
+  | T-19 | ANestedFunctionType | T47 | T51 (a counted record on a Binding-rejected program; it shares F-a's cause, so G216 (b)'s unit moves its pin too) |
+- **F-a has fifteen rows:** T-15's six, T-19's five and T-16's four (cz5, cz6, e1 and e1c), all with one signature and cause under the
+  owner's O-2 decision. The G216 (b) (e) unit re-points them, names F-a and U-O3 in each comment, and lists nest1, t1j_n and
+  ANestedFunctionType as rows U-O3 moves.
