@@ -78,8 +78,8 @@ public sealed partial class Binding
             return;
         }
 
-        // A join decided Waiting (WaitingResult) holds only deferred sources until it is completed, and a source leaves that state only by
-        // its completion, so Waiting implies AwaitsPosition or BoundSince: asked first, the decided fact spares the subtree walk.
+        // A join decided Waiting (WaitingResult) is a waiting part by its outcome (BoundSince's Waiting row, DECISIONS BU-87): asked
+        // first, the decided fact spares the subtree walk.
         if (DeliversResult(part) && !this.PartFailed(part) && (this.WaitingResult(part) is not null || this.AwaitsPosition(part) || this.Deferred(part)))
         {
             this.AddResults(part);

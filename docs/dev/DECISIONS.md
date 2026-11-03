@@ -10154,12 +10154,17 @@ resumed by R4-M86 (2026-10-20).
   - Owner: ResultPropagation. The fact is a per-pass column beside the outcome on the pooled `ResultContext`, reset by `Clear` at
     each rent. Its one writer is `ResultContext.Wait(awaiting)`, the one writer of `JoinOutcome.Waiting`: both Waiting sites
     (`AwaitsWithoutCandidate`, `DecideResult`'s `ConflictWaits`) publish `SourcesAwait` once, when the join's sources are reached and
-    each held join's own fact is published. The one event that changes what a Waiting join awaits without deciding it, its call
-    taking its parts (`TakeWaiting`), republishes: `DecideTaken`'s `PublishAwaiting` publishes the argument's held Waiting joins
-    innermost first, a loop over the held-part walk (`AddHeldParts`, G368 (3)), with no copied walk. Every other change leaves
-    Waiting, after which the fact is not read.
+    each held join's own fact is published. When a call takes a waiting argument's parts (`TakeWaiting`) and decides it again
+    (`DecideTaken`), `PublishAwaiting` republishes the argument's held Waiting joins innermost first, over the held-part walk
+    (`AddHeldParts`, G368 (3)) and each held join's waited sources, in JudgeHeld's order. Two windows take or bind parts without
+    republication: a Case construction's TakeWaiting (`Binding.Enums`) or a failing CompleteWaiting, and an enclosing root's step 3
+    before the held join's DecideWaiting; no reader of the fact was found there (G335 U1 review N1).
   - Readers: `AwaitsFor`'s result-target row (a Waiting join answers with the fact; every AwaitsFor and AwaitsPosition caller reads
-    it) and `BoundSince` (Deferred), whose Waiting row is the outcome: Waiting implies every waited source is failed or Deferred.
+    it) and `BoundSince` (Deferred). BoundSince's Waiting row is a decision, not a consequence of the sources: a Waiting join is
+    bound since by its outcome, whatever its sources hold since. Its effect after TakeWaiting: a held Waiting join one of whose
+    sources holds a failed Tuple element beside a function its call completed is now Deferred, where the deleted walk made it not
+    Deferred and its root rested on the cause without judging the tree. Its root now judges it (JudgeHeld), so the join's own
+    conflict among the completed functions is reported, an independent record (SPEC 23.1.2) the walk had lost.
   - Removed: the re-walk of held Waiting joins and `BoundSince`'s walk over a Waiting join's waited sources (G335's "Completed").
     No removal condition: the fact is canonical. AwaitsFor's other rows (literal parts, AwaitsCall, an Unvisited literal) stay
     structural per-node answers; a column for them would be a second representation.

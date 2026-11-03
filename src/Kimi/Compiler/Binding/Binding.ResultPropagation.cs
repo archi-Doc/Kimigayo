@@ -318,9 +318,9 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
     // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
-    // delivers one, an aggregate each of whose parts at least one (CallableParts) was; a Waiting result target waits by its published
-    // outcome (ResultContext.Wait; DECISIONS BU-87), whatever its sources hold since. Position waiting (Deferred), not a call relation:
-    // it holds before any selection.
+    // delivers one, an aggregate each of whose parts at least one (CallableParts) was; a Waiting result target is bound since by its
+    // outcome (ResultContext.Wait; DECISIONS BU-87), a decision whatever its sources hold since. Position waiting (Deferred), not a
+    // call relation: it holds before any selection.
     private bool BoundSince(Koto source)
     {
         if (DeliveredOperand(source) is { } operand)
