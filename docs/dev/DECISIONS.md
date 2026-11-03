@@ -1994,6 +1994,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     constructors, of two and nine cases, gave one problem with `0x1FF`).
   - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
     same facts).
+  - Amended (R6-check H3-2 U1b, 2026-11-03; R4's consent, 2026-11-03, to R5's implementer writing it in `MirReport`): the merge across
+    bodies is `MirReport.Merged`'s (H0a §3.2), keyed with class (code, subject, Reason, class), not publication's; a Cause Value in
+    `Merged`'s facts is a merged index; members naming two requirements add one `InternalInvariant_Kd` merged problem at the subject.
 - **R4-M72** (2026-10-19; decided by the planning session on 2026-10-18, adopting the design review of 1c's two designs (its verdicts
   4 and 5 and its R4-M72 draft) with the 1c design, and by the owner through the step-2 plan's PD7 and PD11, adopted with the plan
   (R4-M74, OQ1); with group 1c's final review's records; recorded by unit 1c-9; A3 §12 E15). The A6 table of A5's Loan problems
