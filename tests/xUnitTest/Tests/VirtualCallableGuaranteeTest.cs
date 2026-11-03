@@ -43,6 +43,8 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
 
+    // A4's record at the Callable use (H0b §5.4) has no label, Note or related location yet (H0a §4.1): Binding's "public effect
+    // guarantee" label and its bound and original-slot roles are lost until A4 publishes them.
     [Fact]
     public void TheItemFailureExplainsTheMissingPublicBoundInCliAndLsp()
     {
@@ -52,22 +54,22 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         var shown = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("UnsatisfiedEffectBound_Kd", shown.Code);
         Assert.Equal("Base.read", shown.Text);
-        Assert.Contains("public effect guarantee", shown.Label, StringComparison.Ordinal);
+        Assert.Null(shown.Label);
+        Assert.Null(shown.Note);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
-        Assert.Contains(record.Related!, x => x.Role == "bound");
-        Assert.Contains(record.Related!, x => x.Role == "declaration" && x.Label == "original virtual slot");
+        Assert.Null(record.Related);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
-        Assert.Contains("public effect guarantee", console.Text, StringComparison.Ordinal);
+        Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
             Assert.Equal(record.Display!.Range, sent.Range);
-            Assert.Contains("public effect guarantee", sent.Message, StringComparison.Ordinal);
+            Assert.Equal(record.Message, sent.Message);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
