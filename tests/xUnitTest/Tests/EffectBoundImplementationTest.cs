@@ -33,14 +33,7 @@ public partial class EffectBoundImplementationTest
     [InlineData("struct ConsoleSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        Console.writeLine(\"put\")\n        return .Ok(())\n", false)]
     [InlineData("contract Plain\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\nstruct Loose<W>\n    W is Plain\n    Self is Sink\n    var inner: W\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        return self.inner.put(value)\n", false)]
     public void ConfinedRejectsEnvironmentEffects(string declarations, bool valid)
-    {
-        var c = MinimalEmissionTest.Analyze(Sink + declarations + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
-    }
+        => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink");
 
     // SPEC 8.11.2: an environment effect obtains authority over mutable state from the environment; accesses made with
     // authority from the inputs are none, even through a raw pointer or a borrow of static storage.
@@ -53,14 +46,7 @@ public partial class EffectBoundImplementationTest
     [InlineData("contract Maker\n    func make(self: ref/Self) -> Array<i32>\n        effect confined\nstruct M\n    Self is Maker\n    var n: i32 = 4\n    public func make(self: ref/Self) -> Array<i32>\n        let values: [2 of i32] = [self.n, self.n]\n        return values.slice().toArray()\n", true)]
     [InlineData("contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n    public func fill(self: ref/Self, values: uniq/Array<i32>)\n        var view = values.sliceUniq()\n        view[0] = 7\n", true)]
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
-    {
-        var c = MinimalEmissionTest.Analyze(Sink + declarations + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
-    }
+        => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink");
 
     // SPEC 8.11.2: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of a static
     // initializer other than a constant (reading an immutable static is no environment effect).
@@ -209,8 +195,10 @@ public partial class EffectBoundImplementationTest
             output.GetStringBuilder().Clear();
             Assert.False(c.Generate(output));
             Assert.Empty(output.ToString());
-            Assert.False(c.Bind().IsComplete);
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+            c.Bind();
+            c.Binding.CheckStartup(OutputKind.Application);
+            c.Analyze();
+            AssertBound(c, valid: false, "Self is Step");
             Assert.True(KotoHelper.Replace(function, replacement, original));
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
@@ -227,7 +215,7 @@ public partial class EffectBoundImplementationTest
     {
         const string Declarations = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\ncontract StableSource: Source\n    effect Source.take confined\n";
         var c = MinimalEmissionTest.Analyze(Declarations + $"struct Noisy\n    Self is {contract}\n    associate Source.Item is i32\n    public func take(self: uniq/Self) -> Option<i32>\n        Console.writeLine(\"take\")\n        return .None\n" + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        AssertBound(c, valid, "Self is " + contract);
     }
 
     // Warm rebinding of user-declared bounds and their witness summaries allocates nothing.
@@ -241,5 +229,16 @@ public partial class EffectBoundImplementationTest
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Equal(0, allocated);
+    }
+
+    // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
+    // completes; a violated bound refuses the program with A4's IncompatibleContractImplementation_Kd at the conformance's `Self is C`
+    // clause, and a kept one leaves no record. Binding's and the MIR's records are compared exactly (MirTargetSide), so P42's StaticStorage
+    // record, which the collector reports at a settable static such as Metrics.puts (DECISIONS R5-M82), is not among them.
+    internal static void AssertBound(Compilation c, bool valid, string conformance)
+    {
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(valid || !c.Accepts, MinimalEmissionTest.Describe(c));
+        MirTargetSide.Check(c, valid ? [] : [(DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At(conformance))]);
     }
 }

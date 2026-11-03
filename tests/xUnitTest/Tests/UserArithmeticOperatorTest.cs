@@ -308,12 +308,7 @@ public class UserArithmeticOperatorTest
     public void GenericOperatorEffectsUseOnlyPublishedBounds(bool bounded)
     {
         var source = "contract ConfinedAdd<T>: Addable<T>\n    effect (Addable<T>).added confined\ncontract Operation<T>\n    func run(self: ref/Self, left: ref/T, right: ref/T) -> i32\n        effect confined\nstruct Forward<T>\n    T is " + (bounded ? "ConfinedAdd<T>" : "Addable<T>") + "\n    T.(Addable<T>).Output is i32\n    Self is Operation<T>\n    public func run(self: ref/Self, left: ref/T, right: ref/T) -> i32 => left + right\npublic func main() => ()";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(bounded, c.Binding.Result.IsComplete);
-        if (!bounded)
-        {
-            Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, Assert.Single(c.Binding.Issues).Code);
-        }
+        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(source), bounded, "Self is Operation<T>"); // A4's record (R6-check H3b T40)
     }
 
     [Fact]

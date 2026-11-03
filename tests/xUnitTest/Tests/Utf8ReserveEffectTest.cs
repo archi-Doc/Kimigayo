@@ -39,9 +39,7 @@ public class Utf8ReserveEffectTest
             """;
         var expression = generic ? "Helpers.compareValues(left@ref, right@ref)" : "left " + operation + " right";
         var values = tuple ? "let first = Compared.init()\n        let last = Compared.init()\n        let left = (first@ref, 1)\n        let right = (last@ref, 2)" : "let left = Compared.init()\n        let right = Compared.init()";
-        var c = Analyze(prefix, values + "\n        _ = " + expression);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        AssertRefused(Analyze(prefix, values + "\n        _ = " + expression));
     }
 
     [Theory]
@@ -65,8 +63,7 @@ public class Utf8ReserveEffectTest
     public void CustomAccessorEffectsAreChecked(string operation)
     {
         const string Accessors = "struct Noisy\n    public var item: i32 = 0\n        get(self: ref/Self) -> i32 => State.value\n        set(self: uniq/Self, value: i32) -> () => State.value = value\n";
-        var c = Analyze(State + Accessors, operation);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        AssertRefused(Analyze(State + Accessors, operation));
     }
 
     [Fact]
@@ -118,11 +115,7 @@ public class Utf8ReserveEffectTest
     [InlineData("struct Numbers {source}\n    Self is Iterator\n    associate Iterator.Item is i32\n    let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n    public func next(self: uniq/Self) -> Option<i32>\n        _ = State.value\n        return .None\nstruct Values\n    Self is Iterable\n    associate Iterable.IteratorType(source) is Numbers during source\n    var value: i32 = 7\n    public init() => ()\n    public func iterate(self: ref/Self during source) -> Numbers during source => Numbers.init(self.value@ref)\n", "let values = Values.init()\n        for n in values\n            _ = n")]
     [InlineData("struct Key\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n", "var values: Dictionary<Key, i32> = [:]\n        let borrowed = values@ref\n        _ = borrowed[Key.init()]")]
     public void SynthesizedCallEffectsAreChecked(string declarations, string operation)
-    {
-        var c = Analyze(State + declarations, operation);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-    }
+        => AssertRefused(Analyze(State + declarations, operation));
 
     [Fact]
     public void BorrowingAFieldDoesNotExecuteItsDestructor()
@@ -235,8 +228,7 @@ public class Utf8ReserveEffectTest
     {
         var prefix = State + Formatter + "_ = State.value\n        return .Ok(())\n" +
             "group Helpers\n    public func text<T>(value: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(value)\n";
-        var c = Analyze(prefix, "_ = Helpers.text(Value.init())");
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        AssertRefused(Analyze(prefix, "_ = Helpers.text(Value.init())"));
     }
 
     [Fact]
@@ -258,4 +250,8 @@ public class Utf8ReserveEffectTest
 
     private static Compilation Analyze(string prefix, string operation)
         => MinimalEmissionTest.Analyze(prefix + Writer + "        " + operation + "\n        return .Err(BufferFull.init())");
+
+    // The effect reaches Writer's reserve, so A4 refuses Writer's conformance (R6-check H3b T40).
+    private static void AssertRefused(Compilation c)
+        => EffectBoundImplementationTest.AssertBound(c, valid: false, "Self is BufferWriter");
 }
