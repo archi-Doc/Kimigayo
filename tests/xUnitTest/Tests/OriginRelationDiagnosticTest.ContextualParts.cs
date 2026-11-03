@@ -80,9 +80,11 @@ public partial class OriginRelationDiagnosticTest
     // Nested generic calls (d3 §1): a generic call nested in an argument takes its Type from the outer call, which proves the instantiated
     // well-formedness for its own solution, at the outer argument. h's Origins are its own (fresh at the call), so k3, d01, d04, i01, i02,
     // q10b, q14 and j01 are valid; put2's `a` is fixed by `p` and `b` by the Borrow of `short`, so each `_n` twin, k4 and j01n (whose nested
-    // signature names k's fixed Origins) err once at the argument. ea1 has two records (D-3, the owner, relayed 2026-10-29: 「2 記録でよい」):
-    // the inner call's at its contextual argument and the annotation's at its written Type. q10b's and q14's twins are q10 and q15 (the
-    // aggregate theory).
+    // signature names k's fixed Origins) err once at the argument. In ea1 the annotation contributes the expected result that solves `T`,
+    // so `Option.None` is a Result position that the annotation proves at its written Type (DECISIONS R4-M164 U1d; the planning session's
+    // ruling, 2026-11-03, as for u1, expl and boxe): that record is the old ownership analysis's body obligation, which does not run beside
+    // a Binding record (PLAN G56), so D-3's second record at the argument (the owner, relayed 2026-10-29: 「2 記録でよい」) waits for H11.
+    // q10b's and q14's twins are q10 and q15 (the aggregate theory).
     [Theory]
     [InlineData("k3", MkNone + OwnH + LocalUse + "    let x = h(a, b, mkNone())\n    return 0\n", "")]
     [InlineData("k4", MkNone + ImpliedStore + ShortBody + "    put2(p, sr, mkNone())\n    return 0\n", "UnsatisfiedOriginRelation_Kd mkNone()")]
@@ -99,6 +101,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("j01", EmptyStruct + "func h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n" + LocalUse + "    let x = h4(a, b, E.init())\n    return 0\n", "")]
     [InlineData("j01n", EmptyStruct + NestedHead + InnerE + "    return inner(E.init(), q)\n", "UnprovenOriginRelation_Kd E.init()")]
     [InlineData("j01n_ok", EmptyStruct + NestedHead + WithPremise + InnerE + "    return inner(E.init(), q)\n", "")]
+    [InlineData("ea1", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
     [InlineData("ea2", IdFunc + "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n    let y: Option<ref/(ref/i32 during a) during b> = id(Option.None)\n    return 0\n", "")]
     public void EachCallProvesItsInputsThroughANestedGenericCall(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -160,8 +163,8 @@ public partial class OriginRelationDiagnosticTest
 
     // Explicit qualifiers and Cases with payload (d3 §6): `Option.Some(v)` types itself from `v`, whose signature Type gives q outlives r
     // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument. cs1's contextual inner `Option.None` is judged at
-    // the argument; when an annotation settles the construction (cs1_ty), its contextual payload and the annotation each have a record (D-3's
-    // analogue). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
+    // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
+    // as in ea1 (R4-M164 U1d; the payload's record waits for H11). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
@@ -172,6 +175,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
+    [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
     [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
     [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
@@ -203,15 +207,36 @@ public partial class OriginRelationDiagnosticTest
     // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4);
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
+    // cx2's and c3n's family with a written qualifier (c3q, cx2q) or an expected Type (c3a, cx2e, cx2c) errs at `.None` as the named
+    // call c3m does: a payload's evidence binds T, so `.None` is a Signature position (U4's review B1). cx2q/cx2e/cx2c's T holds the
+    // written Type's omitted Origin, a body region that never outlives `static`: DIAGNOSTICS requires UnsatisfiedOriginRelation_Kd, but
+    // the shared judge returns Unknown for an open initializer Origin, so it is Unproven, pinned until PLAN G392. wf (a Function
+    // payload's written header) and wt (an aggregate payload's typed child) bind T in a call but not in a construction's F1, so their
+    // `.None` stays a Result position and both are accepted, while the named calls record: pinned until PLAN G391.
     [Theory]
     [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [InlineData("j02_ok", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + LongBody + "    put8(p, v, E.init())\n    return 0\n", "", null)]
     [InlineData("t7c_ok", ClauseCall + "    origin p outlives static\n    return g(.None, p)\n", "", null)]
     [InlineData("cx1", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc bad(p: ref/i32) -> i32\n    let short = 2\n    let w = W.Make(short@ref, p, .None)\n    return 0\n", "", null)]
     [InlineData("cx1_ok", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    let sr = short@ref\n    let w = W.Make(p, sr, .None)\n    return 0\n", "", null)]
+    [InlineData("cx5", "enum W3 {a, s}\n    origin a outlives s\n    Make(ref/i32 during a, ref/i32 during s, Option<ref/(ref/i32 during a) during s>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    let w = W3.Make(short@ref, p, .None)\n    return 0\n", "", null)]
     [InlineData("cxc", "func mk<T>(t: T, x: ref/i32 during s, w: Option<ref/T during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
     [InlineData("cxc2", "func mk(t: ref/i32 during a, x: ref/i32 during s, w: Option<ref/(ref/i32 during a) during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
+    [InlineData("cx2", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W.Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("c3q", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w = W<ref/i32 during q>.Make(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("c3q_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w = W<ref/i32 during q>.Make(q, .None)\n    return 0\n", "", null)]
+    [InlineData("c3a", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: W<ref/i32 during q> = W.Make(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("c3a_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: W<ref/i32 during q> = W.Make(q, .None)\n    return 0\n", "", null)]
+    [InlineData("c3m", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc mkw<T>(t: T, w: Option<ref/T during static>) -> W<T>\n    return W.Make(t@move, w@move)\nfunc bad(q: ref/i32) -> i32\n    let w: W<ref/i32 during q> = mkw(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2q", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W<ref/i32>.Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2q_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W<ref/i32>.Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("cx2e", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = W.Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2e_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = W.Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("cx2c", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = .Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2c_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = .Make(p, .None)\n    return 0\n", "", null)]
+    [InlineData("wf", "enum WF<T>\n    Make((T) -> i32, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WF<ref/i32 during q> = WF.Make(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "", null)]
+    [InlineData("wt", "enum WT<T>\n    Make((T, i32), Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WT<ref/i32 during q> = WT.Make((q, 1), .None)\n    return 0\n", "", null)]
     [InlineData("fn0", "func f(w: Option<ref/(ref/i32 during c) during d>) -> i32\n    return 0\nfunc g() -> i32\n    return f(.None)\n", "", null)]
     [InlineData("dl1_ok", ImpliedStore + "func good(p: uniq/(ref/i32 during q), v: ref/i32 during q, ys: ref/(ref/i32 during q) during q) -> i32\n    put2(p, v, .Some(ys))\n    return 0\n", "", null)]
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
