@@ -8110,6 +8110,10 @@ resumed by R4-M86 (2026-10-20).
     r8 (R4, G245 U2): the builder's default copy over Rejected storage keeps its `Unsupported_Kd` (`Instantiates` reads `Apply`; closed
     by R4-M139). The
     residual (R7): a record that exists only inside an instance the collector drops stays unseen.
+  - (2026-11-04) BU-38's "a comparison over it violates nothing" covers only a part Binding rejected (its Missing twin); it does not make
+    a valid program's generic comparison effect-free: a Requirement call on an abstract Self takes the caller's premise bounds, so
+    `Equatable.equals`, declaring none, is Unknown under `confined` (SPEC 8.11.3; R4-M22's X2). StorageBinding's `equals` row is 1r at the
+    flip (H5 T-12).
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; the BU planning session; PLAN G160, unit bu42; one
   design, one review) R4-M116 (PQ-7): A5 reads neither `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance
