@@ -44,8 +44,9 @@ internal sealed partial class MirValidator
         // the location where it passes a shared layer (a PairAcquire's Place is Views', per view).
         private readonly void SharedPath(MirPlace place, MirAccess access, MirRefKind kind)
         {
-            if (((access & (MirAccess.Writes | MirAccess.DropUse)) != 0 || ((access & MirAccess.Borrows) != 0 && kind is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq)) &&
-                this.IsSharedPath(place, []))
+            var exclusive = (access & (MirAccess.Writes | MirAccess.DropUse)) != 0 ||
+                ((access & MirAccess.Borrows) != 0 && kind is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq);
+            if (exclusive && this.IsSharedPath(place, []))
             {
                 this.Report(MirViolation.SharedPath);
             }

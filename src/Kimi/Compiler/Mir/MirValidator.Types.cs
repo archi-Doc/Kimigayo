@@ -236,7 +236,8 @@ internal sealed partial class MirValidator
                     adapts.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
                 }
             }
-            else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire && this.IsValid(acquire.Place))
+            else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire &&
+                this.IsValid(acquire.Place))
             {
                 adapts.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
             }

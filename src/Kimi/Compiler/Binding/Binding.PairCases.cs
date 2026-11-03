@@ -359,7 +359,8 @@ public sealed partial class Binding
                 PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
-    // BareAcquisition under a case assignment (BareAcquire's): each case of this layer reads the path with the binder's layers in it.
+    // BareAcquisition under a case assignment (BareAcquire's): each case of this layer reads the path with the binder's layers in it,
+    // the assignment extended by that case in nested scratch (caseScratch), so a nested level allocates nothing warm.
     private SemanticsMask BareAcquisition(BoundType type, Koto node, ReadOnlySpan<PairCase> assignment, out SemanticsMask reborrow)
     {
         reborrow = SemanticsMask.None;
@@ -369,22 +370,33 @@ public sealed partial class Binding
         }
 
         var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
-        ReadOnlySpan<PairCase> exclusive = assignment.IsEmpty ? [new(whole.Symbol!, SemanticsKind.Uniq)] : [.. assignment, new(whole.Symbol!, SemanticsKind.Uniq)];
-        reborrow = admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq);
-        if (reborrow != SemanticsMask.None && PathAuthority(node, exclusive) == SemanticsKind.Ref)
+        var scratch = this.caseScratch.Rent(assignment.Length + 1);
+        try
         {
-            reborrow = SemanticsMask.None; // objuniq grants the path the same authority as uniq (PairAuthority).
-        }
+            var cases = scratch.AsSpan(0, assignment.Length + 1);
+            assignment.CopyTo(cases);
+            cases[^1] = new(whole.Symbol!, SemanticsKind.Uniq);
+            reborrow = admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq);
+            if (reborrow != SemanticsMask.None && PathAuthority(node, cases) == SemanticsKind.Ref)
+            {
+                reborrow = SemanticsMask.None; // objuniq grants the path the same authority as uniq (PairAuthority).
+            }
 
-        var copy = admitted & (SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw);
-        if ((admitted & SemanticsMask.Owner) != 0)
+            var copy = admitted & (SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw);
+            if ((admitted & SemanticsMask.Owner) != 0)
+            {
+                cases[^1] = new(whole.Symbol!, SemanticsKind.Owner);
+                var plan = this.BareAcquire(target, node, cases, out _, out var inner);
+                var reborrows = plan == HirAcquire.Reborrow || (plan == HirAcquire.ByCase && inner != SemanticsMask.None);
+                reborrow |= reborrows ? SemanticsMask.Owner : SemanticsMask.None;
+                copy |= !reborrows && plan is HirAcquire.Copy or HirAcquire.ByCase ? SemanticsMask.Owner : SemanticsMask.None;
+            }
+
+            return admitted & ~(reborrow | copy);
+        }
+        finally
         {
-            ReadOnlySpan<PairCase> owner = assignment.IsEmpty ? [new(whole.Symbol!, SemanticsKind.Owner)] : [.. assignment, new(whole.Symbol!, SemanticsKind.Owner)];
-            var plan = this.BareAcquire(target, node, owner, out _, out var inner);
-            reborrow |= plan == HirAcquire.Reborrow || (plan == HirAcquire.ByCase && inner != SemanticsMask.None) ? SemanticsMask.Owner : SemanticsMask.None;
-            copy |= plan == HirAcquire.Copy || (plan == HirAcquire.ByCase && inner == SemanticsMask.None) ? SemanticsMask.Owner : SemanticsMask.None;
+            this.caseScratch.Return(scratch, clearArray: true);
         }
-
-        return admitted & ~(reborrow | copy);
     }
 }

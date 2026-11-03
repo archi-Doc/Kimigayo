@@ -25,4 +25,21 @@ public sealed class GenericCaseAllocationTest
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);
     }
+
+    // SPEC 3.5, 8.15.2 (R6-check (b2)): the owner case of a pair layer plans its target under the enclosing cases, a nested pair layer
+    // included, in Binding's nested scratch, so a warm rebind of an owner case over `uniq/i32` and over `t/U` allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfANestedOwnerCaseAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "func exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local\n" +
+            "func nested<t/U, s/T>(value: s/t/U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n    U is Copy\n    let local = value\n" +
+            "    _ = local\npublic func main() => ()\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var success = true;
+        var bytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        Assert.True(success);
+        Assert.Equal(0, bytes);
+    }
 }

@@ -828,12 +828,16 @@ public sealed class MirValidatorTest
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
         PairBinder.Collect(types.Generic, body.Binders);
-        body.Binders[0] = body.Binders[0] with
+        var admitted = form switch
         {
-            Admitted = form == "acquire copy" ? SemanticsMask.Ref : form.StartsWith("acquire target", StringComparison.Ordinal) ? SemanticsMask.Owner | SemanticsMask.Ref : SemanticsMask.Ref | SemanticsMask.Uniq,
+            "acquire copy" => SemanticsMask.Ref,
+            "acquire target" or "acquire target past ref" => SemanticsMask.Owner | SemanticsMask.Ref,
+            _ => SemanticsMask.Ref | SemanticsMask.Uniq,
         };
+        body.Binders[0] = body.Binders[0] with { Admitted = admitted };
         _ = TyCtxt.Layer(types.Pair, out var payload, out var binder); // s/T: T and s.
-        var target = c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [c.Types.Reference(SemanticsKind.Uniq, BoundType.I32)]); // s/(uniq/i32)
+        var exclusive = c.Types.Reference(SemanticsKind.Uniq, BoundType.I32);
+        var target = c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [exclusive]); // s/(uniq/i32)
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
         MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
         MirPlace Payload(SemanticsKind semantics) => body.Project(
