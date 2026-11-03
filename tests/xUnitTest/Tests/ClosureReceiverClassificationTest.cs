@@ -160,7 +160,9 @@ public class ClosureReceiverClassificationTest
     // SPEC 7.3.3 (check 1), 7.7.3, 13.5.5: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
     // a let obj handle is not writable, a reference supplies no owning receiver and a payload offers no Take; a temporary callee, a
     // callee reached through a reference or an element and an Exclusive call of an unproven Sealed payload are located limits before
-    // generation, and an environment-borrowing result keeps the handle lent.
+    // generation, and an environment-borrowing result keeps the handle lent: since the MIR decides (R6-check H5; H3b T48, was the old
+    // analysis's located Unsupported_Kd at the call), moving the handle while the result lives is A5's ComparisonLoanConflict_Kd at
+    // `h@move`'s `h` (`at` in `context`).
     [Theory]
     [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.7.3)", true)]
     [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeArc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.7.3)", true)]
@@ -175,18 +177,23 @@ public class ClosureReceiverClassificationTest
     [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet a = h()", "InvalidAssignment_Kd", "h", "The call is Consuming (SPEC 7.7.3)", false)]
     [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet u = h@objuniq\nlet a = u()", "InvalidAssignment_Kd", "u", "The call is Consuming (SPEC 7.7.3)", false)]
     [InlineData("func call(r: ref/(() -> i32)) -> i32 => 1\nlet n: i32 = 4\nlet f = func [n] () -> i32 => n@move\nlet r = f@ref\nlet a = r()", "InvalidAssignment_Kd", "r", "The call is Consuming (SPEC 7.7.3)", false)]
-    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "Unsupported_Kd", "h()", null, false)]
-    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "Unsupported_Kd", "h@follow()", null, false)]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "ComparisonLoanConflict_Kd", "h", null, false, "h@move")]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "ComparisonLoanConflict_Kd", "h", null, false, "h@move")]
     [InlineData("func call<F>(v: objuniq/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload\n    return v()\n()", "Unsupported_Kd", "v", null, false)]
     [InlineData("struct Holder\n    public var callback: rc/(() -> i32)\n    public init(callback: rc/(() -> i32)) => self.callback = callback@move\nfunc call(holder: ref/Holder) -> i32 => holder.callback()\nlet f: () -> i32 = func [] () -> i32 => 7\nlet holder = Holder.init(Kimi.Intrinsics.makeRc(f@move))\nrequire call(holder@ref) == 7 else => $abort(\"field\")", "Unsupported_Kd", "holder.callback", null, false)]
     [InlineData("func call(r: ref/(rc/(() -> i32))) -> i32 => r@follow()\nlet f: () -> i32 = func [] () -> i32 => 7\nlet h = Kimi.Intrinsics.makeRc(f@move)\nrequire call(h@ref) == 7 else => $abort(\"follow\")", "Unsupported_Kd", "r@follow", null, false)]
     [InlineData("let f: () -> i32 = func [] () -> i32 => 7\nlet hs = [Kimi.Intrinsics.makeRc(f@move)]\nrequire hs[0]() == 7 else => $abort(\"element\")", "Unsupported_Kd", "hs[0]", null, false)]
-    public void ObjectCalleesSupplyOnlyTheirPayloadAuthority(string source, string code, string at, string? note, bool authority)
+    public void ObjectCalleesSupplyOnlyTheirPayloadAuthority(string source, string code, string at, string? note, bool authority, string? context = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Generate(TextWriter.Null));
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        if (context is not null)
+        {
+            Assert.Equal(MirTargetSide.At(context, at).Resolve(source).Start, error.Span!.Value.Start);
+        }
+
         if (note is not null)
         {
             Assert.Contains(note, error.Note, StringComparison.Ordinal);
@@ -210,6 +217,7 @@ public class ClosureReceiverClassificationTest
     private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
     private const string UniqHead = "public func main() -> ()\n    var n: i32 = 1\n    let value = n@uniq\n";
     private const string MissingAndExclusive = "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h";
+    private const string PendingGxs = "Unsupported_Kd let g = func (z: s/T) -> () => (); ComparisonLoanConflict_Kd let g = func (z: s/T) -> () => ()";
     private const string Node = "contract Loaded\n    func load(self: ref/Self) -> i32\ncontract Bump\n    func bump(self: uniq/Self)\n" +
         "struct Node\n    Self is Copy\n    Self is Loaded\n    Self is Bump\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
         "    public func load(self: ref/Self) -> i32 => self.weight\n    public func bump(self: uniq/Self) => self.weight += 1\n";
@@ -258,21 +266,27 @@ public class ClosureReceiverClassificationTest
     // source, a Dictionary entry) acquires a captured pair layer as each case's Type does, so it Reborrows in the exclusive cases and
     // the call is Exclusive there: the strongest receiver is Exclusive, and a `let` Closure's call is invalid; under admitted cases that
     // only Copy it stays Shared. The value call, the assignment and the Dictionary entry were Shared in every case (2c-2 review B1).
+    // The exclusive rows' `var` twin is valid, but the Exclusive call `f(y)` stores the receiver's Content, which leaves the shared capture
+    // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq`, a located
+    // Unsupported_Kd and a ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
+    // board O-1): PLAN G148 (2), GXS's proposal, which reconciles SPEC 15.6.4 with 15.8.2's retention, restores the acceptance and
+    // re-points these rows back to no record.
     [Theory]
-    [InlineData("        take(x)\n", "owner or uniq", true)]
+    [InlineData("        take(x)\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        take(x)\n", "owner or ref", false)]
-    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true)]
+    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or ref", false)]
-    [InlineData("        g(x)\n", "owner or uniq", true)]
+    [InlineData("        g(x)\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        g(x)\n", "owner or ref", false)]
-    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true)]
+    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or ref", false)]
-    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive)
+    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive, string varRecords = "")
         => AssertCallReceiver(
             "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T, y: s/T)\n    s is " + admitted + "\n" +
                 "    T is Copy\n    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n" +
                 "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
-            exclusive);
+            exclusive,
+            varRecords);
 
     // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M145; the owner, 2026-10-26): a captured pair layer in Discard Context (a statement, in
     // parentheses, a discarded selection body) is acquired by bare acquisition, as at a value position, so it Reborrows in its exclusive
@@ -490,12 +504,13 @@ public class ClosureReceiverClassificationTest
 
     // The one Closure's call receiver, and its `let f` call: an `InvalidAssignment_Kd` with the general Note when Exclusive, valid
     // otherwise; the same program with `var f` is valid either way.
-    private static void AssertCallReceiver(string source, bool exclusive)
+    // The receiver of `f`, its `var` twin's records (none but an (e) row's) and its `let` form's record.
+    private static void AssertCallReceiver(string source, bool exclusive, string varRecords = "")
     {
         var c = MinimalEmissionTest.Analyze(source);
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous && x.Parent is VariableKoto { NameKoto: var name } && name.ToString() == "f");
         Assert.Equal(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, closure.ClosureOf()!.Receiver);
-        Assert.Empty(DiagnosticCorpus.Check(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)).Diagnostics);
+        Assert.Equal(varRecords, Records(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)));
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         if (!exclusive)
         {
