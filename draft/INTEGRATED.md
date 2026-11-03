@@ -1274,3 +1274,5 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   expected result solved; SPEC 10.5.1 with 14.9.2 step 2: a control-flow argument supplies child positions by structure whether or not
   the join waited) are readings of the current text; if U6 finds that 10.5.1 needs a sentence for the second, that revision is proposed
   separately and recorded here. Adoption implies no implementation support.
+- Revision 1 (2026-11-03, U0's review B1 by the middle): §3.1's mk2 record is `UnprovenOriginRelation_Kd` (two fixed ends, Unknown), not
+  Unsatisfied; the oracle and the U2 rows follow. No other text changed; the proposal stays 一部取り込み (open), nothing frozen.

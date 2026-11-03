@@ -78,8 +78,10 @@ func use(q: ref/i32) -> ()
 `.None` waits; no evidence binds `T`; the annotation (the expected result) solves `T = ref/i32 during q` (10.3). The instantiated
 parameter is `Option<ref/(ref/i32 during q) during static>`; 15.6.1 needs `q outlives static`. dev marks the whole argument Result
 (the parameter *mentions* a solved slot) and the call skips it: accepted, unsound. The row design: the position of `T` is Result (the
-annotation proved `ref/i32 during q`); the layer `ref/T during static` is Signature and the call judges `q outlives static`:
-`UnsatisfiedOriginRelation_Kd` at `.None`.
+annotation proved `ref/i32 during q`); the layer `ref/T during static` is Signature and the call judges `q outlives static`. Both ends
+are fixed Origins (a parameter Origin and `static`), so the relation is Unknown under Finality, not Refuted (15.6.5; DIAGNOSTICS "Origin
+relations": only a finite Origin required to outlive a fixed one is Refuted): `UnprovenOriginRelation_Kd` at `.None` (revision 1,
+2026-11-03: the first text said Unsatisfied; U0's review B1).
 
 ```kimi
 func id<T>(v: T) -> T => v@move
