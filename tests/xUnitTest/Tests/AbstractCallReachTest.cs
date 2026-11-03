@@ -357,7 +357,7 @@ public class AbstractCallReachTest
         var old = LegacyRecords.Of(c).Where(static x => x.Node.CodeContext?.SourceDocument?.Path == "Hello.kimi").Select(static x => (x.Code, x.Node));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var mir = program.Records(MirProblem.Construction)
+        var mir = program.Records(MirRecordClass.Construction)
             .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(static x => new Problem(x.Code, x.Subject)))
             .Where(static x => x.Subject.Module == 0).Select(x => (x.Code, c.SyntaxOf(x.Subject)));
         var lines = source.Split('\n');

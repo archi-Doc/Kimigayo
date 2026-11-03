@@ -130,7 +130,7 @@ internal static class CollectionCostMeasurements
     {
         var c = Checked(source);
         var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(), c.SourceModules.Length);
-        Require(!program.Records(MirProblem.Construction).Any() && program.Findings.Count == 0, "MIR construction or validation failed.");
+        Require(!program.Records(MirRecordClass.Construction).Any() && program.Findings.Count == 0, "MIR construction or validation failed.");
         Layout[] layouts = [c.Layout, new Layout(), c.Layout];
         var (ticks, bytes) = (new long[layouts.Length], new long[layouts.Length]);
         CheckedSet? cold = null;
@@ -142,9 +142,9 @@ internal static class CollectionCostMeasurements
             var set = new InstanceCollector(c.Types, layouts[v]).Run(program, c.SourceModules.Length);
             ticks[v] = Stopwatch.GetTimestamp() - start;
             bytes[v] = GC.GetAllocatedBytesForCurrentThread() - allocated;
-            records = cold is null ? [.. program.Records(MirProblem.Collection)] : records;
+            records = cold is null ? [.. program.Records(MirRecordClass.Collection)] : records;
             cold ??= set;
-            var difference = Difference(Keys(cold), Keys(set), records, [.. program.Records(MirProblem.Collection)]);
+            var difference = Difference(Keys(cold), Keys(set), records, [.. program.Records(MirRecordClass.Collection)]);
             Require(difference is null, $"The {Variants[v]} collection differs from the cold one: {difference}.");
         }
 
@@ -159,7 +159,7 @@ internal static class CollectionCostMeasurements
         Require(operation.Bytes[0] > operation.Bytes[2], $"cold allocates {operation.Bytes[0]} B, warm {operation.Bytes[2]} B: cold is not cold.");
         Require(operation.Compilation.Analyze().IsVerified, "The analysis rejected the program.");
         var own = operation.Compilation.Instances ?? throw new InvalidOperationException("The compilation has no checked set.");
-        Problem[] ownRecords = [.. operation.Compilation.BuildMir().Records(MirProblem.Collection)];
+        Problem[] ownRecords = [.. operation.Compilation.BuildMir().Records(MirRecordClass.Collection)];
         var keys = Keys(operation.Cold);
         var difference = Difference(keys, Keys(own), operation.Records, ownRecords);
         Require(difference is null, $"The collection differs from the compilation's own: {difference}.");

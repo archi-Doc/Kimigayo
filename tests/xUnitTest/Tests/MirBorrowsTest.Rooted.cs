@@ -890,7 +890,7 @@ public sealed partial class MirBorrowsTest
     private static MirProgram Sound(MirProgram program)
     {
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         return program;
     }

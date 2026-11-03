@@ -61,7 +61,7 @@ public sealed partial class MirBuildTest
             {
                 // A complete compilation holds no Opaque value and no construction record, so none of its rvalues reaches Unlent.
                 Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.HasOpaque);
-                Assert.Empty(program.Records(MirProblem.Construction));
+                Assert.Empty(program.Records(MirRecordClass.Construction));
             }
         }
     }

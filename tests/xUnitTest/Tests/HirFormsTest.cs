@@ -197,7 +197,7 @@ public sealed partial class HirFormsTest
         Assert.Null(HirTables.PlanOf(jump).Plan);
         Assert.True(HoldsItsTarget(jump));
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code && x.Span == jump.Span);
-        Assert.DoesNotContain(c.BuildMir().Records(MirProblem.Construction), x => x.Subject == SourceRef.Of(jump));
+        Assert.DoesNotContain(c.BuildMir().Records(MirRecordClass.Construction), x => x.Subject == SourceRef.Of(jump));
     }
 
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes

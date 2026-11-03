@@ -129,7 +129,7 @@ public sealed partial class MirDifferenceLedger
             (analysis is not null ? old : requirement.Partition == DiagnosticPartition.Binding ? common : passed).Add(new(code, requirement.Name, analysis ?? "-", node));
         }
 
-        var mir = program.Records(MirProblem.Construction).Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
+        var mir = program.Records(MirRecordClass.Construction).Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
             .Concat(program.Findings.Select(x => new Entry(DiagnosticCode.InternalInvariant_Kd, "-", "B", compilation.SyntaxOf(x.Subject)))).ToList();
         for (var i = 0; i < program.Problems.All.Length; i++)
         {

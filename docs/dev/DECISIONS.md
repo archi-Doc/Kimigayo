@@ -15982,11 +15982,11 @@ structure is recorded here by the unit that first implements it.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
   - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner, relayed by the planning
-    session): the folded records take two body values, `MirProblem.Construction` and `MirProblem.Collection` (both no body, distinct from
-    `NoBody`), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's `Sides`,
+    session): the folded records take two body values, `MirRecordClass.Construction` and `MirRecordClass.Collection` (both no body,
+    distinct from `NoBody`; an enum, so a class is a checked selector, R5's review N2/N3), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's `Sides`,
     `VerifiedSpecExampleTest` and `MirDump` read construction records only, and today's two `reported` sets keep a construction and a
-    collection record at one (code, site) apart. `MirProgram.Report(site, code, class)` adds a ControlFlow problem of every view; the
-    `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(class)` is the one path to a
+    collection record at one (code, site) apart. `MirProgram.Report(site, code, recordClass)` adds a ControlFlow problem of every view; the
+    `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(recordClass)` is the one path to a
     class's rows (R5's condition), and a reader of the analyses' problems skips records by `MirProblem.IsRecord`, the one definition.
     `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
     "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or

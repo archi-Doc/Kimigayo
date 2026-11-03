@@ -64,7 +64,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
             }
 
             var program = c.BuildMir();
-            foreach (var record in program.Records(MirProblem.Construction))
+            foreach (var record in program.Records(MirRecordClass.Construction))
             {
                 rows.Add(Row(name, complete, "B", record.Code, c.SyntaxOf(record.Subject), complete));
             }

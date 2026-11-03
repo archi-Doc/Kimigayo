@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns MIR bodies by definition key, the validator's findings, the drop table the analyses find, and the version's MirReport: the records
-// of construction and collection (MirProblem.Construction, MirProblem.Collection; R6-check H3-1) and the analyses' problems.
+// of construction and collection (MirRecordClass; R6-check H3-1) and the analyses' problems.
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
 // a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records), their one path.
 // One key identifies one body; warm rebuilding reuses body storage; Clear resets the report with the bodies.
@@ -76,16 +76,16 @@ internal sealed class MirProgram
     /// <param name="site">The syntax.</param>
     /// <param name="code">For construction an Unsupported form, the default expansion limit or a broken HIR contract (DECISIONS R4-M61); for
     /// collection a code of the checked set's records (InstanceCollector).</param>
-    /// <param name="stage">The record's body value, <see cref="MirProblem.Construction"/> or <see cref="MirProblem.Collection"/>.</param>
-    internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd, int stage = MirProblem.Construction)
-        => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, stage, ulong.MaxValue));
+    /// <param name="recordClass">The record's class, its body value.</param>
+    internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd, MirRecordClass recordClass = MirRecordClass.Construction)
+        => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, (int)recordClass, ulong.MaxValue));
 
     /// <summary>Gets the rows of a record class in the order they were first recorded, the one path to them: the construction records, an
     /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource) and a
     /// broken HIR contract's <c>InternalInvariant_Kd</c>, or the collection records of the checked set; enumerating allocates nothing.</summary>
-    /// <param name="stage">The class, <see cref="MirProblem.Construction"/> or <see cref="MirProblem.Collection"/>.</param>
+    /// <param name="recordClass">The class.</param>
     /// <returns>The rows.</returns>
-    internal RecordRows Records(int stage) => new(this.Problems, stage);
+    internal RecordRows Records(MirRecordClass recordClass) => new(this.Problems, recordClass);
 
     /// <summary>Begins the body of a definition with the next pooled body.</summary>
     /// <param name="key">The definition, which has no body yet.</param>
@@ -107,10 +107,10 @@ internal sealed class MirProgram
 
     /// <summary>The rows of one record class of a version (<see cref="Records"/>), each its code and location.</summary>
     /// <param name="report">The version's report.</param>
-    /// <param name="stage">The class's body value.</param>
-    internal readonly struct RecordRows(MirReport report, int stage) : IEnumerable<Problem>
+    /// <param name="recordClass">The class.</param>
+    internal readonly struct RecordRows(MirReport report, MirRecordClass recordClass) : IEnumerable<Problem>
     {
-        public Enumerator GetEnumerator() => new(report, stage);
+        public Enumerator GetEnumerator() => new(report, recordClass);
 
         IEnumerator<Problem> IEnumerable<Problem>.GetEnumerator() => this.GetEnumerator();
 
@@ -118,8 +118,8 @@ internal sealed class MirProgram
 
         /// <summary>The enumerator of a class's rows.</summary>
         /// <param name="report">The version's report.</param>
-        /// <param name="stage">The class's body value.</param>
-        internal struct Enumerator(MirReport report, int stage) : IEnumerator<Problem>
+        /// <param name="recordClass">The class.</param>
+        internal struct Enumerator(MirReport report, MirRecordClass recordClass) : IEnumerator<Problem>
         {
             private int index = -1;
 
@@ -131,7 +131,7 @@ internal sealed class MirProgram
             {
                 while (++this.index < report.All.Length)
                 {
-                    if (report.All[this.index].Body == stage)
+                    if (report.All[this.index].Body == (int)recordClass)
                     {
                         return true;
                     }

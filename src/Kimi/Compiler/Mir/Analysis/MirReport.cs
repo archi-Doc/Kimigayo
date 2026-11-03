@@ -2,8 +2,8 @@
 
 // Owns the problems the MIR analyses find in one program version and its construction and collection records (A6; DECISIONS R4-M3a, R5-M23,
 // R4-M71; R6-check H3-1); their records are MirProblem and MirFact (MirProblem.cs, MirFact.cs).
-// Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's class:
-// MirProblem.Construction or Collection, through MirProgram.Report) and its facts (related sites, added by their first producer).
+// Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's MirRecordClass,
+// through MirProgram.Report) and its facts (related sites, added by their first producer).
 // Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
 // D18: an Origin problem's relation, the default for other problems) with the views that have it merged, in insertion order (bodies in
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
@@ -21,8 +21,9 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The problems of one program version (R4 shadow: unpublished until R6, compared by the difference ledger), one per code,
-/// subject, body and Reason: a problem added again ORs its views into the first, whose requirement it must name.</summary>
+/// <summary>The problems of one program version, one per code, subject, body and Reason: its construction and collection records, which
+/// Compilation publishes (MirProgram.Records), and the analyses' problems (unpublished until R6-check H5, compared by the difference
+/// ledger): a problem added again ORs its views into the first, whose requirement it must name.</summary>
 internal sealed class MirReport
 {
     private readonly Dictionary<(DiagnosticCode Code, SourceRef Subject, int Body, MirReason Reason), int> index = new(); // The problem of each key.

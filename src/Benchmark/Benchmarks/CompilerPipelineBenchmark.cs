@@ -101,7 +101,7 @@ public class CompilerPipelineBenchmark
         Capture(2, timestamps, allocations);
 
         var mir = result.BuildMir();
-        this.Require(!mir.Records(MirProblem.Construction).Any() && mir.Findings.Count == 0, "MIR construction or validation failed.");
+        this.Require(!mir.Records(MirRecordClass.Construction).Any() && mir.Findings.Count == 0, "MIR construction or validation failed.");
         Capture(3, timestamps, allocations);
 
         this.Require(result.Analyze().IsVerified, "Analysis failed.");

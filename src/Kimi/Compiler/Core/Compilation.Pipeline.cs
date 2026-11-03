@@ -133,7 +133,7 @@ public partial class Compilation
         var count = 0;
         if (this.mir is { } program)
         {
-            count = Add(program.Records(Mir.MirProblem.Construction), into);
+            count = Add(program.Records(Mir.MirRecordClass.Construction), into);
             count += program.Findings.Count;
             foreach (var finding in program.Findings)
             {
@@ -141,7 +141,7 @@ public partial class Compilation
             }
         }
 
-        return this.collected is { } collected ? count + Add(collected.Records(Mir.MirProblem.Collection), into) : count;
+        return this.collected is { } collected ? count + Add(collected.Records(Mir.MirRecordClass.Collection), into) : count;
 
         static int Add(Mir.MirProgram.RecordRows rows, List<Problem>? into)
         {

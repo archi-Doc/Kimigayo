@@ -45,9 +45,9 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal(subjects, string.Join("|", c.BuildMir().Records(MirProblem.Collection).Select(x => c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
-        Assert.All(c.BuildMir().Records(MirProblem.Collection), x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
-        Assert.All(c.BuildMir().Records(MirProblem.Collection), x => Assert.True(c.SyntaxOf(x.Subject) is var node && node.SyntaxId <= node.SyntaxOwner!.ParsedCount, "Synthesized."));
+        Assert.Equal(subjects, string.Join("|", c.BuildMir().Records(MirRecordClass.Collection).Select(x => c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
+        Assert.All(c.BuildMir().Records(MirRecordClass.Collection), x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
+        Assert.All(c.BuildMir().Records(MirRecordClass.Collection), x => Assert.True(c.SyntaxOf(x.Subject) is var node && node.SyntaxId <= node.SyntaxOwner!.ParsedCount, "Synthesized."));
     }
 
     // DECISIONS R5-M171: a type-driven key whose Type passes the height cap is a limit of its erased Type, not a refused key: one record per
@@ -74,7 +74,7 @@ public sealed partial class InstanceCollectorTest
         });
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal(subjects, string.Join("|", c.BuildMir().Records(MirProblem.Collection).Select(x => c.SyntaxOf(x.Subject).ToString().Split(':')[0])));
-        Assert.All(c.BuildMir().Records(MirProblem.Collection), x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
+        Assert.Equal(subjects, string.Join("|", c.BuildMir().Records(MirRecordClass.Collection).Select(x => c.SyntaxOf(x.Subject).ToString().Split(':')[0])));
+        Assert.All(c.BuildMir().Records(MirRecordClass.Collection), x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
     }
 }

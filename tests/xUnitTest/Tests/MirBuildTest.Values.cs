@@ -40,7 +40,7 @@ public sealed partial class MirBuildTest
         Assert.True(unbuilt.HasOpaque);
         Assert.Equal([2, 3], unbuilt.OpaqueRoots.ToArray());
         Assert.Contains(unbuilt.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
-        var records = program.Records(MirProblem.Construction).Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
+        var records = program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
         Assert.Equal(["u == v", "x == y"], records);
         Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u == v"));
 
@@ -71,7 +71,7 @@ public sealed partial class MirBuildTest
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         Assert.Empty(program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray()));
     }
 
@@ -96,7 +96,7 @@ public sealed partial class MirBuildTest
         var c = Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray());
         Assert.Contains(opaque, sites.Select(x => c.SyntaxOf(x.Source).ToString()));
     }
@@ -119,7 +119,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records(MirProblem.Construction));
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         Assert.False(body.HasOpaque);
         var text = new StringBuilder();
@@ -151,7 +151,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records(MirProblem.Construction));
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         Assert.False(body.HasOpaque);
         var text = new StringBuilder();
@@ -182,7 +182,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records(MirProblem.Construction));
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         Assert.Contains(built, text.ToString(), StringComparison.Ordinal);
@@ -224,7 +224,7 @@ public sealed partial class MirBuildTest
         Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
     }
 
     // SPEC 13.7.1, 3.1.3 (DECISIONS R5-M159): the right side is secured at the destination Type, the element's, before a diverging key
@@ -241,7 +241,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
         var temps = f.Locals.ToArray().Where(x => x.Kind == MirLocalKind.Temp && c.SyntaxOf(x.Source.Syntax).ToString() == target).Select(static x => TyCtxt.Name(x.Type));
         Assert.Contains(type, temps);
@@ -374,8 +374,8 @@ public sealed partial class MirBuildTest
         Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(
             broken.Select(SourceRef.Of),
-            program.Records(MirProblem.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
-        Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records(MirProblem.Construction).Select(static x => x.Subject));
+            program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
+        Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records(MirRecordClass.Construction).Select(static x => x.Subject));
     }
 
     // SPEC 23.1.2, 13.7.2 (DECISIONS R4-M109): an input Binding rejected after selection is its consumer's derived value, an Opaque of the
@@ -426,7 +426,7 @@ public sealed partial class MirBuildTest
         Assert.Equal([DiagnosticCode.TypeMismatch_Kd], c.Binding.Issues.Select(static x => x.Code));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var h = new MirPlace(Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "h"));
         Assert.Equal((MirLocalKind.Var, true), (body.Locals[h.Root].Kind, body.Locals[h.Root].Mutable));
@@ -466,7 +466,7 @@ public sealed partial class MirBuildTest
         Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.UnresolvedBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         foreach (var name in new[] { "f", "g" })
         {
             var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
@@ -486,7 +486,7 @@ public sealed partial class MirBuildTest
         _ = c.Binding.CheckStartup(OutputKind.Application);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Subject.Module == 0);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" or "g" })
             .ToDictionary(static x => x.Key.Decl!.Name);
         Assert.Equal(("char", 1, 0), (Assert.Single(Opaques(bodies["f"])).Type, Opaques(bodies["f"]).Length, Opaques(bodies["g"]).Length));
@@ -510,7 +510,7 @@ public sealed partial class MirBuildTest
         var program = c.BuildMir();
         Assert.NotEmpty(CompilationTestHelper.BindingErrors(c));
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records(MirProblem.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
     }
 
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.

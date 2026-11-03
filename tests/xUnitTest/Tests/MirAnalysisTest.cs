@@ -150,20 +150,20 @@ public sealed class MirAnalysisTest
         var program = new MirProgram();
         var site = new SourceRef(0, 5);
         program.Report(site);
-        program.Report(site, DiagnosticCode.Unsupported_Kd, MirProblem.Collection);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
         program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1));
         program.Report(site);
-        program.Report(site, DiagnosticCode.Unsupported_Kd, MirProblem.Collection);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
         Assert.Equal(
             [
-                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, MirProblem.Construction, ulong.MaxValue),
-                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, MirProblem.Collection, ulong.MaxValue),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, ulong.MaxValue),
                 new MirProblem(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1),
             ],
             program.Problems.All.ToArray());
         Assert.Equal([true, true, false], program.Problems.All.ToArray().Select(static x => x.IsRecord));
-        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirProblem.Construction));
-        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirProblem.Collection));
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Construction));
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Collection));
         program.Clear();
         Assert.Equal(0, program.Problems.All.Length);
     }
@@ -529,7 +529,7 @@ public sealed class MirAnalysisTest
         var library = c.SourceModules.Length;
         Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
         new MirAnalysis(c.Types).Run(program, library + 1);
-        Assert.Equal([], program.Records(MirProblem.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
+        Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
             .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
             .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
                 $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Bodies[x.Body].Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
