@@ -197,4 +197,8 @@ public enum KimiDeclarationId : byte
     ArrayInsertPosition,
     ArrayAppendAll,
     ArrayRemoveAll,
+    ArrayRemovePosition,
+    ArraySwapPositions,
+    ArraySwapRemove,
+    ArrayReverse,
 }

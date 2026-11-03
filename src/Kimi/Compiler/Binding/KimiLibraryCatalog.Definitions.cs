@@ -73,12 +73,13 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.MakeRcCyclic, "makeRcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.MakeArcCyclic, "makeArcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.Weak, "Weak", SourceExpected: false, ManagedRepresentation: true),
-        // SPEC 4.9.3, 4.9.5: compiler-implemented Array mutation operations declared inside the Array struct.
+        // SPEC 4.9.3, 4.9.5: compiler-implemented Array mutation operations declared inside the Array struct; SPEC 4.9.6 gives `append`,
+        // `insert`, `pop` and `remove` no user-code effect.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayReserve),
-        new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayAppend),
-        new(KimiDeclarationId.ArrayInsert, "insertAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert),
-        new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayPop),
-        new(KimiDeclarationId.ArrayRemove, "removeAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove),
+        new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayAppend, Row: None),
+        new(KimiDeclarationId.ArrayInsert, "insertAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert, Row: None),
+        new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayPop, Row: None),
+        new(KimiDeclarationId.ArrayRemove, "removeAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove, Row: None),
         new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear, Row: Target),
         new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
         new(KimiDeclarationId.ArraySwap, "swapAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArraySwap),
@@ -229,14 +230,19 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageSliceUniq, "sliceUniq", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageSetArrayLength, "setArrayLength", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSetArrayLength),
         new(KimiDeclarationId.SliceToArray, "toArray", SourceFunction: true, CallerLocation: true, Owner: "Slice"),
-        new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         // SPEC 4.9.6: `truncate` destroys its receiver's elements from `length` on; `removeAll` calls `matching`, destroys the removed
         // elements and destroys `matching`.
         new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: Target),
         new(KimiDeclarationId.ArrayRemoveAll, "removeAll", KimiLibraryContainer.Array, SourceFunction: true, Row: CallsThenTarget),
-        // SPEC 4.9.6, 15.6.4: the public position insert and appendAll, which add inputs to the element storage (AddedRows).
-        new(KimiDeclarationId.ArrayInsertPosition, "insert", KimiLibraryContainer.Array, SourceFunction: true),
-        new(KimiDeclarationId.ArrayAppendAll, "appendAll", KimiLibraryContainer.Array, SourceFunction: true),
+        // SPEC 4.9.6, 15.6.4: the public position insert and appendAll, which add inputs to the element storage (AddedRows), and the
+        // position remove, swap, swapRemove and reverse; none runs user code.
+        new(KimiDeclarationId.ArrayInsertPosition, "insert", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.ArrayAppendAll, "appendAll", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.ArrayRemovePosition, "remove", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.ArraySwapPositions, "swap", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.ArraySwapRemove, "swapRemove", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.ArrayReverse, "reverse", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
     ];
 
     private static readonly int[] Indices = CreateIndices();
