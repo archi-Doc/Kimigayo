@@ -214,16 +214,18 @@ public class ScalarDefaultEmissionTest
         ScalarEmissionTest.EmitFixture(Prefix + "LocalAbort", Source, string.Empty, 1, "Hello.kimi:2:13: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
+    // SPEC 14.10.3: a non-completing initializer places no value, so `n` is uninitialized on the assumed path and its read is
+    // UninitializedPlace_Kd at the operation that reads it, `n + 1` (R6-check H5; class 3, R4's verdict).
     [Theory]
     [InlineData("f()")]
     [InlineData("f(3)")]
-    public void NoncompletingLocalInitializerMakesTheLaterUseUnsupported(string call)
+    public void NoncompletingLocalInitializerLeavesTheLaterUseUninitialized(string call)
     {
         const string Source = "func f(y: i32 = (label scope: do\n    let n: i32 = (loop => continue)\n    exit to scope n + 1\n)) => ()\n";
         var c = MinimalEmissionTest.Analyze(Source + call);
         Assert.True(c.Binding.Result.IsComplete);
         var issue = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, Source.IndexOf("n + 1", StringComparison.Ordinal), 1), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
+        Assert.Equal((DiagnosticCode.UninitializedPlace_Kd, Source.IndexOf("n + 1", StringComparison.Ordinal), "n + 1".Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

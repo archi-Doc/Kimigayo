@@ -108,7 +108,9 @@ public partial class ModuleBindingTest
         Assert.True(compilation.Analyze().IsVerified);
         compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "public func broken() => missing()"));
         Assert.False(compilation.Bind().IsComplete);
-        Assert.False(compilation.Analyze().IsVerified);
+        compilation.Analyze();
+        Assert.False(compilation.Accepts); // Since the MIR decides acceptance (R6-check H5), Binding's record rejects the program.
+        Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd], compilation.Binding.Issues.Select(static x => x.Code));
     }
 
     [Fact]
