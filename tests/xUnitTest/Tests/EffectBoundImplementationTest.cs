@@ -48,10 +48,10 @@ public partial class EffectBoundImplementationTest
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
         => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink");
 
-    // SPEC 8.11.2: reading an immutable static is no environment effect, whatever its initializer computes (`2 + 3`), so a confined witness
-    // reading one keeps its bound. Binding's summary refused the initializer's destructions with one Unsupported_Kd at `Self is Read`; since
-    // the MIR decides acceptance (H5, DECISIONS R5-M185) A4 judges the bound (1a, the owner 2026-11-03): check publishes no record, and a
-    // Library build (every root, K11) is accepted and generates S.read.
+    // SPEC 8.11.2: reading an immutable static of a Transferable Type (`i32`) is no environment effect; its initializer (`2 + 3`) enters
+    // the summary and has none, so the confined witness keeps its bound. Binding refused the initializer's destructions with one
+    // Unsupported_Kd at `Self is Read`; since the MIR decides acceptance (H5, DECISIONS R5-M185) A4 judges the bound (1a, the owner
+    // 2026-11-03): check publishes no record, and a Library build (every root, K11) is accepted and generates S.read.
     [Fact]
     public void AnImmutableStaticsComputedInitializerIsNoEnvironmentEffect()
     {
