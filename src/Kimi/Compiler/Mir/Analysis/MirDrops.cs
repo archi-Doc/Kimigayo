@@ -270,6 +270,11 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         this.table.Close(this.before[paths.Length], this.judged, this.incomplete);
     }
 
+    /// <summary>Closes the next body's entry for a body with a validator finding (MirBody.HasFinding), which no consumer reads (DECISIONS
+    /// R5-M183): an empty entry (no rows or points, no flags, <see cref="MirDropTable.ViewsOf"/> 0), so every later body keeps its own.</summary>
+    /// <param name="program">The program, whose drop table the entry goes to.</param>
+    internal void Exclude(MirProgram program) => program.Drops.Close(0, 0, null);
+
     private static bool Any(ulong[] state, int lane, int first, int end) => MirDataflow.Any(state, MirInit.Lanes, lane, first, end);
 
     // The state verdict of the subtree [path, end).

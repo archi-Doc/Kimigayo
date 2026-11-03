@@ -276,7 +276,7 @@ internal sealed partial class MirEffects
             return;
         }
 
-        this.Compose(body.Ordinal, cases.Views(body, subst), subst);
+        this.Compose(body.Ordinal, this.Views(body, subst), subst);
     }
 
     // SPEC 4.9.6, 8.11.3: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
@@ -403,7 +403,7 @@ internal sealed partial class MirEffects
     {
         var body = this.program.Callee(new(MirCalleeKind.Fn, implementation));
         var perView = own && body is not null;
-        for (var mask = perView ? cases.Views(body!, null) : 1UL; mask != 0; mask &= mask - 1)
+        for (var mask = perView ? this.Views(body!, null) : 1UL; mask != 0; mask &= mask - 1)
         {
             var view = perView ? 1UL << BitOperations.TrailingZeroCount(mask) : ulong.MaxValue;
             (this.found, this.scratchCount) = (0, 0);

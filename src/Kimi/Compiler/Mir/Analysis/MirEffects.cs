@@ -13,8 +13,8 @@
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
 // G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
-// Must not read syntax or HIR, re-derive premises, bounds or obligations, or report a failure that only an Opaque site or a callee
-// Binding rejected causes (derived, R4-M10).
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
+// Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
 using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -34,8 +34,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
     internal const byte Limit = 4;
 
-    /// <summary>A class of a summary: an effect only an Opaque site or a callee Binding rejected causes, a dependent of that error
-    /// (R4-M10).</summary>
+    /// <summary>A class of a summary: an effect only an Opaque site, a callee Binding rejected or a body with a validator finding causes,
+    /// a dependent of that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
     /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
@@ -392,7 +392,20 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private void AddEdge(MirBody callee, Subst? subst)
     {
         MirDataflow.Grow(ref this.edges, this.edgeCount + 1);
-        this.edges[this.edgeCount++] = new(callee.Ordinal, cases.Views(callee, subst), subst);
+        this.edges[this.edgeCount++] = new(callee.Ordinal, this.Views(callee, subst), subst);
+    }
+
+    // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
+    // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
+    private ulong Views(MirBody body, Subst? subst)
+    {
+        if (body.HasFinding)
+        {
+            this.found |= Derived;
+            return 0;
+        }
+
+        return cases.Views(body, subst);
     }
 
     // An atom of a summary or a local input: a Type and a kind (Drop, 1 + a call's receiver, or Requires with its requirement).

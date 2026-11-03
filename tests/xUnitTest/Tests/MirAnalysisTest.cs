@@ -107,6 +107,11 @@ public sealed class MirAnalysisTest
 
         """;
 
+    // A destructor's environment effect, which A4 composes and Binding's own effect check does not see, and group H's discard, open for
+    // more members.
+    private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
+        "    public func discard<T>(item: T) => ()\n";
+
     private static readonly DiagnosticRequirement Moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
 
@@ -371,6 +376,54 @@ public sealed class MirAnalysisTest
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
+    }
+
+    // SPEC 23.1.2, DECISIONS R5-M183 (the owner's (a), replacing "a program with validator findings is not analyzed"): a body with a
+    // validator finding (broken) is skipped by steps 1, 2 and 4 and every other body is analyzed: the other bodies' A1, A3 and A5
+    // problems stay and broken's own are not made; a caller of broken under a confined obligation (Quiet's override) composes it as
+    // Derived (MirEffects.Views), so only Other's own failure is reported; broken owing confined itself (put) makes no record, keep's does.
+    // The rows that need a live static Loan (a Derived site, the initialization proof) are MirBorrowsTest's ...Rooted twin (P42).
+    // Fail-before: the findings emptied the problems.
+    [Theory]
+    [InlineData(
+        "struct Resource\n    var name: string\n    public init(name: string) => self.name = name@move\nfunc consume(r: Resource) => ()\n" +
+        "func inspect(value: ref/i32) => ()\nfunc moved(r: Resource)\n    consume(r@move)\n    consume(r@move)\nfunc falls(flag: bool)\n" +
+        "    require flag else => ()\nfunc conflict()\n    var x = 1\n    let r = x@ref\n    x = 2\n    inspect(r)\nfunc broken(r: Resource, flag: bool)\n" +
+        "    consume(r@move)\n    consume(r@move)\n    require flag else => ()\n    var y = 1\n    let s = y@ref\n    y = 2\n    inspect(s)\n",
+        "broken",
+        "ComparisonLoanConflict_Kd x = 2 conflict|MovedPlace_Kd r moved|RequireFallthrough_Kd () falls")]
+    [InlineData(
+        Loud + "    public func broken() -> i32\n        H.discard(Loud.init())\n        return 0\nopen struct Base\n" +
+        "    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Quiet : Base\n" +
+        "    override func read(self: objref/Self) -> i32 => H.broken()\nstruct Other : Base\n    override func read(self: objref/Self) -> i32\n" +
+        "        H.discard(Loud.init())\n        return 1\n",
+        "broken",
+        "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -")]
+    [InlineData(
+        Loud + "contract Sink\n    func put(self: uniq/Self, value: i32) -> i32\n        effect confined\nstruct S\n    Self is Sink\n" +
+        "    public func put(self: uniq/Self, value: i32) -> i32\n        H.discard(Loud.init())\n        return value\ncontract Store\n" +
+        "    func keep(self: uniq/Self, value: i32) -> i32\n        effect confined\nstruct T\n    Self is Store\n" +
+        "    public func keep(self: uniq/Self, value: i32) -> i32\n        H.discard(Loud.init())\n        return value\n",
+        "put",
+        "IncompatibleContractImplementation_Kd Self is Store -")]
+    public void ABodyWithAFindingLeavesOtherBodiesProblems(string source, string name, string expected)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var views = program.Bodies.ToArray().Select(x => program.Drops.ViewsOf(x.Ordinal)).ToArray();
+        var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
+        program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
+        broken.HasFinding = true;
+        new MirAnalysis(c.Types).Run(program, 1);
+        Assert.Equal(
+            expected.Split('|'),
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Order(StringComparer.Ordinal));
+        views[broken.Ordinal] = 0; // MirDrops.Exclude: an empty entry, every other body's unshifted.
+        Assert.Equal(views, program.Bodies.ToArray().Select(x => program.Drops.ViewsOf(x.Ordinal)));
     }
 
     // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
