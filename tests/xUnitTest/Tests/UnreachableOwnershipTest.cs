@@ -3,13 +3,16 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
 
-// SPEC 14.10.3 checks unreachable source under a type-checking continuation, which this analysis does not provide: it never
-// checks unreachable operations, and a body without another ownership issue reports its first unreachable use of a Local or
-// Parameter as the location-only Unsupported_Kd (SPEC 23.1.1).
+// SPEC 14.10.3 checks unreachable source under a type-checking continuation: since the MIR decides acceptance (H5, DECISIONS R5-M182),
+// an unreachable operation is checked as its reachable twin (R5-M159's twin rule), so a dead use of a Local or Parameter has no record
+// and the program is generated. The old analysis's location-only Unsupported_Kd at a body's first unreachable use (SPEC 23.1.1) went
+// with it (1a, the owner's list of 2026-11-03).
 public class UnreachableOwnershipTest
 {
     // A deferred body repeated at its dead scope end performs the use already checked on the reachable exit.
@@ -34,25 +37,27 @@ public class UnreachableOwnershipTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
+    // A dead use after a body that cannot complete (a loop, `$abort`, `return`, a `defer` that cannot complete) or after a top-level loop
+    // has no record, and the program is generated: each declared function and the top-level statements.
     [Theory]
-    [InlineData("func f(x: string)\n    loop\n        Console.writeLine(x)\n        $abort(\"stop\")\n    Console.writeLine(x)\nf(\"s\")", "x", 5)]
-    [InlineData("func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x\nf(1)", "x", 5)]
-    [InlineData("func f(c: bool, x: i32)\n    var n = 0\n    if c\n        loop\n            n += 1\n    else => return\n    let y = x\nf(true, 1)", "x", 7)]
-    [InlineData("func f(x: i32)\n    loop => return\n    let y = x\nf(1)", "x", 3)]
-    [InlineData("func f()\n    var x = \"s\"\n    return\n    x = \"new\"\n    Console.writeLine(x)\nf()", "x = \"new\"", 4)]
-    [InlineData("var x = 1\nloop\n    x = 2\nlet y = x", "x", 4)]
-    [InlineData("var x = 1\nloop\n    x++\nlet y = x", "x", 4)]
-    [InlineData("func f() => ()\nvar x = 1\nloop\n    f()\nlet y = x", "x", 5)]
-    [InlineData("var x = 1\nloop\n    defer => ()\nlet y = x", "x", 4)]
-    public void FirstDeadLocalUseIsUnsupported(string source, string use, int line)
+    [InlineData("func f(x: string)\n    loop\n        Console.writeLine(x)\n        $abort(\"stop\")\n    Console.writeLine(x)\nf(\"s\")")]
+    [InlineData("func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x\nf(1)")]
+    [InlineData("func f(c: bool, x: i32)\n    var n = 0\n    if c\n        loop\n            n += 1\n    else => return\n    let y = x\nf(true, 1)")]
+    [InlineData("func f(x: i32)\n    loop => return\n    let y = x\nf(1)")]
+    [InlineData("func f()\n    var x = \"s\"\n    return\n    x = \"new\"\n    Console.writeLine(x)\nf()")]
+    [InlineData("var x = 1\nloop\n    x = 2\nlet y = x")]
+    [InlineData("var x = 1\nloop\n    x++\nlet y = x")]
+    [InlineData("func f() => ()\nvar x = 1\nloop\n    f()\nlet y = x")]
+    [InlineData("var x = 1\nloop\n    defer => ()\nlet y = x")]
+    public void DeadLocalUsesAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, use, line), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), LineOf(source, c.SyntaxOf(issue.Subject).Span.Start)));
+        Assert.Empty(c.Problems);
+        Assert.True(Generates(source, OutputKind.Application), source);
     }
 
-    // Another ownership issue of the body suppresses the Unsupported_Kd of its unreachable uses.
+    // The loop body's own ownership issue is the body's one record; the dead use after the loop has none.
     [Theory]
     [InlineData("var n: i32\n    let y = n", DiagnosticCode.UninitializedPlace_Kd, "n")]
     [InlineData("let n = 1\n    n = 2", DiagnosticCode.ReassignedLet_Kd, "n = 2")]
@@ -85,11 +90,36 @@ public class UnreachableOwnershipTest
         Assert.Single(TestDiagnostics.Of(c));
     }
 
+    // The evidence of a verdict through the published pipeline (SPEC 23.2.2): whether the program, checked as `output`, is generated. An
+    // accepted program is generated with no record, with a generated body for each function it declares and for its top-level statements
+    // (null; a Library generates every root, K11); a rejected one is not.
+    internal static bool Generates(string source, OutputKind output)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(output);
+        c.Analyze();
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var generated = c.Generate(TextWriter.Null);
+        Assert.True(generated == c.Accepts, MinimalEmissionTest.Describe(c));
+        if (generated)
+        {
+            var set = c.Instances!;
+            var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
+                .Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).ToArray();
+            Assert.All(
+                KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(),
+                f => Assert.Contains(f == c.Kotonoha.GeneratedFunction ? null : f, bodies));
+        }
+
+        return generated;
+    }
+
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
-
-    private static int LineOf(string source, int offset)
-        => source.AsSpan(0, offset).Count('\n') + 1;
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
