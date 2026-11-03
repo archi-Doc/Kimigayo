@@ -39,14 +39,20 @@ public class DefaultAccessTest
     }
 
     // SPEC 7.2.3, 8.15: a default of a pair-bound parameter is checked per Semantics case, so `b = a` borrows the prepared argument
-    // exclusively in s = uniq and is rejected there, the case's binding related beside the prepared parameter (R5's F18 probe shape grab).
+    // exclusively in s = uniq and is rejected there, the case's binding related beside the borrow (R5's F18 probe shape grab). Since the
+    // MIR decides acceptance (R6-check H5), the record is A5's: its borrow is a's Type, and it has no `preceding prepared parameter`
+    // label until A6 publishes one (H3b T49, class 3).
     [Fact]
     public void AGenericDefaultIsRejectedInTheCaseThatBorrowsExclusively()
     {
-        var error = Assert.Single(DiagnosticCorpus.Check("func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\npublic func main() => ()").Diagnostics);
+        const string Source = "func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\npublic func main() => ()";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
         Assert.Equal("DefaultArgumentBorrow_Kd", error.Code);
         Assert.Contains("prepared argument", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(["the Semantics binding s", "preceding prepared parameter"], error.Related!.Select(static x => x.Label));
+        Assert.Equal(
+            [("borrow", Source.IndexOf("a: s/T", StringComparison.Ordinal) + 3, 3, "borrow that created the loan"),
+                ("declaration", Source.IndexOf("s/T", StringComparison.Ordinal), 3, "the Semantics binding s")],
+            error.Related!.Select(static x => (x.Role, x.Span!.Value.Start, x.Span.Value.Length, x.Label)));
     }
 
     [Fact]
@@ -66,10 +72,12 @@ public class DefaultAccessTest
         Assert.Equal("DefaultArgumentAccess_Kd", error.Code);
     }
 
+    // Since the MIR decides acceptance (R6-check H5), the record is A5's: its one related location is the borrow, the prepared
+    // parameter's Type, with no `preceding prepared parameter` label until A6 publishes one (H3b T49, class 3).
     [Theory]
-    [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd")]
-    [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd")]
-    public void DiagnosticsPreserveTheCauseAndParameterInEveryAdapter(string source, string code)
+    [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd", "uniq/i32")]
+    [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd", "uniq/i32 during a")]
+    public void DiagnosticsPreserveTheCauseAndParameterInEveryAdapter(string source, string code, string borrow)
     {
         var path = Path.GetFullPath("default-access.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -78,7 +86,10 @@ public class DefaultAccessTest
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(code, record.Code);
-        Assert.Equal("preceding prepared parameter", Assert.Single(record.Related!).Label);
+        var cause = Assert.Single(record.Related!);
+        Assert.Equal(
+            ("borrow", source.IndexOf("func f(x: " + borrow, StringComparison.Ordinal) + "func f(x: ".Length, borrow.Length, "borrow that created the loan"),
+            (cause.Role, cause.Span!.Value.Start, cause.Span.Value.Length, cause.Label));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
