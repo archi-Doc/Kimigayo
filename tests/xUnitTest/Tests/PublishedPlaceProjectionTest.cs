@@ -2,7 +2,6 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -276,22 +275,12 @@ public class PublishedPlaceProjectionTest
     [InlineData("func f(value: uniq/Point during a) -> i32\n    var vals: Array<Array<uniq/Point during a>> = [[value@move]]\n    return vals[0][0].n", "f")]
     [InlineData("struct Holder {a}\n    public var vals: Array<uniq/Point during a>\n    public init(vals: Array<uniq/Point during a>) => self.vals = vals@move\nfunc f(value: uniq/Point during a) -> i32\n    var vals: Array<uniq/Point during a> = [value@move]\n    var h = Holder.init(vals@move)\n    return h.vals[0].n", "f")]
     public void AUseThroughAnElementsStoredLayersIsGenerated(string declaration, string function)
-        => Assert.Contains(function, GeneratedBodies("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
-            "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" + declaration + "\n"));
-
-    // The declaration names of the bodies a Library build of the source generates (every root, K11): the program accepted with no record
-    // (Binding complete, no analysis problem) and its module generated with no record.
-    internal static string?[] GeneratedBodies(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Library);
-        c.Analyze();
-        Assert.True(c.Accepts && c.Problems.Count == 0 && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        var set = c.Instances!;
-        return [.. Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
-            .Select(x => set.Items[x].Key.Body.Def.Decl?.Name)];
-    }
+        => Assert.Contains(
+            function,
+            MinimalEmissionTest.GeneratedBodies(
+                "struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
+                "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" +
+                declaration + "\n",
+                OutputKind.Library,
+                accepted: true));
 }

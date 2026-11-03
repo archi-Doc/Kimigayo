@@ -38,7 +38,7 @@ public class ElementParameterMoveEmissionTest
         { "GenericAggregate", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nlet moved = f<(string, string)>((((\"first\", \"second\"), \"last\"), \"outer\"))", string.Empty, "first=1;second=1;last=1;outer=1", [3, 2, 1, 0] },
         { "ConditionalNested", "func f(a: ((string, string), string), take: bool)\n    if take\n        let moved = a.0.0@move\n    else\n        let moved = a.0@move\nf(((\"first\", \"last\"), \"outer\"), true)\nf(((\"first\", \"last\"), \"outer\"), false)", string.Empty, "first=2;last=2;outer=2", [0, 2, 1, 1, 0, 2] },
 
-        // The located receiver stays protected while its index operands evaluate (SPEC 4.6.3), and a move of its sibling there does not
+        // The located receiver stays protected while its index operands evaluate (SPEC 4.7.4), and a move of its sibling there does not
         // touch it, so the program is accepted (R4's 1a verdict, the owner 2026-11-03): the old analysis's ComparisonLoanConflict_Kd went
         // with the MIR deciding acceptance (H5).
         { "IndexSibling", "func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]\nif f((\"first\", [42])) == 42 => Console.writeLine(\"ok\")", "ok\n", "first=1;ok=1", [0, 1] },
