@@ -14,8 +14,8 @@ public sealed partial class Binding
     private FunctionKoto? activeInferenceFunction;
 
     // Set when a known call signature's result over its closure's hidden environment receiver supplied no evidence for a slot: that slot
-    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4).
-    private bool environmentEvidence;
+    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4). The judgment, its argument and slot.
+    private PendingJudgment? environmentEvidence;
 
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
@@ -46,7 +46,7 @@ public sealed partial class Binding
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
-        this.environmentEvidence = false;
+        this.environmentEvidence = null;
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         try
         {
@@ -88,6 +88,13 @@ public sealed partial class Binding
             this.environmentEvidence = savedEnvironment;
             this.acquisitionFailure = savedAcquisition;
         }
+    }
+
+    // DECISIONS BU-86: a Pending return that a known signature's environment result decided publishes that judgment as the trial's.
+    private CandidateApplicability PendingOnEnvironment()
+    {
+        this.trialPending = this.environmentEvidence is { } environment ? environment with { Epoch = this.frameEpoch } : null;
+        return CandidateApplicability.Pending;
     }
 
     private CandidateApplicability TryCandidateCore(
@@ -185,6 +192,7 @@ public sealed partial class Binding
                     arguments[i] = generic.TypeArguments[i].BoundType;
                     if (arguments[i] is null)
                     {
+                        this.trialPending = new(PendingJudgmentKind.FailedTypeArgument, generic.TypeArguments[i]) { Epoch = this.frameEpoch };
                         return CandidateApplicability.Pending;
                     }
                 }
@@ -482,11 +490,11 @@ public sealed partial class Binding
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
             this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
-            unrepresentable |= this.environmentEvidence;
+            unrepresentable |= this.environmentEvidence is not null;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
                 (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
-                return CandidateApplicability.Pending;
+                return this.PendingOnEnvironment();
             }
 
             if (unrepresentable)
@@ -529,7 +537,13 @@ public sealed partial class Binding
             {
                 // Result-only Origin inference needs the later call-site solver. Never retain a
                 // requirement's abstract binder as though it were this call's concrete Origin.
-                return result is null && solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
+                // DECISIONS BU-86: only a result without a Type rests on the environment judgment; an unsubstituted Origin on none.
+                return result switch
+                {
+                    null when solution.IsComplete() => CandidateApplicability.Inapplicable,
+                    null => this.PendingOnEnvironment(),
+                    _ => CandidateApplicability.Pending,
+                };
             }
 
             if (expected is not null && result is not null && !this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&

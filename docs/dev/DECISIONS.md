@@ -10106,6 +10106,28 @@ resumed by R4-M86 (2026-10-20).
     class requirement, `, ` where every binder must give the class (a product) and `; ` where one suffices (a union), which is not a
     found case set.
 
+- **BU-86 A Pending candidate's judgment before its proof is one fact** (2026-11-03; PLAN G354 (1), scheduled by the owner after the
+  joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; design `bu\g352-354\design.md` §3, census `census.md`)
+  - The defect: a judgment that left a candidate Pending before its proof published no fact, so the call ended in a fact-less
+    `UnprovenConstraint_Kd` (`FailWaitingSelection`). The census reached L184, L488 and L531(b) of `TryCandidateCore`.
+  - The fact: `PendingJudgment` (`Binding.CandidateEvaluation`), a closed vocabulary, written once where `TryCandidateCore` decides
+    and kept as the trial's fact (`trialPending`, the trial frame's row beside `trialClause`). Transport: the proof channel's trial
+    frame (r2-6); `CloseTrial` hands it to the selection's frame. Its consumer, the candidate's selection (`EvaluateCallCandidate`),
+    takes it once per Pending candidate (`TakeTrialPending`) under the channel's consumer rule (`OwnFrame`, shared by every consumer
+    of a carried fact): no fact is normal, a stamp other than the innermost open frame's is `InternalInvariant_Kd`.
+  - `FailedTypeArgument` (L184): an explicit Type argument that did not bind. Writer: the explicit-argument loop. Reader:
+    `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
+    parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
+  - `EnvironmentResult` (L488, L531(b)): an argument whose known signature's result over its closure's environment is no evidence
+    for a slot (SPEC 8.10, 7.7.4), which stays unsolved. Writer: `Infer` (`Binding.CallSlots`), where it judges that result; the
+    trial's flag `environmentEvidence` becomes this fact (the argument and the slot), and the two Pending returns it decides publish
+    it as the trial's (`PendingOnEnvironment`): L488, and L531's result without a Type; L531's unsubstituted Origin publishes none. Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
+    the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
+    `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
+    and the Note "The result of c over its environment is no evidence for T".
+  - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
+    reached); L593 (G354 (2)).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
@@ -15940,3 +15962,31 @@ structure is recorded here by the unit that first implements it.
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
+- **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
+  「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
+  - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
+    collected. A record that reads such a body (its own A3b checks and layout obligations, an instance it alone requests, a summary
+    composed from it) is its finding's dependent. Acceptance never moves: a finding is a MIR record, so check refuses the program.
+  - Fact: `MirBody.HasFinding`, the validator's per-body verdict, whose one writer is `MirValidator`: `Validate(body, findings)` sets
+    whether it added a finding at each of its three exits (the case bound's, Tables', the end), and `Validate(program)` sets it on the
+    ensuring body of a G191 StaticSlot finding. `MirBody.Reset` clears it; tests inject it through the setter. No consumer re-derives
+    a per-body set from `MirProgram.Findings`.
+  - Collector gates: a body enters `InstanceCollector` at three places, each testing the fact once: the `Templates` walk (an empty
+    range, `starts[o]` still written; no A3b check or need listing), the root loop, and `Admit` (-1 after the two checks that read only
+    the request, an instance without its substitution and `CarriesInstance`, before `Find`, `Instantiable`, `Grows` and `View`). Every
+    other read is of an admitted item's body. A refused request records nothing; `Report` is unchanged.
+  - Deletions: `InstanceCollector.Run`'s `Findings.Count > 0` return and its header invariant "a program with validator findings has
+    an empty set"; `MirBuilder.Defaults.cs`'s `Findings.Count` difference and its `findings` local (`Failed` reads `this.body.HasFinding`).
+  - Consents (R4, 2026-11-03): the W1 hold files `MirBody.cs` and `MirValidator*.cs` for this unit (not `MirValidator.SharedPaths.cs`);
+    `MirBuilder.Defaults.cs` for that one line only, tested by the defaults rows that pin `Failed`.
+  - Staged (U2, R4's `Mir/Analysis/**`, with R4's consent on the design's §4 hunk): `MirAnalysis.Run` skips a body with the fact in its
+    steps 1, 2 and 4 (`MirDrops.Exclude` closes its empty table entry); A4 composes such a body as `Derived` (one private `Views`); the
+    initialization proof that consults one rests on it (`Proved` returns `bool?`; `Met` drops only its first block's record and falls
+    through, `Destroying` makes none). Until U2, `MirAnalysis.Run` keeps its all-or-nothing `Findings.Count > 0` return (removal
+    condition: U2).
+  - Rejected: a body ordinal on `MirFinding` (each consumer re-derives a set), a column on `MirProgram` (a side table), accessors that
+    hide broken bodies (a `null` callee silently takes the bodyless path); a validator wrapper or `Check` extraction (a restructuring
+    commit for two lines; the planning session, after review 3); roots through `Admit` (they would count toward `Grows` and `Work`).
+  - Tests: `MirValidatorTest.TheVerdictIsWhetherTheValidatorAddedAFinding`, `AnEnsuredStaticHasItsInitializer`;
+    `InstanceCollectorTest.AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (was `...FindingsEmptyTheSet`: its expectation changes
+    by the owner's (a)), `ABodyWithAFindingDropsOnlyWhatRestsOnIt`, `ARequestsOwnGapAtABodyWithAFindingStays`.

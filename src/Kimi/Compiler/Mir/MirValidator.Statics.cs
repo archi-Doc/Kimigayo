@@ -22,7 +22,7 @@ internal sealed partial class MirValidator
     private bool[] ensured = [];
 
     /// <summary>Validates what a program's bodies require of each other once all are built: each staticEnsure names a static whose
-    /// StaticInit body the program has (a StaticSlot finding at the call otherwise).</summary>
+    /// StaticInit body the program has (a StaticSlot finding at the call otherwise, which the ensuring body has, MirBody.HasFinding).</summary>
     /// <param name="program">The program, whose findings the findings are added to.</param>
     internal void Validate(MirProgram program)
     {
@@ -33,6 +33,7 @@ internal sealed partial class MirValidator
                 if (Slot(body, block.Terminator) is >= 0 and var slot && program.StaticInit(body, slot) is null)
                 {
                     program.Findings.Add(new(MirViolation.StaticSlot, body.Subject(block.Terminator.Source)));
+                    body.HasFinding = true;
                 }
             }
         }

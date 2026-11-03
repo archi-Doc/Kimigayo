@@ -83,9 +83,8 @@ public sealed partial class Binding
     {
         var fact = this.trialUnknown;
         this.trialUnknown = null;
-        if (fact is not null && fact.Epoch != this.frameEpoch)
+        if (!this.OwnFrame(call, fact?.Epoch))
         {
-            this.Fail(call, BindingFailure.Internal);
             return null;
         }
 
