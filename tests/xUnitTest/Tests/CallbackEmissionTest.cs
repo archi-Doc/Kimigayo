@@ -166,12 +166,14 @@ public class CallbackEmissionTest
     }
 
     // A reference receiver of a value call is used again at the call, so the Place it borrows stays lent while the arguments
-    // run, as for a method receiver; the loan is retained by the reference local or by the borrowed field or element.
+    // run, as for a method receiver; the loan is retained by the reference local or by the borrowed field or element. Since the MIR
+    // decides (R6-check H5; H3b T49, class 3), the record is A5's: it relates the borrow (the reference local's `g@ref`, or the field or
+    // element read), the value call that uses it later as the loan (was the borrow alone), and the argument's exclusive reservation.
     [Theory]
-    [InlineData("func lend(g: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nlet n = r(lend(g@uniq))", "lend(g@uniq)", "let r = g@ref")]
-    [InlineData("struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc lend(h: uniq/H) -> i32 => 1\nvar h = H.init(func [] (v) => v * 3)\nlet n = (h.f)(lend(h@uniq))", "lend(h@uniq)", "h.f")]
-    [InlineData("func grow(a: uniq/Array<(i32) -> i32>) -> i32\n    a.append(func [] (v) => v)\n    return 1\nvar fs: Array<(i32) -> i32> = [func [] (v) => v + 1]\nlet n = fs[0](grow(fs@uniq))", "grow(fs@uniq)", "fs[0]")]
-    public void ReferenceReceiversStayLentWhileArgumentsRun(string source, string reserved, string retained)
+    [InlineData("func lend(g: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nlet n = r(lend(g@uniq))", "lend(g@uniq)", "g@ref", "r(lend(g@uniq))", "g@uniq")]
+    [InlineData("struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc lend(h: uniq/H) -> i32 => 1\nvar h = H.init(func [] (v) => v * 3)\nlet n = (h.f)(lend(h@uniq))", "lend(h@uniq)", "(h.f)", "(h.f)(lend(h@uniq))", "h@uniq")]
+    [InlineData("func grow(a: uniq/Array<(i32) -> i32>) -> i32\n    a.append(func [] (v) => v)\n    return 1\nvar fs: Array<(i32) -> i32> = [func [] (v) => v + 1]\nlet n = fs[0](grow(fs@uniq))", "grow(fs@uniq)", "fs[0]", "fs[0](grow(fs@uniq))", "fs@uniq")]
+    public void ReferenceReceiversStayLentWhileArgumentsRun(string source, string reserved, string borrow, string retained, string reservation)
     {
         var path = Path.GetFullPath("value-receiver-conflict.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -182,9 +184,14 @@ public class CallbackEmissionTest
         var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
         Assert.Equal("CallActivationConflict_Kd", error.Code);
         Assert.Equal(reserved, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        var loan = Assert.Single(error.Related!);
-        Assert.Equal("loan", loan.Role);
-        Assert.StartsWith(retained, source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length), StringComparison.Ordinal);
+        Assert.Equal<(string, string, string?)>(
+            [
+                ("borrow", borrow, "borrow that created the loan"),
+                ("loan", retained, "later use of the value retaining the conflicting loan"),
+                ("reservation", reservation, "conflicting exclusive call reservation"),
+            ],
+            error.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Null(error.Note);
         using var output = new StringWriter();
         Assert.False(c.Generate(output));
     }
