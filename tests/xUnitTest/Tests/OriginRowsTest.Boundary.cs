@@ -10,6 +10,8 @@ namespace XunitTest;
 // not fixed) keeps its record, `Binding.OriginRelation` with its code and location, and its node has rows in its body for A5 (no MIR
 // reader yet; 2a-1a reads them): every position of a non-call fit, the fixed-fixed ones of a mixed fit included, and a local's clause.
 // A node whose records are all fixed-fixed has no row (Binding's until R7), nor, until 2c-6, a Closure result over call-local storage.
+// A5's record of a relation Binding records is published beside Binding's as its twin until H11 (R6-check H5, DECISIONS R5-M185; H0b
+// §5.4, R4-M108; H3b T50): at `return X` beside X, at the clause beside its initializer, or at the same span.
 public sealed partial class OriginRowsTest
 {
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
@@ -31,21 +33,21 @@ public sealed partial class OriginRowsTest
     // SPEC 15.6.5's `bad`: the return's fit is Refuted at the Borrow, and its position is a row of bad, finite to fixed.
     [Fact]
     public void ARecordedFitsPositionIsARowOfItsBody()
-        => Assert.Equal(["Fn:bad Fit Finite Fixed"], Recorded(Bad, [$"{Unsatisfied} local@ref"], "return local@ref"));
+        => Assert.Equal(["Fn:bad Fit Finite Fixed"], Recorded(Bad, [$"{Unsatisfied} local@ref", $"{Unsatisfied} return local@ref"], "return local@ref"));
 
     // SPEC 15.3.3, 15.6.5: a local's clause over a slot its initializer supplies with a Borrow of a local is Refuted at the initializer, and
     // the clause is a row of the function, finite to fixed.
     [Fact]
     public void ARecordedClauseIsARowOfItsBody()
-        => Assert.Equal(["Fn:f Declared Finite Fixed"], Recorded(LocalClause, [$"{Unsatisfied} H.init(local@ref)"], "origin x.s outlives a"));
+        => Assert.Equal(["Fn:f Declared Finite Fixed"], Recorded(LocalClause, [$"{Unsatisfied} H.init(local@ref)", $"{Unsatisfied} origin x.s outlives a"], "origin x.s outlives a"));
 
     // A fit with a body chain and a fixed-fixed chain (BU's `mixed`): both are recorded, and every position of the fit is a row, the
-    // fixed-fixed one included, so the twins are the node's records (DECISIONS R4-M108).
+    // fixed-fixed one included, so the twins are the node's records (DECISIONS R4-M108); A5 records both chains at `return t` too.
     [Fact]
     public void AMixedFitsPositionsAreAllRows()
         => Assert.Equal(
             ["Fn:f Fit Finite Fixed", "Fn:f Fit Fixed Fixed"],
-            Recorded("func f(x: ref/i32, y: ref/i32) -> (ref/i32 during x, ref/i32 during x)\n    let local = 1\n    let t = (local@ref, y)\n    return t\n", [$"{Unsatisfied} t", $"{Unproven} t"], "return t"));
+            Recorded("func f(x: ref/i32, y: ref/i32) -> (ref/i32 during x, ref/i32 during x)\n    let local = 1\n    let t = (local@ref, y)\n    return t\n", [$"{Unsatisfied} t", $"{Unproven} t", $"{Unsatisfied} return t", $"{Unproven} return t"], "return t"));
 
     // A fixed-fixed relation is Binding's to judge (A3 §7, until R7): a node whose records are all fixed-fixed has no row, at a fit and at a
     // clause.
@@ -59,27 +61,28 @@ public sealed partial class OriginRowsTest
     // positions after it have no row: the recorded body chain `local@ref` over x has a row only when it comes first. The records are the
     // same in either order (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1, 23.1.2): the Function component's failed condition
     // is one UnprovenOriginContract_Kd at the value (it was an UnprovenOriginRelation_Kd per member position), beside the borrow's
-    // UnsatisfiedOriginRelation_Kd.
+    // UnsatisfiedOriginRelation_Kd. Where the borrow's position has its row, A5's twin of it is at `return t` too (H3b T50).
     [Theory]
-    [InlineData("(g, local@ref)", "(ref/((ref/i32 during x) -> i32), ref/i32 during x)", "Fn:f Fit Fixed Fixed")]
-    [InlineData("(local@ref, g)", "(ref/i32 during x, ref/((ref/i32 during x) -> i32))", "Fn:f Fit Finite Fixed|Fn:f Fit Fixed Fixed")]
-    public void APositionAfterADifferingFunctionComponentHasNoRowUntilH11(string value, string result, string rows)
+    [InlineData("(g, local@ref)", "(ref/((ref/i32 during x) -> i32), ref/i32 during x)", "Fn:f Fit Fixed Fixed", "UnsatisfiedOriginRelation_Kd t|UnprovenOriginContract_Kd t")]
+    [InlineData("(local@ref, g)", "(ref/i32 during x, ref/((ref/i32 during x) -> i32))", "Fn:f Fit Finite Fixed|Fn:f Fit Fixed Fixed", "UnsatisfiedOriginRelation_Kd t|UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t")]
+    public void APositionAfterADifferingFunctionComponentHasNoRowUntilH11(string value, string result, string rows, string records)
     {
         var source = $"func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> {result}\n    let local = 1\n    let t = {value}\n    return t\n";
-        Assert.Equal(rows.Split('|'), Recorded(source, [$"{Unsatisfied} t", $"{Contract} t"], "return t"));
+        Assert.Equal(rows.Split('|'), Recorded(source, records.Split('|'), "return t"));
     }
 
     // SPEC 5.7 with R4-M108 (DECISIONS BU-24; design-final §13 A2): a raw fit recorded at a body chain has its rows like any fit, their ends
     // the regions of the raw Origins (a shared view's label, a Place borrow's anchor met with the pointer's region), and a record whose end
-    // is Unstated or the holder of a `during self` layer has none, so no row end is Shared, Holder or Unstated.
+    // is Unstated or the holder of a `during self` layer has none, so no row end is Shared, Holder or Unstated. A recorded row's relation
+    // also has A5's twin at `return X` (H3b T50).
     [Theory]
-    [InlineData("func f(x: ref/i32) -> raw/i32 during static\n    let n = 1\n    let r = n@ref\n    return r@follow@raw\n", "r@follow@raw", "Fn:f Fit Finite Fixed return r@follow@raw")]
-    [InlineData(RawPlaceBorrow, "item@move", "Fn:f Fit Inferred Fixed return item@move")]
+    [InlineData("func f(x: ref/i32) -> raw/i32 during static\n    let n = 1\n    let r = n@ref\n    return r@follow@raw\n", "r@follow@raw|return r@follow@raw", "Fn:f Fit Finite Fixed return r@follow@raw")]
+    [InlineData(RawPlaceBorrow, "item@move|return item@move", "Fn:f Fit Inferred Fixed return item@move")]
     [InlineData("func f(x: ref/i32, p: raw/i32) -> raw/i32 during x => p\n", "p", "")]
     [InlineData("struct B\n    internal var data: raw/u8 during self\n    public init() => self.data = null\nfunc f(fresh: raw/u8)\n    var b = B.init()\n    b.data = fresh\n", "b.data = fresh", "")]
-    public void ARawFitsRowsEndAtRegions(string source, string at, string rows)
+    public void ARawFitsRowsEndAtRegions(string source, string records, string rows)
     {
-        Assert.Empty(Recorded(source, [$"{Unsatisfied} {at}"], string.Empty));
+        Assert.Empty(Recorded(source, [.. records.Split('|').Select(static x => $"{Unsatisfied} {x}")], string.Empty));
         var c = MirBuildTest.Compile(source + Main);
         var all = new List<string>();
         foreach (var body in Rows(c, false).Select(static x => x.Body).Distinct())
@@ -93,10 +96,10 @@ public sealed partial class OriginRowsTest
 
     // DECISIONS R4-M152 (R4-M126 P8): a Closure result over call-local storage is the fit of its returned value to the published call
     // result, a body chain (the twin, R4-M108) whose row runs from the Borrow's finite Origin to the Closure's call result, fixed in its
-    // body. It had no row while CallLocalOrigin failed the Closure (R5-M63's finding A).
+    // body. It had no row while CallLocalOrigin failed the Closure (R5-M63's finding A). A5's twin is at the same Borrow (H3b T50).
     [Fact]
     public void AClosureResultOverCallLocalStorageIsItsReturnedValuesRow()
-        => Assert.Equal(["Closure Fit Finite Fixed"], Recorded("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", [$"{Unsatisfied} x@ref"], "x@ref", main: false));
+        => Assert.Equal(["Closure Fit Finite Fixed"], Recorded("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", [$"{Unsatisfied} x@ref", $"{Unsatisfied} x@ref"], "x@ref", main: false));
 
     // Pooled: a warm rebind of a program with recorded body chains, and the view's reads of their rows, allocate nothing.
     [Trait("Purpose", "Allocation")]

@@ -68,24 +68,27 @@ public class LocalOriginClauseTest
         "func meet(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin b outlives x.s\n    return h.item@follow\n" +
         "let one = 1\nlet two = 2\nrequire same(one@ref, two@ref)@follow == 1 and premise(one@ref, two@ref)@follow == 1 and meet(one@ref, two@ref) == 1 else => $abort(\"local clause\")\nConsole.writeLine(\"ok\")";
 
+    // A5 judges the fit and locates its record at the local's declaration (R6-check H5, DECISIONS R5-M185; H3b T45: it was at the
+    // initializer `h0@move`).
     [Theory]
     // q30 f: `x.s == b` binds the slot, so the initializer's `a` must outlive it.
-    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == b\n    return 0\n", "outlives", "requires a outlives b, which is not proven")]
+    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == b\n    return 0\n", "let h: H{x} = h0@move", "outlives", "requires a outlives b, which is not proven")]
     // q34: the same with a use; it was a fact-less UnprovenConstraint_Kd at the whole declaration.
-    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == b\n    return h.item\n", "outlives", "requires a outlives b, which is not proven")]
+    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == b\n    return h.item\n", "let h: H{x} = h0@move", "outlives", "requires a outlives b, which is not proven")]
     // A contravariant slot reverses the relation.
-    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s == b\n    return 0\n", "outlives", "requires b outlives a, which is not proven")]
+    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s == b\n    return 0\n", "let h: C{x} = h0@move", "outlives", "requires b outlives a, which is not proven")]
     // An invariant slot is one `==` relation. `b outlives slot` proves U's own clause for the local's Type, U<b, slot>, which is an
     // independent problem otherwise (ATypeClauseAndASlotFitAreIndependentProblems).
-    [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    origin b outlives slot\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin x.s == b\n    return 0\n", "==", "requires a == b, which is not proven")]
-    // With `a outlives b` proven, only the reverse direction fails, and the record shows that direction.
-    [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    origin a outlives b\n    origin b outlives slot\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin x.s == b\n    return 0\n", "==", "requires b == a, which is not proven")]
-    public void ASlotFitIsARelationAtTheInitializer(string body, string relation, string label)
+    [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    origin b outlives slot\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin x.s == b\n    return 0\n", "let h: U{x} = h0@move", "==", "requires a == b, which is not proven")]
+    // With `a outlives b` proven, only the reverse direction fails, and A5's record shows that direction as its `outlives` relation
+    // (H3b T47: it was `b == a`).
+    [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    origin a outlives b\n    origin b outlives slot\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin x.s == b\n    return 0\n", "let h: U{x} = h0@move", "outlives", "requires b outlives a, which is not proven")]
+    public void ASlotFitIsARelationAtItsDeclaration(string body, string at, string relation, string label)
     {
         var source = body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), DiagnosticCategory.Proof), (error.Code, error.Category));
-        Assert.Equal(("h0@move", label), (Text(source, error.Span), error.Label));
+        Assert.Equal((at, label), (Text(source, error.Span), error.Label));
         var reason = error.Reason!;
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], reason.Select(static x => x.Name));
         Assert.Equal((relation, "fit"), (reason[0].Value, reason[3].Value));
@@ -96,17 +99,19 @@ public class LocalOriginClauseTest
     // SPEC 15.3.5, 15.6.1: a Type argument's slots follow the variance of the generic slot that holds it, composed with the enclosing
     // position: `==` under an invariant one (W stores `uniq/T`) and reversed under a contravariant one (R reads `(T) -> i32`), at a
     // local annotation and at a value call's argument alike. They were judged covariantly, so these were accepted (the value calls
-    // under a premise, the rest outright), and a write of a shorter H through W failed only at generation.
+    // under a premise, the rest outright), and a write of a shorter H through W failed only at generation. A5 locates a local
+    // annotation's fit at its declaration (R6-check H5, DECISIONS R5-M185; H3b T45: it was at the initializer), and where the forward
+    // relation of an `==` is proven its record is the failing direction's `outlives` relation (H3b T47: it was `b == a`).
     [Theory]
-    [InlineData(Writer + "func f(a: ref/i32, b: ref/i32, w0: W<H{p}>) -> i32\n    origin p.s == a\n    let w: W<H{x}> = w0@move\n        origin x.s == b\n    return 0\n", "w0@move", "==", "requires a == b, which is not proven")]
-    [InlineData(Writer + "func f(a: ref/i32, b: ref/i32, w0: W<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    var w: W<H{x}> = w0@move\n        origin x.s == b\n    w.slot@follow = H.init(b)\n    return 0\n", "w0@move", "==", "requires b == a, which is not proven")]
-    [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, c0: R<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    let c: R<H{x}> = c0@move\n        origin x.s == b\n    return (c.call)(H.init(b))\n", "c0@move", "outlives", "requires b outlives a, which is not proven")]
+    [InlineData(Writer + "func f(a: ref/i32, b: ref/i32, w0: W<H{p}>) -> i32\n    origin p.s == a\n    let w: W<H{x}> = w0@move\n        origin x.s == b\n    return 0\n", "let w: W<H{x}> = w0@move", "==", "requires a == b, which is not proven")]
+    [InlineData(Writer + "func f(a: ref/i32, b: ref/i32, w0: W<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    var w: W<H{x}> = w0@move\n        origin x.s == b\n    w.slot@follow = H.init(b)\n    return 0\n", "var w: W<H{x}> = w0@move", "outlives", "requires b outlives a, which is not proven")]
+    [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, c0: R<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    let c: R<H{x}> = c0@move\n        origin x.s == b\n    return (c.call)(H.init(b))\n", "let c: R<H{x}> = c0@move", "outlives", "requires b outlives a, which is not proven")]
     // An exclusive target under a contravariant slot is invariant: the reversed outer `q outlives p` holds, and the target's slot
-    // needs `==`. Its fit records equality at the inner slot; the proven forward relation leaves only the reverse direction to report.
-    [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/H{hw} during p>) -> i32\n    origin hw.s == a\n    origin a outlives b\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/H{x} during q> = r0@move\n        origin x.s == b\n    return 0\n", "r0@move", "==", "requires b == a, which is not proven")]
+    // needs `==`. Its fit judges equality at the inner slot; the proven forward relation leaves only the reverse direction to report.
+    [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/H{hw} during p>) -> i32\n    origin hw.s == a\n    origin a outlives b\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/H{x} during q> = r0@move\n        origin x.s == b\n    return 0\n", "let r: R<uniq/H{x} during q> = r0@move", "outlives", "requires b outlives a, which is not proven")]
     // A value call's argument: covariant (it was a fact-less UnprovenConstraint_Kd), invariant and contravariant.
     [InlineData("func use(a: ref/i32, b: ref/i32, h0: H{p}, k: (H{q}) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    return k(h0@move)\n", "h0@move", "outlives", "requires a outlives b, which is not proven")]
-    [InlineData(Writer + "func use(a: ref/i32, b: ref/i32, w0: W<H{p}> during b, k: (W<H{q}> during b) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    origin a outlives b\n    return k(w0@move)\n", "w0@move", "==", "requires b == a, which is not proven")]
+    [InlineData(Writer + "func use(a: ref/i32, b: ref/i32, w0: W<H{p}> during b, k: (W<H{q}> during b) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    origin a outlives b\n    return k(w0@move)\n", "w0@move", "outlives", "requires b outlives a, which is not proven")]
     [InlineData(Reader + "func use(a: ref/i32, b: ref/i32, c0: R<H{p}>, k: (R<H{q}>) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    origin a outlives b\n    return k(c0@move)\n", "c0@move", "outlives", "requires b outlives a, which is not proven")]
     public void ATypeArgumentsSlotFollowsItsPosition(string body, string at, string relation, string label)
     {
@@ -120,7 +125,8 @@ public class LocalOriginClauseTest
     }
 
     // The whole program behind the write through W: a caller passes a shorter `b`, so `f` stores a borrow of `two` where its caller's
-    // Type promises `one`'s Origin. Only `f`'s relation is reported; it was accepted and failed at generation.
+    // Type promises `one`'s Origin. Only `f`'s relation is reported; it was accepted and failed at generation. A5's record is at the
+    // declaration and names the failing direction, `b outlives a` (H3b T45 and T47: it was `b == a` at `w0@move`).
     [Fact]
     public void AWriteThroughAnInvariantTypeArgumentIsNotAccepted()
     {
@@ -130,22 +136,22 @@ public class LocalOriginClauseTest
             "public func main()\n    let one = 1\n    var holder = H.init(one@ref)\n    let r = g(one@ref, wrap(holder@uniq))\n    Console.writeLine(\"\\(holder.item@follow) \\(r)\")\n";
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "w0@move", "requires b == a, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
-        Assert.Equal(source.IndexOf("var w: W<H{x}> = w0@move", StringComparison.Ordinal) + 17, error.Span!.Value.Start);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "var w: W<H{x}> = w0@move", "requires b outlives a, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal(source.IndexOf("var w: W<H{x}> = w0@move", StringComparison.Ordinal), error.Span!.Value.Start);
     }
 
-    // q30: a bare initializer that must be moved and the slot relation are independent problems at the same value.
+    // q30: a bare initializer that must be moved and the slot relation are independent problems of the same declaration.
     [Fact]
     public void ATransferAndTheSlotRelationAreBothReported()
     {
         var source = Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0\n        origin x.s == b\n    return 0\n" + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        string[] expected = [nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.UnprovenOriginRelation_Kd)];
 
-        // H5 restores the independent UnprovenOriginRelation_Kd (PD29): until then the old analysis skips a program whose Binding is
-        // incomplete (R6-check H1), so the expectation is read without that record.
-        Assert.Equal(expected.Where(static x => x != nameof(DiagnosticCode.UnprovenOriginRelation_Kd)), errors.Select(static x => x.Code));
-        Assert.All(errors, x => Assert.Equal("h0", Text(source, x.Span)));
+        // H5 restores the independent UnprovenOriginRelation_Kd (PD29), which R6-check H1 read without while the old analysis skipped a
+        // program whose Binding is incomplete: A5 judges the fit and locates it at the declaration (DECISIONS R5-M185; H3b T45).
+        Assert.Equal(
+            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let h: H{x} = h0", "requires a outlives b, which is not proven"), (nameof(DiagnosticCode.TransferRequired_Kd), "h0", "h0 cannot be read as a Copy value")],
+            errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
     }
 
     [Theory]
@@ -153,8 +159,6 @@ public class LocalOriginClauseTest
     [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires a outlives b, which is not proven", null, "origin x.s outlives b")]
     // An invariant inferred slot equals the initializer's Origin, so an upper bound must outlive it.
     [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin b outlives x.s\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires b outlives a, which is not proven", null, "origin b outlives x.s")]
-    // A body-local Borrow can never outlive a fixed Origin.
-    [InlineData(Holder + "func f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(local@ref)", "requires the borrow local@ref outlives a, which is false", "local@ref", "origin x.s outlives a")]
     // A Field's clause has no initializer: it is located at the clause, which names the Type's slots as written there.
     [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nstruct Wrong {a, b}\n    let item: V<i32>{v}\n        origin v.source == a\n        origin a outlives b\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a outlives b", "requires a outlives b, which is not proven", null, "origin a outlives b")]
     // So is a Case's clause, which binds its payload's set like a Field's (it was MissingOriginBinding_Kd at the payload).
@@ -163,6 +167,24 @@ public class LocalOriginClauseTest
     [InlineData(Holder + "struct S {a, b}\n    public let first: ref/i32 during a\n    public let second: ref/i32 during b\n    public func view(self: ref/Self) -> i32\n        let h0 = H.init(self.second)\n        let h: H{x} = h0@move\n            origin x.s outlives self.a\n        return h.item@follow\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires self.b outlives self.a, which is not proven", null, "origin x.s outlives self.a")]
     public void AClauseThatDoesNotHoldIsADeclaredRelation(string body, string code, string at, string label, string? borrow, string clause)
         => AssertDeclared(body + Main, code, at, label, borrow, clause);
+
+    // A body-local Borrow can never outlive a fixed Origin. Binding's record at the initializer stays, and A5's record of the same clause
+    // at the clause follows it as its twin until H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): A5 names the borrow by
+    // its Loan's place, `local`, and relates the borrow, the clause as the origin and the clause.
+    [Fact]
+    public void ABodyLocalBorrowsClauseIsBindingsRecordBesideA5sTwin()
+    {
+        var source = Holder + "func f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n" + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(2, errors.Length);
+        AssertDeclared(source, errors[0], nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(local@ref)", "requires the borrow local@ref outlives a, which is false", "local@ref", "origin x.s outlives a");
+        var twin = errors[1];
+        Assert.Equal(
+            (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), DiagnosticCategory.Language, "origin x.s outlives a", "requires the borrow local outlives a, which is false"),
+            (twin.Code, twin.Category, Text(source, twin.Span), twin.Label));
+        Assert.Equal(["relation=outlives", "longer=local", "shorter=a", "source=declared"], twin.Reason!.Select(static x => $"{x.Name}={x.Value}"));
+        Assert.Equal([("borrow", "local@ref"), ("origin", "origin x.s outlives a"), ("relation", "origin x.s outlives a")], twin.Related!.Select(x => (x.Role, Text(source, x.Span))));
+    }
 
     // SPEC 7.7.1, 15.3.3: a local clause in an anonymous function, over its own inputs' Origins or over an enclosing function's captured
     // Origins, that does not hold is a declared relation at the initializer, relating the clause.
@@ -260,27 +282,29 @@ public class LocalOriginClauseTest
         Assert.Equal(source.IndexOf("origin a outlives b", StringComparison.Ordinal), error.Related![0].Span!.Value.Start);
     }
 
-    // An `==` clause of the Type is an `==` relation at the occurrence.
+    // An `==` clause of the Type is judged at the occurrence; with its forward direction proven, A5's record is the failing direction's
+    // `outlives` relation, relating the `==` clause (R6-check H5, DECISIONS R5-M185; H3b T47: it was `q == p`).
     [Fact]
-    public void ATypesEqualityClauseIsAnEqualityAtTheOccurrence()
+    public void ATypesEqualityClauseIsJudgedAtTheOccurrence()
     {
         var source = Ordered.Replace("origin a outlives b", "origin a == b", StringComparison.Ordinal) +
             "func f(p: ref/i32, q: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == p\n    origin p outlives q\n    let s2: S{w} = s@move\n        origin w.a == p\n        origin w.b == q\n    return 0\n" + Main;
-        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "S{w}", "requires q == p, which is not proven", null, "origin a == b");
+        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "S{w}", "requires q outlives p, which is not proven", null, "origin a == b");
         Assert.Equal(source.IndexOf("let s2: S{w}", StringComparison.Ordinal) + 8, error.Span!.Value.Start);
     }
 
     // SPEC 15.6.1: a failed well-formedness of a destination Type and a failed fit into it are independent problems: U's own clause
-    // needs `b outlives slot` for the local's U<b, slot>, and its invariant slot needs `a == b`.
+    // needs `b outlives slot` for the local's U<b, slot>, and its invariant slot needs `a == b`. A5 locates the fit at the declaration,
+    // which precedes the Type occurrence (R6-check H5, DECISIONS R5-M185; H3b T45: it was at `h0@move`).
     [Fact]
     public void ATypeClauseAndASlotFitAreIndependentProblems()
     {
         var source = Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin x.s == b\n    return 0\n" + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "U{x}", "requires b outlives slot, which is not proven", "declared"), (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires a == b, which is not proven", "fit")],
+            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let h: U{x} = h0@move", "requires a == b, which is not proven", "fit"), (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "U{x}", "requires b outlives slot, which is not proven", "declared")],
             errors.Select(x => (x.Code, Text(source, x.Span), x.Label!, x.Reason![3].Value)));
-        Assert.Equal(source.IndexOf("let h: U{x}", StringComparison.Ordinal) + 7, errors[0].Span!.Value.Start);
+        Assert.Equal(source.IndexOf("let h: U{x}", StringComparison.Ordinal) + 7, errors[1].Span!.Value.Start);
     }
 
     // The premise in the enclosing function or in the method, other Origins for the Type, Origins inferred from
@@ -317,14 +341,18 @@ public class LocalOriginClauseTest
     // SPEC 23.1: a meet's body-local operand is shown by the Borrow that supplies it, found through the local the value reads or
     // moves; it was the text of the whole function that binds the borrowed parameter's Place. A declared relation keeps the meet whole;
     // a fit names the failing operand that decides its judgment, the Refuted Borrow before the Unknown `a` (SPEC 15.3.6, 15.6.5), and
-    // reports every failed chain (SPEC 15.6.1), so the Unknown `a` is its own record at that value.
+    // reports every failed chain (SPEC 15.6.1), so the Unknown `a` is its own record at that value. Those are Binding's records at `at`;
+    // A5's records of the same relation, one per failed chain at the clause or at `return X`, precede or follow them as their twins until
+    // H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): each `twins` record is its primary, code, label and related roles.
     [Theory]
-    [InlineData("func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n        origin x.s outlives static\n    return 0\n", "h0@move", "(a and a@ref)")]
-    [InlineData("func f(a: uniq/i32) -> ref/i32 during static\n    let h0 = H.init(a@ref)\n    return h0.item\n", "h0.item", "a@ref")]
-    public void AMeetShowsTheBorrowOfItsBodyLocalOperand(string body, string at, string longer)
+    [InlineData("func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n        origin x.s outlives static\n    return 0\n", "h0@move", "(a and a@ref)", "origin x.s outlives static: UnprovenOriginRelation_Kd requires a outlives static, which is not proven; relation origin x.s outlives static | origin x.s outlives static: UnsatisfiedOriginRelation_Kd requires the borrow a outlives static, which is false; borrow a@ref, origin origin x.s outlives static, relation origin x.s outlives static")]
+    [InlineData("func f(a: uniq/i32) -> ref/i32 during static\n    let h0 = H.init(a@ref)\n    return h0.item\n", "h0.item", "a@ref", "return h0.item: UnprovenOriginRelation_Kd requires a outlives static, which is not proven | return h0.item: UnsatisfiedOriginRelation_Kd requires the borrow a outlives static, which is false; borrow a@ref, origin return h0.item")]
+    public void AMeetShowsTheBorrowOfItsBodyLocalOperand(string body, string at, string longer, string twins)
     {
         var source = Holder + body + Main;
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        var all = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(twins, string.Join(" | ", all.Where(x => Text(source, x.Span) != at).Select(x => Shown(source, x))));
+        var errors = all.Where(x => Text(source, x.Span) == at).ToArray();
         var error = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), DiagnosticCategory.Language), (error.Code, error.Category));
         var shown = longer.StartsWith('(') ? longer : "the borrow " + longer;
@@ -532,8 +560,10 @@ public class LocalOriginClauseTest
     }
 
     private static CheckDiagnostic AssertDeclared(string source, string code, string at, string label, string? borrow, string clause)
+        => AssertDeclared(source, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics), code, at, label, borrow, clause);
+
+    private static CheckDiagnostic AssertDeclared(string source, CheckDiagnostic error, string code, string at, string label, string? borrow, string clause)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(code, error.Code);
         Assert.Equal(code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? DiagnosticCategory.Language : DiagnosticCategory.Proof, error.Category);
         Assert.Equal((at, label), (Text(source, error.Span), error.Label));
@@ -547,4 +577,9 @@ public class LocalOriginClauseTest
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
+
+    // A record as `primary: code label; role text, ...`, without the related part when it has none.
+    private static string Shown(string source, CheckDiagnostic error)
+        => $"{Text(source, error.Span)}: {error.Code} {error.Label}" +
+            (error.Related is { Length: > 0 } related ? "; " + string.Join(", ", related.Select(x => $"{x.Role} {Text(source, x.Span)}")) : string.Empty);
 }
