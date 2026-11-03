@@ -77,7 +77,7 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 internal sealed partial class MirValidator(TyCtxt types)
 {
     private readonly MirCases cases = new(types);
-    private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
+    private readonly List<(MirRvalue Site, SourceInfo Source)> caseSites = []; // The body's case sites, its Adapts and PairAcquire Uses (Views).
     private readonly MirReach reach = new();
     private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
@@ -101,8 +101,8 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
 
         Array.Clear(this.writes, 0, body.Locals.Length);
-        this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts, types);
+        this.caseSites.Clear();
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.caseSites, this.writes, this.parts, types);
         if (!checker.Tables())
         {
             body.HasFinding = findings.Count > count;
@@ -145,7 +145,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         List<MirFinding> findings,
         bool[] unknown,
         bool[] ensured,
-        List<(MirRvalue Adapt, SourceInfo Source)> adapts,
+        List<(MirRvalue Site, SourceInfo Source)> caseSites,
         byte[] writes,
         HashSet<BoundType> parts,
         TyCtxt types) : IMirUses

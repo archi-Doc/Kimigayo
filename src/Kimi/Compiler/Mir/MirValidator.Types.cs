@@ -10,8 +10,8 @@ namespace Kimi.Compiler.Mir;
 //   Adapts); every Semantics case view resolves each Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule
 //   1's (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
-// - Outputs: Type, Operation and SharedPath findings; the Adapts whose Places and token are in range and the PairAcquire Uses whose Place
-//   is, for Views; the unknown mask Unknown gives the checker (a flag per local).
+// - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
+//   and the PairAcquire Uses whose Place is); the unknown mask Unknown gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
 // - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures', but
@@ -77,15 +77,15 @@ internal sealed partial class MirValidator
         internal void Views(MirCases cases)
         {
             var views = MirCases.Count(body);
-            foreach (var (adapt, source) in adapts)
+            foreach (var (site, source) in caseSites)
             {
                 this.at = source;
                 for (var view = 0L; view < views; view++)
                 {
                     var assignment = cases.Select(body, view);
-                    if (adapt.Kind == MirRvalueKind.Use)
+                    if (site.Kind == MirRvalueKind.Use)
                     {
-                        ref readonly var acquire = ref body.Operands[adapt.Start];
+                        ref readonly var acquire = ref body.Operands[site.Start];
                         if (cases.Reborrows(acquire) && this.IsSharedPath(acquire.Place, assignment))
                         {
                             this.Report(MirViolation.SharedPath);
@@ -95,7 +95,7 @@ internal sealed partial class MirValidator
                         continue;
                     }
 
-                    var resolved = cases.Adapt(adapt, out var operation);
+                    var resolved = cases.Adapt(site, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
                     if (operation == ConversionBinding.None || (borrowed is not null && !this.Agrees(resolved.Type!.Components[0], borrowed)))
@@ -233,13 +233,13 @@ internal sealed partial class MirValidator
                 this.Agree(second, first); // Binding's source Type, the token, is the operand's.
                 if (second is not null && this.IsValid(operands[0].Place) && this.IsValid(rvalue.Place))
                 {
-                    adapts.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
+                    caseSites.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
                 }
             }
             else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire &&
                 this.IsValid(acquire.Place))
             {
-                adapts.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
+                caseSites.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
             }
 
             for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)
