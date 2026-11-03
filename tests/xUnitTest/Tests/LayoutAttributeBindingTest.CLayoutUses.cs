@@ -316,13 +316,13 @@ public partial class LayoutAttributeBindingTest
         => AssertUses(form, source, records);
 
     // The evidence of acceptance: the declarations as a Library, whose every root generation writes (K11), are accepted and generate each
-    // function's body.
+    // function's body, the using function f's among them.
     [Theory]
     [MemberData(nameof(NeverTwinRows))]
     public void AByValueUseOfAStructStoringNeverIsAccepted(string form, string declarations)
     {
         AssertUses(form, Program(declarations, string.Empty, string.Empty), string.Empty);
-        MinimalEmissionTest.GeneratedBodies(declarations, OutputKind.Library, accepted: true);
+        Assert.Contains("f", MinimalEmissionTest.GeneratedBodies(declarations, OutputKind.Library, accepted: true));
     }
 
     /// <summary>Checks a program and judges its Error records against the expected uses (see the file comment).</summary>

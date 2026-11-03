@@ -303,8 +303,9 @@ public class MinimalEmissionTest
 
     // The evidence of a verdict through the published pipeline (SPEC 23.2.2): the program analyzed for `output`, then reported and generated
     // as a build runs them, has the verdict `accepted`. An accepted program has no analysis problem and is generated, with a generated body
-    // for each function it declares and for its top-level statements (null; a Library generates every root, K11); a rejected one is not
-    // generated. The result is the declaration names of the generated bodies.
+    // for each function it declares and for its top-level statements (null), of which it has at least one. A Library generates every root
+    // (K11); an Application generates what its startup reaches, so its source is top-level statements that reach every declared function
+    // (not an explicit `main`). A rejected program is not generated. The result is the declaration names of the generated bodies.
     internal static string?[] GeneratedBodies(string source, OutputKind output, bool accepted)
     {
         var c = Analyze(source, output: output);
