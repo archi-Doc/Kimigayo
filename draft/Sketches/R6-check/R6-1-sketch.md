@@ -63,3 +63,42 @@ Its MIR-side rows are tested on dev; its published form is tested on the branch 
 
 - One design review by an agent who wrote neither part.
 - R4 implements the builder and A3; BU implements the Binding split under RP17. One unit, one commit per owner, one merge in R5's window.
+
+## Revision 1: the planning session's rulings on the review (2026-11-03)
+
+The one review (`C:\Users\bwff1\AppData\Local\Temp\claude\r5\h3b\r6-1-review.md`) returned REVISE with B1-B3. The cause analysis and the
+split stand. The same three authors fix their parts, and the same reviewer re-checks once (Q13).
+
+- **B1 (BU).** `RestingCauses` is defined on the guess rule's domain, never as a catch-all:
+  - a supplied body gives its recovery cause;
+  - any other node gives `FailureCauses(node)`;
+  - an expression the guess rule counts as unresolved (IsGuess's second branch) falls back to the unresolved mark when it has no
+    failure causes, as the lints do today;
+  - any other node returns null.
+
+  So a −1 cause at a node Binding resolved still reaches the publisher's broken-contract arm. `MirPublicationTest`'s
+  `ABindingCauseIsBindingsFailureCauses` and the three `sited: false` rows stay green, unchanged. `IsGuess` and `RestingCauses` share
+  their two predicates, each written once (N3). The publisher's arm asks `RestingCauses(site)`, and that is its only change (R5).
+- **B2 (R4, with R5's record).** `Binding.GuessedCompletionNodes` becomes a new published Binding view for Mir/Build, which ARCH allows
+  "with a reason in its commit". The reason: the guess rule reads the pass's completion structure and Never evidence, which no HIR
+  column carries. Publishing every require's guess into the HIR would run the walk for requires that never fall through.
+
+  The unit updates three places:
+  - ARCH's dependency row, naming the view;
+  - `MirBuilder.cs`'s header, adding it to what the builder reads;
+  - a DECISIONS entry. R5 drafts it, and it lands in the commit that first implements the view and `MirBody.GuessedSites` (N2).
+- **B3 (BU, R4).** The view allocates nothing:
+  - BU: it fills a caller-supplied pooled list, or returns a span over Binding's scratch that is valid until the next call;
+  - R4: the builder copies the nodes into `MirBody.GuessedSites`, which is pooled with the body;
+  - R4's fail-first rows include a warm rebuild of a program with a guessed failure body at 0 B (`MirBuildTest`).
+- **Non-blocking items taken in the unit:**
+  - N1: DIAGNOSTICS §4.3 and the headers of `MirLints.cs`, `Compilation.Publication.cs` and `MirValidator.cs` (Auto).
+  - N4: BU's equality check also covers the supplied bodies that 2g-1 will site.
+  - N5: two more rows, one for the unresolved-expression branch (`require a == 1 else => missing()`) and one on dev for a guessed site
+    that differs from the subject.
+  - N6: a scaling row for nested requires in an incomplete pass. If it shows quadratic cost, BU keeps the walk's per-node cache across
+    queries within a pass.
+  - N7: the commit names the mechanical edits in `MirValidatorTest` and `MirBorrowsTest.Rooted`, and the MIR dump and ledger rows that
+    move.
+- **Order.** BU's commit (restructuring and the view, snapshot 0) comes first on the unit's branch from dev. R4's builder and A3 commit
+  follows. R5's publisher arm comes last. The unit is one merge in R5's window.
