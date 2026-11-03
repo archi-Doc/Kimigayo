@@ -79,7 +79,6 @@ public sealed partial class Binding
     {
         this.virtualDeclarations.Clear();
         this.virtualEffectBounds.Clear();
-        this.virtualEffectViolations?.Clear();
         this.virtualDeclarationFailures?.Clear();
         this.virtualOverrides.Clear();
         this.overrideEntries.Clear();

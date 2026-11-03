@@ -18,15 +18,11 @@ public sealed partial class Binding
             : ComparisonTypes.IsBuiltin(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
-    // The verified tree the old effect traversal reads. Selection of a leaf uses the conformance witness map, exactly like an explicit
-    // requirement invocation.
-    [Transitional("R6", Reason = "H11 deletes it with its reader, the old effect walk (H5).")]
+    // The verified comparison tree of a call, which only ComparisonCompositionTest reads since H5 deleted the old effect walk. Selection of
+    // a leaf uses the conformance witness map, exactly like an explicit requirement invocation.
+    [Transitional("R6", Reason = "H11 deletes it with its test reader (D-c8).")]
     internal BoundComparison? ComparisonPlan(CallPlan site)
         => site.ConformingType is { } self ? this.ComparisonPlan(site.Target, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
-
-    [Transitional("R6", Reason = "H11 deletes it with its reader, the old effect walk's Dictionary comparison (H5).")]
-    internal BoundComparison? DictionaryComparison(BoundType dictionary)
-        => this.ComparisonPlan(this.Library.GetSymbol(KimiDeclarationId.Dictionary)!, dictionary.Components[0], KimiDeclarationId.Equatable, false);
 
     // The legacy composition: CallPlan leaves from RequirementImplementation under the built-in target's scope, null where a leaf does not
     // resolve there (a Type parameter's), retained per storage version (DECISIONS R5-M68).
