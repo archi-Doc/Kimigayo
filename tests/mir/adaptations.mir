@@ -74,8 +74,8 @@ fn widen @43
   bb1:
       return @43
   bb2:
-      _0 = move _4 @53 s1
-      goto bb1 @53 s1
+      _0 = move _4 @43
+      goto bb1 @43
   bb3:
       drop _1 -> bb4 [elide] @48
   bb4:
@@ -118,8 +118,8 @@ fn inspect @60
   bb1:
       return @60
   bb2:
-      _0 = move _4 @75 s1
-      goto bb1 @75 s1
+      _0 = move _4 @60
+      goto bb1 @60
   bb3:
       drop _1 -> bb4 [keep] @65
   bb4:
@@ -211,8 +211,8 @@ fn take @123
   bb1:
       return @123
   bb2:
-      _0 = move _3 @138 s1
-      goto bb1 @138 s1
+      _0 = move _3 @123
+      goto bb1 @123
   bb3:
       drop _1 -> bb4 [elide] @130
   bb4:
@@ -256,8 +256,8 @@ fn give @142
   bb3:
       return @142
   bb4:
-      _0 = move _4 @152 s1
-      goto bb3 @152 s1
+      _0 = move _4 @142
+      goto bb3 @142
   bb5:
       drop _1 -> bb6 [elide] @153 s1
   bb6:
@@ -294,8 +294,8 @@ fn peek @158
   bb1:
       return @158
   bb2:
-      _0 = move _4 @175 s1
-      goto bb1 @175 s1
+      _0 = move _4 @158
+      goto bb1 @158
   bb3:
       drop _1 -> bb4 [keep in v0; elide in v1] @165
   bb4:

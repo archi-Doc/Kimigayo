@@ -74,8 +74,8 @@ fn select @4
   bb9:
       return @4
   bb10:
-      _0 = move _9 @25 s5
-      goto bb9 @25 s5
+      _0 = move _9 @4
+      goto bb9 @4
   bb11:
       StorageDead(_3) @9 s1
       goto bb10 @4
@@ -116,8 +116,8 @@ fn select @4
       _12 = const () @33 s6
       goto bb19 @33 s6
   bb22:
-      _10 = move _14 @38 s7
-      goto bb16 @38 s7
+      _10 = move _14 @30 s1
+      goto bb16 @30 s1
   bb23:
       StorageDead(_12) @33 s6
       goto bb22 @4
@@ -271,8 +271,8 @@ fn iterate @48
       _13 = const () @79 s3
       goto bb17 @79 s3
   bb20:
-      _3 = move _15 @84 s5
-      goto bb3 @84 s5
+      _3 = move _15 @57 s1
+      goto bb3 @57 s1
   bb21:
       StorageDead(_4) @58 s1
       goto bb20 @48
@@ -305,8 +305,8 @@ fn iterate @48
     * _22 = copy _18 @97 s1
       goto bb40 check bb41 @96 s1
   bb31:
-      _18 = move _21 @94 s6
-      goto bb30 @94 s6
+      _18 = move _21 @92 s1
+      goto bb30 @92 s1
   bb32:
       StorageDead(_19) @93 s1
       goto bb31 @48
@@ -323,8 +323,8 @@ fn iterate @48
   bb36:
       return @48
   bb37:
-      _0 = move _23 @96 s1
-      goto bb36 @96 s1
+      _0 = move _23 @48
+      goto bb36 @48
   bb38:
       StorageDead(_18) @90 s1
       StorageDead(_2) @52 s1
@@ -387,8 +387,8 @@ fn statements @98
       _4 = const () @108 s2
       goto bb2 @108 s2
   bb5:
-      _3 = move _6 @111 s3
-      goto bb1 @111 s3
+      _3 = move _6 @106 s1
+      goto bb1 @106 s1
   bb6:
       StorageDead(_4) @108 s2
       goto bb5 @98
@@ -431,8 +431,8 @@ fn statements @98
   bb13:
       return @98
   bb14:
-      _0 = move _11 @121 s4
-      goto bb13 @121 s4
+      _0 = move _11 @98
+      goto bb13 @98
   bb15:
       drop _2 -> bb16 [flag f0] [clear f0] @100
   bb16:
@@ -524,8 +524,8 @@ fn short @152
   bb4:
       return @152
   bb5:
-      _0 = move _3 @158
-      goto bb4 @158
+      _0 = move _3 @152
+      goto bb4 @152
   bb6:
       StorageDead(_2) @156
       goto bb5 @152
@@ -588,8 +588,8 @@ fn deadTail @160
   bb4:
       return @160
   bb5:
-      _0 = move _7 @172 s2
-      goto bb4 @172 s2
+      _0 = move _7 @160
+      goto bb4 @160
   bb6:
       StorageDead(_2) @163 s1
       goto bb5 @160

@@ -11463,6 +11463,9 @@ structure is recorded here by the unit that first implements it.
   a drop tree of its own (one drop tree per target); a result temp for every construct (MIR on every path, not only where a scope
   is left); the delivery block, temp and scope as new Target parameters (the record already has seven; its Destination and Break
   take the first two, an init property the scope).
+  - Amended (R6-check H3b round 2, U-T1, 2026-11-04): the delivery is the target's: its Move and goto take the target's source and
+    scope (the label construct; a function's declaration), as its result temp does, not the first transfer's, which was one exit of
+    several, so A5's `Use` of a delivered value names the label block (DIAGNOSTICS A6), never an exit delivering another source.
 - **R5-M56 The difference ledger compares the requirement** (2026-10-18, planning session; plan Q17, Q8 package §3.6, under R5-M23
   and R4-M67; supersedes R4-M17's "a MIR problem takes its code's analysis" and R4-M3a's `-` requirement on the MIR side) A MIR
   problem's ledger row carries its own requirement (R4-M67); a MIR construction record or validator finding names none (`-`) until

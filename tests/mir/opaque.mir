@@ -96,8 +96,8 @@ fn kept @519
   bb5:
       return @519
   bb6:
-      _0 = move _11 @535 s1
-      goto bb5 @535 s1
+      _0 = move _11 @519
+      goto bb5 @519
   bb7:
       drop _2 -> bb8 [elide] @521
   bb8:
@@ -171,8 +171,8 @@ closure @549
   bb4:
       return @549
   bb5:
-      _0 = move _8 @564 s1
-      goto bb4 @564 s1
+      _0 = move _8 @549
+      goto bb4 @549
   bb6:
       drop _3 -> bb7 [elide] @552 s1
   bb7:
