@@ -21,8 +21,9 @@ internal sealed partial class MirBuilder
             case HirOp.Let:
                 this.Let((VariableKoto)item);
                 break;
-            case HirOp.Error when item is VariableKoto variable && HirTables.Symbol(variable)?.Type is not null:
-                this.Let(variable); // A declaration Binding rejected, whose symbol it typed, declares its local too.
+            case HirOp.Error when HirTables.Symbol(item) is { Kind: BindingSymbolKind.Local, Type: not null } local &&
+                ReferenceEquals(local.Declaration, item):
+                this.Let((VariableKoto)item); // A declaration Binding rejected, whose own local symbol it typed, declares its local too.
                 break;
             case HirOp.Require:
                 this.Require((RequireKoto)item);
