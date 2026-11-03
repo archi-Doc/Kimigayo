@@ -371,10 +371,10 @@ public partial class ResultPremiseTest
     // records at one location, each with its own repair; a proven operand adds none. These faulted check with CheckFaulted_Kd ("one
     // problem was reported with different facts"), also for the join, Type-occurrence and clause forms that dev reported as one meet.
     // Since H5 the MIR judges the local annotations: a fit is recorded at the declaration, not its initializer (H3b T45), and the
-    // Type occurrence's records give the source fit, not wellFormed (H3b T47).
+    // Type occurrence's records give the source wellFormed (BU's U-W: a Type occurrence's relation is WellFormed; H3b T47 had fit).
     [Theory]
     [InlineData(JoinMeet, "let k: ref/i32 during x = t", "fit", "a outlives x", "b outlives x")]
-    [InlineData(TypeMeet, "ref/(ref/i32 during (a and b)) during x", "fit", "a outlives x", "b outlives x")]
+    [InlineData(TypeMeet, "ref/(ref/i32 during (a and b)) during x", "wellFormed", "a outlives x", "b outlives x")]
     [InlineData(ClauseMeet, "let k: ref/i32 during x = t.0", "fit", "a outlives x", "b outlives x")]
     [InlineData(PremiseMeet, "let k: ref/i32 during x = t.2", "fit", "h.a outlives x", "j.a outlives x")]
     [InlineData(TwoPremises, "pk(h, x, y, keep)", "wellFormed", "x outlives s", "y outlives s")]
