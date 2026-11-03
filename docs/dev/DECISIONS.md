@@ -16268,9 +16268,11 @@ structure is recorded here by the unit that first implements it.
     - The publisher's Binding-cause arm names `RestingCauses(site)`. A −1 cause at a node outside the guess rule's domain that has no failure causes,
       such as a node Binding resolved, stays a broken contract (`InternalInvariant_Kd`).
   - The new Mir/Build view (COMPILER_ARCHITECTURE "Dependency rules": "a new view needs a reason in its commit"):
-    `Binding.GuessedCompletionNodes`. The reason: the guess rule reads the pass's completion structure and Never evidence, which no HIR
-    column carries; the builder already visits each require once, and it copies the guessed nodes into the body's pooled storage, so
-    no table outside the MIR body holds them. A valid program takes
+    `Binding.GuessedCompletionNodes`. The reason: which nodes are guesses (bodies the parser supplied, expressions Binding left
+    unresolved) and which causes they carry is the guess rule's walk over the pass's completion structure and Never evidence; the HIR
+    Completion column publishes only the structural completion itself (the gate below reads it), not the guessed nodes or their
+    causes. The builder already visits each require once, and it copies the guessed nodes into the body's pooled storage, so no
+    table outside the MIR body holds them. A valid program takes
     Binding's fast path (no recoveries, a complete result) and records no site.
   - Representation: `MirMustNotComplete` gains (Start, Count) into `MirBody.GuessedSites`. A default copy copies no row
     (`MirBuilder.Defaults.Copies.cs`).
@@ -16278,8 +16280,9 @@ structure is recorded here by the unit that first implements it.
     body's guessed site. The mir ledger (against shared base 5998a0ec0) moves the A3 rows of 19 programs with guessed failure bodies
     (T4A's six, a chained require of `RequireRecoveryDiagnosticTest`, seven `syntax.json` cases, five Milestone 12 mutations; 29 raw
     rows) from compared to old-only: the ledger compares no derived MIR problem (R4-M132) while its old side keeps the old path's
-    derived control-flow record, so 4 incomplete A3 signatures (63 rows, none blocking) are unclassified; SPEC 14's example 573 row
-    (`b1`) leaves (open (b) 158 to 157, blocking rows 105 unchanged).
+    derived control-flow record. R4's follow-up commit (84773fd80) makes the ledger compare independent records only on both sides
+    and classifies the 4 incomplete A3 signatures (63 rows, none blocking) (d) with that note; SPEC 14's example 573 row (`b1`)
+    leaves (rows 4,288 to 4,297, open (b) 158 to 157, blocking rows 105 unchanged, unclassified 0).
   - Rejected:
     - a catch-all `RestingCauses` ending in the unresolved mark for every node (review B1): it hides a broken contract;
     - the publisher asking `GuessedCompletion` at publish time: it would decide dependence, which R5-M184 forbids;
