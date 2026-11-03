@@ -59,15 +59,16 @@ public class OwnershipAnalysisTest
             [(DiagnosticCode.TransferRequired_Kd, "s")],
             MinimalEmissionTest.Analyze("let s = \"a\"\nlet taken = s").Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
 
-    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5). H5 restores the old analysis's Unsupported_Kd at
-    // it (PD29): until then the old analysis skips a program whose Binding is incomplete, so that expectation waits for H5.
+    // A bare move of a temporary's part is invalid (SPEC 3.5: a bare non-Copy Place, a part of a temporary by 3.4.1 and 3.6), Binding's
+    // TransferRequired_Kd, which rejects the program. The expectation that H5 restores the old analysis's Unsupported_Kd here is withdrawn:
+    // that record claimed a valid form unimplemented (DECISIONS Q13; H3b round 0).
     [Theory]
     [InlineData("let moved = (\"first\", \"last\").0")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "(\"first\", \"last\").0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
-        Assert.False(c.Analyze().IsVerified);
+        Assert.False(c.Accepts);
     }
 
     [Fact]
@@ -249,11 +250,13 @@ public class OwnershipAnalysisTest
     [InlineData("let x = 1\nx++", DiagnosticCode.InvalidAssignment_Kd)]
     public void StructuralAssignmentErrorsRemainInBinding(string source, DiagnosticCode code)
     {
+        // Check's verdict: Binding's record rejects; the analysis verdict is the MIR's (DECISIONS R5-M185; Q13, H3b round 0).
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.Analyze().IsVerified);
+        c.Analyze();
+        Assert.False(c.Accepts);
     }
 
     [Fact]
