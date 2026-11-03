@@ -6228,6 +6228,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
       Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
       Unproven until G392.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
+- **R4-M165 R4's exit under the owner's 90% rule** (2026-11-03; the owner, R4's dialog, verbatim 「根本的な解決は後回しにする。90%の状態で良いので、R4を完成させて下さい。」, then 「先ほどの手順通りでなくても良いので、現在までの成果を活用し、早期にR4を完成させて下さい。細かい不具合は、後で修正します。」, and 「「U2j まで待つ」の撤回と、O4（一般 SPEC 規則を R4 exit 時に Unsupported で残す）はオーナー承認事項です。」;
+  the exit and its exceptions below, verbatim 「これでexit」) For R4's exit only, it supersedes COMPILER_ARCHITECTURE's R4 exit rule and the
+  A5 Step 2 plan's §5.4 gate (OQ5 (i)(a), (ii)); the evidence is `draft/Sketches/A5 Step 2/R4 exit/`.
+  - Landed: Binding, A1, A3, A4, F1-F5 and F9 (the ledger's Landed, 10 of 14), A5-F6 by Abstract Calls Reach by Paths U0-U5 (R4-M106),
+    and G216 (a)'s Part 1, U2.1 and U2.2 groups 1-3 (R4-M155, R4-M161, R4-M162, R4-M164).
+  - X-1: each of the 105 rows the ledger counts as open blocking (shared base 1eb0cbaa9) has a verdict, none an A5 miss: 73 restated
+    (the same failure at another location or under another code in the same body, a paired MIR record named), 17 (a), 15 (d) (R4-M52,
+    R4-M154). The ledger classifies by signature, so its metric stays 105 until a per-row identity (OQ10 (a), X-1a).
+  - X-2: 36 `Unsupported_Kd` producers (MIR 33, Binding 3); the 25 without a removal stage stay under DEC O4. X-3: H0c (R5-M182)
+    holds it. X-4: MIR build and A1-A6 against the old analyses, 2.0 times cold and 1.5 times warm over the 44 milestones, about 1 on
+    the generic scaling series (V16 holds), the gap the library's fixed cost (G337: accepted, its O2 deferred by the owner); warm
+    allocation 0 B; sizes in `artifacts/benchmarks/2026-11-03-r4-exit-sizes.md`. X-5: a sampled final review (nine App. A rules, ten
+    triage rows, a symptom sweep, the contracts), ACCEPT.
+  - Exceptions, carried past the exit as PLAN G396: A5-F7's last units (2c-6, 2c-7), A5-F8 and A5-F10 unlanded (F7's 3 and F8's 10
+    SPEC cases unchecked on the MIR); A6's 2g units with G105; G103, G106, G124 (an unsound acceptance on both pipelines), G126,
+    G147 (2) (BU), G160's remainder, G263; G216 (a)'s unjudged forms and record sites (G388-G392, U3), G216 (b), G215; the
+    ledger's per-row closure; X-5's non-blocking findings.
+  - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
