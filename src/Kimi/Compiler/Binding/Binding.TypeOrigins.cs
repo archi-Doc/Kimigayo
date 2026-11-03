@@ -301,6 +301,7 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value.
     // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged. `condition` is the Semantics
     // case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in
     // its binder's borrow cases (SPEC 15.6.5).
@@ -313,7 +314,7 @@ public sealed partial class Binding
 
         if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, WellFormed: true, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
@@ -321,7 +322,7 @@ public sealed partial class Binding
             var argument = inner.OriginArguments[i];
             if (!OriginOutlives(argument, outer))
             {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge, Condition: condition));
+                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, WellFormed: true, Discharge: discharge, Condition: condition));
             }
         }
 
