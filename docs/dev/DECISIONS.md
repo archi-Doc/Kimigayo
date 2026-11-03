@@ -5261,29 +5261,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     erased destruction of a Type parameter's or associated projection's value not proven Copy (16.3.3, BU-47's `0 Content store 0`)
     composes nothing at either site A5 composes (a kept Drop: a scope end, a reassignment, a temporary's, `_ = x@move`; a published
     destroying call's row: `clear`, `truncate`, `removeAll`, `replace`, `insertOrReplace`'s key), as on dev; one condition in
-    `Composing`. A consuming call's cleanup is no composition of A5's: it is in the call's own Binding rows (BU-52's rule A). R4-M147's located `Unsupported_Kd` applies where dev
-    applied it, by meaning: at a published destroying call's referent store (SPEC 4.6–4.9's, where Keep's guard ran; `Destroying` reads
-    the call's referent stores), where only staged parts observe, a store that would add a Loan or an address past the receiver's
-    referents is the located `Unsupported_Kd` at the call; `replace` (15.7) has no referent store, so it gets none, as on dev. Reason
+    `Composing`. A consuming call's cleanup is no composition of A5's: it is in the call's own Binding rows (BU-52's rule A). Where only such a part observes, a destroying call keeps R4-M147's undecided store: one
+    that would add a Loan or an address past the receiver's referents is the located `Unsupported_Kd` at the call (`Destroying`). Reason
     (measured, the first full ledger): composed by SPEC's letter under R4-M147's Q1 (a), it made every generic `for` over an abstract
     Iterable a MIR error at the loop and at its hidden iterator's storage end (19 ledger rows in 18 test sources) and abstract iterator
     and value locals errors at their storage ends (`var it = S.start(...)`, `var it = local.iterate()`, `var value = input@move`).
     Removal condition: an owner SPEC revision bounding what an erased destruction may store (E receives no Loan bounded by Self's own
     Origins or by a per-call Origin; SPEC 22.2.1's `step`); then the part is composed. Declared drops, Function values and handles whose
     payload is not proven Sealed are composed. The staging covers an abstract part wherever the destruction reaches it, directly or as a
-    handle's payload (`rc/T`, `arc/T`, `obj/T`, `owner/T` with T a Type parameter or an associated projection not proven Copy): one
-    predicate, `MirTypes.EntersPayload` (a walk enters a proven-Sealed or an abstract payload, the latter judged as an abstract part),
-    read by `Composing`, whose one condition then composes no abstract erased Type, and by the destruction's Observation, whose Limit is
-    `Destroying`'s `unproven`, so a staged part is never dropped silently at a destroying call (the planning session's reading of the
-    owner's words, after BU's review N1 and re-check B2). A runtime Contract
+    handle's payload (`rc/T`, `arc/T`, `obj/T`, `owner/T` with T a Type parameter or an associated projection not proven Copy): one test
+    on the erased Type in `Composing` (the planning session's reading of the owner's words, after BU's review N1). A runtime Contract
     view's payload is no abstract part, its destruction the view's row, so it stays composed (no such view can be formed in this
     revision, SPEC 8.12), as a handle to an open base does. Pinned: `MirBorrowsTest.AnAbstractPayloadIsStagedAndAnotherPayloadComposed`
-    (rcGen over `rc/T` valid, as on dev; baseLateBad over `obj/EBase` errs at `y = 5`) and
-    `AStagedPartAtADestroyingCallKeepsTheReferentStoresRecord` (BU's re-check forms: `clear` and `truncate` of `Array<rc/T>` and
-    `Array<Option<rc/T>>`, as of `Array<T>`, are the located `Unsupported_Kd` at the call, where dev recorded `y = 5` through its guard;
-    replTOk, a `replace` of an abstract T, stays accepted).
+    (rcGen over `rc/T` valid, as on dev; baseLateBad over `obj/EBase` errs at `y = 5`).
   - Removed: R4-M143's destruction guard (Keep's destruction test and root-record union, its W past refs(S)); R4-M147's abstract-referent
-    rule moves from Keep to `Destroying`, at the same referent stores.
+    rule moves from Keep to `Destroying` unchanged in effect.
   - Records (the planning session's decisions): c80's four new records, the storage ends of slot2, slot, z and x (an rc payload's drop at
     a possibly final release stores into storage the body does not own; 16.3.3, 15.6.4, BU-47's row; PLAN G264's SPEC gap), accepted; the
     seven §5.6 pins keep dev's records and names under the staging (`a.clear()`, `a.truncate(0)` and `a.removeAll(...)` `Unsupported_Kd`,
