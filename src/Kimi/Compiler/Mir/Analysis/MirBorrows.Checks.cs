@@ -29,7 +29,7 @@ internal sealed partial class MirBorrows
         Observe,
         Activate,
         ActivateInPlace,
-        ActivateThrough, // An activation at a parent Loan's Place (SPEC 15.6.3, 15.6.7), shallow: it meets a shared Loan, no reservation (R4-M68).
+        ActivateThrough, // An activation at its parent Loans' Places on a root (SPEC 15.6.3, 15.6.7), shallow: it meets a shared Loan, no reservation (R4-M68).
         ObservePast, // err(destroy): the Loans an observing destruction hits and the destroying activation's write does not, in every mode.
         Unclassified,
         EffectRead, // A read key: it meets a unique Loan, or one the call activates (W6).
@@ -100,13 +100,19 @@ internal sealed partial class MirBorrows
     // hits(A, X, k) (A3 5, E1, E3): never where X is a raw Place borrow's Loan, its fresh anchor's, compared with no Place not derived from
     // it (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), whatever k; else within(A, X), or within(X, A) where the access is deep, or no borrow Deref
     // of X lies below A, or it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow
-    // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11).
+    // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11). At a parent Loan's Place the access is
+    // every parent on the root at once, through the parents' trie (MirBorrows.Activations' Through), shallow, as no steps of its own.
     private bool Hits(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, in Candidate candidate)
     {
         ref readonly var loan = ref this.loans[candidate.Loan];
         if (root != loan.Root || loan.Anchored)
         {
             return false;
+        }
+
+        if (kind == AccessKind.ActivateThrough)
+        {
+            return this.Through(root, loan);
         }
 
         for (var i = 0; i < Math.Min(steps.Length, loan.Count); i++)

@@ -43,15 +43,27 @@ public sealed partial class MirBorrowsTest
     public void AnActivationMeetsOnlyTheParentLoansLiveIntoItsCall(string calls, string? record)
         => Assert.Equal(record is null ? [] : [record], Problems(StoredElement + calls));
 
-    // V16: N calls whose argument Reborrows through a reference carrying N unique Loans, on N roots or on one root's Place (R4-M169's
-    // review B1), compare each distinct parent Place once, so the work stays within the dense bound the calls' gathers already take.
+    // V16: N calls whose argument Reborrows through a reference carrying N unique Loans, on N roots, on one root's Place, on N Fields of one
+    // root, and on N Fields of a root whose N other Fields carry live shared Loans (R4-M169's review B1): an activation scans each parent
+    // root's candidates once and meets the shared ones through the parents' prefix trie, so the work stays within the dense bound the
+    // calls' gathers already take.
     [Theory]
-    [InlineData("    var z = 3\n    var p = z@uniq\n", "    var z{1} = {1}\n    if flag\n        p = z{1}@uniq\n")]
-    [InlineData("    var z = 3\n    var p = z@uniq\n", "    if flag\n        p = z@uniq\n")]
-    [InlineData("    var z = Pair.init()\n    var p = z.a@uniq\n", "    if flag\n        p = z.a@uniq\n")]
-    public void AnActivationsParentLoansKeepTheWorkDense(string head, string each)
+    [InlineData("func shape(flag: bool)\n    var z = 3\n    var p = z@uniq\n«N:    var z{1} = {1}\n    if flag\n        p = z{1}@uniq\n»" +
+        "«N:    setM(p@follow@uniq)\n»")]
+    [InlineData("func shape(flag: bool)\n    var z = 3\n    var p = z@uniq\n«N:    if flag\n        p = z@uniq\n»«N:    setM(p@follow@uniq)\n»")]
+    [InlineData("func shape(flag: bool)\n    var z = Pair.init()\n    var p = z.a@uniq\n«N:    if flag\n        p = z.a@uniq\n»" +
+        "«N:    setM(p@follow@uniq)\n»")]
+    [InlineData("struct Big\n«N:    public var g{0}: i32 = 0\n»    public init() => ()\nfunc shape(flag: bool)\n    var z = Big.init()\n" +
+        "    var p = z.g0@uniq\n«N:    if flag\n        p = z.g{0}@uniq\n»«N:    setM(p@follow@uniq)\n»")]
+    [InlineData("struct Big\n«N:    public var g{0}: i32 = 0\n    public var h{0}: i32 = 0\n»    public init() => ()\nfunc shape(flag: bool)\n" +
+        "    var z = Big.init()\n    var p = z.g0@uniq\n«N:    let s{0} = z.h{0}@ref\n    if flag\n        p = z.g{0}@uniq\n»" +
+        "«N:    setM(p@follow@uniq)\n»«N:    inspect(s{0})\n»")]
+    public void AnActivationsParentLoansKeepTheWorkDense(string template)
     {
-        var (work, bytes) = this.Scaled(head, each, "    setM(p@follow@uniq)\n");
+        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + Expand(template, n, 0))).ToArray();
+        long[] work = [.. runs.Select(static x => x.Work)];
+        long[] bytes = [.. runs.Select(static x => x.Bytes)];
+        output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
         Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
     }
