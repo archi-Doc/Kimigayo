@@ -174,3 +174,18 @@ branch).
   and the referents of its captured exclusive references". GXS as written does not recover these rows, so GXS's proposal (owner-adopted)
   takes them in and reconciles the two clauses. R4's H5 blockers are now U-B1 (Q-8), U-A3, U-B2 and R6-1's builder and A3 commit,
   beside BU's G409.
+
+### The owner's G264 (S) instruction adds units before H5 (2026-11-04)
+
+The owner instructed R4 to fix G264 U1 at the root, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」. R4's dialog holds
+the plan: `r4-notes\post-exit\g264-s-plan-owner.md`, which says 「S0 → S1 → S2 → S4 の順で、すべて H5 の前に置きます」. The units:
+
+- **S0**: the SPEC revision of 15.6.4, 16.3.3 and 5.7. An abstract Type's value reaches only the holders its holder's Loans and
+  addresses name; the implementing declaration checks its own raw layers. It also overrides Q1 (a) of 2026-10-25 and drops R4-M150's
+  staging sentence. The owner sees the text first, and it gets one SPEC review.
+- **S1**: A5's holding walk gives an abstract part Loan facts only. This fixes `count<S>`, so F8 leaves the (e) list.
+- **S2**: G264 U1 lands again without its staging. BU reviews it.
+- **S4**: a total check: the ledger, G216 (a)'s oracle, and 0 library or milestone rejections.
+
+H5 therefore waits for these four units, beside R4's U-B1, U-A3, U-B2 and R6-1, and BU's G409. S3 (c80) is a separate unit after H5.
+R5 proposed to R4 that S0 and GXS's 15.6.4 revision be one revision with one review, or at least sequenced. Round 2 runs after S4.
