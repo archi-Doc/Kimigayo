@@ -5089,8 +5089,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     value is walked by its environment's parts, no longer counted as possibly an exclusive reference.
   - Superseded in part by R4-M170 (2026-11-04, the owner): Q1 (a)'s "an abstract part ... may be an exclusive reference" is overridden
     by (S), neither (a) nor (b): W goes past an abstract holder into the holders its holder's Loans and addresses name, writing by
-    SPEC 15.6.4's provenance list (never through a shared Loan; E where reached through no shared layer, an untied result's included),
-    and on as SPEC 15.6 reaches; never into E on account of the hidden layer. From G264 (S)'s S1′.
+    SPEC 15.6.4's provenance list (never through a shared Loan; the named holders and what is reached on from them by reads through
+    no shared layer; E where reached through no shared layer, an untied result's included); never into E on account of the hidden layer. From G264 (S)'s S1′.
 - **R4-M148 A5-F7's rule: a Closure call is a receiver call, with PD13's own view hold (2c-3)** (2026-10-27; R4's implementer under
   R4-M126's package §2.8–§2.10, the unit's design revision 2, ACCEPTed by its design review 3 with N12–N18 applied; class Full with BU,
   BU reviewing the Binding hunk, R5 AR-2)
@@ -6339,7 +6339,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     handle's payload, reaches what a reference carrying its holder's Loans and addresses reaches (15.6: the holders they name, reads
     through them, and E only by 15.6's provenance rules: parameters, captures, static storage, untied results, an Origin-less raw layer a
     call writes). Writes go by provenance (15.6.4's list; S1′'s design Revision 1, review point 10): (1) the holders its exclusive
-    Loans and addresses name, never one only a shared Loan names; (2) E from a parameter or a capture, or by a read through an exclusive
+    Loans and addresses name, and what is reached on from them by reads through no shared layer (15.6; the review's B7), never one
+    only a shared Loan names; (2) E from a parameter or a capture, or by a read through an exclusive
     borrow (a binding may hold an exclusive reference with its own Origins); (3) static storage through an exclusive Loan or an address;
     (4) E through a raw pointer it derives from through no shared layer (an Origin-less raw layer, `Raw.allocate`, an integer's pointer;
     the S0 review's B6); (5) E from an untied result: writable, the owner's answer to "Continue (S): S0 with the B6 fix, and an untied
@@ -6367,14 +6368,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     of independent records does not occur); copyRcLate errs (payload not proven Sealed; head's acceptance was a regression); a T built
     from a `Raw.allocate` result keeps E by provenance (allocBad, SPEC 15.6.4's `laterAlloc<T>`: x derives from the raw pointer m through
     no shared layer, so setQ and the erased drop may store q in E, and `y@follow = 6` errs); a drop writing a Loan into a static Field keeps the unknown environment effect
-    (a raw write to static storage then used is 5's undefined behavior); 1cfd105abdf6 (AC-U1's read while the item lives) stays a
+    (a raw write to static storage then used is 5's undefined behavior); `chain<T>` (x addresses pp, pp addresses slot, then `x.setQ` while
+    `rs = slot@ref` lives) errs at `x.setQ` through item 1's reach on from pp (the review's B7; dev's MIR accepts it, a spec-case
+    Mir difference S1′ removes); 1cfd105abdf6 (AC-U1's read while the item lives) stays a
     correct error and is a row S1′'s ledger must keep. The review's tries (a borrow the binding turns into a hidden pointer, a pointer
     stashed in static storage, Loan-carrying values stored in E) fall under 5.2.1 conditions 3 and 5 and the claims rule.
   - Units: S0 this SPEC revision, its examples (15.6.4's `count<S>` valid, `later<T>` invalid at `y@follow = 5` and `laterAlloc<T>` at
-    `y@follow = 6`; spec-case `15.6.4-abstract-writer`), SPECJ and INTEGRATED. S1′ (Major), replacing S1, whose "Loan facts only" accepted laterWriterBad and
+    `y@follow = 6`, and `chain<T>` at `x.setQ`; spec-cases `15.6.4-abstract-writer` and `15.6.4-abstract-chain`), SPECJ and INTEGRATED. S1′ (Major), replacing S1, whose "Loan facts only" accepted laterWriterBad and
     stopped (its finding): `MirTypes.Holding.Holds` reads an abstract part as reaching the holders its Loans and addresses name, writing
     by 15.6.4's provenance list (its design Revision 1: Φ_W, E reached through no shared layer, issued at every E provenance with Φ_E
-    and stripped by reads through a shared Loan; the named step writes the holders of exclusive Loans and addresses, and E where Φ_W),
+    and stripped by reads through a shared Loan; the named step writes the holders of exclusive Loans and addresses, and E where Φ_W, and W goes on past a named holder by reads
+    through no shared layer, as SPEC 15.6.4's item 1 says: `chain<T>`, which dev's A5 accepts, must err at `x.setQ`),
     never E on account of the hidden layer; it records from its
     ledger the change of R4-M148's rule-G self-store bullet ("which R4-M147's Q1 (a) lets be an exclusive reference") and BU-49's
     "R4-M147 Q1 (a)"; it adds the spec-case `15.6.4-abstract-reach` (`count<S>`: it lands with S1′, since MirCensusTest's
