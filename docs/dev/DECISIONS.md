@@ -16489,6 +16489,15 @@ structure is recorded here by the unit that first implements it.
     first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
     `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
     (the rows that need a live static Loan, which no source program has until P42).
+  - Amended (GR-1a, 2026-11-04; R5's ruling (a) on the H5 group review's B2, R4's consent to R5 writing the MIR files under its two
+    conditions): a second per-body fact, `MirBody.HasConstructionRecord`, whether a construction record lies in the body. Its one writer
+    is the builder's one record path of the body in hand, `MirBuilder.Record` (every builder record but a module's broken HIR contracts,
+    made before its bodies); `Reset` clears it, and it is read-only after build. A record made without a body in hand (those, the
+    collection records) marks no body. The two facts stay apart because `MirAnalysis.Run` reads them apart: it skips a body with a
+    finding and analyzes a body with a record. Reader: `Compilation.JudgedWithoutProblem` (hover's ownership line, H0b §2.1), true only
+    for a body with neither fact and no merged problem's member. Tests: `VirtualHoverTest`'s
+    `OwnershipChecksArePendingForABodyHoldingAConstructionRecord` and `...WithAValidatorFinding` (injected: no source program makes a
+    finding); `MirBuildTest.ATupleOperatorWithoutItsComparisonIsUnsupported`, `DefaultExpansionStopsAtTheLimit`.
 - **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, R5; design `draft/Sketches/R6-check/H3-2-design.md`, design
   review 2 ACCEPT; under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
   - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the

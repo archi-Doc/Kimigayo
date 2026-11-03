@@ -37,9 +37,14 @@ internal sealed partial class MirBuilder
         this.Site(node, destination, Completes(value));
     }
 
-    // The one path of a construction record made while a body is built (MirProgram.Report): a code at a node of the body. The module's
-    // broken HIR contracts, recorded before its bodies, have no body in hand (Module).
-    private void Record(Koto node, DiagnosticCode code) => this.program.Report(SourceRef.Of(node), code);
+    // The one path of a construction record made while a body is built (MirProgram.Report): a code at a node of the body, which marks
+    // the body (MirBody.HasConstructionRecord, its one writer; DECISIONS R5-M183's GR-1a line). The module's broken HIR contracts,
+    // recorded before its bodies, have no body in hand (Module).
+    private void Record(Koto node, DiagnosticCode code)
+    {
+        this.program.Report(SourceRef.Of(node), code);
+        this.body.HasConstructionRecord = true;
+    }
 
     // An Opaque value of the destination's Type in place of a node, its site naming the locals the node's syntax reads, writes or borrows
     // (SiteRoots); where the node cannot complete, its block ends and building continues in a block only the checks reach (SPEC 14.10.3).
