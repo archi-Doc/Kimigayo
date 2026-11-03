@@ -425,7 +425,10 @@ public class ClosureEnvironmentOriginTest
     // is Refuted, on both pipelines. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
     // to StaticDirect) are memory-safe and rejected because SPEC 15.6.5 stays (the owner, 2026-10-23), their rewrites over a written Origin
     // being PLAN's open issue (a). A local clause over a capture's Origin is Binding's record at the initializer, as one over an enclosing
-    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15).
+    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15). Since the MIR decides (R6-check
+    // H5), CopyStore and MovedStore, whose borrow reaches the environment through the aggregate `.Some(...)`, also have A5's
+    // ComparisonLoanConflict_Kd at the local's declaration (`conflict`): H3b family F-b, class 4, an independent record by SPEC 15.6.5
+    // rule W's letter (R4's F-b verdict, h3b-round2.md; both programs were rejected on the base).
     [Theory]
     [InlineData(VarStore, Unproven, "x)")]
     [InlineData(StoreHead + "let arr: Array<ref/i32> = []" + StoreTail, Unproven, "x)")]
@@ -436,8 +439,8 @@ public class ClosureEnvironmentOriginTest
     [InlineData(Nested, Unproven, "y)")]
     [InlineData(RawStore, Unproven, "y@follow@raw")]
     [InlineData(LocalStore, Unsatisfied, "local@ref")]
-    [InlineData(CopyStore, Unsatisfied, "local@ref")]
-    [InlineData(MovedStore, Unsatisfied, "inner@move")]
+    [InlineData(CopyStore, Unsatisfied, "local@ref", "let local: i32 = n")]
+    [InlineData(MovedStore, Unsatisfied, "inner@move", "let local: i32 = 1")]
     [InlineData(TwoRegions, Unproven, "a1[0]")]
     [InlineData(InputDuringP, Unproven, "x)")]
     [InlineData(CapturedParameter, Unproven, "p)")]
@@ -450,9 +453,16 @@ public class ClosureEnvironmentOriginTest
     [InlineData(ClauseOverCapture, Unproven, "H.init(r)")]
     [InlineData(ClauseOverCaptureFromInput, Unproven, "H.init(y)")]
     [InlineData(BodyError, nameof(DiagnosticCode.TypeMismatch_Kd), "5\n")]
-    public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at)
+    public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at, string? conflict = null)
     {
-        var error = Assert.Single(ContextualCaptureTest.PublishedRecords(source));
+        var records = ContextualCaptureTest.PublishedRecords(source);
+        var conflictSpan = conflict is null ? (SourceSpan?)null : MirTargetSide.At(conflict).Resolve(source);
+        if (conflictSpan is not null)
+        {
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Assert.Single(records, x => x.Span == conflictSpan).Code);
+        }
+
+        var error = Assert.Single(records, x => x.Span != conflictSpan);
         Assert.Equal(code, error.Code);
         Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
     }
@@ -704,12 +714,13 @@ public class ClosureEnvironmentOriginTest
             var source = function + (beside ? "func unrelated() -> i32\n    let wrong: bool = 3\n    return 0\n" : string.Empty) + "public func main() => ()\n";
             var records = DiagnosticCorpus.Check(source).Diagnostics;
             Assert.Equal((beside ? 2 : 1) + (twin is null ? 0 : 1), records.Length);
-            if (twin is not null)
+            var twinSpan = twin is null ? (SourceSpan?)null : MirTargetSide.At(twin).Resolve(source);
+            if (twinSpan is not null)
             {
-                Assert.Single(records, x => x.Code == code && x.Span == MirTargetSide.At(twin).Resolve(source));
+                Assert.Single(records, x => x.Code == code && x.Span == twinSpan);
             }
 
-            var error = Assert.Single(records, x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd) && source[x.Span!.Value.Start..].StartsWith(at, StringComparison.Ordinal));
+            var error = Assert.Single(records, x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd) && x.Span != twinSpan);
             var verdict = code == Unproven ? "not proven" : "false";
             Assert.Equal((code, $"requires {longer} outlives p, which is {verdict}"), (error.Code, error.Label));
             Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);

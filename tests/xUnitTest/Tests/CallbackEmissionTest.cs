@@ -191,6 +191,7 @@ public class CallbackEmissionTest
                 ("reservation", reservation, "conflicting exclusive call reservation"),
             ],
             error.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Null(error.Note);
         using var output = new StringWriter();
         Assert.False(c.Generate(output));
     }

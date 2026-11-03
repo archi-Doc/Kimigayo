@@ -503,8 +503,7 @@ public class ClosureReceiverClassificationTest
     }
 
     // The one Closure's call receiver, and its `let f` call: an `InvalidAssignment_Kd` with the general Note when Exclusive, valid
-    // otherwise; the same program with `var f` is valid either way.
-    // The receiver of `f`, its `var` twin's records (none but an (e) row's) and its `let` form's record.
+    // otherwise; the same program with `var f` has `varRecords` (none but an (e) row's).
     private static void AssertCallReceiver(string source, bool exclusive, string varRecords = "")
     {
         var c = MinimalEmissionTest.Analyze(source);
