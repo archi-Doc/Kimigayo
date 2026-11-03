@@ -1286,3 +1286,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   「R9後でもいい？そしたら、draft/Proposalに計画書を書いて、今後の予定としてください。」. Binding publishes its Copy verdicts and the MIR validator,
   MirEffects, MirTypes.Destruction and code generation read them (units U0–U3b, after R9). No SPEC or IMPL mapping; nothing frozen; PLAN G406.
   Adoption implies no implementation support.
+
+## 2026-11-04 — Abstract-part reach integrated (G264 (S) S0)
+
+- No proposal file: the owner's instruction (R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」, the plan
+  「抽象部分の到達規則（(S)）」) maps to SPEC 15.6.4 (a value of an abstract Type reaches only what its holder's Loans and addresses
+  name; examples `count<S>` and `resetAny<T>`), 16.3.3 (such a part's destruction stores within that reach; a handle payload is erased
+  unless proven Sealed, Copy not emptying it) and 5.7 (hidden raw layers are their declarations'); DECISIONS R4-M170, which overrides
+  Q1 (a). SPECJ follows in this unit (RQ10 (a)); GUIDE is not refreshed. Integration implies no implementation support (S1, S2).
