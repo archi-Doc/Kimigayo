@@ -28,7 +28,8 @@ internal sealed class MirProgram
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>
     internal ulong Version { get; set; }
 
-    /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
+    /// <summary>Gets the validator's findings, which Compilation's <c>PublishMirRecords</c> publishes as <c>InternalInvariant_Kd</c> after
+    /// the merged problems, on every pipeline (DECISIONS R5-M185).</summary>
     internal List<MirFinding> Findings { get; } = [];
 
     /// <summary>Gets the records and problems of this version: the construction and collection records (<see cref="Report"/>) and the
