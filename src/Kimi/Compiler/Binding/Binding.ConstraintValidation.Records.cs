@@ -50,9 +50,9 @@ public sealed partial class Binding
     private ClauseFact? TakeClauseFact(Koto use)
     {
         var fact = this.HoldClause(null);
-        if (this.proofNesting == 0 && (fact is not { } clause || clause.Epoch == this.frameEpoch))
+        if (this.proofNesting == 0)
         {
-            return fact;
+            return this.OwnFrame(use, fact?.Epoch) ? fact : null;
         }
 
         this.Fail(use, BindingFailure.Internal);

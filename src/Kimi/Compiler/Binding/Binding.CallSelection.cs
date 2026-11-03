@@ -78,6 +78,7 @@ public sealed partial class Binding
         var index = evaluation.Count++;
         var operations = evaluation.Operations.AsSpan(index * evaluation.OperationStride, evaluation.OperationStride);
         operations.Clear();
+        evaluation.Contributions.AsSpan(index * call.ArgumentNodes.Count, call.ArgumentNodes.Count).Clear(); // F1 holds no Result yet.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
         evaluation.Scratch.AsSpan(0, CallSlotCount(function)).Clear();
@@ -105,7 +106,7 @@ public sealed partial class Binding
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
             state = this.TryCandidate(
-                this.Solution(evaluation, function, declaringType),
+                this.Solution(evaluation, index, function, declaringType),
                 evaluation.ExplicitLengths,
                 evaluation.Mapping,
                 argumentMap,
@@ -134,14 +135,20 @@ public sealed partial class Binding
         }
 
         evaluation.Pending |= state == CandidateApplicability.Pending;
-        evaluation.FailedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? this.FailedSignaturePart(function) : null;
         if (state == CandidateApplicability.Pending)
         {
+            // A failed signature part or explicit Type argument leaves the selection resting on it (SPEC 23.1.2); the trial's judgment
+            // before its proof is taken once, in the selection's frame (DECISIONS BU-86).
+            var judgment = this.TakeTrialPending(call);
+            evaluation.FailedPendingSignature ??= IncompleteSignature(function) ?? this.FailedSignaturePart(function) ??
+                (judgment is { Kind: PendingJudgmentKind.FailedTypeArgument } failed ? failed.Part : null);
+
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
             evaluation.PremisesOnly &= premiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
             evaluation.ConstraintFailure ??= rejectedConstraint;
+            evaluation.PendingJudgment ??= judgment is { Kind: PendingJudgmentKind.EnvironmentResult } judged ? judged : null;
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;
@@ -237,6 +244,7 @@ public sealed partial class Binding
         internal BoundOrigin[] Inputs;
         internal EvaluatedCandidate[] Evaluated;
         internal BoundArgumentOperation[] Operations;
+        internal Contribution[] Contributions;
         internal int OperationStride;
         internal int SavedCandidates;
         internal BoundType?[] AllTypes;
@@ -256,6 +264,7 @@ public sealed partial class Binding
         internal bool Error;
         internal CallableConstraintFact? CallableFailure;
         internal ReferenceConstraintFailure? ConstraintFailure;
+        internal PendingJudgment? PendingJudgment;
         internal Koto? IncompleteSignature;
         internal Koto? FailedPendingSignature;
         internal Koto? InvalidDeclaration;

@@ -69,8 +69,12 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("g2", LayerBox + "func f<E>(x: E, y: ref/Box<E> during c, z: uniq/(ref/i32 during c)) -> () => ()\nfunc g(q: ref/Box<ref/i32 during s> during t, w: uniq/(ref/i32 during t)) -> ()\n    let m: i32 = 5\n    f(m@ref, q, w)\n", "UnsatisfiedOriginRelation_Kd q", "requires the borrow m@ref outlives t, which is false")]
     [InlineData("g4", GenericLayer + "func g(v: ref/i32, q: ref/(ref/i32 during s) during t, w: uniq/(ref/i32 during t)) -> ()\n    f(v, q, w)\n", "UnprovenOriginRelation_Kd q", "requires v outlives t, which is not proven")]
     [InlineData("g1ok", GenericLayer + "func g(v: ref/i32 during s, q: ref/(ref/i32 during s) during t, w: uniq/(ref/i32 during t)) -> ()\n    f(v, q, w)\n", "", null)]
+    [InlineData("nn1", NestedHead + NestedInner + "    return inner(Option.None, q)\n", "UnprovenOriginRelation_Kd Option.None", null)]
+    [InlineData("nn1b", NestedHead + NestedInner + "    return inner(.None, q)\n", "UnprovenOriginRelation_Kd .None", null)]
     [InlineData("nn1ok", NestedHead + "    origin q outlives r\n" + NestedInner + "    return inner(Option.None, q)\n", "", null)]
+    [InlineData("h2", Container + StoreHead + "    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n" + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("h2c", Container + StoreHead + "    origin q outlives r\n    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n", "", null)]
+    [InlineData("nn1x", StoreHead + StoreInner + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("nn1x_c", StoreHead + "    origin q outlives r\n" + StoreInner + Dangling, "ComparisonLoanConflict_Kd let short = 2", null)]
     public void EachCallProvesItsCalleesNestedInputs(string form, string body, string records, string? label)
         => AssertRecords(form, body, records, label);
@@ -90,7 +94,9 @@ public partial class OriginRelationDiagnosticTest
     // PLAN G269 (C): a contextually typed `.None` argument over the call's own Origins has its instantiated well-formedness judged at that
     // argument; a Borrow of `short` cannot outlive `q` (Refuted). The twins pass a value that outlives `q`.
     [Theory]
+    [InlineData("x5", ImpliedStore + ShortBody + "    put2(p, sr, Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("x5_ok", ImpliedStore + LongBody + "    put2(p, v, Option.None)\n    return 0\n", "")]
+    [InlineData("x8", ImpliedCheck + ShortBody + "    let n = chk(Option.None, p, sr)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("x8_ok", ImpliedCheck + LongBody + "    let n = chk(Option.None, p, v)\n    return 0\n", "")]
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
@@ -100,7 +106,8 @@ public partial class OriginRelationDiagnosticTest
     // 15.3.2, 15.6.4 step 3), as n4u's, and G277 (3) is no defect; so the Closure body's `.None` keeps dev's record (s4u), and a call of it
     // adds none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). h4: a call whose contextual `E.init()` needs q outlives r is valid
     // when the result is read while `long` lives (dev no longer reports G277 (4)'s Loan conflict); its twin reads the result after `short`
-    // ends, which the call's judgment of `E.init()` (U2.2, as j02) makes the Loan conflict at `short` (as d09).
+    // ends, which should be the Loan conflict at `short` (h4_n, on the T2 branch: region inference carries no Loan through the meet that
+    // the call's solve gives, R4-M164 U1d).
     [Theory]
     [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
     [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None")]

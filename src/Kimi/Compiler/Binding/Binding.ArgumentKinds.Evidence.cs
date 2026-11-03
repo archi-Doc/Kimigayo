@@ -6,14 +6,107 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // F1's pooled storage: one Contribution per argument of each candidate a call evaluates (CallEvaluation.Contributions).
+    private readonly ScratchBuffers<Contribution> contributionScratch = new();
+
+    // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
+    // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises).
+    private enum Contribution : byte
+    {
+        // An independently typable part, well formed where it was formed (SPEC 15.6.1): judged only where the fit replaced an Origin.
+        Evidence,
+
+        // A position whose Type the callee's instantiated parameter Type gives, such as a default: every position is judged.
+        Signature,
+
+        // A position whose Type comes through a slot the call's expected result solves: its contributor proves it, not this call.
+        Result,
+    }
+
+    // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
+    // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
+    // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2,
+    // RequireChildPremises; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
+    // receiver is Evidence; a default is a Signature position.
+    private Contribution PartContribution(Koto part)
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        return ClassifyPart(core) == PartKind.Aggregate ? Contribution.Signature : this.RecordedPart(core).Kind switch
+        {
+            PartKind.Typed or PartKind.Aggregate or PartKind.Join => Contribution.Evidence,
+            _ => Contribution.Signature,
+        };
+    }
+
     // SPEC 10.8, 10.5.1: the evidence walk of a candidate's solution, by each argument part's kind at its position. A typed part is
     // evidence through the common adaptation (SPEC 10.2) and, at a Function pattern, its known call signature; a Never-typed part is
     // none. A Literal part is evidence only through the default applied to the selected candidate (SPEC 10.2.1). A waiting part is none,
     // except the parameter and result Types an anonymous function's header writes (SPEC 10.5.4). A Tuple or array literal is evidence by
     // its parts at their positions, and at a bare slot only when every part is; a mixed range by its range typing (SPEC 4.6.2). The early
-    // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing.
+    // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing. Each
+    // argument's contribution to the call (Contribution) is this walk's fact, written once the expected result has solved its slots
+    // (Contribute).
     private ref partial struct SlotSolution
     {
+        // F1 (R4-M164): each argument's contribution by its part's kind (PartContribution), once the expected result has filled the
+        // slots no evidence bound (`unbound`, which keeps those it solved); a Signature position whose parameter Type names such a slot
+        // is a Result position, which the contributor of the expected result proves (SPEC 10.3). The Result is the record of the
+        // candidate's evaluation (U2b): its selected candidate's later runs (CheckDefaulted, the re-run after CompleteWaiting) fix the
+        // slots the expected result solved from the construction's Type, so they keep a recorded Result and never rewrite it. A Case
+        // construction's is the same rule over its payloads (ContributePayloads).
+        internal readonly void Contribute(int[] mapping, ref SlotSet unbound)
+        {
+            for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
+            {
+                if (unbound.Contains(g) && this.Types[g] is null)
+                {
+                    unbound.Remove(g);
+                }
+            }
+
+            for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
+            {
+                var contribution = this.ContributionAt(i, this.Function.Parameters[mapping[i]].Type.BoundType, unbound);
+                this.Contributions[i] = contribution == Contribution.Signature && this.Contributions[i] == Contribution.Result
+                    ? Contribution.Result : contribution;
+            }
+        }
+
+        // F1 of a Case construction (R4-M164 U4): the call's rule over its payloads. `solved` holds the slots its expected Type fixed; as
+        // in a call, only those that no evidence binds count as the expected result's (Contribute), and an Evidence payload binds each
+        // slot its Type names (SPEC 10.8), settled or not, since the expected Type fixes the slots before the payloads' evidence (c3a).
+        // That derivation is a second copy of the call's rule (R4-M164 U4c, PLAN G391): it goes when the solve publishes the slots its
+        // evidence binds for calls and constructions alike.
+        internal readonly void ContributePayloads(ReadOnlySpan<Koto> payload, SlotSet solved)
+        {
+            var slot = this.Binding.RentSlotSet(CallSlotCount(this.Binder));
+            try
+            {
+                for (var g = 0; g < CallSlotCount(this.Binder); g++)
+                {
+                    slot.Clear();
+                    slot.Add(g);
+                    for (var i = 0; solved.Contains(g) && i < payload.Length; i++)
+                    {
+                        if (this.Binding.PartContribution(this.Call.ArgumentNodes[i]) == Contribution.Evidence &&
+                            MentionsSlots(payload[i].BoundType!, this.SlotOwner, slot))
+                        {
+                            solved.Remove(g);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(slot);
+            }
+
+            for (var i = 0; i < payload.Length; i++)
+            {
+                this.Contributions[i] = this.ContributionAt(i, payload[i].BoundType, solved);
+            }
+        }
+
         // The Type of a parameter as this candidate reads it: the declaring Type's slots substituted and Self replaced; null when it fails.
         internal readonly BoundType? Pattern(BoundType pattern)
             => this.Binding.CallMemberPattern(pattern, this.Binder, this.DeclaringType) is { } member
@@ -166,6 +259,15 @@ public sealed partial class Binding
             return misfit;
         }
 
+        // The i-th argument's contribution at a position whose parameter Type is `pattern`; `solved` holds the slots the expected result
+        // solved.
+        private readonly Contribution ContributionAt(int i, BoundType? pattern, SlotSet solved)
+        {
+            var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
+            return contribution == Contribution.Signature && pattern is not null && MentionsSlots(pattern, this.SlotOwner, solved)
+                ? Contribution.Result : contribution;
+        }
+
         // SPEC 10.8: the evidence of the parts at a position (Binding.ArgumentKinds.Positions.cs) for the slots of its pattern.
         private bool InferPosition(BoundType pattern, int start, bool late)
         {
@@ -237,7 +339,11 @@ public sealed partial class Binding
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                if (binding.PartContribution(source) == Contribution.Evidence)
+                {
+                    // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
+                    binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                }
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());

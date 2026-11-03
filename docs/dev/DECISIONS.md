@@ -6121,6 +6121,115 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the owner's 「受け入れる（推奨）」 (2026-11-02, PLAN a0e3e2a6e).
   - Rejected: a bool, mode or type parameter steering one walk (R4-M162's patch form); the clauses before the components (a proof
     scope keeps its first cause, so the order would move records).
+- **R4-M164 Contributions at composed positions (G216 (a) U2.2)** (2026-11-03; the owner, verbatim 「候補 1 つで進める」, 2026-11-02:
+  R4 implements BU's design bu96, `bu\g216a-u22\design.md`, with one fresh review; extends BU-51's one input-premise rule) SPEC
+  10.5.1, 10.3, 15.6.4 step 3. Later units extend this entry.
+  - F1: what a filled slot's position contributes to its selected call is one closed kind, `Contribution` (Evidence, Signature,
+    Result), the evidence walk's fact (`Binding.ArgumentKinds.Evidence.cs`). `RequireInputPremises(at, parameter, supplied,
+    contribution)` reads it: Evidence is judged beside its own Type, only where the fit replaced an Origin; a Signature position at
+    every position; a Result position by its contributor, not at this call. The fit-failed guard and an Origin-free argument's
+    exemption stay. F1 reads the rules that decide `PositionKind` and replaces none of them.
+  - U0 (behaviour unchanged): one helper, `InputContribution`, computes it from today's identity test: a supplied Type that is the
+    instantiated parameter itself is Result, any other written input or receiver Evidence; a default is Signature. Removal
+    condition: U1, where the walk publishes the kind from `PositionKind` and the helper goes; a Signature position whose Type is
+    the instantiated parameter is then proven (cause C1). The per-layer test beside the supplied Type (`SameOriginArguments`)
+    stays in the visitor, which a whole-contract comparison's Prove visit shares (`ProvesInputPremises`); U1 settles its part.
+  - U1a+U1b (one group; R4 planning's decisions (b) and "GO", 2026-11-03): F1's source is the walk. `TryCandidateCore` writes it
+    once the expected result has solved its slots (`SlotSolution.Contribute`): a part its producer recorded as Case, Call, Function,
+    Reference or Literal (`RecordedPart`, which completion keeps; `KindOf` turns Typed) is Signature, or Result where its parameter
+    Type names a slot no evidence bound and the expected result solved; any other part is Evidence; aggregates and joins stay
+    Evidence until U2. F1 is a pooled list on the selected candidate's solution: `CallEvaluation.Contributions` (one per argument of
+    each candidate, rented and returned with the operations, so it lives through `JudgeSelectedCall`), sliced into
+    `SlotSolution.Contributions` by `Solution(evaluation, candidate, …)`. `JudgeSelectedCall` takes the selected solution (its
+    Origins, declaring Type and F1); a property call's solution holds Evidence; a value call reads `PartContribution`; a fixed
+    construction's re-check passes its own buffer. `InputContribution` is gone (C1). `SameOriginArguments` stays: it is Evidence's
+    per-layer "where the fit replaced an Origin" and the Prove visit's.
+  - C2: `SolveLate` collects each Signature position's premises (a default's among them) over the instantiated parameter Type
+    (`SubstituteType`, Rule C), not `FormedApplication`, which kept `T` unsubstituted so that `T`'s stored Origin bounded nothing
+    (cxc). C2b (the `MatchInputOrigin` meet) is no cause: with the bound the solve already shortens the input Origin (a 2-Origin
+    `mk`: `s = meet(p, short)`); `Binding.ContractMatching.cs` is unchanged. Evidence: R4's `r4-notes\g216a-u22-impl\state-u1b.md`
+    (01:15, 01:26) with `trace-b.txt` and `trace-c.txt` there.
+  - U2 (aggregate arguments; R4 planning's decision, 2026-11-03; C3): an argument whose operation has no adapted Type is walked by
+    its child positions (`RequireChildPremises`, `Binding.CallRelations.cs`, over the position composition's `ChildPositions` and
+    `AddChildPosition`), each child part judged at its own sub-Type by `PartContribution`: a typed part beside its own Type, any
+    other part, and an aggregate whose positions no part fills (`[]`), at every position; a failed part is a wildcard (rule W).
+    Every record stays at the argument (S1; the sites are U3's). An aggregate (by its form, `ClassifyPart`) is a Signature
+    position, so `SolveLate` bounds the solve with its instantiated parameter Type. Rows: b01, b02, b03, b11, q06, r05_n, vc2
+    and d09 (its Loan conflict follows the call's record; C7 not needed). The walk reads no `PositionKind` row and changes no
+    evidence or fit walk. A composite borrowed at `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType`
+    (b01_ref; U2's review B1). The fit checked the literal's shape against that Type, so a child position whose parameter Type
+    cannot be derived is a broken contract, `InternalInvariant_Kd` at the argument, never a skip (U1d; U2's review N6).
+  - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
+    B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
+    Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
+  - U2b (i01_n, N2; R4 planning's brief, 2026-11-03): the fact "this position's Type comes through a slot the expected result
+    solved" is F1's Result itself, recorded in the candidate's `Contributions` slice. Its writer is `Contribute` in the
+    candidate's first run, where the expected result solves the slots. `EvaluateCallCandidate` empties the slice before that run,
+    because the pooled buffer is not cleared on return. Its readers are the selected candidate's later runs (`CheckDefaulted`,
+    the re-run after `CompleteWaiting`), which fix those slots from the construction's Type: they keep a recorded Result and
+    never rewrite it as Signature. No slot-set buffer is added. The fixed-construction re-check keeps its own zeroed buffer;
+    the selected call reads the first evaluation's. N2: `InferAdapted` collects input premises for Evidence parts only
+    (`PartContribution`), so a completed Signature part's premises have one path, `SolveLate`'s, over the instantiated
+    parameter Type. i01_n gives only its outer record. Open, for the planning session (U2's review N4): an aggregate argument is
+    a Signature position, so `SolveLate` collects its whole instantiated Type, while its typed children are also collected
+    through `InferComposite` and `InferAdapted`. One path for them needs SolveLate to walk the child positions and collect only
+    the non-Evidence ones: the pooled F1 list of child positions in design §3, a new representation that this unit does not add.
+    The duplicate bounds move no row.
+  - Staged rows, each with its unit and condition (U1c; the review's B2):
+    - i01_n, done in U2b: `Contribute` recomputed "the slots the expected result solved" as `UnboundTypeSlots` in every run, and the winner's
+      re-run after `CompleteWaiting` has them solved before its expected result (the construction's slots fixed), so it rewrites a
+      Result position as Signature: one more record at `.None` beside the outer call's, never one fewer. Cure: the solve publishes
+      once, per candidate, the slots its expected result solved, and `Contribute` reads them; every `TryCandidate` solution carries
+      that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
+      its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
+      `FormedApplication`, then `SolveLate`; the review's N2): done in U2b, with i01_n.
+    - cs1_ty and ea1, U1d (the planning session's ruling, 2026-11-03, extending u1's, expl's and boxe's to annotations): where the
+      Result position's instantiated Type is the annotation's written Type or a part of it (ea1's `id<T>(x: T)`, cs1_ty), the written
+      Type's record, the old analysis's body obligation, proves it, and the call adds no Binding record at the argument (D-3's second
+      record), beside which that record would vanish (G56); the rows pin the annotation's record until H11. Where the callee's
+      parameter adds its own layers around the slot (mk2: `mk2<T>(w: Option<ref/T during static>) -> T` under
+      `let y: ref/i32 during q = mk2(.None)`), nothing judges the Result position, on dev and after U1d alike: pre-existing, PLAN G388.
+    - h4_n (C7), U1d, cause reported (design §8; the row stays on the T2 branch): the well-formedness row reaches region inference
+      on both pipelines, but the solve gives r = meet(keep, short) and a row through a meet carries no Loan into its destination,
+      as before U2.2 (a declared `origin q outlives r`, h6; another destination, h9; R4's `r4-notes/g216a-u22-impl/state-u1d.md`); PLAN G389.
+    - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
+  - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
+    written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
+  - U1e: the well-formedness visit (`VisitWellFormedPremises`, `Binding.ResultPremises.cs`) makes each entry call one query of
+    `wellFormedParts` and each borrow layer's stored visit one of `storedParts` (BU-55's TypeMemo), a pattern part skipped only when
+    met again beside the same substituted and argument parts, so each pattern part is visited at most once per distinct (substituted
+    part, argument part) beside which it is met consecutively: the pattern-identical forms are linear (an Evidence input whose argument
+    Type is its instantiated parameter, TypeDagScalingTest's `ref` row: unfinished after 60 s on 15405315f, 0.15 s after), while
+    argument parts that diverge and alternate beside a shared pattern part can still cost 2^n, as before U1e (an open issue).
+  - U4 (C4; cx2, cx5): a Case construction is a call. Its F1 is the call's rule over its payloads (`ContributionAt`, which
+    `Contribute` and `ContributePayloads` share); a slot its expected Type fixes, which a bare qualifier takes, is one the expected
+    result solved. Where the expected Type leaves its Origins open, the call's solve fixes them (`SolveConstructionOrigins`:
+    SolveLate's bounds, each Signature payload's premises over its instantiated payload Type, then `SolveOriginInference`, which
+    adds the enum's clauses), so a clause is judged after the meet (cx5 valid, cx1's `s` the meet). After completion each payload
+    takes the call's walk, `RequireInputPremises` by its contribution, published as a call's (cx2: `UnsatisfiedOriginRelation_Kd
+    .None`). Payload operations keep no AdaptedType (HIR and MIR read it): the walk reads the adapted Types from a scratch buffer.
+    Kept: CompletePayloads' fit and `CompleteEnumAcquisitions`' Type-formation check. Open: SolveLate's and the value call's loops
+    (outside U4's files) are not yet one walk with the construction's.
+  - U4b (U4's review B1; R4 planning's decision, its first option, 2026-11-03): every Case or Function payload is recorded through
+    P1's record (`RecordsWaitingForm`, which `PrepareArgument` and `SolveConstruction`'s settled branch share) on every pass, so a
+    payload whose Type the qualifier or expected Type already fixes reads its own kind, never the absent record's Typed. A slot the
+    expected Type fixes counts as the expected result's only where no evidence binds it, as in a call: since the expected Type fixes
+    the slots before the payloads' evidence (SPEC 10.8.1), `ContributePayloads` takes an Evidence payload as binding each slot its
+    Type names. Rows: c3q, c3a, cx2q, cx2e, cx2c (each a record at `.None`), their valid twins, c3m unchanged.
+  - U4c (U4b's re-check; R4 planning's decisions, 2026-11-03): two named open issues, each pinned by its rows.
+    - PLAN G391, a second copy of the call's rule: `ContributePayloads` derives "the slots evidence binds" from its Evidence
+      payloads' Types, while a call reads its evidence walk's result (`UnboundTypeSlots` after the early pass). Target, one owner:
+      the solve publishes the slots its evidence binds (a call's early-pass binds; a construction's, where `Infer` meets a fixed
+      slot) for calls and constructions alike, and both read it. Removal: when that fact is published, the derivation goes.
+      Divergences pinned as accepted (the named calls record): wf, a Function payload's written header binds T; wt, an aggregate
+      payload's typed child binds T; also possible, a slot a payload's Type names without binding it (under `s/U`, a projection).
+    - PLAN G392, the code of cx2q, cx2e and cx2c: T holds the written Type's omitted Origin, a body region that never outlives
+      `static`, so DIAGNOSTICS requires `UnsatisfiedOriginRelation_Kd`. They give `UnprovenOriginRelation_Kd`: the construction
+      passes that Origin to the shared judge (`JudgeOriginRelation`, `Binding.OriginProof.cs`), whose atom classification refutes
+      only a body-local Projection or Anchor at the longer end (`RefutesOriginRelation`) and returns Unknown for the open initializer
+      Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
+      Unproven until G392.
+  - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9948,6 +10057,40 @@ resumed by R4-M86 (2026-10-20).
     Bind-only callers (tests, hover without analysis) pay one publication per Final pass.
   - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
     and counts each such Use once, as it does the prologue's.
+- **BU-83 Rule E: an erasure is its node's only implicit adaptation** (2026-11-03; PLAN G341, scheduled by the owner after G216 (a)'s
+  joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; the BU planning session's design `bu\g341\design.md`
+  and its revision 2, `design-r2.md`, after review REVISE B1, B2)
+  - The defect: a value call (U1) or a Case payload (U2) that received a stored Copy Closure at a Function parameter was
+    `TransferRequired_Kd`, while the named call was valid. Two consumers judged the source's acquisition again on the erased Function
+    Type, which is Non-Copy (SPEC 7.7.4), where SPEC 3.5 and 7.7.4 judge it on the source's own Type.
+  - The rule (SPEC 7.7.4, 3.5, 10.2, 12.5.2): when Binding has erased a source at its position (`ErasedFunctionType`), `AdaptInput`
+    (Binding.ArgumentOperations), the one function value-call arguments and payloads pass through, reports the erased Type with quality
+    Erasure. An erased payload involves two acquisitions (SPEC 7.7.4: erasure acquires its source ordinarily and is an owning
+    conversion, distinct from a Copy or Move of the source):
+    - (i) the source's: `AdaptInput`'s rule-E row judges its bare acquisition once, on its own Type, through `AcquiresBare`, the
+      by-value row's predicate (one rule for both rows); a Move fails with `TransferRequired_Kd` at the source (`RequireAcquisition`,
+      `FailAcquisition`), at value calls and payloads alike. It is published once, as the source's Adjust (`ChildAdjust`, `BareOf`;
+      R4-M142), which MIR reads, as at a named call;
+    - (ii) the erased value's: a fresh temporary, so a payload slot takes it by Move (`plan.SetAcquisition`), unchanged.
+  - One representation: `ArgumentType` presents an erased source's own Type, as it does a referent read, so an Erasure operation's
+    `SourceType` is the source's own Type at both sites. The structural fit stays on the erased Type (rejected (b)).
+  - A payload (U2): `Binding.Enums` adapts the source's completed Type, without its own copy of the erasure; `CompleteEnumAcquisitions`'
+    bare row reads `SourceType` and never sees a Move of an erased source, which `AdaptInput` failed first. It fails the construction
+    at the source, as `AdaptInput`'s acquisition failure does, so no resolved construction keeps an invalid plan (that was a broken HIR
+    contract, `InternalInvariant_Kd`).
+  - A Non-Copy erased source keeps its record, Binding's `TransferRequired_Kd` at the source, at both sites, beside any independent
+    record and once per use (round 2; review B1 and N1: the value call's record had been the old Analysis's alone, lost beside another
+    Binding error). H1 regression rows (review N2): ev_ok and ec_ok with no S1 subject; ev_nc and ec_nc are Binding's records, not S1
+    subjects.
+  - The old Analysis (U4; R5's consent with conditions, 2026-11-03): its erased branch (`OwnershipAnalysis.Expression`) forwarded a
+    payload's committed acquisition, (ii), to the source as well, so a payload Moved a stored Copy Closure (review B2,
+    `MovedPlace_Kd`). It now passes none: the source is acquired by its bare acquisition, and `Argument` checks the committed
+    acquisition against the erasure's temporary. The line goes with the old Analysis at H10b (R5-M182's amendment). Acceptance
+    moves (Q13, named): p_useafter_ok, p_useafter2_ok, p_twice_ok, p_then_v_ok and p_gen_useafter_ok become valid; p_twice_nc stays
+    rejected on both pipelines.
+  - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) fitting
+    the source's own Type structurally, which the check refuses (Closure against Function: `NoApplicableOverload_Kd`); (c) waiting for
+    H1, which never sees a call Binding failed; (d) leaving the value call's Non-Copy record to the old Analysis (review B1).
 
 - **BU-82 The Semantics-case renderer is one Binding component** (2026-11-03; R6-check Q8-6, behavior-preserving; the owner's Q8
   approval 「Q8を承認」 with proposal Q8-6, R5-M23; H0's division, R5-M182)
@@ -9991,6 +10134,28 @@ resumed by R4-M86 (2026-10-20).
     (rule W, BU-79): the census found all 30 such programs failing at the local's initializer. The old reporter's non-relation
     branch becomes the same contract (`OwnershipRequirement.Internal`). `UnprovenOrigin` then always names a relation, so
     `OwnershipIssue.Code` gives it 2 codes, and ledger row :51 is dropped (R4-M112's amendment).
+
+- **BU-86 A Pending candidate's judgment before its proof is one fact** (2026-11-03; PLAN G354 (1), scheduled by the owner after the
+  joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; design `bu\g352-354\design.md` §3, census `census.md`)
+  - The defect: a judgment that left a candidate Pending before its proof published no fact, so the call ended in a fact-less
+    `UnprovenConstraint_Kd` (`FailWaitingSelection`). The census reached L184, L488 and L531(b) of `TryCandidateCore`.
+  - The fact: `PendingJudgment` (`Binding.CandidateEvaluation`), a closed vocabulary, written once where `TryCandidateCore` decides
+    and kept as the trial's fact (`trialPending`, the trial frame's row beside `trialClause`). Transport: the proof channel's trial
+    frame (r2-6); `CloseTrial` hands it to the selection's frame. Its consumer, the candidate's selection (`EvaluateCallCandidate`),
+    takes it once per Pending candidate (`TakeTrialPending`) under the channel's consumer rule (`OwnFrame`, shared by every consumer
+    of a carried fact): no fact is normal, a stamp other than the innermost open frame's is `InternalInvariant_Kd`.
+  - `FailedTypeArgument` (L184): an explicit Type argument that did not bind. Writer: the explicit-argument loop. Reader:
+    `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
+    parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
+  - `EnvironmentResult` (L488, L531(b)): an argument whose known signature's result over its closure's environment is no evidence
+    for a slot (SPEC 8.10, 7.7.4), which stays unsolved. Writer: `Infer` (`Binding.CallSlots`), where it judges that result; the
+    trial's flag `environmentEvidence` becomes this fact (the argument and the slot), and the two Pending returns it decides publish
+    it as the trial's (`PendingOnEnvironment`): L488, and L531's result without a Type; L531's unsubstituted Origin publishes none. Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
+    the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
+    `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
+    and the Note "The result of c over its environment is no evidence for T".
+  - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
+    reached); L593 (G354 (2)).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -14030,6 +14195,13 @@ structure is recorded here by the unit that first implements it.
   per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
   pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
   would be a false finding).
+  - **Superseded in part by (b2)** (2026-11-03, BU, with R5's consent of 2026-11-03: 「Types.cs OK. (b2)'s commit 2 may put the PairAcquire
+    shared-path check in Checker.Views (MirValidator.Types.cs) through the existing cases.Reborrows.」): "it Reborrows there" no longer
+    holds for the binder's exclusive cases alone. A pair layer's owner case now acquires its target by SPEC 3.5's rows (R6-check (b2):
+    `s/(uniq/i32)` Reborrows with `s` = owner, and a nested layer by its own cases), so one assignment no longer decides. The PairAcquire
+    half leaves `SharedPath`. `Checker.Views` resolves each PairAcquire Use per view and checks its Place under that view's cases where
+    `MirCases.Reborrows` holds (the rejected per-view pass, now required; the stored list is the Adapts' one). Writes, destructions,
+    Refs and Adapts are unchanged.
 - **R5-M140 The owner confirms C10b's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
   C10b's design; verbatim 「承認します」, answering the two departures put to the owner; the consequences are the planning session's) The
   departures R5-M137 records are confirmed:
@@ -15819,3 +15991,31 @@ structure is recorded here by the unit that first implements it.
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
+- **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
+  「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
+  - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
+    collected. A record that reads such a body (its own A3b checks and layout obligations, an instance it alone requests, a summary
+    composed from it) is its finding's dependent. Acceptance never moves: a finding is a MIR record, so check refuses the program.
+  - Fact: `MirBody.HasFinding`, the validator's per-body verdict, whose one writer is `MirValidator`: `Validate(body, findings)` sets
+    whether it added a finding at each of its three exits (the case bound's, Tables', the end), and `Validate(program)` sets it on the
+    ensuring body of a G191 StaticSlot finding. `MirBody.Reset` clears it; tests inject it through the setter. No consumer re-derives
+    a per-body set from `MirProgram.Findings`.
+  - Collector gates: a body enters `InstanceCollector` at three places, each testing the fact once: the `Templates` walk (an empty
+    range, `starts[o]` still written; no A3b check or need listing), the root loop, and `Admit` (-1 after the two checks that read only
+    the request, an instance without its substitution and `CarriesInstance`, before `Find`, `Instantiable`, `Grows` and `View`). Every
+    other read is of an admitted item's body. A refused request records nothing; `Report` is unchanged.
+  - Deletions: `InstanceCollector.Run`'s `Findings.Count > 0` return and its header invariant "a program with validator findings has
+    an empty set"; `MirBuilder.Defaults.cs`'s `Findings.Count` difference and its `findings` local (`Failed` reads `this.body.HasFinding`).
+  - Consents (R4, 2026-11-03): the W1 hold files `MirBody.cs` and `MirValidator*.cs` for this unit (not `MirValidator.SharedPaths.cs`);
+    `MirBuilder.Defaults.cs` for that one line only, tested by the defaults rows that pin `Failed`.
+  - Staged (U2, R4's `Mir/Analysis/**`, with R4's consent on the design's §4 hunk): `MirAnalysis.Run` skips a body with the fact in its
+    steps 1, 2 and 4 (`MirDrops.Exclude` closes its empty table entry); A4 composes such a body as `Derived` (one private `Views`); the
+    initialization proof that consults one rests on it (`Proved` returns `bool?`; `Met` drops only its first block's record and falls
+    through, `Destroying` makes none). Until U2, `MirAnalysis.Run` keeps its all-or-nothing `Findings.Count > 0` return (removal
+    condition: U2).
+  - Rejected: a body ordinal on `MirFinding` (each consumer re-derives a set), a column on `MirProgram` (a side table), accessors that
+    hide broken bodies (a `null` callee silently takes the bodyless path); a validator wrapper or `Check` extraction (a restructuring
+    commit for two lines; the planning session, after review 3); roots through `Admit` (they would count toward `Grows` and `Work`).
+  - Tests: `MirValidatorTest.TheVerdictIsWhetherTheValidatorAddedAFinding`, `AnEnsuredStaticHasItsInitializer`;
+    `InstanceCollectorTest.AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (was `...FindingsEmptyTheSet`: its expectation changes
+    by the owner's (a)), `ABodyWithAFindingDropsOnlyWhatRestsOnIt`, `ARequestsOwnGapAtABodyWithAFindingStays`.

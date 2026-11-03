@@ -380,6 +380,21 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Empty(Problems(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "cases.kimi"))));
     }
 
+    // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)'s acceptance moves): the owner case of a pair layer over `uniq/i32`, directly or through its
+    // own binder's layer, Reborrows, and over a nested `t/U` acquires by that layer's cases, so the Place is usable again after the child's
+    // last use (before (b2) each was a Move, a false MovedPlace_Kd at the second use).
+    [Theory]
+    [InlineData("func exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local\n" +
+        "    let again = value\n    _ = again\nfunc nested<t/U, s/T>(value: s/t/U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n" +
+        "    U is Copy\n    let local = value\n    _ = local\n    let again = value\n    _ = again\npublic func main() -> ()\n    var n: i32 = 1\n" +
+        "    let r = n@uniq\n" +
+        "    exclusive<owner/i32>(r@move)\n    var m: i32 = 2\n    nested<owner/i32, owner/i32>(m)\n")]
+    [InlineData("func own<s/T>(value: s/(s/(uniq/i32 during a) during b)) -> ()\n    s is owner or ref\n    let local = value@follow\n    _ = local\n" +
+        "    let again = value@follow\n    _ = again\nfunc exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or ref\n    let local = value\n" +
+        "    _ = local\n    let again = value\n    _ = again\npublic func main() -> ()\n    var n: i32 = 1\n    let r = n@uniq\n    own<owner/i32>(r@move)\n" +
+        "    var m: i32 = 1\n    let q = m@uniq\n    exclusive<owner/i32>(q@move)\n")]
+    public void AnOwnerCaseReborrowLeavesItsPlaceUsable(string source) => Assert.Empty(Problems(source));
+
     // R4-M15a: a body whose state arena would exceed the analyses' byte limit (64 MiB) records OwnershipStorageLimit_Kd once, at the body,
     // and is not analyzed: N locals live across N branches need about N heads × 5 lanes × N/64 words, so the unset read of y is reported at
     // N = 64 and not at N = 13,500, where the limit carries its arguments, A1's arena over the limit (G213, R4-M132).
