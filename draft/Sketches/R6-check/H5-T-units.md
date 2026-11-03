@@ -256,3 +256,19 @@ units of an hour or less. Amendments:
 - **Evidence.** A touched class keeps failing rows outside this plan (X3), and verify-commit refuses a failing run. So the commit's
   evidence is a passing Unit run of the unit's re-pointed methods. The class run, whose failures must equal round 1's rows outside the
   plan by name, is backed up beside it and cited in the commit message.
+- **The (e) rows are re-pointed too** (correcting §0's "keep their expectations"). H5 lands only on a passing final Session. So each test
+  that pins acceptance of a program on the owner's (e) list is re-pointed to the located record the head publishes. The commit names the
+  owner's decision (2026-11-03, 「推奨どおり」, board O-1) and the PLAN row whose fix unit restores the acceptance; that fix unit
+  re-points the row back, as T31c's rows already show with R4-M147. The rows are:
+  - GXS: F9 ×2, InputDependentValueCall, F15, MemberThroughLayers, F8;
+  - G147 (8): PairCaseFamilies, GenericOwnershipCase A4-box-ok and A4-field-ok;
+  - PQ-10: T31a;
+  - the depth bound: T31d;
+  - G216 (b): F13;
+  - G410: F14;
+  - G220: T32a;
+  - P42: SPEC 7.7.2/0 and its collector-static kin, 16.3.3/0 and 15.6.4-widened-effects/0.
+
+  These become units T-26 and later, planned by file after the T-units that share those files. They are reviewed as their causes'
+  rows: by R4's verdict tables, with BU reading F14.
+- **S** (`claude/r5-h5-s`, the spec examples) lands with T-21, which carries its expected-side data fix (13.7.1/0) and its (e) rows.
