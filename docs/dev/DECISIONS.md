@@ -6155,8 +6155,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     position, so `SolveLate` bounds the solve with its instantiated parameter Type. Rows: b01, b02, b03, b11, q06, r05_n, vc2
     and d09 (its Loan conflict follows the call's record; C7 not needed). The walk reads no `PositionKind` row and changes no
     evidence or fit walk. A composite borrowed at `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType`
-    (b01_ref; U2's review B1). A child position whose parameter Type cannot be derived is a located `Unsupported_Kd` at the
-    argument, never a skip.
+    (b01_ref; U2's review B1). The fit checked the literal's shape against that Type, so a child position whose parameter Type
+    cannot be derived is a broken contract, `InternalInvariant_Kd` at the argument, never a skip (U1d; U2's review N6).
   - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
     B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
     Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
@@ -6181,8 +6181,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
       that buffer, the fixed-construction re-check's (`Binding.ConstructorValidation.cs`) among them. Done when i01_n gives only
       its outer record. The same re-run collects a completed Signature part's premises twice (`InferAdapted` over
       `FormedApplication`, then `SolveLate`; the review's N2): done in U2b, with i01_n.
-    - cs1_ty and ea1, U1d: the annotation as the Result contributor proves at its own position.
-    - h4_n (C7), U1d: probe, then fix or report the cause (design §8).
+    - cs1_ty and ea1, U1d (the planning session's ruling, 2026-11-03, extending u1's, expl's and boxe's to annotations): where the
+      Result position's instantiated Type is the annotation's written Type or a part of it (ea1's `id<T>(x: T)`, cs1_ty), the written
+      Type's record, the old analysis's body obligation, proves it, and the call adds no Binding record at the argument (D-3's second
+      record), beside which that record would vanish (G56); the rows pin the annotation's record until H11. Where the callee's
+      parameter adds its own layers around the slot (mk2: `mk2<T>(w: Option<ref/T during static>) -> T` under
+      `let y: ref/i32 during q = mk2(.None)`), nothing judges the Result position, on dev and after U1d alike: pre-existing, PLAN G388.
+    - h4_n (C7), U1d, cause reported (design §8; the row stays on the T2 branch): the well-formedness row reaches region inference
+      on both pipelines, but the solve gives r = meet(keep, short) and a row through a meet carries no Loan into its destination,
+      as before U2.2 (a declared `origin q outlives r`, h6; another destination, h9; R4's `r4-notes/g216a-u22-impl/state-u1d.md`); PLAN G389.
     - vc2: done in U2. n7g2, PLAN G56 until H11: the independent Loan conflict beside a Binding-level record.
   - Programs that U2.2 newly rejects in Binding lose the old analysis's records (G56, until H11), e.g. an explicit Type argument's
     written Type (u1, expl, boxe); the planning session's ruling, 2026-11-03.
@@ -6192,6 +6199,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
     part, argument part) beside which it is met consecutively: the pattern-identical forms are linear (an Evidence input whose argument
     Type is its instantiated parameter, TypeDagScalingTest's `ref` row: unfinished after 60 s on 15405315f, 0.15 s after), while
     argument parts that diverge and alternate beside a shared pattern part can still cost 2^n, as before U1e (an open issue).
+  - U4 (C4; cx2, cx5): a Case construction is a call. Its F1 is the call's rule over its payloads (`ContributionAt`, which
+    `Contribute` and `ContributePayloads` share); a slot its expected Type fixes, which a bare qualifier takes, is one the expected
+    result solved. Where the expected Type leaves its Origins open, the call's solve fixes them (`SolveConstructionOrigins`:
+    SolveLate's bounds, each Signature payload's premises over its instantiated payload Type, then `SolveOriginInference`, which
+    adds the enum's clauses), so a clause is judged after the meet (cx5 valid, cx1's `s` the meet). After completion each payload
+    takes the call's walk, `RequireInputPremises` by its contribution, published as a call's (cx2: `UnsatisfiedOriginRelation_Kd
+    .None`). Payload operations keep no AdaptedType (HIR and MIR read it): the walk reads the adapted Types from a scratch buffer.
+    Kept: CompletePayloads' fit and `CompleteEnumAcquisitions`' Type-formation check. Open: SolveLate's and the value call's loops
+    (outside U4's files) are not yet one walk with the construction's.
+  - U4b (U4's review B1; R4 planning's decision, its first option, 2026-11-03): every Case or Function payload is recorded through
+    P1's record (`RecordsWaitingForm`, which `PrepareArgument` and `SolveConstruction`'s settled branch share) on every pass, so a
+    payload whose Type the qualifier or expected Type already fixes reads its own kind, never the absent record's Typed. A slot the
+    expected Type fixes counts as the expected result's only where no evidence binds it, as in a call: since the expected Type fixes
+    the slots before the payloads' evidence (SPEC 10.8.1), `ContributePayloads` takes an Evidence payload as binding each slot its
+    Type names. Rows: c3q, c3a, cx2q, cx2e, cx2c (each a record at `.None`), their valid twins, c3m unchanged.
+  - U4c (U4b's re-check; R4 planning's decisions, 2026-11-03): two named open issues, each pinned by its rows.
+    - PLAN G391, a second copy of the call's rule: `ContributePayloads` derives "the slots evidence binds" from its Evidence
+      payloads' Types, while a call reads its evidence walk's result (`UnboundTypeSlots` after the early pass). Target, one owner:
+      the solve publishes the slots its evidence binds (a call's early-pass binds; a construction's, where `Infer` meets a fixed
+      slot) for calls and constructions alike, and both read it. Removal: when that fact is published, the derivation goes.
+      Divergences pinned as accepted (the named calls record): wf, a Function payload's written header binds T; wt, an aggregate
+      payload's typed child binds T; also possible, a slot a payload's Type names without binding it (under `s/U`, a projection).
+    - PLAN G392, the code of cx2q, cx2e and cx2c: T holds the written Type's omitted Origin, a body region that never outlives
+      `static`, so DIAGNOSTICS requires `UnsatisfiedOriginRelation_Kd`. They give `UnprovenOriginRelation_Kd`: the construction
+      passes that Origin to the shared judge (`JudgeOriginRelation`, `Binding.OriginProof.cs`), whose atom classification refutes
+      only a body-local Projection or Anchor at the longer end (`RefutesOriginRelation`) and returns Unknown for the open initializer
+      Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
+      Unproven until G392.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
