@@ -71,6 +71,14 @@ public sealed partial class MirOriginsTest
 
     private const string LayerBody = LayerHead + LayerInit + "        let k: Option<ref/(ref/i32 during a) during b> = Util.none()\n";
 
+    // PLAN G216 (b)'s r3 and r6: a Closure's and a local Function Type's result relating the enclosing `q` and `r`, after a head with or
+    // without the clause ordering them.
+    private const string EnclosingHead = "func k(q: ref/i32, r: ref/i32) -> i32\n";
+
+    private const string EnclosingClosure = "    let h = func [] () -> Option<ref/(ref/i32 during q) during r> => Option.None\n    let o = h()\n    return 0\n";
+
+    private const string EnclosingFunctionType = "    var h: () -> Option<ref/(ref/i32 during q) during r> = func () => Option.None\n    let o = h()\n    return 0\n";
+
     // SPEC 15.6.5: a chain or edge between fixed Origins that the premises do not derive is Unknown at its last edge's site, Reason (fixed
     // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
@@ -78,7 +86,8 @@ public sealed partial class MirOriginsTest
     // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected on both
     // pipelines since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
-    // its written Type is a local's (PLAN G215's twin).
+    // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
+    // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), and p4's value call without its clause (SPEC 15.6.4).
     [Theory]
     [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "let z: uniq/(ref/i32 during a) = y: a > b")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n", "r: in0 > in1")]
@@ -92,12 +101,16 @@ public sealed partial class MirOriginsTest
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     [InlineData("struct Pair {a, b}\n" + PairInit + InitP, "ref/(ref/i32 during b) during a: b > a")]
+    [InlineData(EnclosingHead + EnclosingClosure, "ref/(ref/i32 during q) during r: in0 > in1")]
+    [InlineData(EnclosingHead + EnclosingFunctionType, "ref/(ref/i32 during q) during r: in0 > in1")]
+    [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n" + ValueCall, "s: b > in0")]
     public void AChainBetweenFixedOriginsThePremisesDoNotDeriveIsUnknown(string source, params string[] expected)
         => Assert.Equal(expected, Unknowns(MirBuildTest.Compile(source + Main)));
 
     // SPEC 15.6.5's valid counterparts: the clause proves both directions of the `==` (r7-inv-eq), the result names the meet of the
     // region's sources, a meet's operands outlive the target, a Reborrow's containment in the layers its name meets (c-cut, SPEC 15.6.3's
-    // cut), a pair layer's well-formedness under its premise, and the constructor's own body judged under its clause.
+    // cut), a pair layer's well-formedness under its premise, the constructor's own body judged under its clause, and a nested result's
+    // relation among enclosing Origins under the containing declaration's clause (PLAN G216 (b)'s r3 and r6).
     [Theory]
     [InlineData("func f(x: uniq/(ref/i32 during a), y: uniq/(ref/i32 during b)) -> ()\n    origin a == b\n    let z: uniq/(ref/i32 during a) = y\n")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during (x and y)\n    var r = x\n    r = y\n    return r\n")]
@@ -106,6 +119,8 @@ public sealed partial class MirOriginsTest
     [InlineData("func cut(r: uniq/(ref/(uniq/i32 during a) during b) during c) -> ref/i32 during b\n    return r@follow@follow@follow@ref\n")]
     [InlineData("func f<s/T>(x: ref/i32, y: ref/i32) -> i32\n    s is owner or ref\n    origin x outlives y\n    let k: Option<s/(ref/i32 during x) during y> = .None\n    return 0\n")]
     [InlineData(LayerBody)]
+    [InlineData(EnclosingHead + "    origin q outlives r\n" + EnclosingClosure)]
+    [InlineData(EnclosingHead + "    origin q outlives r\n" + EnclosingFunctionType)]
     public void ARelationThePremisesDeriveHasNoUnknown(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
