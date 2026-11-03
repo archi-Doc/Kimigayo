@@ -29,6 +29,7 @@ internal sealed partial class MirBorrows
         Observe,
         Activate,
         ActivateInPlace,
+        ActivateThrough, // An activation at its parent Loans' Places on a root (SPEC 15.6.3, 15.6.7), shallow: it meets a shared Loan, no reservation (R4-M68).
         ObservePast, // err(destroy): the Loans an observing destruction hits and the destroying activation's write does not, in every mode.
         Unclassified,
         EffectRead, // A read key: it meets a unique Loan, or one the call activates (W6).
@@ -47,6 +48,11 @@ internal sealed partial class MirBorrows
 
         return left.Kind == right.Kind && (left.Kind == MirProjectionKind.Deref || left.Arg == right.Arg);
     }
+
+    // A step's key in the parents' trie (MirBorrows.Activations), Meets' relation as a key: a Deref or an Index step by its kind alone (an
+    // Index step meets every index step, which the trie's walk resolves), every other step by its kind and argument.
+    private static (MirProjectionKind Kind, int Arg) StepKey(in MirStep step)
+        => (step.Kind, step.Kind is MirProjectionKind.Deref or MirProjectionKind.Index ? 0 : step.Arg);
 
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
     // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
@@ -82,26 +88,36 @@ internal sealed partial class MirBorrows
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
     // destruction or write key with any mode (err(destroy) too), a read, shared borrow or read key with a unique one, an activation with
     // one shared in the holder found (R4-M68: an exclusive Loan that hits the reservation was met where the later Borrow was formed or
-    // activated, SPEC 15.6.7).
+    // activated, SPEC 15.6.7), and at a parent Loan's Place with a shared Loan alone: a reservation that exclusive parent hits was met so.
     private bool Conflicts(int c, int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking)
     {
         ref readonly var candidate = ref this.candidates[c];
         this.Work++;
-        return candidate.Takes(taking) && (kind is AccessKind.Activate or AccessKind.ActivateInPlace ? !candidate.Unique
-            : this.Unique(candidate, kind) || kind is not (AccessKind.Read or AccessKind.SharedBorrow or AccessKind.EffectRead)) &&
-            this.Hits(root, steps, kind, candidate);
+        var meets = kind switch
+        {
+            AccessKind.Activate or AccessKind.ActivateInPlace => !candidate.Unique,
+            AccessKind.ActivateThrough => this.loans[candidate.Loan].Mode == MirRefKind.Shared,
+            _ => this.Unique(candidate, kind) || kind is not (AccessKind.Read or AccessKind.SharedBorrow or AccessKind.EffectRead),
+        };
+        return candidate.Takes(taking) && meets && this.Hits(root, steps, kind, candidate);
     }
 
     // hits(A, X, k) (A3 5, E1, E3): never where X is a raw Place borrow's Loan, its fresh anchor's, compared with no Place not derived from
     // it (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), whatever k; else within(A, X), or within(X, A) where the access is deep, or no borrow Deref
     // of X lies below A, or it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow
-    // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11).
+    // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11). At a parent Loan's Place the access is
+    // every parent on the root at once, through the parents' trie (MirBorrows.Activations' Through), shallow, as no steps of its own.
     private bool Hits(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, in Candidate candidate)
     {
         ref readonly var loan = ref this.loans[candidate.Loan];
         if (root != loan.Root || loan.Anchored)
         {
             return false;
+        }
+
+        if (kind == AccessKind.ActivateThrough)
+        {
+            return this.Through(root, loan);
         }
 
         for (var i = 0; i < Math.Min(steps.Length, loan.Count); i++)

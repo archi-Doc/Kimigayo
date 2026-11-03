@@ -78,7 +78,7 @@ internal sealed partial class MirBorrows
             this.Internal(at); // G136 (R4-M148).
         }
 
-        this.Activations(at);
+        this.Activations(state, at);
         this.Departures(at, accessed);
         if (accessed < this.accessCount)
         {
