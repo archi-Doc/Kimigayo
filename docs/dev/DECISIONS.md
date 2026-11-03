@@ -5087,8 +5087,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Numbering: R4-M147 was reserved for P13-1 by the R4 planning session.
   - Superseded in part by R4-M148: `Record` again applies a view hold, PD13's, so the own-step Warning records without it; a Closure
     value is walked by its environment's parts, no longer counted as possibly an exclusive reference.
-  - Superseded in part by R4-M170 (2026-11-04, the owner): Q1 (a)'s "an abstract part ... may be an exclusive reference" is overridden;
-    an abstract part gives Loan facts only (SPEC 15.6.4), from G264 (S)'s S1.
+  - Superseded in part by R4-M170 (2026-11-04, the owner): Q1 (a)'s "an abstract part ... may be an exclusive reference" is overridden
+    by (S), neither (a) nor (b): W goes past an abstract holder into the holders its holder's Loans and addresses name, writing only
+    through exclusive Loans and addresses, and on as SPEC 15.6 reaches; never into E on account of the hidden layer (E only by 15.6's
+    provenance rules). From G264 (S)'s S1′.
 - **R4-M148 A5-F7's rule: a Closure call is a receiver call, with PD13's own view hold (2c-3)** (2026-10-27; R4's implementer under
   R4-M126's package §2.8–§2.10, the unit's design revision 2, ACCEPTed by its design review 3 with N12–N18 applied; class Full with BU,
   BU reviewing the Binding hunk, R5 AR-2)
@@ -6327,38 +6329,50 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Q4: one record per row, as the Unclassed limit is per row (the rows are what goes unjudged), not one per initializer.
   - Rejected: a rows-only judge for layers beside `Judge` (a second judging path); widening the limit to every initializer of such a
     layer (it would refuse valid forms like `= 0` without a census).
-- **R4-M170 An abstract part reaches only what its holder's Loans and addresses name (G264 (S); overrides Q1 (a) of 2026-10-25)**
+- **R4-M170 An abstract part reaches what its holder's Loans and addresses reach, writing only through exclusive ones (G264 (S); overrides Q1 (a) of 2026-10-25)**
   (2026-11-04; the owner, R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」 with the plan
   「計画書：抽象部分の到達規則（(S)）」 and its premises 「SPEC 改訂を行います」, 「Q1 (a)（2026-10-25）を上書きします。」 and
   「健全性論拠が設計レビューを通ること。」 (if the review breaks it, back to (A)); S0 drafted by the R4 planning session, one SPEC review,
   the text shown to the owner before it lands (R7 plan RQ10 (a)); class Owner) SPEC 15.6.4, 16.3.3, 5.7.
   - Rule (SPEC 15.6.4, the reach-side twin of "Storage of an abstract Type can hold such a value only where the premises make it
     one"): a value of an abstract Type (8.2.3: a Type parameter, an associated projection, a pair target, a Contract's `Self`), also as a
-    handle's payload, reaches only the holders its holder's Loans and addresses name; a raw layer its binding may hold and the Type does
-    not show reaches no storage the body does not own (E). E is reached only by 15.6's rules (parameters, captures, static storage, untied
-    results, an Origin-less raw layer a call writes). 16.3.3: such a part's destruction retains as a `drop` call with a `uniq/Self`
-    receiver and stores the part's content within that reach; its unknown static effects stay; a handle payload of such a Type is an
-    erased destruction unless its View Target is proven Sealed, Copy not emptying it. 5.7: the declarations that state a hidden raw layer
-    answer for it against their own Origins (8.15.1); a generic body relies on that. The raw layers a Type shows (BU-52's Field,
-    payload and element of a by-value input) are read as before: BU-52 stands; BU-47's abstract row `0 Content store 0` is unchanged and
-    16.3.3's sentence is A5's reading of it; the handle-payload classification is the MIR's, one Sealed test (S2).
-  - Overrides Q1 (a) (R4-M147's "an abstract part ... may be an exclusive reference"): P13's design review 1 chose (a) because (b)
-    kept R4-M73's body hold and empty-value rule; R4-M147's per-part guard removed both, so that reason no longer holds (the owner:
-    「Q1 (a) は健全性ではなく実装都合で採られていました」).
-  - Soundness (the owner's counterexample table): `count<S>` valid (the Iterator carries `items`' Loan only; `next` and its destruction
-    write the Iterator's holder, ending with the loop); the generic Writer (`T.make(p: slot@raw, q: w@raw@raw/u8)`, then destroyed)
-    errs at `y = 5` as on dev (x carries slot's address and y's Loan; the erased drop stores it in slot; E not needed); clearRcOk and
-    truncRcOk still err at `y = 5` (B4's loss of independent records does not occur); copyRcLate errs (payload not proven Sealed; head's
-    acceptance was a regression); a T built from a `Raw.allocate` result keeps E by provenance; a drop writing a Loan into a static Field
-    keeps the unknown environment effect (a raw write to static storage then used is 5's undefined behavior); 1cfd105abdf6 (AC-U1's read
-    while the item lives) stays a correct error and is a row S1's ledger must keep.
-  - Units: S0 this SPEC revision, its examples (15.6.4's `count<S>` valid, `resetAny<T>` invalid at `y@follow = 5`; spec-cases
-    `15.6.4-abstract-drop`), SPECJ and INTEGRATED; S1 (Major) `MirTypes.Holding.Holds` gives an abstract part Loan facts only, with the
-    spec-case `15.6.4-abstract-reach` (`count<S>`: it lands with S1, since MirCensusTest's accepted-variant census fails on its MIR
-    record before S1); S2 (Full) G264 U1 relanded without staging (R4-M150's staging text lives on `claude/a5-g264-u1`, not on dev, and
-    S2 removes it there); S3 (c80, a payload the final release frees) a separate unit after the owner's choice; S4 the pre-publication
-    checks. Order S0, S1, S2, S4, all before H5.
-  - BU-52's interim: which of its shadow-only false errors S1 resolves is recorded from S1's ledger comparison when S1 lands.
+    handle's payload, reaches what a reference carrying its holder's Loans and addresses reaches (15.6: the holders they name, reads
+    through them, and E only by 15.6's provenance rules: parameters, captures, static storage, untied results, an Origin-less raw layer a
+    call writes); it writes only what it reaches through an exclusive Loan or an address, and what it reaches only through shared Loans,
+    or shared borrows it derives from, for reads only (5.2.1 condition 3; R4-M95 D7). A raw layer its binding may hold and the Type does
+    not show adds no reach, E included. 16.3.3: such a part's destruction retains as 15.6.4's `drop` call does, storing the part's
+    content only where that rule lets it write; its unknown static effects stay; a handle payload whose View Target is an abstract Type,
+    proven Copy or not, is an erased destruction unless the View Target is proven Sealed. 5.7: through a hidden layer a generic body
+    reaches only that; an access beyond it is the declaring code's responsibility under 5.2.1 (conditions 3 and 5) and the claims rule.
+    The raw layers a Type shows (BU-52's Field, payload and element of a by-value input) are read as before: BU-52 stands; BU-47's
+    abstract row `0 Content store 0` is unchanged and 16.3.3's sentence is A5's reading of it; the handle-payload classification is the
+    MIR's, one Sealed test (S2).
+  - Overrides Q1 (a) (R4-M147's "an abstract part ... may be an exclusive reference") by (S), a third option, neither (a) nor (b). The
+    owner's reason, verbatim: 「調査の結果、Q1 (a) は健全性ではなく実装都合で採られていました。P13 の設計レビュー 1 は「Q1 (b) だと R4-M73 の本体ホールドと空値規則が残る」ことを理由に (a) を推しています。その後 R4-M147 でホールドは別の手段（部品単位のガード）で消えたので、(b) を妨げた理由はもう成り立っていません。」
+    The planning session's record (the S0 SPEC review's B3): that reason does not hold for (b) itself. R4-M147 could remove the hold
+    only because Q1 (a) let W pass abstract parts; under (b), "Loan facts only", a call storing past an abstract holder (laterWriterBad,
+    S1's finding) is accepted, the hold's case. (S) replaces Q1 (a) because W reaches the holders the abstract part's Loans and addresses
+    name, so that case is judged without a hold; this entry gives no permission for (b).
+  - Soundness (the owner's counterexample table, the SPEC review's checks): `count<S>` valid (the Iterator's Loan on `items` is shared,
+    14.6.2, so `next` and its destruction write only the Iterator's holder, ending with the loop); laterWriterBad, the generic Writer
+    with a setter (SPEC 15.6.4's `later<T>`: `x = T.make(p: slot@raw)`, `x.setQ(q: w@raw@raw/u8)`, `consume(x@move)`) errs at
+    `y@follow = 5` (x addresses slot; setQ and the erased drop may store q there); the generic Writer `T.make(p: slot@raw,
+    q: w@raw@raw/u8)` errs at `y = 5` as on dev (make itself may store q in slot); clearRcOk and truncRcOk still err at `y = 5` (B4's loss
+    of independent records does not occur); copyRcLate errs (payload not proven Sealed; head's acceptance was a regression); a T built
+    from a `Raw.allocate` result keeps E by provenance; a drop writing a Loan into a static Field keeps the unknown environment effect
+    (a raw write to static storage then used is 5's undefined behavior); 1cfd105abdf6 (AC-U1's read while the item lives) stays a
+    correct error and is a row S1′'s ledger must keep. The review's tries (a borrow the binding turns into a hidden pointer, a pointer
+    stashed in static storage, Loan-carrying values stored in E) fall under 5.2.1 conditions 3 and 5 and the claims rule.
+  - Units: S0 this SPEC revision, its examples (15.6.4's `count<S>` valid and `later<T>` invalid at `y@follow = 5`; spec-case
+    `15.6.4-abstract-writer`), SPECJ and INTEGRATED. S1′ (Major), replacing S1, whose "Loan facts only" accepted laterWriterBad and
+    stopped (its finding): `MirTypes.Holding.Holds` reads an abstract part as reaching the holders its Loans and addresses name, writing
+    only through exclusive Loans and addresses, never E on account of the hidden layer (E only by 15.6's rules); it records from its
+    ledger the change of R4-M148's rule-G self-store bullet ("which R4-M147's Q1 (a) lets be an exclusive reference") and BU-49's
+    "R4-M147 Q1 (a)"; it adds the spec-case `15.6.4-abstract-reach` (`count<S>`: it lands with S1′, since MirCensusTest's
+    accepted-variant census fails on its MIR record before). S2 (Full) G264 U1 relanded without staging (R4-M150's staging text lives
+    on `claude/a5-g264-u1`, not on dev, and S2 removes it there); S3 (c80, a payload the final release frees) a separate unit after the
+    owner's choice; S4 the pre-publication checks. Order S0, S1′, S2, S4, all before H5.
+  - BU-52's interim: which of its shadow-only false errors S1′ resolves is recorded from S1′'s ledger comparison when S1′ lands.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
