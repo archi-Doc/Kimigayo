@@ -12,8 +12,8 @@ public class ObjectCallableOriginTest
     // Program's `apply(identity, n@mode)` borrows the Function Item temporary `identity` for `f: ref/F`, and SPEC 15.4.3 (1) binds the
     // result to `f` as well; but the result can hold neither `f`'s value nor a borrow formed through it (F's handed signature builds it
     // from `value`, and `identity`'s item has no parts), so it keeps only `f`'s Content (SPEC 15.6.4 as the owner's 「SPEC 15.6.4 の読み
-    // (iii) と (β)」 reads it, DECISIONS R4-M154) and the later use of `direct` keeps no Loan on the temporary SPEC 3.6 ends: valid on both
-    // pipelines (dev's A5 rejected it, a class (a) row of R4-M136; the default pipeline keeps D5's Function Item boundary).
+    // (iii) と (β)」 reads it, DECISIONS R4-M154) and the later use of `direct` keeps no Loan on the temporary SPEC 3.6 ends: valid, as
+    // the MIR decides (R6-check H5, DECISIONS R5-M185; dev's A5 rejected it, a class (a) row of R4-M136).
     [Theory]
     [InlineData("ref")]
     [InlineData("uniq")]

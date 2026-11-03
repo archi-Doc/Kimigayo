@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -60,13 +61,19 @@ public class ElementBorrowOwnerEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84). H5 restores the old
-    // analysis's Unsupported_Kd at it (PD29): until then the old analysis skips a program whose Binding is incomplete.
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84), its one published
+    // record: the MIR adds none. The old analysis's Unsupported_Kd at it is not restored (1x: the old analysis's limit record, withdrawn
+    // at H3b round 0; DECISIONS Q13, R5-M185).
     [Fact]
     public void ABareMoveOfATemporarysPartIsBindingsRecord()
     {
         var c = MinimalEmissionTest.Analyze(Same + Make + "let value = make().0");
-        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "make().0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.TransferRequired_Kd), (string?)"make().0")],
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

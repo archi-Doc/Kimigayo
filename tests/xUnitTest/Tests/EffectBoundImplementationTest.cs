@@ -84,7 +84,7 @@ public partial class EffectBoundImplementationTest
     [InlineData("pair", "OwnershipDepthLimit_Kd @ U.pair(self.item@ref, self.big@ref); Unsupported_Kd @ U.pair(self.item@ref, self.big@ref); GenerationResourceLimit_Kd @ self.item@ref")]
     [InlineData("deep", "OwnershipDepthLimit_Kd @ U.wrap(self.item@ref); Unsupported_Kd @ U.wrap(self.item@ref); GenerationResourceLimit_Kd @ self.item@ref")]
     [InlineData("deepArgument", "Unsupported_Kd @ U.inner<T>()")]
-    public void StorageBindingRejectedViolatesNothing(string form, string repaired)
+    public void StorageBindingRejectedKeepsItsRepairsRecords(string form, string repaired)
     {
         Assert.Equal(repaired, string.Join("; ", Issues("i32")));
         Assert.Equal(Issues("i32").Append("UnresolvedBinding_Kd @ Missing").Order(), Issues("Missing").Order());

@@ -339,9 +339,9 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // SPEC 15.6, 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′ and S1, G160; DECISIONS BU-67): the records each form publishes, the same on every
-    // pipeline (DECISIONS R5-M156; the default and `-Pipeline mir` runs cover both). Since the MIR decides acceptance (R6-check H5, DECISIONS
-    // R5-M185), each Writer, Item and Cap form publishes A5's record at `y = 5`, as ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW
+    // SPEC 15.6, 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′ and S1, G160; DECISIONS BU-67): the records each form publishes, the MIR's rows on
+    // every pipeline. Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), each Writer, Item and Cap form publishes A5's
+    // record at `y = 5`, as ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW
     // lists: the old analysis accepted these programs, and the MIR closes that unsound acceptance (H3b's 1r). Over an abstract `T` (Gen),
     // the call is R4-M147's located Unsupported_Kd (ruling D″, the owner's Q1/Q2 (a)), and Bad keeps `y = 5`. The Plain forms are as SPEC
     // says: a borrow of y live across the call is valid (truncatePlainOk, removeAllPlainOk), a Closure capturing it keeps b's Loan
@@ -371,7 +371,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("removeAllCapPlainOk", "")]
     [InlineData("removeAllCapArrBad", "CallActivationConflict_Kd a.removeAll(matching: func [v] (e) => v@follow.length > 0)")]
     [InlineData("removeAllElemBad", "CallActivationConflict_Kd a.removeAll(matching: func (v) => true); ComparisonLoanConflict_Kd y = 5")]
-    public void ATruncateOrRemoveAllCallPublishesItsRecordsOnBothPipelines(string form, string records)
+    public void ATruncateOrRemoveAllCallPublishesItsRecords(string form, string records)
     {
         var source = DestructionShapes + Form(Forms, form) + "public func main() => ()\n";
         Assert.Equal($"{form}: {records}", $"{form}: {Records(source)}");

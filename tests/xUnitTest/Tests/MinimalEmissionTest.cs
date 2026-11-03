@@ -344,8 +344,8 @@ public class MinimalEmissionTest
         Assert.Equal(("GenerationResourceLimit_Kd", DiagnosticSeverity.Error), (error.Code, error.Severity));
     }
 
-    // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the old path's, then the MIR's
-    // records, which check publishes on every pipeline (DECISIONS R5-M156).
+    // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the MIR's rows in the
+    // publisher's order, which check publishes on every pipeline (DECISIONS R5-M185).
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
@@ -359,8 +359,9 @@ public class MinimalEmissionTest
             string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
                 .Select(static x => $"{x.Code} {x.Span}"));
 
-    // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
-    // for the destructions the implementation's bodies actually perform (their planned cleanups).
+    // SPEC 8.6: an effect bound rejects its conformance with A4's IncompatibleContractImplementation_Kd at the obligation subject, for the
+    // Loans, the calls and the destructions the implementation's bodies perform (their planned cleanups): B-del deleted Binding's effect
+    // checks (DECISIONS R5-M185). Binding keeps the code for a bounded Callable premise that a requirement does not declare (SPEC 8.11.4).
     internal static void AssertEffectBoundRejected(Compilation c)
         => Assert.True(
             c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),

@@ -10476,6 +10476,7 @@ resumed by R4-M86 (2026-10-20).
     stays for an explicit `a@move` until H10b), and `OwnershipRequirement.TransferRequired` (the kinds after it shift).
   - Until H5 the old analysis skips a program whose Binding is incomplete, so a program H1 rejects loses the old analysis's other
     records there; H5 restores them (PD29).
+  - Superseded in part by R5-M185's line of 2026-11-04 (the old limit's Unsupported_Kd is 1x).
 - **BU-88 The validator's Copy rule** (2026-11-03; R6-check Q8-3 on `claude/r6-flip`, after H1, BU-84; the owner's Q8 approval, R5-M23,
   design `draft/Sketches/R5 Step 0/Q8-package.md` §3.9; H0's division, R5-M182)
   - Rule and owner: `MirValidator`, the builder's one validator (`MirValidator.Rvalues.cs`, the operand visitor's `Operand`). A `Copy`
@@ -16528,6 +16529,9 @@ structure is recorded here by the unit that first implements it.
   - Supersedes R5-M156's 'the old path decides', R4-M1 for the default pipeline, R5-M184's selection until H5 and R4-M112's kept
     `UnprovenConstraint_Kd` ledger row (successor H1b). Rejected: an analysis verdict reading `LintErrors` (a second copy of Binding's
     decision); the old analysis as a shadow in every check (review B3); a throwaway rehearsal; a production check of the library's rows.
+  - Amended (2026-11-04; G:R6-check-flip's review B1, unit GR-2b): H5 restores Binding-incomplete programs' independent records through
+    the MIR's direct publication (R5-M184); the old limit's `Unsupported_Kd` beside Binding's `TransferRequired_Kd` is not restored: 1x
+    (H3b round 0, fb5989df8); BU-84's 'H5 restores them (PD29)' reads so.
 
 - **R5-M186 A3's require fallthrough rests on Binding's guessed nodes (R6-check R6-1)** (2026-11-03, R5 with R4 and BU; sketch
   `draft/Sketches/R6-check/R6-1-sketch.md` with its revision 1; design review 1 REVISE, re-check ACCEPT; H3b round 1 ruling 2; under R5-M182 and Q13) Major.

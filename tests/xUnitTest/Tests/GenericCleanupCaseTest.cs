@@ -36,8 +36,8 @@ public class GenericCleanupCaseTest
     }
 
     // SPEC 15.1.6, 13.5.5, 8.6 (DECISIONS BU-14): a part borrowed past a pair layer admitting owner stays in the owned Subject, which
-    // destroys it in the owner case; the confined bound excludes Payload's drop. The MIR's effects reject it, and the old analysis,
-    // which judges no borrow into an owned Subject, reports its located limit (until R6-check) instead of counting the Subject's parts.
+    // destroys it in the owner case; the confined bound excludes Payload's drop. The MIR's effects reject it, the MIR deciding acceptance
+    // (R6-check H5, DECISIONS R5-M185); the old analysis's located limit for a borrow into an owned Subject is no longer published.
     [Fact]
     public void APartBorrowedPastAPairLayerIsDestroyedWithTheSubject()
     {

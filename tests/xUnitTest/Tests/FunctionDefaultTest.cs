@@ -211,22 +211,14 @@ public class FunctionDefaultTest
 
     // The default Note reaches the console and both language-server placements unchanged (SPEC 7.2.3).
     [Theory]
-    [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\nlet a = runT(\"a\")", true)]
-    [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\nConsole.writeLine(\"x\")", true)]
-    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\nConsole.writeLine(\"x\")", true)]
-    public void DefaultDiagnosticsReachTheCliAndTheLanguageServer(string source, bool binding)
+    [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\nlet a = runT(\"a\")")]
+    [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\nConsole.writeLine(\"x\")")]
+    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\nConsole.writeLine(\"x\")")]
+    public void DefaultDiagnosticsReachTheCliAndTheLanguageServer(string source)
     {
         var path = Path.GetFullPath("function-default.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        if (binding)
-        {
-            c.Binding.ReportDiagnostics();
-        }
-        else
-        {
-            c.ReportAnalysis();
-        }
-
+        c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);

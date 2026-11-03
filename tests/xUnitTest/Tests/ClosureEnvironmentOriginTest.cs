@@ -422,7 +422,7 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 15.6.5, 15.3.4 (PLAN G227, DECISIONS BU-28): in a Closure body the Origins of its captures are fixed, so the body never bounds
     // them. Storing the call's own input or another capture's Origin into the environment is Unknown, and storing a borrow local to the call
-    // is Refuted, on both pipelines. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
+    // is Refuted. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
     // to StaticDirect) are memory-safe and rejected because SPEC 15.6.5 stays (the owner, 2026-10-23), their rewrites over a written Origin
     // being PLAN's open issue (a). A local clause over a capture's Origin is Binding's record at the initializer, as one over an enclosing
     // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15). Since the MIR decides (R6-check
@@ -477,7 +477,7 @@ public class ClosureEnvironmentOriginTest
 
     // The valid twins: reading the environment, also into an inferred result or a body local, storing the environment's own Origin back,
     // an outer store after a Copy capture, two levels of Closures, a raw pointer over a `var` region kept unused and an element written
-    // `during static` are accepted on both pipelines.
+    // `during static` are accepted.
     [Theory]
     [InlineData("func ok() -> isize\n    let arr: Array<ref/i32> = []\n    var f = func [var arr@move] () -> isize => arr.length\n    return f@uniq()\n")]
     [InlineData("func ok() -> i32\n    let a: Option<ref/i32> = .None\n    var f = func [var a] (n: i32) -> i32 => n\n    return f@uniq(2)\n")]
@@ -503,7 +503,7 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested or root function's signature or clause that
     // names an enclosing body local's set or annotated value and selects a body local's atom is, valid or not, a located Unsupported_Kd
-    // at each such written Origin on both pipelines, and nothing rests on it. dev bound the name to an atom of the local's annotation that
+    // at each such written Origin, and nothing rests on it. dev bound the name to an atom of the local's annotation that
     // no body links to the local's region and accepted the store (d6 ran `leak 41`, d6c failed LLVM generation; the root form, a
     // document-local named by a top-level function, ran `leak 41` under MIR code generation); d6v and d6r are the valid twins.
     [Theory]
@@ -600,7 +600,7 @@ public class ClosureEnvironmentOriginTest
     // SPEC 15.8.2, 15.6.3, 7.7.2 (DECISIONS R4-M126 P3-P5; PLAN G65's G6 and n2b): an environment binding is a Field of the call receiver's
     // referent, so a Borrow through a layer stored in it is also contained in the receiver Origin ρ (a nested bare entry's binding too), and
     // a Borrow of the binding itself lies in ρ under a borrowed receiver; storing either into an Origin of the enclosing body, or returning
-    // it `during` one, is Unknown once the Closure is classified, Binding's one record on both pipelines. The MIR accepted G6's stores
+    // it `during` one, is Unknown once the Closure is classified, Binding's one record. Before G65 the MIR accepted G6's stores
     // (g6a's use-after-free: one call stores `p[0]@uniq` into `*q`, the next appends to `p`), both pipelines the uncalled forms, and the
     // Borrows of `n` were Refuted. Each record stays beside an unrelated Binding error (SPEC 23.1.2).
     [Theory]
@@ -680,8 +680,8 @@ public class ClosureEnvironmentOriginTest
         }
     }
 
-    // The same for a region's chain, which the old analysis judges until R6-check (a recorded old-path limit: with an unrelated Binding
-    // error it does not run, so no record stands beside that error): a region's later assignment, its store and a meet's operand.
+    // The same for a region's chain, which the MIR judges since it decides acceptance (R6-check H5, DECISIONS R5-M185): a region's later
+    // assignment, its store and a meet's operand, each its function's one record.
     [Theory]
     [InlineData(EnvBorrow + "    let c = func [n, p] () -> ref/i32 during p\n        var r = p\n        r = n@ref\n        return r\n    return 0\n", "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
     [InlineData(RegionStore, "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
@@ -816,7 +816,7 @@ public class ClosureEnvironmentOriginTest
     // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
     // stored into an environment binding does not outlive that binding's Origin. Under `owner/Self` the receiver is the environment by
     // value, with no ρ, so a captured reference returned as a static one stays Unproven (BU's own3, the guard's twin). Each keeps its
-    // record on both pipelines.
+    // record.
     [Theory]
     [InlineData(
         "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
@@ -866,7 +866,7 @@ public class ClosureEnvironmentOriginTest
     // DECISIONS R4-M126 §2.5: a pending relation waits for its Closure's classification, which runs on every path that bound the body:
     // beside a failed parameter Type or a failed result (a), the two early returns after the body, also with a pair-layer capture its
     // bare use marks (the receiver from the mark, 2c-2's review N5), for a closure argument bound under a consultation (d), and again
-    // after a warm rebind, its record is one, located at its value, on both pipelines.
+    // after a warm rebind, its record is one, located at its value.
     [Theory]
     [InlineData(G6Single + "    var c = func [p@move, q@move] (z: Missing) -> i32\n        q@follow = p\n        return 0\n    return 0\n", 2)]
     [InlineData(G6Single + FailedResult + "    return 0\n", 2)]

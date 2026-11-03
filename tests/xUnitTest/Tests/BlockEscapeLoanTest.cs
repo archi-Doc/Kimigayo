@@ -246,7 +246,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     // declaration (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without the destruction's Note (T49, until
     // A6). The same body over a plain reference, which the walk decides, has the same record.
     [Fact]
-    public void AnUndecidedHolderKeepsEveryDestruction()
+    public void AnUndecidedHoldersExitDestructionsAreOneRecord()
     {
         var decided = UndecidedHolder.Replace("var o: Option<ref/i32> = .Some(z@ref)", "var o = z@ref", StringComparison.Ordinal)
             .Replace("o = .Some(n@ref)", "o = n@ref", StringComparison.Ordinal);
