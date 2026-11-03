@@ -510,9 +510,9 @@ public sealed partial class Binding
         }
         else if ((met & Holding.Lent) != 0)
         {
-            foreach (var (input, own) in this.retentionRawSources)
+            foreach (var (input, kind) in this.retentionRawSources)
             {
-                kept[input] |= own ? RetentionKind.Value | RetentionKind.Chain : RetentionKind.None; // R′: SPEC's "the raw arguments".
+                kept[input] |= kind is null ? RetentionKind.Value | RetentionKind.Chain : RetentionKind.None; // R′: SPEC's "the raw arguments".
             }
         }
 
@@ -575,9 +575,9 @@ public sealed partial class Binding
         RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
         var holds = this.retentionRawSources.Count > 0 &&
             ((this.LayerAdmitted(type) & SemanticsMask.Raw) != 0 || (Abstract(type) && this.HoldsRaw(type)) || step is not (null or RawStep.Unstated));
-        foreach (var (input, _) in this.retentionRawSources)
+        foreach (var (input, kind) in this.retentionRawSources)
         {
-            kept[input] |= input != output && holds ? RetentionKind.Value : RetentionKind.None;
+            kept[input] |= input != output && holds ? kind ?? RetentionKind.Value : RetentionKind.None;
         }
 
         var met = step switch
