@@ -16086,6 +16086,9 @@ structure is recorded here by the unit that first implements it.
     `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
     "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or
     Collection" where H0a §2 says "body `Records`".
+  - Amended (the R7, R8 and R9 plan, R7-M2, 2026-11-03; the owner's RQ1): the division's windows stay R5's through the flip group's
+    (H1, H1b, Q8-3, H5 with H6); from the window after it the middle session (today's R4) runs every window. H3b's rehearsal and
+    classification stay R5's.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -16121,3 +16124,98 @@ structure is recorded here by the unit that first implements it.
     first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
     `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
     (the rows that need a live static Loan, which no source program has until P42).
+
+## R7, R8 and R9 (adopted 2026-11-03)
+
+Entries of the [R7, R8 and R9 Implementation Plan](../../draft/Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md) (the plan; its decisions are RP1–RP21 and its owner questions
+RQ1–RQ17, numbers that never collide with the R5 and R6 plan's PD and OQ). Units of R7, R8 and R9 record their entries here as R7-M*,
+R8-M* and R9-M* by the stage of the recording unit.
+
+- **R7-M1 Adoption** (owner, 2026-11-03, verbatim 「RQ1〜RQ17 を推奨どおりで承認します　他のエージェントに確認し、問題なければコミットしてください。」;
+  the plan's §0 and §2.2 record each outcome; the R4, R5 and BU sessions checked the plan before its commit, plan §13) The plan is the
+  formal plan for R7 (Binding consolidation), R8 (library algorithms in Kimigayo, 28 intrinsics) and R9 (the front-end remainder, the
+  Documentation and toolchain moves, the final documents), with its exit gates (plan §10) and its arrangement (R7-M2). Outcomes, each
+  as recommended:
+  - RQ1 the arrangement (R7-M2); RQ2 the plan, R7's exit measured by its structure rows and measurements, not by PLAN10's 38,000-line
+    figure (RP16; Q5).
+  - RQ3 R7's design, census, prototype and behavior-preserving units start now beside R6-check (R4 exited the same day, R4-M165), its
+    acceptance-changing units after H5 (RP4, RP5; R6-check's own deletions and the post-exit units' named acceptance moves are not R7's); supersedes PLAN10 §12.2's R7 start condition ("R6"): the reason that no longer holds is that those units
+    change no acceptance and the front session's second lane would otherwise idle through R6-check.
+  - RQ4 R8-L0 now; library or Backend-only units once the old Analysis accepts their bodies and their O2 A/B holds; units needing
+    MIR-only forms after H5 (PLAN10 §12.2 allowed library-only work after R6).
+  - RQ5 P42's design package runs in the middle and back sessions during R7's first units; its Binding part lands after R7-N1 and
+    R7-V2 (R5-M13's "first feature work after H5" keeps its place in the order; the Binding part's landing follows the declaration
+    table it would otherwise rewrite).
+  - RQ6 Full units: two candidates (Q11) for R7-C2, C3, I2, P3, O2 and R8-W2; one prototype-first candidate for R7-D2, E1, V2, Y2, T1,
+    P7 and R8-L1, each a per-unit owner exception recorded with the unit (no WORKFLOW revision); RP21, the Full-core rule (plan §5.0).
+  - RQ7 the board is the live hold record (R7-M2); RQ8 the cost stop rules (RP8, R7-M3).
+  - RQ9 the vocabulary targets: `BindingFailure` (88 members) deleted with a closed requirement enumeration in
+    `DiagnosticRequirement.tinyhand`, `IntrinsicId` 32 → 28, `CompilerFunctionKind` (76) deleted, `KimiDeclarationId` (191) → the
+    lang-item set (RP18, RP20); each unit's commit records the count.
+  - RQ10 the SPEC revisions of plan §5 (R7-SP1–SP2, R8-SP1–SP4, R9-B1's IMPL §20.8.3) by one procedure: the owning session drafts the
+    text, the owner sees it before it lands, SPECJ follows in the unit, INTEGRATED gets a row per intake, examples and tests land with it.
+  - RQ11 the representation structs (`ArrayRepr<T>`, `SliceRepr<T>`, `StringRepr` with `#Layout("C")`, the Dictionary `Slot<K, V>`)
+    and the lang attributes (`#Lang`, `#Intrinsic`, `#CallerLocation`, `#Unsupported`, identification only) as PLAN10 §5.8 and §16-9.
+  - RQ12 G128's interim `Unsupported_Kd` (BU-12; the R5 and R6 plan's PD30) ends with R7-T1: a Type past the storage bound is the
+    collector's Resource record under R5-M170; the `StorageNesting` capability row goes.
+  - RQ13 one frozen library per process (§16-8, G337 O3 with O2) is decided at R8-L1 by measurement: adopted when Hello's cold Bind is
+    10 % or more above R8's start, or the prototype saves 20 % or more of a fresh small build; otherwise recorded and declined.
+  - RQ14 SPEC §8.4.4's inherited-conformance OCC stays `Unsupported_Kd` through R7 and R8; the revision is proposed at R9's exit.
+  - RQ15 no rename of the diagnostic partitions and phases (§16-7; R5-M167 row 14's `Emission` stays).
+  - RQ16 `formatInteger128` is removed at R9, or later, by measurement.
+  - RQ17 the milestone order (P38 → P39 → P41 → OCC-X → P43, alternating with the shared-object track's P40) resumes after R7's exit
+    in the front session's lane; P42 by RQ5.
+  - RP1–RP4, RP9 and RP20 (component-level) are recorded by their first implementing units; RP5–RP8, RP10–RP19 and RP21 are in force
+    from this entry (R7-M2, R7-M3).
+- **R7-M2 The arrangement: three sessions by component, windows and the board** (owner, 2026-11-03, RQ1 and RQ7; plan §3 and §9;
+  supersedes the session names of R4-M119 and R5-M113, whose caps stand, and the hold record of R5-M7, R5-M148 and R5-M167, whose
+  protocol stands; amends R5-M182's window assignment from the window after the flip group's)
+  - The front session (Syntax and Binding: `Compiler/Lexing/**`, `Parsing/**`, `Helper/**`, `src/Kimi/Misc/**`, `Binding/**` but the
+    library index files, the root helpers `Compiler/*.cs`, `Checking/**`, `Lsp/**`, `src/Kimi/Diagnostics/**`) runs R7 and R6-check's
+    Binding side; the middle session (`Compiler/Mir/**`, the HIR columns' builder readers, `tests/mir`, `Compiler/Documentation/**`)
+    runs the post-flip analysis defects, R9, R7's HIR side and the merge windows; the back session (`Compiler/Backend/**`, the
+    templates, `src/Kimi/Library/**` with its index files, `src/Kimi/Testing/**`, the old Analysis until H10b, `C/Emission` until
+    R9-M2) runs R8 and its R6-check units. A test file follows the file it tests; a Benchmark series follows the component it measures.
+    Today's BU, R4 and R5 sessions are these three and carry their work in flight (plan §3.4; R4 has exited, R4-M165, and its session
+    carries the post-exit list G396 and R6-check's MIR consents).
+  - Windows: two or three a day, run by the middle session, each merging the queued units that passed their review and unit checks on
+    a base at most two windows old, running the heavy set once (the default Session with the affected native families and milestones,
+    the diagnostic snapshot against the base, the mir ledger until H10, the O2 kernels for Backend and library units), pushing dev and
+    publishing the shared base; a failing unit is dropped and the window re-run; no input-changing push outside a window (RP11).
+    R6-check's windows through the flip group's (H1, H1b, Q8-3, H5 with H6, one merge) stay the back session's, as H0 assigns them
+    (R5-M182, amended there); the middle session runs every window after it. A window's heavy run never starts inside a booked quiet
+    slot. Conflicting appended DECISIONS lines or entries are merged by keeping both, in order.
+  - Caps: implementers two per session, one per lane, their files disjoint, one unit changing a shared representation at a time;
+    designers or reviewers two; heavy runs three in all, a window holding one (R4-M119, R5-M113).
+  - Reviews by the owning session of the files; a unit touching two areas gets both reviewers on their hunks; a reviewer never
+    authored the unit; a unit implemented outside its files' owner holds the files and is reviewed by the owner (RP12, RP17).
+  - The board `C:\Users\bwff1\repos\archi-Doc\Kimigayo\artifacts\board\BOARD.md` (plan §9: windows, queue, holds, heavy runs, quiet
+    time, consents and questions, the owner outbox, the log; every row an id and a stamp; a session edits its own rows; the file re-read
+    before every atomic rewrite; the log append-only; a row stale after 24 hours without a state change) is the live record of holds;
+    PLAN §3 keeps area ownership (RP10). Messages between sessions only when a board row needs an answer.
+  - Rejected: sessions by stage (R7 and R6-check's Binding side would edit one file set from two sessions); per-session windows (the
+    heavy set paid per unit); a PLAN hold line per unit (a commit per hold between windows).
+- **R7-M3 Unit rules of the plan** (planning session, 2026-11-03, with the owner's RQ6 and RQ8; plan §2.1; reason: the Q11 suspensions
+  of G216 (a), bu65, G159 (2), WK, G272, 2c-5, G264 U1 and revision B, plan §8.1)
+  - RP5: an R7 unit that changes acceptance on the default pipeline lands after H5; a deletion of what the old Analysis or Parsing still
+    read lands after H10 and H14 (RP4); until then R7 lands behavior-preserving units and record-only changes within Q13's classes.
+    Both bind R7's units only: R6-check's own deletions (H1's old TransferRequired sites, with the back's consent, at H5) and the
+    post-exit units' named acceptance moves land as their own records say.
+  - RP6: a unit that replaces an owner of a rule adds, in the same commit, an ArchitectureRulesTest zero-reference row (or a falling
+    count) for the replaced path.
+  - RP7: every Full unit has a test author of neither candidate; a behavior-preserving Full unit's tests are the bp triple, the cost
+    rows and the scaling classes.
+  - RP8 (the owner's 「Relax to 1.03」 of 2026-11-02 generalized, RQ8): a front or middle unit stops for the owner when Bind with
+    publication is B/A′ > 1.03 and outside the same measurement's A′/A spread, or when warm allocation grows; cold allocation and
+    retained memory are recorded per unit and compared at the stage exit; a back unit stops when an O2 kernel moves beyond the A=A
+    variance after an address-matched control (R5-M147) or an allocation count changes; O0 is recorded.
+  - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
+  - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
+    blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
+  - RP15: every agent keeps a state file with its Q12 working-time log; every session writes a handoff at every pause with the board's
+    tables copied in.
+  - RP18: a vocabulary reduction needs no approval beyond the plan's adoption; an addition still does. RP19: D3 applies in the Problem
+    migrations, snapshot differences counted by code.
+  - RP21: a Full family's flow (problem statement, tests, candidates, choice, review) covers only its core, the shared representation
+    and its first consumer, one hour per phase per candidate; the remaining parts are Owner-class units under the chosen design, one
+    review each or one group review, never a second candidate (plan §5.0).
