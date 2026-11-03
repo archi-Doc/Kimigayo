@@ -222,13 +222,10 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         if (body.Contains("    if true", StringComparison.Ordinal))
         {
-            // A5's record is at the destroyed local's declaration (R6-check H5; H3b T44), relates the stored borrow and has no Note
-            // ("`b` is destroyed here"; T49, until A6 publishes it).
             var error = Assert.Single(errors);
             Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
-            Assert.Equal("let b = 2", Text(source, error.Span));
-            Assert.Equal(("borrow", text), (Assert.Single(error.Related!).Role, Text(source, error.Related![0].Span)));
-            Assert.Null(error.Note);
+            Assert.Equal("let b = 2\n        put(slot@uniq, b@ref)", Text(source, error.Span));
+            Assert.Contains("`b` is destroyed here", error.Note, StringComparison.Ordinal);
         }
         else
         {
