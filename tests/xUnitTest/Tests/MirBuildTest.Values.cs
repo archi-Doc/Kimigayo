@@ -138,13 +138,14 @@ public sealed partial class MirBuildTest
     // SPEC 4.3.1, 4.9.5, 12.2, 12.4.1 (DECISIONS R5-M129): an Array literal is one Array aggregate of its elements in source order, `[]` one
     // of none, an inner literal its own, and an element before the last that builds code secured where it is evaluated (A1 moves each
     // operand at the one Assign); no call, record or Opaque value (fail-before: the empty Array from a FixedArray aggregate, then reserve and
-    // one append per element).
+    // one append per element). A non-Copy element is written `s@move` (SPEC 3.5 row 3), built through its temporary (`_5 = move _2`); building
+    // an explicit Move operand in place is the MIR builder's open item (R6-check H1).
     [Theory]
     [InlineData("Array<i32>", "[x, 2]", "_3 = Array(copy _1, const 2_i32): Array<i32>")]
     [InlineData("Array<i32>", "[]", "_3 = Array(): Array<i32>")]
     [InlineData("Array<i32>", "[x, g(), 3]", "_3 = Array(move _4, move _5, const 3_i32): Array<i32>")]
     [InlineData("Array<Array<i32>>", "[[x], []]", "_4 = Array(copy _1): Array<i32>|_5 = Array(): Array<i32>|_3 = Array(move _4, move _5): Array<Array<i32>>")]
-    [InlineData("Array<(string, i32)>", "[(s, x)]", "_4 = Tuple(move _2, copy _1): (string, i32)|_3 = Array(move _4): Array<(string, i32)>")]
+    [InlineData("Array<(string, i32)>", "[(s@move, x)]", "_4 = Tuple(move _5, copy _1): (string, i32)|_3 = Array(move _4): Array<(string, i32)>")]
     public void AnArrayLiteralIsOneAggregateOfItsElements(string type, string literal, string aggregates)
     {
         var c = Compile($"func g() -> i32 => 1\nfunc f(x: i32, s: string) -> i32\n    let a: {type} = {literal}\n    return 0\n");
@@ -161,22 +162,13 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(body.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Call && x.Terminator.Callee.Symbol?.Name != "g");
     }
 
-    // SPEC 3.5.1, 8.14 (PLAN G262, DECISIONS BU-45): a bare acquisition that Binding plans without a Reborrow through a shared layer is
-    // built as the Move its HIR row says (A1's, rejected by the old path's TransferRequired_Kd), never a Ref or PairAcquire past that
-    // layer: at a `let`, a `return`, a default, an Array literal element, a Slice element, a pair layer through `ref` or another binder's
-    // layer; an exclusive path and the acquiring binder's own layer keep theirs (fail-before: `&uniq` and `acquire` in the first seven).
-    // Each row: the built statement, and the form no body may contain.
+    // SPEC 3.5.1, 8.14 (PLAN G262, DECISIONS BU-45): an exclusive path and the acquiring binder's own layer keep their bare acquisition: a
+    // Reborrow, a PairAcquire. A bare acquisition planned without a Reborrow through a shared layer is SPEC 3.5's error, Binding's record
+    // since R6-check H1 (TransferJudgmentTest's shared-layer rows). Each row: the built statement, and the form no body may contain.
     [Theory]
-    [InlineData("func f(r: ref/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = move (*_1)", "&uniq")]
-    [InlineData("func f(r: ref/(uniq/i32 during a) during b) -> uniq/i32 during a\n    return r@follow\n", "_2 = move (*_1)", "&uniq")]
-    [InlineData("func f(r: ref/(uniq/i32 during a) during b, x: uniq/i32 during a = r@follow)\n    return\n", "_0 = move (*(*_1))", "&uniq")]
-    [InlineData("func f(r: ref/(uniq/i32 during a) during b)\n    let values = [r@follow]\n", "_2 = Array(move (*_1))", "&uniq")]
-    [InlineData("func f(s: Slice<uniq/i32 during a> during b)\n    let y = s[0]\n", "_2 = move _1[_3]", "&uniq")]
-    [InlineData("func f<s/T>(x: ref/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = move (*_1)", "acquire")]
-    [InlineData("func f<s/T, t/U>(x: t/(s/T during a) during b)\n    s is ref or uniq\n    t is ref or uniq\n    let y = x@follow\n", "_2 = move (_1@b1)", "acquire")]
     [InlineData("func f<s/T>(x: s/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = acquire b0 (_1@b0)", "move (_1@b0)")]
     [InlineData("func f(r: uniq/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = &uniq (*(*_1))", "move (*(*_1))")]
-    public void ABareAcquisitionPastASharedLayerIsBuiltAsItsMove(string source, string built, string absent)
+    public void ABareAcquisitionThroughItsOwnLayersKeepsItsPlan(string source, string built, string absent)
     {
         var c = Compile(source);
         Assert.Empty(c.Binding.Issues);
@@ -438,13 +430,13 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a discarded Place is acquired by its plan row's bare acquisition, as at a value position, into
-    // its statement's temporary: a pair layer by case, a Copy, a stored exclusive reference Reborrowed in its own mode, and the Move a
-    // bare Non-Copy Place requires (its TransferRequired_Kd at it), which a later `title@move` reads moved (A1's MovedPlace_Kd).
+    // its statement's temporary: a pair layer by case, a Copy, a stored exclusive reference Reborrowed in its own mode, and the explicit
+    // Move of a Non-Copy Place (`title@move`; SPEC 3.5 row 3 rejects a bare one: TransferJudgmentTest, R6-check H1).
     [Fact]
     public void ADiscardedPlaceIsAcquiredByItsBareAcquisition()
     {
         var c = Compile("func f<s/T>(value: s/T, count: i32, r: uniq/i32, title: string)\n    s is owner or uniq\n    T is Copy\n    value\n    count\n    r\n" +
-            "    title\npublic func main() => ()\n");
+            "    title@move\npublic func main() => ()\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");

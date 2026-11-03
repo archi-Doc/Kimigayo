@@ -105,7 +105,7 @@ public class ReferenceEmissionTest
     [InlineData("same(a, (return a@move))")]
     public void OperandMoveStillConflicts(string expression)
     {
-        var c = MinimalEmissionTest.Analyze(Same + "func take(a: string) -> string => a\nfunc run() -> string\n    let a = \"a\"\n    " + expression + "\n    return \"bad\"\nConsole.writeLine(run())");
+        var c = MinimalEmissionTest.Analyze(Same + "func take(a: string) -> string => a@move\nfunc run() -> string\n    let a = \"a\"\n    " + expression + "\n    return \"bad\"\nConsole.writeLine(run())");
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }

@@ -49,7 +49,8 @@ public partial class TypeDagScalingTest
     }
 
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each
-    // level's specification is rewritten in a nested query (ContractType's guard), each distinct part once (DECISIONS BU-64).
+    // level's specification is rewritten in a nested query (ContractType's guard), each distinct part once (DECISIONS BU-64). `rd` reads
+    // `h.x` through `ref/` as a Copy (`T is Copy`): a bare non-Copy read is SPEC 3.5's error, and a borrowed referent offers no Take (15.1.5).
     [Fact]
     public void AnAbstractProjectionDagIsNormalizedOncePerPart()
     {
@@ -60,7 +61,7 @@ public partial class TypeDagScalingTest
         }
 
         var c = MirBuildTest.Compile("contract HasItem\n    associate Item\nstruct Dup<T>\n    Self is HasItem\n    associate HasItem.Item is (T, T)\n" +
-            $"struct H<T>\n    internal var x: {type}\nfunc rd<T>(h: ref/H<T>) -> ()\n    let v = h.x\n    return\nfunc pass<T>(h: H<T>) -> H<T> => h@move\n" +
+            $"struct H<T>\n    internal var x: {type}\nfunc rd<T>(h: ref/H<T>) -> ()\n    T is Copy\n    let v = h.x\n    return\nfunc pass<T>(h: H<T>) -> H<T> => h@move\n" +
             "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "v").NameKoto.TypeOf()!;

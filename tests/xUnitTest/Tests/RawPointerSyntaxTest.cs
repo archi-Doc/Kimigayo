@@ -105,7 +105,7 @@ public class RawPointerSyntaxTest
     [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => *q = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
     [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => q[0] = 2", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
     [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    let r = (q, 1)\n    unsafe => *r.0 = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
-    [InlineData(PhantomW + "struct Box<T>\n    public var v: T\n    public init(v: T) => self.v = v\nfunc f(w: ref/W)\n    var b = Box<raw/i32 during w.s>.init(null)\n    unsafe => *b.v = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
+    [InlineData(PhantomW + "struct Box<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nfunc f(w: ref/W)\n    var b = Box<raw/i32 during w.s>.init(null)\n    unsafe => *b.v = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
     [InlineData(PhantomW + PairHolder + "func f(w: ref/W)\n    var b = Holder<raw/i32 during w.s>.init(v: null)\n    unsafe => *b.value = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
     [InlineData(PhantomW + "func f(w: ref/W)\n    let g = func (l: ref/W, p: raw/i32 during l.s)\n        unsafe => *p = 1", "InvalidOriginBinding_Kd: raw/i32 during l.s")]
     public void APhantomRawOriginIsOneRecordInEveryPosition(string declarations, string record)

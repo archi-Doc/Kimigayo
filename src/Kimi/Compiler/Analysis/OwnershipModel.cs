@@ -201,7 +201,6 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement F
         OwnershipRequirement.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
         OwnershipRequirement.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
         OwnershipRequirement.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
-        OwnershipRequirement.TransferRequired => DiagnosticCode.TransferRequired_Kd,
         OwnershipRequirement.UnprovenOrigin => this.Obligation is { Longer: { } longer, Shorter: { } shorter } &&
             Binding.RefutesOriginRelation(longer, shorter, this.Obligation.Value.Body)
             ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd,

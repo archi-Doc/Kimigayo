@@ -58,7 +58,6 @@ public class ElementParameterMoveEmissionTest
     [InlineData("func take(a: string) -> string => a@move\nfunc f(a: (string, string)) -> bool => a.0 == take(a.0@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func f(a: [2 of string], i: isize) -> string => a[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
     [InlineData("func f(a: [2 of string]) -> string => a[0 + 0]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
-    [InlineData("let moved = (\"first\", \"last\").0", DiagnosticCode.Unsupported_Kd)]
     [InlineData("func f(a: ([0 of string], string))\n    let moved = a.0@move\n    let twice = a.0@move", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("func f(a: ((string, string), string))\n    let moved = a.0@move\n    let nested = a.0.0@move", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]", DiagnosticCode.ComparisonLoanConflict_Kd)]
@@ -70,6 +69,16 @@ public class ElementParameterMoveEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84). H5 restores the old
+    // analysis's Unsupported_Kd at it (PD29): until then the old analysis skips a program whose Binding is incomplete.
+    [Fact]
+    public void ABareMoveOfATemporarysPartFailsBeforeEmission()
+    {
+        var c = MinimalEmissionTest.Analyze("let moved = (\"first\", \"last\").0\nConsole.writeLine(\"ok\")");
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "(\"first\", \"last\").0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]

@@ -104,7 +104,7 @@ public sealed partial class MirDifferenceTest
     // R4-M4: the compared set names its owning analysis; pass-through records have none.
     [Theory]
     [InlineData("Ownership", (int)OwnershipRequirement.PossiblyMovedUse, DiagnosticCode.MovedPlace_Kd, "A1")]
-    [InlineData("Ownership", (int)OwnershipRequirement.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
+    [InlineData("Binding", (int)BindingFailure.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
     [InlineData("Ownership", (int)OwnershipRequirement.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]
     [InlineData("ControlFlow", 0, DiagnosticCode.RequireFallthrough_Kd, "A3")]
     [InlineData("Binding", (int)BindingFailure.None, DiagnosticCode.FunctionFallthrough_Kd, null)]
@@ -114,7 +114,8 @@ public sealed partial class MirDifferenceTest
     public void TheComparedSetNamesItsAnalysis(string partition, int kind, DiagnosticCode code, string? analysis)
         => Assert.Equal(analysis, MirDifferenceLedger.AnalysisOf(new(Enum.Parse<DiagnosticPartition>(partition), (ushort)kind), code));
 
-    // R4-M4: every code an ownership failure reports is compared, except TransferRequired's and Internal's. R4-M67: each MIR pair of the
+    // R4-M4: every code an ownership failure reports is compared, except Internal's (TransferRequired is Binding's since H1, BU-84).
+    // R4-M67: each MIR pair of the
     // compared set names its row's analysis, and PLAN10 §7's consistency holds: an Ownership requirement with a code the old analysis
     // gives that failure (OwnershipIssue.Code), or ControlFlow with the require fallthrough; a pair outside it, such as MirReport's
     // disagreement record, has none.
@@ -124,7 +125,7 @@ public sealed partial class MirDifferenceTest
         var images = new HashSet<(DiagnosticRequirement, DiagnosticCode)>();
         foreach (var (failure, code) in PipelineSwitchTest.OwnershipCodes())
         {
-            var passes = failure is OwnershipRequirement.TransferRequired or OwnershipRequirement.Internal;
+            var passes = failure is OwnershipRequirement.Internal;
             Assert.True(passes == (MirDifferenceLedger.AnalysisOf(DiagnosticRequirement.Ownership(failure), code) is null), $"{failure} {code}");
             images.Add((DiagnosticRequirement.Ownership(failure), code));
         }
@@ -139,9 +140,8 @@ public sealed partial class MirDifferenceTest
             }
         }
 
-        var (transfer, defect) = (OwnershipRequirement.TransferRequired, OwnershipRequirement.Internal);
-        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(transfer), DiagnosticCode.TransferRequired_Kd));
-        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(defect), DiagnosticCode.InternalInvariant_Kd));
+        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Binding(BindingFailure.TransferRequired), DiagnosticCode.TransferRequired_Kd));
+        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
     }
 
     // R4-M111 (R4-M108): Binding's Origin relation records are compared with A5 only where they are twins, the records of a node whose

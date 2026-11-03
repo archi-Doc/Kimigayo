@@ -261,12 +261,6 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            if (issue.Capture >= 0 && issue.Source is FunctionKoto { ClosureAsCreated: { } closure } capturing)
-            {
-                ReportCapture(issue, capturing, closure.Captures[issue.Capture].Source);
-                continue;
-            }
-
             if (issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Destroyed is not null)
             {
                 ReportDestruction(issue);
@@ -318,18 +312,15 @@ public sealed partial class OwnershipAnalysis
             }
 
             // A use at the function itself, such as a constructor's completion, is shown at its signature, not its whole body. A bare
-            // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.1.3).
-            var transfer = issue.Failure == OwnershipRequirement.TransferRequired;
-            var judgment = transfer ? Binding.TakeJudgment(issue.Source) : AcquisitionJudgment.Refuted;
+            // Place that needs @move is Binding's record (R6-check H1, DECISIONS BU-84).
             var found = this.CaseFact(issue, out var single);
             issue.Source.Report(
                 requirement,
                 issue.Code,
                 note: Binding.CaseNote(AcquisitionNote(issue), found, single),
-                evidence: Binding.CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
+                evidence: Binding.CaseEvidence(issue.Code, null, found),
                 related: Binding.WithCaseDeclarations(RelatedLocations(issue), this.namedBinders, found),
-                span: SignatureSpan(issue.Source),
-                repairs: transfer && judgment != AcquisitionJudgment.Refuted ? Binding.TransferRepair(issue.Source, issue.Source, judgment) : null);
+                span: SignatureSpan(issue.Source));
         }
 
         // SPEC 23.2.2: an unverified result without an Error in this or an earlier phase reports one fallback at its first
@@ -347,18 +338,6 @@ public sealed partial class OwnershipAnalysis
             var entries = issue.Source is FunctionKoto { Captures: { } captured } && issue.Capture >= 0 && issue.Capture < captured.Length ? captured : null;
             var span = entries is not null ? entries[issue.Capture].Span : (SourceSpan?)null;
             issue.Source.Report(DiagnosticRequirement.Ownership(issue.Failure), issue.Code, span: span);
-        }
-
-        // SPEC 7.7.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry. In a
-        // default, no entry can take a preceding argument other than by Copy (SPEC 7.2.3).
-        void ReportCapture(in OwnershipIssue issue, FunctionKoto function, BindingSymbol source)
-        {
-            var name = source.Name;
-            var omitted = function.Captures is null;
-            var prepared = omitted && DefaultParameters.InLaterDefault(function, source);
-            var note = !omitted ? null : $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" +
-                (prepared ? ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)" : string.Empty);
-            issue.Source.Report(DiagnosticRequirement.Ownership(issue.Failure), issue.Code, note: note, evidence: [name]);
         }
 
         // SPEC 15.6.2, 15.6.6, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
@@ -824,11 +803,7 @@ public sealed partial class OwnershipAnalysis
                 return this.BorrowStruct(source, stored.Type);
             }
 
-            // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
-            if (stored.Acquisition != AcquisitionKind.Copy)
-            {
-                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-            }
+            // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move, Binding's record (R6-check H1, BU-84).
         }
 
         this.CheckAcquisition(place, acquisition);
@@ -1208,9 +1183,9 @@ public sealed partial class OwnershipAnalysis
                 if (use == PlaceUseKind.Consume && this.FollowsReference(conversion) && this.Resolve(conversion.BoundType, this.Active) is { } referent &&
                     this.compilation.Binding.ProveCopy(referent, conversion) != ConstraintProof.Proven)
                 {
-                    // SPEC 3.5: a selected referent is a Place, never moved by bare acquisition, and a reference offers no Take.
-                    // The reference is still read and the value modeled, so the result is delivered and later uses are checked.
-                    this.body.ReportIssue(new(conversion, OwnershipRequirement.TransferRequired));
+                    // SPEC 3.5: a selected referent is a Place, never moved by bare acquisition, which Binding judges (R6-check H1,
+                    // DECISIONS BU-84). The reference is still read and the value modeled, so the result is delivered and later uses
+                    // are checked.
                     return this.StoredReference(conversion) < 0 ? -1 : this.Temporary(conversion);
                 }
 

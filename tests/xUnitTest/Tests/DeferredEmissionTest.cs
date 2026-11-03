@@ -175,10 +175,12 @@ public class DeferredEmissionTest
     [Fact]
     public void DeferredDiagnosticsAreDeduplicatedBeforePublication()
     {
+        // The deferred body's bare move is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84): one record, however often the
+        // body is emitted.
         var c = MinimalEmissionTest.Analyze("var flag = true\nloop\n    defer\n        let moved = (\"first\", \"last\").0\n    if flag => exit\n    continue");
         Assert.False(c.Analysis.IsVerified);
-        Assert.Equal(c.Problems.Count, c.Problems.Distinct().Count());
-        Assert.NotEmpty(c.Problems);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal([nameof(DiagnosticCode.TransferRequired_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
     }
 
     [Fact]

@@ -88,15 +88,16 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("i32", true)]
-    [InlineData("i64", false)]
-    public void UniversalFamilyFactsDoNotCrossBoundReferences(string projected, bool valid)
+    // The unproven Copy of the other family's Item is SPEC 3.5's error at the bare read, Binding's TransferRequired_Kd (R6-check H1).
+    [InlineData("i32", "")]
+    [InlineData("i64", "TransferRequired_Kd value")]
+    public void UniversalFamilyFactsDoNotCrossBoundReferences(string projected, string records)
     {
         var source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C<i32>.Item(a) is Copy\n" +
             "func copy<T>(value: T.(C<" + projected + ">).Item(a), marker: ref/T during a)\n    T is Q\n    let duplicate = value\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

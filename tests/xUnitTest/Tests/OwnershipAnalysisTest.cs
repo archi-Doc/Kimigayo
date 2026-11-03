@@ -36,7 +36,6 @@ public class OwnershipAnalysisTest
     [InlineData("let s: string\nConsole.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
     [InlineData("let s = \"a\"\n_ = s@move\nConsole.writeLine(s)", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("let s = \"a\"\n_ = s@move\nif s == \"x\"\n    ()", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("let s = \"a\"\nlet taken = s", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let s = \"a\"\ns = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
     [InlineData("let s = \"a\"\nConsole.writeLine(s)\ns = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
     [InlineData("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    Console.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
@@ -53,14 +52,22 @@ public class OwnershipAnalysisTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
+    // SPEC 3.5 (R6-check H1, DECISIONS BU-84): a bare move of a non-Copy Place is Binding's TransferRequired_Kd, not a state error.
+    [Fact]
+    public void ABareMoveIsBindingsRecord()
+        => Assert.Equal(
+            [(DiagnosticCode.TransferRequired_Kd, "s")],
+            MinimalEmissionTest.Analyze("let s = \"a\"\nlet taken = s").Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5). H5 restores the old analysis's Unsupported_Kd at
+    // it (PD29): until then the old analysis skips a program whose Binding is incomplete, so that expectation waits for H5.
     [Theory]
     [InlineData("let moved = (\"first\", \"last\").0")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
-        var c = Parse(source);
-        var result = c.Analyze();
-        Assert.False(result.IsVerified);
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "(\"first\", \"last\").0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.False(c.Analyze().IsVerified);
     }
 
     [Fact]

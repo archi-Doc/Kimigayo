@@ -71,7 +71,7 @@ public class RequirementTypeParsingTest
     [InlineData("((i32,) or string) and not bool", "(1,)", true)]
     public void CallsDischargeTupleIdentityRequirements(string requirement, string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value\nlet result = identity({argument})");
+        var c = MinimalEmissionTest.Analyze($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value@move\nlet result = identity({argument})");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)

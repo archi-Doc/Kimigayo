@@ -48,19 +48,10 @@ public sealed partial class OwnershipAnalysis
                 var acquisition = transfer ? AcquisitionKind.Move : this.body.Places[place].Acquisition;
                 if (!transfer && acquisition != AcquisitionKind.Copy)
                 {
-                    if (prepared)
-                    {
-                        // SPEC 7.2.3: the entry is the default's own error, which its declaration check reports once. A default
-                        // never moves a prepared argument, which the pending call still owns, so the call's entry is no moved Place.
-                        acquisition = AcquisitionKind.Copy;
-                    }
-                    else
-                    {
-                        // A rejected capture is read as the Copy it asks for, so the binding stays initialized and later uses report only
-                        // their own problems (SPEC 23.1.2).
-                        this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired, Capture: i));
-                        acquisition = AcquisitionKind.Copy;
-                    }
+                    // SPEC 7.7.2, 7.2.3: a rejected capture, Binding's record (R6-check H1, DECISIONS BU-84), or a default's prepared
+                    // argument, is read as the Copy it asks for, so the binding stays initialized and later uses report only their own
+                    // problems (SPEC 23.1.2).
+                    acquisition = AcquisitionKind.Copy;
                 }
 
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);

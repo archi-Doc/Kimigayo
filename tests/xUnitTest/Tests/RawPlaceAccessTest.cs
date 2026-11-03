@@ -51,14 +51,15 @@ public class RawPlaceAccessTest
     }
 
     [Theory]
-    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return *pointer\n", false)]
-    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\n", true)]
-    [InlineData("func take(pointer: raw/i32) -> i32\n    unsafe => return *pointer\n", true)]
-    public void ACopyUnprovenTakeNeedsMove(string function, bool valid)
+    // The bare Take of a Copy-unproven raw Place is Binding's TransferRequired_Kd (SPEC 3.5, 5.2.3; R6-check H1, DECISIONS BU-84).
+    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return *pointer\n", "TransferRequired_Kd *pointer")]
+    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\n", "")]
+    [InlineData("func take(pointer: raw/i32) -> i32\n    unsafe => return *pointer\n", "")]
+    public void ACopyUnprovenTakeNeedsMove(string function, string records)
     {
         var c = MinimalEmissionTest.Analyze(function + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Equal(valid, c.Analysis.IsVerified);
+        Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

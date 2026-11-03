@@ -63,7 +63,7 @@ public class ArrayInferenceEmissionTest
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
         Assert.False(c.Generate(TextWriter.Null));
         var bare = MinimalEmissionTest.Analyze("let source: [1 of string] = [\"value\"]\nlet row: [1 of _] = source");
-        Assert.Contains(bare.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "source")], bare.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
         Assert.False(bare.Generate(TextWriter.Null));
     }
 

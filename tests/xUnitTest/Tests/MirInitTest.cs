@@ -140,7 +140,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
-    // (SPEC 5.2.3), and a Place a function publishes never offers Take, whatever root holds its reference.
+    // (SPEC 5.2.3). A Place a function publishes never offers Take, whatever root holds its reference: its bare Move is SPEC 3.5's error and
+    // its explicit one a shared path's (SPEC 15.1.5), both Binding's since R6-check H1 (TransferJudgmentTest), so no MIR Move Path is asked.
     [Fact]
     public void AMoveNeedsAMovePath()
     {
@@ -151,27 +152,23 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(
             ["StaticMovePathRequired_Kd values[i] 1", "StaticMovePathRequired_Kd values[i] 1"],
             Problems("func take(s: string) => ()\nfunc f(values: Array<string>, i: isize)\n    take(values[i]@move)\n    take(values[i]@move)\n"));
-        Assert.Equal(
-            ["StaticMovePathRequired_Kd first(names)@follow 1"],
-            Problems("func first(values: ref/Array<string>) -> ref/string during values => values[0]@ref\nfunc f(names: Array<string>)\n" +
-                "    let bare = first(names)@follow\n"));
     }
 
-    // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: a Move of a preceding parameter or of its owned contents in the
-    // template, explicit or bare, is DefaultArgumentMove_Kd, while a Move past a borrow the parameter holds keeps StaticMovePathRequired_Kd.
-    // Each is the template's check: the calls' inline copies, in a caller of two views, add none.
+    // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: an explicit Move of a preceding parameter or of its owned
+    // contents in the template, parenthesized or not, is DefaultArgumentMove_Kd. Each is the template's check: the calls' inline copies, in a
+    // caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter holds
+    // (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
     [Fact]
     public void ADefaultCannotMoveItsPreparedSlot()
     {
-        var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = x) => ()\n" +
-            "func part(p: (string, i32), y: string = p.0@move) => ()\nfunc lent(x: ref/string, y: string = x@follow) => ()\n" +
-            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n    let text = \"d\"\n" +
-            "    lent(text@ref)\n");
+        var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = (x)@move) => ()\n" +
+            "func part(p: (string, i32), y: string = p.0@move) => ()\n" +
+            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n");
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(
             [
-                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1",
-                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1", "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd x@follow 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd (x) 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
@@ -537,7 +534,6 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
         "    return v[-(if c => i else => missing)]\n",
         "MovedPlace_Kd s 1")]
-    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y = make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y += make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f(c: bool)\n    let s = \"x\"\n    var y: i32 = 0\n    y = if c => take(s@move, s@move) else => missing\n", "MovedPlace_Kd s 1")]

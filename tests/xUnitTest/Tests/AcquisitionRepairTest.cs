@@ -50,7 +50,7 @@ public class AcquisitionRepairTest
 
     // A Place reached through a shared reference, a dynamically indexed element and a Dictionary element offer no Take.
     [Theory]
-    [InlineData("struct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item\nfunc total(holder: ref/Holder) => consume(holder.item)\npublic func main() => ()\n", "holder.item")]
+    [InlineData("struct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item@move\nfunc total(holder: ref/Holder) => consume(holder.item)\npublic func main() => ()\n", "holder.item")]
     [InlineData("func pick(values: [2 of Resource], i: isize) => consume(values[i])\npublic func main() => ()\n", "values[i]")]
     public void APlaceWithoutTakeOffersNoTransfer(string program, string place)
     {

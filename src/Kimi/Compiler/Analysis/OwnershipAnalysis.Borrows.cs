@@ -497,13 +497,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.compilation.Binding.ProveCopy(type, field) != ConstraintProof.Proven)
-        {
-            // SPEC 3.5: a Place is never moved by bare acquisition; a non-Copy field needs an explicit borrow or @move, which
-            // the shared path refutes. The read is still modeled, so later uses are checked and the result is delivered.
-            this.body.ReportIssue(new(field, OwnershipRequirement.TransferRequired));
-        }
-        else if (!this.SupportsCopySnapshot(type, field))
+        // SPEC 3.5: a non-Copy field's bare read is a move, which Binding judges (R6-check H1, DECISIONS BU-84); the read is still modeled.
+        if (this.compilation.Binding.ProveCopy(type, field) == ConstraintProof.Proven && !this.SupportsCopySnapshot(type, field))
         {
             this.Unsupported(field);
             return -1;

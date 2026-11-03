@@ -98,12 +98,15 @@ public class BorrowAcquisitionTest
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
+    // SPEC 3.5 (R6-check H1, DECISIONS BU-84): a bare acquisition without a plan is Binding's TransferRequired_Kd at each such Place.
     [Theory]
-    [InlineData("func f<T>(value: T) -> ()\n    let local = value\n    _ = local")]
-    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local")]
-    [InlineData("let text = \"owned\"\nlet copy = text")]
-    public void RejectsBareAcquisitionWithoutPlan(string source)
-        => Assert.Contains(MinimalEmissionTest.Analyze(source).Problems, static x => x.Code == DiagnosticCode.TransferRequired_Kd);
+    [InlineData("func f<T>(value: T) -> ()\n    let local = value\n    _ = local", "value|local")]
+    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local", "value|local")]
+    [InlineData("let text = \"owned\"\nlet copy = text", "text")]
+    public void RejectsBareAcquisitionWithoutPlan(string source, string places)
+        => Assert.Equal(
+            places.Split('|').Select(static x => (DiagnosticCode.TransferRequired_Kd, x)),
+            MinimalEmissionTest.Analyze(source).Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
 
     // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare argument is acquired by its bare acquisition, so a pair layer without
     // a plan in some case (its exclusive case through a shared path, or an owner whose target is not proven Copy) is Binding's

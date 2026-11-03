@@ -16,7 +16,8 @@ public sealed partial class MirDifferenceLedger
 {
     // R4-M4: the compared old records, by requirement and each code it reports (OwnershipIssue.Code, Binding's code of the failure), with
     // the analysis that owns them and the requirement a MIR problem of that code names (R4-M67; none for the old expansion limit). Every
-    // other old record passes through: TransferRequired and Internal, control flow's other codes and Binding's other failures, CaseLimit
+    // other old record passes through: Internal, control flow's other codes and Binding's other failures (TransferRequired among them since
+    // H1, DECISIONS BU-84), CaseLimit
     // included. Where an analysis owns only some of Binding's records of a pair, the subset column names them as their producer
     // publishes it: IncompatibleImplementation and Unsupported records where an effect check made them (Binding.IsEffectRecord, R4-M23),
     // Origin relation records where they are twins, the records of a node whose relation is also a row A5 judges (Binding.IsTwinRecord,

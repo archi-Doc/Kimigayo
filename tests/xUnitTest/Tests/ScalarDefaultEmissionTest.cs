@@ -318,8 +318,9 @@ public class ScalarDefaultEmissionTest
     [InlineData("func f(x: string, y: string = x) => ()\nf(\"a\", \"b\")")]
     public void UnsupportedDefaultBodiesRemainRejectedEvenWhenSupplied(string source)
     {
+        // The default's bare move is Binding's DefaultArgumentMove_Kd (SPEC 3.5, 7.2.3; R6-check H1), whether or not a call supplies it.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Equal([(DiagnosticCode.DefaultArgumentMove_Kd, "x")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

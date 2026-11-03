@@ -62,6 +62,16 @@ public sealed partial class Binding
             case DiagnosticCode.InvalidAssignment_Kd:
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.At);
                 break;
+            case DiagnosticCode.TransferRequired_Kd when node is FunctionKoto { Captures: null }:
+                // SPEC 7.7.2 (R6-check H1, S3): the omitted list's capture, located at the Closure; no candidate is offered.
+                var omitted = $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow";
+                if (source is not null && DefaultParameters.InLaterDefault(node, source))
+                {
+                    omitted += ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
+                }
+
+                node.Report(requirement, code, note: omitted, evidence: [name]);
+                break;
             case DiagnosticCode.TransferRequired_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
                 node.Report(
                     requirement,

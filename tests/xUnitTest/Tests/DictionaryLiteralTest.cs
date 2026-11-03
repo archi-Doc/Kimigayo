@@ -80,7 +80,7 @@ public class DictionaryLiteralTest
 
     [Theory]
     [InlineData("let entries = [1: [1: true], 2: [2: false]]")]
-    [InlineData("func f<K>(key: K)\n    K is Equatable\n    let entries = [key: 1]")]
+    [InlineData("func f<K>(key: K)\n    K is Equatable\n    let entries = [key@move: 1]")]
     [InlineData("func f()\n    let entries: Dictionary<i32, bool> = [1: $abort(\"stop\"), 2: true]")]
     public void NestedAndGenericEvidenceAndNeverValuesBind(string source)
     {

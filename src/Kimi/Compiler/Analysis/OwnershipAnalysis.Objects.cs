@@ -25,8 +25,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ProveCopy(payload, source) != ConstraintProof.Proven)
         {
-            this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-            return this.Temporary(source);
+            return this.Temporary(source); // The bare move is Binding's record (R6-check H1, DECISIONS BU-84).
         }
 
         return this.LoadThrough(source, reference, 1, type);

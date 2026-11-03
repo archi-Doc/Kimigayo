@@ -254,13 +254,10 @@ public sealed partial class OwnershipAnalysis
             // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move. A bare element storing an exclusive
             // reference, the exclusive case of a pair element included, would Reborrow (SPEC 15.1.5), which element paths do not
             // support yet (STATUS), as the concrete element does not.
+            // Otherwise the bare move is Binding's record (R6-check H1, DECISIONS BU-84).
             if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
             {
                 this.Unsupported(source);
-            }
-            else
-            {
-                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
             }
         }
 

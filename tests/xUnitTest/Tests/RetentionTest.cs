@@ -237,8 +237,8 @@ public sealed partial class RetentionTest
     [Fact]
     public void GrowingRecursiveContractsAreTheLimit()
     {
-        var c = Bind("struct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\n    public init(value: T) => self.value = value\n" +
-            "struct List<T>\n    public var value: T\n    public var next: Option<rc/List<T>> = .None\n    public init(value: T) => self.value = value\n" +
+        var c = Bind("struct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\n    public init(value: T) => self.value = value@move\n" +
+            "struct List<T>\n    public var value: T\n    public var next: Option<rc/List<T>> = .None\n    public init(value: T) => self.value = value@move\n" +
             "func inspect<T>(value: ref/T) => ()\nvar n = 1\nlet nest = Nest<ref/i32>.init(value: n@ref)\ninspect(nest@ref)\n" +
             "let list = List<ref/i32>.init(value: n@ref)\ninspect(list@ref)\n");
         Assert.Equal(["limit", "result {0 Value}"], Calls(c, "init"));
@@ -345,7 +345,7 @@ public sealed partial class RetentionTest
     public void CallsOverBorrowPairLayersAreBorrowedInputs()
     {
         var c = Bind("func inner<s/T>(a: s/T, b: i32) -> ()\n    s is ref or uniq\n    return\nfunc peek<T>(x: ref/T) -> i32 => 1\n" +
-            "func use<s/T>(p: s/T, item: T) -> ()\n    s is ref or uniq\n    var x = item\n    inner(x@(s/T), peek(x@ref))\n" +
+            "func use<s/T>(p: s/T, item: T) -> ()\n    s is ref or uniq\n    var x = item@move\n    inner(x@(s/T), peek(x@ref))\n" +
             "func apply<s/T>(g: (s/Option<T>) -> (), x: s/Option<T>) -> ()\n    s is ref or uniq\n    g(x)\n");
         Assert.Equal(["store 0: own {0 Content}, reached {}"], Calls(c, "inner"));
         Assert.Equal(["store 0: own {0 Content}, reached {0 Content}"], ValueCalls(c));

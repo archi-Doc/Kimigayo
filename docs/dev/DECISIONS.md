@@ -10157,6 +10157,32 @@ resumed by R4-M86 (2026-10-20).
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
 
+- **BU-84 TransferRequired is judged in Binding** (2026-11-03; R6-check H1 on the group branch `claude/r6-flip`; the owner's Q8
+  approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division,
+  R5-M182; Q14's runs 1 and 2)
+  - Subject source and owner: `Binding.Transfers`. After a Final pass's publication (BU-81's seam), `CheckTransfers` scans each
+    module's published Op, Adjust and PlaceShape rows once (0 B). S1 is a written Place in a value Op whose Adjust is `Move` and
+    whose parent is not `x@move`. S2 is a discarded Place the column leaves `Unset`, whose bare acquisition is Move with a proof other
+    than Error. Each fails with `TransferRequired` through `FailAcquisition`. S3, an omitted capture list's capture whose bare
+    acquisition is not Copy, fails the Closure at the end of its binding (`JudgeOmittedCaptures`); a proven capture is set `Copy`.
+  - Records: requirement `Binding.TransferRequired`, at the Place, Take's repair (`ReportAcquisition`). A pair-layer Place carries the
+    case fact over the definition's full case set through BU-82's renderer (Q14 run 2): the cases whose complete Type (`CaseType`,
+    which names each layer by its own binder, a nested layer's included) the rows of SPEC 3.5 move. A prepared parameter or its owned
+    contents (rooted in it through parentheses and projections of owned storage, never past a follow or a reference or object layer:
+    `PreparedRoot`) records `DefaultArgumentMove_Kd` with its case fact and no repair (Q8-4, Q8-8, SPEC 7.2.3); a Place past a borrow
+    the argument holds records `TransferRequired_Kd`. S3's record is the omitted-list form of `ReportCaptureEntry`, with its default
+    tail (SPEC 7.2.3). The deleted sites' Take repair (SPEC 23.1.3) and omitted-capture Note are carried; `TransferJudgmentTest` has a
+    row per deleted site family (a local, a field, a capture: omitted, explicit, in a default; a default's bare read; a raw Place; an
+    indexer call's result; a sequence element directly and through a borrow; an object temporary; a selected referent).
+  - Final order: producers, publication, `CheckTransfers`; when it failed a node, one republication and `AssertTransfers`, which
+    fails any new subject as `InternalInvariant_Kd` (a republished failure is `Error`, which neither S1 nor S2 selects); counting.
+  - Deleted: the old analysis's ten TransferRequired report sites (`OwnershipAnalysis.cs` two, `.Borrows.cs`, `.Closures.cs`,
+    `.Elements.cs`, `.Objects.cs`, `.Pointers.cs` two, `.Sequences.cs` two), its omitted-capture report, the transfer branch of its
+    report loop, its default-declaration check of a bare read (Binding is the one judge of bare reads of prepared inputs; the check
+    stays for an explicit `a@move` until H10b), and `OwnershipRequirement.TransferRequired` (the kinds after it shift).
+  - Until H5 the old analysis skips a program whose Binding is incomplete, so a program H1 rejects loses the old analysis's other
+    records there; H5 restores them (PD29).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

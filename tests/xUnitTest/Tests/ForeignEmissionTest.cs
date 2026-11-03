@@ -1225,7 +1225,7 @@ public class ForeignEmissionTest
     [Fact]
     public void MovingAPointerReadValuePreventsItsReuse()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R)\n    unsafe\n        let value = (*p)@move\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1515,7 +1515,8 @@ public class ForeignEmissionTest
     [InlineData("struct S\n    var empty: [2 of ()]")]
     public void ARawReadOfAnUnavailableCLayoutCannotGenerate(string declaration)
     {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\npublic func main() => ()");
+        // The read takes the value (SPEC 3.5 row 3; a raw Place offers Take, 5.2.3), so the layout is what the program fails on.
+        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: raw/S)\n    unsafe\n        let value = (*p)@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
         using var writer = new StringWriter();

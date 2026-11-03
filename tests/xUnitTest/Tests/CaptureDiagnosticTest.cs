@@ -153,14 +153,16 @@ public class CaptureDiagnosticTest
     // independent Move still is.
     [Theory]
     [InlineData("", new[] { nameof(DiagnosticCode.TransferRequired_Kd) })]
-    [InlineData("    let moved = text@move\n    Console.writeLine(moved)\n", new[] { nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.MovedPlace_Kd) })]
-    public void ARejectedOmittedCaptureMovesNothing(string between, string[] codes)
+    // H5 restores the independent MovedPlace_Kd (PD29): until then the old analysis skips a program whose Binding is incomplete
+    // (R6-check H1), so the expectation is read without that record.
+    [InlineData("    let moved = text@move\n    Console.writeLine(moved)\n", new[] { nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.MovedPlace_Kd) }, nameof(DiagnosticCode.MovedPlace_Kd))]
+    public void ARejectedOmittedCaptureMovesNothing(string between, string[] codes, string? untilH5 = null)
     {
         var source = Inspect + "public func main() -> ()\n    let text = \"abc\"\n    let outer = func () -> i32\n        let inner = func [text@move] () => inspect(text@ref)\n        return inner()\n    Console.writeLine(\"\\(outer@move())\")\n" + between + "    Console.writeLine(text)\n";
         var output = DiagnosticCorpus.Check(source);
-        Assert.Equal(codes, output.Diagnostics.Select(static x => x.Code).ToArray());
+        Assert.Equal(codes.Where(x => x != untilH5), output.Diagnostics.Select(static x => x.Code));
         Assert.Equal("The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow", output.Diagnostics[0].Note);
-        if (codes.Length == 2)
+        if (codes.Length == 2 && untilH5 is null)
         {
             Assert.Equal(source.LastIndexOf("(text)", StringComparison.Ordinal) + 1, output.Diagnostics[1].Span!.Value.Start);
         }
@@ -194,28 +196,30 @@ public class CaptureDiagnosticTest
     // the method validates its own Unsupported_Kd (they removed it in fix round 1), and so does a scope that adds premises without
     // forming the Type: a Field read under the method's own premise or a conditional block's keeps its Unsupported_Kd (fix round 2
     // removed it), as when the method forms the Type or the Field is valid. HOLE takes `bad`, then `good`.
+    // R6-check H1 (DECISIONS BU-84, Q13): a bare move these bodies also hold (`let u = t`, `= y`, `return a`, `self.v` through `ref/Self`)
+    // is Binding's TransferRequired_Kd, a record added on each rejected program and counted in the commit.
     [Theory]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
     [InlineData("func f() -> ()\n    let t: HOLE = true\n    let c = func [t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | TypeMismatch_Kd true", "")]
-    [InlineData("func f(t: HOLE) -> ()\n    let u = t\n    let c = func [u@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag", "")]
+    [InlineData("func f(t: HOLE) -> ()\n    let u = t\n    let c = func [u@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | TransferRequired_Kd t", "")]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "i32.(Iter<i32>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd i32.(Iter<i32>).Tag", "")]
     [InlineData("func f(t: HOLE) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "(i32, u8).(Iter<i32>).Tag", "B.(Iter<i32>).Tag", "UnprovenConstraint_Kd (i32, u8).(Iter<i32>).Tag", "")]
     [InlineData("func f<T>(t: HOLE) -> ()\n    T is Iter<i32>\n    let c = func [t@move] () -> () => ()\n    return", "T.(Iter<u8>).Tag", "T.(Iter<i32>).Tag", "UnprovenConstraint_Kd T.(Iter<u8>).Tag", "Unsupported_Kd t@move")]
     [InlineData("func f<T>(t: HOLE, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [x@move, t@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
     [InlineData("func f<T>(t: HOLE, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [t@move] () -> () => ()\n    let d = func [x@move] () -> () => ()\n    return", "B.(Iter<u8>).Tag", "B.(Iter<i32>).Tag", "UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
-    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "1", "y", "TypeMismatch_Kd 1 | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
-    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "missing", "y", "UnresolvedBinding_Kd missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
-    [InlineData("func h<T>(a: T.Tag) -> T.Tag\n    T is Iter<i32>\n    return a\nfunc f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "h<T>(y, y)", "h<T>(y@move)", "NoApplicableOverload_Kd h<T>(y, y) | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
-    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "y.missing", "y", "UnresolvedBinding_Kd y.missing | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "1", "y", "TypeMismatch_Kd 1 | Unsupported_Kd x@move", "TransferRequired_Kd y | Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "missing", "y", "UnresolvedBinding_Kd missing | Unsupported_Kd x@move", "TransferRequired_Kd y | Unsupported_Kd x@move")]
+    [InlineData("func h<T>(a: T.Tag) -> T.Tag\n    T is Iter<i32>\n    return a\nfunc f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "h<T>(y, y)", "h<T>(y@move)", "TransferRequired_Kd a | NoApplicableOverload_Kd h<T>(y, y) | Unsupported_Kd x@move", "TransferRequired_Kd a | Unsupported_Kd x@move")]
+    [InlineData("func f<T>(y: T.Tag) -> ()\n    T is Iter<i32>\n    let x: T.Tag = HOLE\n    let c = func [x@move] () -> () => ()\n    return", "y.missing", "y", "UnresolvedBinding_Kd y.missing | Unsupported_Kd x@move", "TransferRequired_Kd y | Unsupported_Kd x@move")]
     [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return\n", "", "UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
     [InlineData(StructOfT + ValidatedCapture + "\nHOLE", "    public func bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return", "", "Unsupported_Kd t@move | UnprovenConstraint_Kd bad(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        return | UnprovenConstraint_Kd T.(Iter<i32>).Tag", "Unsupported_Kd t@move")]
     [InlineData(StructOfT + "HOLE" + ValidatedCapture, "    public func bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad()\n", "", "UnprovenConstraint_Kd bad(self: ref/Self) -> T.(Iter<i32>).Tag\n        return self.bad() | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
     [InlineData("struct S<T>\nHOLE" + ValidatedCapture, "    var v: T.(Iter<i32>).Tag\n", "    var v: i32\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
-    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
-    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t: T.(Iter<i32>).Tag = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
-    [InlineData("struct S<T>\n    T is Iter<i32>\n    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\nHOLE        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "        T is Iter<i32>\n", "Unsupported_Kd t@move", "Unsupported_Kd t@move")]
-    [InlineData("contract Named\n    func name(self: ref/Self) -> string\nstruct S<T>\nHOLE    var w: T.(Iter<i32>).Tag\n    Self is Named when T is Iter<i32>\n        public func name(self: ref/Self) -> string => \"s\"\n        public func good(self: ref/Self) -> ()\n            let t = self.w\n            let c = func [t@move] () -> () => ()\n            return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var w: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | Unsupported_Kd t@move", "Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | TransferRequired_Kd self.v | Unsupported_Kd t@move", "TransferRequired_Kd self.v | Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\nHOLE    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\n        T is Iter<i32>\n        let t: T.(Iter<i32>).Tag = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var v: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | TransferRequired_Kd self.v | Unsupported_Kd t@move", "TransferRequired_Kd self.v | Unsupported_Kd t@move")]
+    [InlineData("struct S<T>\n    T is Iter<i32>\n    var v: T.(Iter<i32>).Tag\n    public func good(self: ref/Self) -> ()\nHOLE        let t = self.v\n        let c = func [t@move] () -> () => ()\n        return", "", "        T is Iter<i32>\n", "TransferRequired_Kd self.v | Unsupported_Kd t@move", "TransferRequired_Kd self.v | Unsupported_Kd t@move")]
+    [InlineData("contract Named\n    func name(self: ref/Self) -> string\nstruct S<T>\nHOLE    var w: T.(Iter<i32>).Tag\n    Self is Named when T is Iter<i32>\n        public func name(self: ref/Self) -> string => \"s\"\n        public func good(self: ref/Self) -> ()\n            let t = self.w\n            let c = func [t@move] () -> () => ()\n            return", "", "    T is Iter<i32>\n", "UnprovenConstraint_Kd var w: T.(Iter<i32>).Tag | UnprovenConstraint_Kd T.(Iter<i32>).Tag | TransferRequired_Kd self.w | Unsupported_Kd t@move", "TransferRequired_Kd self.w | Unsupported_Kd t@move")]
     public void ACaptureOfARejectedTypeRestsOnIt(string body, string bad, string good, string records, string twin)
     {
         const string Tag = "contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n";

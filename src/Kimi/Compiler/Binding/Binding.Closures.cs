@@ -424,6 +424,7 @@ public sealed partial class Binding
             this.FitResultSources(function, closureBody, symbol.Type); // A returned value over the call's own storage is Refuted where it returns.
         }
 
+        this.JudgeOmittedCaptures(function, plan);
         return Complete(function, plan.EnvironmentType);
     }
 }

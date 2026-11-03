@@ -816,7 +816,7 @@ public class ClosureEnvironmentOriginTest
     [InlineData(G6Single + FailedResult + "    return 0\n", 2)]
     [InlineData(MarkedHead + "    var c = func [value, p@move, q@move] (z: Missing) -> ()\n        let local = value\n        _ = local\n        q@follow = p\n", 2)]
     [InlineData(MarkedHead + "    var c = func [value, p@move, q@move] (k: bool)\n        let local = value\n        _ = local\n" + FailedReturns, 2)]
-    [InlineData(ConsultedStore, 1)]
+    [InlineData(ConsultedStore, 2)] // With `return value`'s TransferRequired_Kd (R6-check H1; Q13, a record added on a rejected program).
     public void APendingRelationIsJudgedOnceOnEveryPathThatBindsTheBody(string function, int count)
     {
         var source = function + "public func main() => ()\n";

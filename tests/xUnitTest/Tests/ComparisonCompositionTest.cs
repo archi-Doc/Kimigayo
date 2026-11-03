@@ -208,7 +208,7 @@ public class ComparisonCompositionTest
         struct Box<T>
             Self is Comparable when T is Comparable
             public let value: T
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
             public func equals(self: ref/Self, other: ref/Self) -> bool => true
             public func compare(self: ref/Self, other: ref/Self) -> i32 => 0
         func same<T>(left: T, right: T) -> bool

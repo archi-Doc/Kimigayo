@@ -41,8 +41,8 @@ public class OriginSyntaxRevisionTest
 
     [Theory]
     [InlineData("func identity(value: View<i32>) -> View<i32> => value", false)]
-    [InlineData("func identity(value: View<i32>) -> View<i32>{r}\n    origin r.source == value.source\n    return value", true)]
-    [InlineData("func identity(value: View<i32>{v}) -> View<i32>{r}\n    origin r.source == v.source\n    return value", true)]
+    [InlineData("func identity(value: View<i32>) -> View<i32>{r}\n    origin r.source == value.source\n    return value@move", true)]
+    [InlineData("func identity(value: View<i32>{v}) -> View<i32>{r}\n    origin r.source == v.source\n    return value@move", true)]
     [InlineData("func inspect(callback: (View<i32>) -> ()) => ()", false)]
     [InlineData("func inspect(callback: (View<i32>{c}) -> (), value: View<i32>)\n    origin c.source == value.source\n    ()", true)]
     [InlineData("func inspect(value: ref/ref/i32) => ()", false)]
@@ -118,7 +118,7 @@ public class OriginSyntaxRevisionTest
     [Fact]
     public void SpecializationInheritsTheOriginalResultOrigin()
     {
-        var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value: View<T>) -> View<T>{result}\n        origin result.source == value.source\n        return value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
+        var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value: View<T>) -> View<T>{result}\n        origin result.source == value.source\n        return value@move\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value@move");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var functions = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G")).OfType<FunctionKoto>().ToArray();
         Assert.Equal(Origins(functions[0].Parameters[0].Type.TypeOf()!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.TypeOf()!).Select(x => x.Slot));

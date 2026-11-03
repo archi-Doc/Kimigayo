@@ -64,7 +64,10 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         var path = Path.GetFullPath("object-payload-read.kimi");
         var source = "let owner = Kimi.Intrinsics.makeObj(\"text\")\nlet value = owner@follow" + (borrow ? "@ref" : string.Empty) + "\nConsole.writeLine(value)";
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+
+        // The bare read is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84), so only the borrow completes Binding.
+        Assert.Equal(borrow, c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();

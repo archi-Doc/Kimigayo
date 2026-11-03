@@ -123,7 +123,7 @@ public class DefaultBindingTest
     [Fact]
     public void DefaultsUseTheWinningCandidateAndKeepPerCallTypeSubstitutions()
     {
-        var c = MinimalEmissionTest.Analyze("func f<T>(x: T, y: T = x)\n    T is Copy\n    ()\nfunc f(x: string, y: string = x) => ()\nf<i32>(1)\nf<i64>(2)");
+        var c = MinimalEmissionTest.Analyze("func f<T>(x: T, y: T = x)\n    T is Copy\n    ()\nfunc f(x: string, y: string = x@move) => ()\nf<i32>(1)\nf<i64>(2)");
         Assert.True(c.Binding.Result.IsComplete);
         var calls = Calls(c).ToArray();
         Assert.Equal(2, calls.Length);

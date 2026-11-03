@@ -172,7 +172,6 @@ public class NeverContinuationTest
     [InlineData("let s = a[(return 42)]@move", "a[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(a[(return 42)]@move)", "a[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(make2((return 42)).0@move)", "make2((return 42)).0", "StaticMovePathRequired_Kd")]
-    [InlineData("let x = a[(return 42)]", "a[(return 42)]", "TransferRequired_Kd Unsupported_Kd")]
     [InlineData("let k = t[(return 42)].1", "t[(return 42)].1", "")]
     [InlineData("let c = n[0][(return 42)]", "n[0][(return 42)]", "")]
     public void AMoveBelowADivergingKeyIsCheckedAsItsReachableTwin(string statement, string element, string codes)
@@ -182,6 +181,20 @@ public class NeverContinuationTest
         c.ReportAnalysis();
         Assert.Equal(
             codes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (x, (string?)element)),
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+    }
+
+    // The bare consume of that theory (`let x = a[(return 42)]`) is Binding's TransferRequired_Kd at the element (R6-check H1, DECISIONS
+    // BU-84). H5 restores the old analysis's Unsupported_Kd at the element path beside it (PD29): until then the old analysis skips a
+    // program whose Binding is incomplete, so the expectation is read without that record.
+    [Fact]
+    public void ABareConsumeBelowADivergingKeyIsBindingsRecord()
+    {
+        var c = MinimalEmissionTest.Analyze(Elements + "let x = a[(return 42)]\n    return 0\n");
+        c.Binding.ReportDiagnostics();
+        string[] expected = [nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.Unsupported_Kd)];
+        Assert.Equal(
+            expected.Where(static x => x != nameof(DiagnosticCode.Unsupported_Kd)).Select(static x => (x, (string?)"a[(return 42)]")),
             TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
     }
 
@@ -480,16 +493,12 @@ public class NeverContinuationTest
     }
 
     // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move
-    // (SPEC 3.5).
+    // (SPEC 3.5): Binding's TransferRequired_Kd at each read (R6-check H1, DECISIONS BU-84).
     [Fact]
     public void APlaceHoldingNeverAndANonCopyPartIsNotCopied()
     {
         var c = MinimalEmissionTest.Analyze("func f(a: Option<(string, Never)>)\n    let b = a\n    let c = a\n");
-        Assert.Contains(LegacyRecords.Of(c), static x => x.Code == DiagnosticCode.TransferRequired_Kd);
-        HirTables.Publish(c);
-        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "a" && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
-        Assert.Equal(2, reads.Length);
-        Assert.All(reads, static x => Assert.Equal(HirAcquire.Move, HirTables.AdjustOf(x).Acquire));
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "a"), (DiagnosticCode.TransferRequired_Kd, "a")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
     [Fact]

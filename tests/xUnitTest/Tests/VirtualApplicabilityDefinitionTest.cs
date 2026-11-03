@@ -32,8 +32,8 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     [InlineData("let value = \"text\"\n        let copy = value\n        return 2", "TransferRequired_Kd")]
     public void InapplicabilityNeverSuppressesBodyDiagnostics(string body, string code)
     {
-        // A failed Binding is a prerequisite of ownership. Exercise acquisition failures in a
-        // bound program; Binding failures also retain an independent unresolved Name.
+        // A bare move is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84); other Binding failures also retain an independent
+        // unresolved Name.
         var ownership = code == "TransferRequired_Kd";
         var source = Program(false, "string", body, statement: body.Contains('\n')) + (ownership ? "()" : "let independent = absent\n");
         var c = MinimalEmissionTest.Analyze(source);
@@ -41,11 +41,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         c.ReportAnalysis();
         var records = TestDiagnostics.Of(c);
         Assert.Contains(records, x => x.Code == code);
-        if (ownership)
-        {
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        }
-        else
+        if (!ownership)
         {
             Assert.Contains(records, x => x.Code == "UnresolvedBinding_Kd" && x.Text == "absent");
         }

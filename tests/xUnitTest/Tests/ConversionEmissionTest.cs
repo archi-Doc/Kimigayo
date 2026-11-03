@@ -137,7 +137,9 @@ public class ConversionEmissionTest
     [Fact]
     public void OperandInferenceIsIndependentAndRebindingResetsClassification()
     {
-        var c = MinimalEmissionTest.Analyze("func id<T>(x: T) -> T => x\nlet a = id(300)@u8\nlet b = (200 + 100)@u8\nlet d = ((-128))@i8");
+        // `T is Copy` lets `id` return its bare parameter (SPEC 3.5 row 1; row 3 rejects it for an unconstrained T), and adds no
+        // conversion node, so the three conversions are the operands under test.
+        var c = MinimalEmissionTest.Analyze("func id<T>(x: T) -> T\n    T is Copy\n    return x\nlet a = id(300)@u8\nlet b = (200 + 100)@u8\nlet d = ((-128))@i8");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(3, nodes.Length);

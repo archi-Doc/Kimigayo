@@ -50,7 +50,6 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nfunc f(a: (string, i32)) => inspect(a.0, a@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a@move\n    return same(a.0, a.0)", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("let value = make().0", DiagnosticCode.Unsupported_Kd)]
     public void BorrowingDoesNotGrantMove(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(Same + Make + source);
@@ -59,6 +58,16 @@ public class ElementBorrowOwnerEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84). H5 restores the old
+    // analysis's Unsupported_Kd at it (PD29): until then the old analysis skips a program whose Binding is incomplete.
+    [Fact]
+    public void ABareMoveOfATemporarysPartIsBindingsRecord()
+    {
+        var c = MinimalEmissionTest.Analyze(Same + Make + "let value = make().0");
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "make().0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     public static TheoryData<string, string, string, string, int[]> Audits => new()
