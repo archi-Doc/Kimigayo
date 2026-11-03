@@ -12,8 +12,9 @@
 // the storage limit's Required, Limit and Table facts (G213, R4-M132) the body and as their Values the bytes its arena needs, the
 // analyses' byte limit and the arena (a MirStorageTable), the catalog's requiredBytes, limitBytes and table of OwnershipStorageLimit_Kd,
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
-// problem's index in MirReport.All (-1 reserved for 2g-1's Binding cause at the site); a kind that names no value has -1; a problem has
-// at most one fact of each kind but its witness's and its causes, which come last.
+// problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 reserved for 2g-1's
+// Binding cause at the site; a kind that names no value has -1; a problem has at most one fact of each kind but its witness's and its
+// causes, which come last.
 // Must not carry message text, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -48,5 +49,5 @@ internal enum MirFactKind : byte
 /// <param name="Kind">What the site is.</param>
 /// <param name="Site">The syntax.</param>
 /// <param name="Value">A Relation fact's row index in the body's C1-F4 view, -1 for a containment edge; a storage limit's bytes, byte limit or
-/// arena; a Cause's problem index; -1 for a kind that names no value.</param>
+/// arena; a Cause's problem index (in Merged's facts, its merged problem's); -1 for a kind that names no value.</param>
 internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site, long Value = -1);

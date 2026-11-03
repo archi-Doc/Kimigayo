@@ -10,7 +10,7 @@
 // 2. per body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;
 // 4. per judged body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program,
-//    the C1-F4 view's findings (MirOrigins.Findings);
+//    the C1-F4 view's findings and the rows of layers no constructor body includes (MirOrigins.Findings);
 // 5. A6 inside MirReport.
 // Input rule (DECISIONS R5-M168): steps 1 and 4 judge the bodies of the root modules (Judged), whose problems are the program's; a body
 // outside them is built from its library definition alone, so its A3 and A5 verdicts are the same in every program. Steps 2 and 3 visit
@@ -95,7 +95,7 @@ internal sealed class MirAnalysis
             }
         }
 
-        this.origins.Findings(program.Problems); // 4. once per program.
+        this.origins.Findings(program, program.Problems); // 4. once per program.
         return program;
     }
 

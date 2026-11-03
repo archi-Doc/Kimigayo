@@ -46,6 +46,9 @@ internal readonly record struct MirProblem(
     /// <summary>Gets a value indicating whether the problem is a construction or collection record, whose rows <c>MirProgram.Records</c> gives,
     /// rather than an analysis's problem.</summary>
     internal bool IsRecord => this.Body is (int)MirRecordClass.Construction or (int)MirRecordClass.Collection;
+
+    /// <summary>Gets the record class of a construction or collection record, null for an analysis's problem.</summary>
+    internal MirRecordClass? RecordClass => this.IsRecord ? (MirRecordClass)this.Body : null;
 }
 
 /// <summary>The class of a record that is no body's problem (R6-check H3-1), its value the record's <see cref="MirProblem.Body"/>.</summary>

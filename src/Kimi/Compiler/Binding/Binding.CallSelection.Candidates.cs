@@ -9,13 +9,16 @@ namespace Kimi.Compiler;
 // lookup, ranking and final call publication remain with their existing owners.
 public sealed partial class Binding
 {
+    private readonly ScratchBuffers<PendingJudgment?> environmentScratch = new();
+
     // SPEC 10.8, 15.3.6: the Type slots of the candidate being evaluated whose binding comes from an invariant position.
     private SlotSet invariantSlots;
     private FunctionKoto? activeInferenceFunction;
 
-    // Set when a known call signature's result over its closure's hidden environment receiver supplied no evidence for a slot: that slot
-    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4). The judgment, its argument and slot.
-    private PendingJudgment? environmentEvidence;
+    // DECISIONS BU-86: per slot of the candidate being evaluated, the judgment that a known call signature's result over its closure's
+    // hidden environment receiver supplied no evidence for it, with that argument (Infer): the slot is not unsolved but judged by the
+    // Callable proof or the conversion (SPEC 8.10, 7.7.4). TryCandidateCore publishes one only for a slot no evidence binds.
+    private PendingJudgment?[] environmentJudgments = [];
 
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
@@ -42,11 +45,11 @@ public sealed partial class Binding
         var saved = this.invariantSlots;
         var savedInferenceFunction = this.activeInferenceFunction;
         this.activeInferenceFunction = solution.Function;
-        var savedEnvironment = this.environmentEvidence;
+        var savedEnvironment = this.environmentJudgments;
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
-        this.environmentEvidence = null;
+        this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         try
         {
@@ -85,16 +88,33 @@ public sealed partial class Binding
             this.ReturnSlotSet(this.invariantSlots);
             this.invariantSlots = saved;
             this.activeInferenceFunction = savedInferenceFunction;
-            this.environmentEvidence = savedEnvironment;
+            this.environmentScratch.Return(this.environmentJudgments, clearArray: true);
+            this.environmentJudgments = savedEnvironment;
             this.acquisitionFailure = savedAcquisition;
         }
     }
 
     // DECISIONS BU-86: a Pending return that a known signature's environment result decided publishes that judgment as the trial's.
-    private CandidateApplicability PendingOnEnvironment()
+    private CandidateApplicability PendingOnEnvironment(PendingJudgment? environment)
     {
-        this.trialPending = this.environmentEvidence is { } environment ? environment with { Epoch = this.frameEpoch } : null;
+        this.trialPending = environment is { } judgment ? judgment with { Epoch = this.frameEpoch } : null;
         return CandidateApplicability.Pending;
+    }
+
+    // DECISIONS BU-86: with every piece of evidence in, the environment judgment that decides: that of the first slot, in slot order, that
+    // an environment result left without evidence and no other evidence binds (SPEC 10.8; never argument order). A bound slot's part is no
+    // inference part, and the Callable proof or the conversion judges it (SPEC 10.8, 8.10).
+    private PendingJudgment? EnvironmentJudgment(FunctionKoto function, in SlotSet unsolved)
+    {
+        for (var g = 0; g < CallSlotCount(function); g++)
+        {
+            if (this.environmentJudgments[g] is { } judgment && unsolved.Contains(g))
+            {
+                return judgment;
+            }
+        }
+
+        return null;
     }
 
     private CandidateApplicability TryCandidateCore(
@@ -490,11 +510,12 @@ public sealed partial class Binding
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
             this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
-            unrepresentable |= this.environmentEvidence is not null;
+            var environment = this.EnvironmentJudgment(function, unsolvedSlots);
+            unrepresentable |= environment is not null;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
                 (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
-                return this.PendingOnEnvironment();
+                return this.PendingOnEnvironment(environment);
             }
 
             if (unrepresentable)
@@ -541,7 +562,7 @@ public sealed partial class Binding
                 return result switch
                 {
                     null when solution.IsComplete() => CandidateApplicability.Inapplicable,
-                    null => this.PendingOnEnvironment(),
+                    null => this.PendingOnEnvironment(environment),
                     _ => CandidateApplicability.Pending,
                 };
             }
