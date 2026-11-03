@@ -6903,7 +6903,10 @@ resumed by R4-M86 (2026-10-20).
   for a member's receiver; the user-index and Array/Dictionary arms already grant Uniq or Ref); `OffersTake` offers Take on an
   Owner path that passed none, and `AccessFailure` keeps each layer kind's code: past a pair layer admitting owner (only a pair
   layer adds that case) `ExclusivePathTake_Kd`, below an object payload `InvalidAssignment_Kd` (as `h@follow@move`), past a
-  reference its authority's. The authority itself is unchanged. Write: `Writable`'s owned-root Field clause applies when the
+  reference its authority's; each such record's Note names that layer from the cases the walk passed, and `ExclusivePathTake_Kd`'s
+  Message names none (amendment 2026-11-03, PLAN G181 (1), the owner's (a) 「2すべてa」 read by the planning session as N':
+  `AccessFailure` gives the cases, `FailTake` records them, `ReportTake` in `Binding.Diagnostics.Takes` forms the Note; the
+  explicit forms get the same Note). The authority itself is unchanged. Write: `Writable`'s owned-root Field clause applies when the
   receiver's own Type adds no exclusive or shared layer (`LayerAuthority` null) and the Type below its layers is a struct: an owned
   struct, an owning obj handle or a pair layer whose owner case adds none (no member is selected through a raw pointer). Exclusive
   borrow: `BorrowablePlace`'s stored-Property clause lends a Field exclusively past an exclusive layer of the receiver's own Type, a
