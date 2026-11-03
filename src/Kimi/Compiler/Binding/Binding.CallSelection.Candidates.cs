@@ -537,7 +537,13 @@ public sealed partial class Binding
             {
                 // Result-only Origin inference needs the later call-site solver. Never retain a
                 // requirement's abstract binder as though it were this call's concrete Origin.
-                return result is null && solution.IsComplete() ? CandidateApplicability.Inapplicable : this.PendingOnEnvironment();
+                // DECISIONS BU-86: only a result without a Type rests on the environment judgment; an unsubstituted Origin on none.
+                return result switch
+                {
+                    null when solution.IsComplete() => CandidateApplicability.Inapplicable,
+                    null => this.PendingOnEnvironment(),
+                    _ => CandidateApplicability.Pending,
+                };
             }
 
             if (expected is not null && result is not null && !this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&

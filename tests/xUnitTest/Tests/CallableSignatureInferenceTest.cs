@@ -455,6 +455,17 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceCapturedReference", "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\nlet x: i32 = 5\nlet r = x@ref\nlet c = func [r] () => r\nlet s = make(c@ref)\nrequire s@follow == 5 else => $abort(\"captured\")", string.Empty);
     }
 
+    // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) leaves the candidate Pending
+    // on that Origin, not on the environment result that also leaves T unsolved, so the record carries no environment judgment.
+    [Fact]
+    public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
+    {
+        var source = "func make<T, F>(f: ref/F, o: Option<ref/i32 during s>) -> Option<ref/i32 during s>\n    F is Callable<() -> T>\n    return o@move\npublic func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n    let r = make(c@ref, .None)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", null), (error.Code, Text(source, error.Span), error.Note));
+        Assert.Null(error.Related);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmOriginSignatureEvidenceAllocatesNothing()

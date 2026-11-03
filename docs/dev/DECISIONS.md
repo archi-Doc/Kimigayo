@@ -10042,14 +10042,17 @@ resumed by R4-M86 (2026-10-20).
   - The defect: a judgment that left a candidate Pending before its proof published no fact, so the call ended in a fact-less
     `UnprovenConstraint_Kd` (`FailWaitingSelection`). The census reached L184, L488 and L531(b) of `TryCandidateCore`.
   - The fact: `PendingJudgment` (`Binding.CandidateEvaluation`), a closed vocabulary, written once where `TryCandidateCore` decides
-    and kept as the trial's fact (`trialPending`, the trial frame's row beside `trialClause`); the candidate's selection reads it.
+    and kept as the trial's fact (`trialPending`, the trial frame's row beside `trialClause`). Transport: the proof channel's trial
+    frame (r2-6); `CloseTrial` hands it to the selection's frame. Its consumer, the candidate's selection (`EvaluateCallCandidate`),
+    takes it once per Pending candidate (`TakeTrialPending`) under the channel's consumer rule (`OwnFrame`, shared by every consumer
+    of a carried fact): no fact is normal, a stamp other than the innermost open frame's is `InternalInvariant_Kd`.
   - `FailedTypeArgument` (L184): an explicit Type argument that did not bind. Writer: the explicit-argument loop. Reader:
     `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
     parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
   - `EnvironmentResult` (L488, L531(b)): an argument whose known signature's result over its closure's environment is no evidence
     for a slot (SPEC 8.10, 7.7.4), which stays unsolved. Writer: `Infer` (`Binding.CallSlots`), where it judges that result; the
     trial's flag `environmentEvidence` becomes this fact (the argument and the slot), and the two Pending returns it decides publish
-    it as the trial's (`PendingOnEnvironment`). Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
+    it as the trial's (`PendingOnEnvironment`): L488, and L531's result without a Type; L531's unsubstituted Origin publishes none. Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
     the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
     `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
     and the Note "The result of c over its environment is no evidence for T".

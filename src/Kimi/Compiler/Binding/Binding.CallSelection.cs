@@ -135,18 +135,20 @@ public sealed partial class Binding
         }
 
         evaluation.Pending |= state == CandidateApplicability.Pending;
-        // A failed signature part or explicit Type argument leaves the selection resting on it (SPEC 23.1.2; DECISIONS BU-86).
-        evaluation.FailedPendingSignature ??= state != CandidateApplicability.Pending ? null
-            : IncompleteSignature(function) ?? this.FailedSignaturePart(function) ??
-                (this.trialPending is { Kind: PendingJudgmentKind.FailedTypeArgument } failed ? failed.Part : null);
         if (state == CandidateApplicability.Pending)
         {
+            // A failed signature part or explicit Type argument leaves the selection resting on it (SPEC 23.1.2); the trial's judgment
+            // before its proof is taken once, in the selection's frame (DECISIONS BU-86).
+            var judgment = this.TakeTrialPending(call);
+            evaluation.FailedPendingSignature ??= IncompleteSignature(function) ?? this.FailedSignaturePart(function) ??
+                (judgment is { Kind: PendingJudgmentKind.FailedTypeArgument } failed ? failed.Part : null);
+
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
             evaluation.PremisesOnly &= premiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
             evaluation.ConstraintFailure ??= rejectedConstraint;
-            evaluation.PendingJudgment ??= this.trialPending is { Kind: PendingJudgmentKind.EnvironmentResult } judged ? judged : null;
+            evaluation.PendingJudgment ??= judgment is { Kind: PendingJudgmentKind.EnvironmentResult } judged ? judged : null;
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;
