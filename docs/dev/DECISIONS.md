@@ -1994,6 +1994,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     constructors, of two and nine cases, gave one problem with `0x1FF`).
   - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
     same facts).
+  - Amended (R6-check H3-2 U1b, 2026-11-03; R4's consent, 2026-11-03, to R5's implementer writing it in `MirReport`): the merge across
+    bodies is `MirReport.Merged`'s (H0a §3.2), keyed with class (code, subject, Reason, class), not publication's; a Cause Value in
+    `Merged`'s facts is a merged index; members naming two requirements add one `InternalInvariant_Kd` merged problem at the subject.
 - **R4-M72** (2026-10-19; decided by the planning session on 2026-10-18, adopting the design review of 1c's two designs (its verdicts
   4 and 5 and its R4-M72 draft) with the 1c design, and by the owner through the step-2 plan's PD7 and PD11, adopted with the plan
   (R4-M74, OQ1); with group 1c's final review's records; recorded by unit 1c-9; A3 §12 E15). The A6 table of A5's Loan problems
@@ -2972,6 +2975,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected (design review): a Koto-keyed body table and a mutable enclosing link; scope chains and `Parent` walks; a per-node HIR column;
     per-body root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's
     `Definition` deadline in R4 (G210 is BU's); `ResultFit` windows now.
+  - Amendment (2026-11-03, R4-M168; PLAN G215): E4's recorded limit is located, no longer silent: A5 reports `Unsupported_Kd` at each
+    row of a layer no constructor body's slice includes, until the layer has a body of its own.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b for C4a's gate step 2, PD12 and package C
   §3.8; R4's rulings of 2026-10-22 and its choice (b): R5 implements under a temporary hold of `MirInit.cs`, `MirDrops.cs` and
   `MirDropTest` (PLAN 26d48164), and R4 signs off before the merge)
@@ -6303,6 +6308,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Binding.EffectBounds`; `EffectBoundImplementationTest`'s two row tests move to `MirEffectsTest`.
   - Rejected: a production judgment of each reached row body in A4 (cost on every check for a record no valid input reaches, H0b §4
     (B)); a premise mode in A4 covering the row's effects (N6: a mode steering a function).
+- **R4-M168 G215's boundary: a constructorless layer's Field-initializer rows are A5's located limit** (2026-11-03; R4 after its exit,
+  the design's option (U) with the planning session's answers to Q1-Q4; BU reviews). SPEC 6.3.3 judges a Field initializer's Origin
+  relations under the Type's public premises whether or not a constructor exists, and 15.6.5 uses no reachability, so no reading frees
+  the rows. A5 judges only in a MirBody (its Refs, containment edges and `MirCases` views), and a layer with no constructor body (an
+  omitted base clause that selects none, or a Field without an initializer and no declared constructor) has its rows in no body's slice
+  (R4-M101 E4). So `MirOrigins.Findings`, once per program after step 4, reports `Unsupported_Kd` (Ownership.Unsupported, NoBody, every
+  view) at each row's Site of a layer that no constructor body's slice (`OriginRows(body).Layer`, the view's one rule) includes. Valid
+  forms become Unsupported on MIR (census 0: no library, milestone, golden or SPEC-variant layer); the old analysis judges them until
+  R6-check. Partly supersedes R4-M101 E4's "Recorded limit": the limit is located, not silent.
+  - Removal condition (J), at R7-O3: a MIR body of the layer's initializers, built only where no constructor body exists
+    (`MirDefKey(struct, <new kind>)` whose `Body` is the layer key, a Unit `_0`, each initializer into a temporary of its Field's Type,
+    skipped by code generation, the instance roots and A1's completion rule); its body kind is the planning session's decision.
+  - Q1: the view's new read-only output `TyCtxt.OriginLayers` (the layer units with rows, listed where `OriginUnit` creates them) is the
+    owning component publishing the fact A5 lacks and changes no Binding judgement; its two `Binding/` files are BU's (hold H-1, RP17).
+  - Q2: no owner approval; the producer names its removal stage, (J) at R7-O3 (O4 and X-2 concern producers without one).
+  - Q3: the Loan, Move and drop gap of such initializers (accepted on both pipelines) is a separate PLAN row; (J) closes it.
+  - Q4: one record per row, as the Unclassed limit is per row (the rows are what goes unjudged), not one per initializer.
+  - Rejected: a rows-only judge for layers beside `Judge` (a second judging path); widening the limit to every initializer of such a
+    layer (it would refuse valid forms like `= 0` without a census).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10239,14 +10263,28 @@ resumed by R4-M86 (2026-10-20).
     `EvaluateCallCandidate`, which rests the selection on it (`FailedPendingSignature`, then `CompleteDependent`), as on a failed
     parameter Type (SPEC 23.1.2). The call adds no record of its own (`g<Undefined>(1)`: the argument's `UnresolvedBinding_Kd` only).
   - `EnvironmentResult` (L488, L531(b)): an argument whose known signature's result over its closure's environment is no evidence
-    for a slot (SPEC 8.10, 7.7.4), which stays unsolved. Writer: `Infer` (`Binding.CallSlots`), where it judges that result; the
-    trial's flag `environmentEvidence` becomes this fact (the argument and the slot), and the two Pending returns it decides publish
-    it as the trial's (`PendingOnEnvironment`): L488, and L531's result without a Type; L531's unsubstituted Origin publishes none. Reader: the Unproven branch (`Binding.Calls`), for a single Pending candidate after
+    for a slot (SPEC 8.10, 7.7.4) that no other evidence binds (amended 2026-11-03, below). Writer: `Infer` (`Binding.CallSlots`),
+    where it judges that result, records the judgment per slot (`environmentJudgments`, the argument and the slot); the trial
+    publishes one as its fact (`EnvironmentJudgment`, below) at the two Pending returns it decides (`PendingOnEnvironment`): L488,
+    and L531's result without a Type; L531's unsubstituted Origin publishes none. Reader: the Unproven branch (`Binding.Calls`), for
+    a single Pending candidate after
     the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
     `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
     and the Note "The result of c over its environment is no evidence for T".
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
+  - Amended 2026-11-03 (G354-1c; R1 of G354-1b's re-check, kept with BU by the owner, PLAN G354). The trial's one first-written
+    judgment counted even when another evidence bound its slot, so a Pending return named a judgment that did not decide. Now
+    `Infer` records the judgment per slot, and after `UnsolvedSlots`, with every piece of evidence in (arguments, call signatures,
+    the expected result, SolveLate), `EnvironmentJudgment` publishes that of the first unsolved slot in slot order, never by argument
+    order (SPEC 10.8: traversal order never chooses a solution), and none when every such slot is bound; a bound slot's part is
+    judged by the Callable proof or the conversion (SPEC 10.8: only parts containing an unbound slot are matched; SPEC 8.10). Named
+    acceptance class: a candidate whose environment slot another evidence binds, including the expected result, is refuted by its
+    Callable Constraint, so another candidate that applies is selected (`make(c@ref, n, 2)` beside `make<F>(f: ref/F, t: i32,
+    u: i64)`; `let r: i32 = make(c@ref, 2)` beside `make<F>(f: ref/F, u: i64)`). A Literal at T is no evidence (SPEC 10.2.1), so
+    `make(c@ref, 1)` keeps the fact. Open (G354-1c review N1): an environment judgment on an unsolved slot still makes the candidate
+    Pending before an independent Constraint's refutation. L531's unsubstituted-Origin return stays fact-less: valid programs reach
+    it (G354-1c design R2).
 
 - **BU-84 TransferRequired is judged in Binding** (2026-11-03; R6-check H1 on the group branch `claude/r6-flip`; the owner's Q8
   approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division,
@@ -16163,6 +16201,21 @@ structure is recorded here by the unit that first implements it.
   - Amended (the R7, R8 and R9 plan, R7-M2, 2026-11-03; the owner's RQ1): the division's windows stay R5's through the flip group's
     (H1, H1b, Q8-3, H5 with H6); from the window after it the middle session (today's R4) runs every window. H3b's rehearsal and
     classification stay R5's.
+  - Amended (R6-check H3-2 U1a, 2026-11-03; R4's consent, 2026-11-03, to R5's implementer writing it in `MirReport`): `MirReport.Records`
+    (H0a, revision 2) is named `MirReport.Merged`, since H3-1's class helper on `MirProgram` reads by class (review N7, N-b). The merge
+    across bodies is `Merged`'s (H0a §3.2): one merged problem per (code, subject, Reason, class), with its members and `Ordinal`,
+    computed once per version.
+  - Superseding (H3-2; R5 and R4, 2026-11-03, R4 agreeing): 2g-1 left R4's chain at the exit (G396), so H3-2 does not wait for it. Until
+    2g-1 a MIR problem resting on a Binding failure carries no Cause fact and publishes as its own direct record, dependent under Q13
+    (counted by code, never blocking, never `InternalInvariant_Kd`; an analysis `InternalInvariant_Kd` stays a regression). H0a §4.2's
+    null-`FailureCauses` rule applies to Cause −1 facts only, which 2g-1 produces; the probe that every Binding cause has a non-null
+    `FailureCauses`, BU-2's four shapes, and no Cause fact on a located problem (§3.2's invariant makes it `InternalInvariant_Kd`; A4's
+    causes at Opaque sites on `Unsupported_Kd` rows) are 2g-1's contract items (G396). From H5 until 2g-1, A3's records that read a Binding
+    failure or a guessed recovery publish direct, departing from DIAGNOSTICS §4.3 'Later phases' (a dated note there, in H5's commit, when
+    the contract changes). Supersedes: R5-M182's amendment 'H3-2 lands with a null `FailureCauses` as `InternalInvariant_Kd` after 2g-1
+    sites every Binding cause at its failed node' (the null rule stays; the order goes); H0a-8's 'fixed in R4's chain before H3-2'; H0's
+    unit-table prerequisite of H3-2 'R4's exit with A6, G11, Q17, Q8-6, OQ11', of which only 'with A6' goes; H0 §5's chain 'R4's exit (A6
+    2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -16198,6 +16251,29 @@ structure is recorded here by the unit that first implements it.
     first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
     `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
     (the rows that need a live static Loan, which no source program has until P42).
+- **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, R5; design `draft/Sketches/R6-check/H3-2-design.md`, design
+  review 2 ACCEPT; under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
+  - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the
+    diagnostics adapter: the `Located` key form, ordinal conditions, one fact table (one arm per `MirFactKind`) and derived problems
+    as `PrerequisiteUnavailable_Kd` with `DerivedFrom` by one cause resolver. It decides how a problem is published, never whether it
+    exists, whether it is dependent or its requirement (R5-M23). `Locate(requirement, code, subject)` is the one location form, code
+    generation's records too (R5-M65). No pipeline mode, flag or optional parameter steers it.
+  - Until H5 Core publishes today's rows only, on every pipeline (H0a review B1): `PublishMirRecords`, from `ReportAnalysis`, locates
+    `MirProgram.Records(MirRecordClass.Construction)`, the validator findings as `InternalInvariant_Kd`, then
+    `MirProgram.Records(MirRecordClass.Collection)`, in the ControlFlow requirement, through `MirRecords`, the one selection that
+    `Analysis`, `Problems` and the generation gate read too. Removal condition of the selection: H5, which publishes every merged problem.
+  - U0 (bp): `MirRecords` and `ReportAnalysis`'s MIR loop move out of `Compilation.Pipeline.cs`; `Compilation.Generation`'s private
+    `ReportLocation` (the same shape, requirement Emission) is folded into `Locate`. Staged without a production caller before H5:
+    `MirReport.Merged` (U1a, U1b; R4's consent on the `MirReport` hunks), `Publish(MirProgram, int merged)` with `Located`, `KeyOf`, the
+    conditions, the resolver and the fact table's switch (U2), the table's other rows and case evidence (U3).
+  - H0a §4.3 corrected for R5-M183: validator findings no longer stop the analyses. A body with a finding is excluded from the analyses
+    and the collector, every other body is judged, and a reader of the excluded body records nothing or composes it as Derived. The MIR
+    phase still never ends incomplete without a record: the excluded body's record is the validator's own `InternalInvariant_Kd`, which
+    `PublishMirRecords` publishes. No fallback producer (H0a-9).
+  - Supersedes R4-M71's placement of the merge across bodies (with U1b's amendment line) and PD30's single owner (H0a-11 (A): where one
+    call meets both, the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay, counted, until R7 removes G128's
+    bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
+    Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
 
 ## R7, R8 and R9 (adopted 2026-11-03)
 

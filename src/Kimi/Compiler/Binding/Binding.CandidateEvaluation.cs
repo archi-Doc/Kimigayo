@@ -292,7 +292,7 @@ public sealed partial class Binding
     // DECISIONS BU-86: a judgment that leaves a candidate Pending before its proof, written once where TryCandidateCore decides it.
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
     // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
-    // (SPEC 8.10, 7.7.4), which stays unsolved.
+    // (SPEC 8.10, 7.7.4), a slot that no other evidence binds (SPEC 10.8).
     private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
