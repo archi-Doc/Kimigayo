@@ -15,7 +15,7 @@ public class TypeBindingTest
     [InlineData("func f(x: owner/(ref/i32 during a))")]
     [InlineData("struct View<T> {source}\n    let value: ref/T during source\nfunc f(x: View<i32>{a})")]
     [InlineData("struct View<T> {source}\n    let value: ref/T during source\n    func f(self: ref/Self) -> ref/T during self.source => self.value")]
-    [InlineData("func identity<s/T>(x: s/T) -> s/T => x\nlet x = identity(1)")]
+    [InlineData("func identity<s/T>(x: s/T) -> s/T => x@move\nlet x = identity(1)")]
     [InlineData("struct Box<T>\n    let value: T\nfunc f(x: Box<ref/i32 during a>)")]
     [InlineData("func f(x: raw/obj/Thing)\nstruct Thing")]
     public void SupportedCompleteTypesBind(string source)
@@ -96,7 +96,7 @@ public class TypeBindingTest
     [Fact]
     public void GenericWholeTypeSubstitutionPreservesBorrowOrigins()
     {
-        var c = Parse("func identity<s/T>(value: s/T) -> s/T => value\nfunc f(value: ref/i32) -> ref/i32 => identity(value)");
+        var c = Parse("func identity<s/T>(value: s/T) -> s/T => value@move\nfunc f(value: ref/i32) -> ref/i32 => identity(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Nodes(c).OfType<InvocationKoto>().Single();
@@ -183,7 +183,7 @@ public class TypeBindingTest
     [Fact]
     public void ResultElisionUsesOnlyDirectInputsAndPreservesExplicitRelations()
     {
-        var c = Parse("struct Pair {left, right}\n    let x: ref/i32 during left\n    let y: ref/i32 during right\nfunc f(x: ref/i32, y: ref/i32, value: Pair) -> Pair{result}\n    origin value.left == x\n    origin value.right == x and y\n    origin result.left == x\n    return value");
+        var c = Parse("struct Pair {left, right}\n    let x: ref/i32 during left\n    let y: ref/i32 during right\nfunc f(x: ref/i32, y: ref/i32, value: Pair) -> Pair{result}\n    origin value.left == x\n    origin value.right == x and y\n    origin result.left == x\n    return value@move");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var result = f.ReturnType!.TypeOf()!;

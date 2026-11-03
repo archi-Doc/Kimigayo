@@ -73,7 +73,7 @@ public sealed class MirAnalysisTest
         struct Nest<T>
             public var value: T
             public var next: Option<rc/Nest<(T, T)>> = .None
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
         contract Store
             func keep(self: uniq/Self, value: i32) -> i32
                 effect confined
@@ -237,7 +237,7 @@ public sealed class MirAnalysisTest
             struct Nest<T>
                 public var value: T
                 public var next: Option<rc/Nest<(T, T)>> = .None
-                public init(value: T) => self.value = value
+                public init(value: T) => self.value = value@move
             func h(n: i32, y: i32 = label w: do
                 var z = 1
                 let nest = Nest<ref/i32>.init(value: z@ref)
@@ -292,7 +292,7 @@ public sealed class MirAnalysisTest
                     s is ref or uniq
                     self.t = t
                 public init(t: s/T, n: i32)
-                    self.t = t
+                    self.t = t@move
 
             """);
         Assert.Empty(c.Binding.Issues);

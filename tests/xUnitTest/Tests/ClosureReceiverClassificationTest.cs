@@ -418,7 +418,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("var", "")]
     public void AnEnumPayloadOfAPairLayerCaptureIsAListedInput(string binding, string records)
     {
-        var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o\n    h()\n" + PairMain;
+        var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o@move\n    h()\n" + PairMain;
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));

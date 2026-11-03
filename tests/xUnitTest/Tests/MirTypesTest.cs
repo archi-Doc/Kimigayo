@@ -189,7 +189,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     public void AClosureHoldsItsEnvironmentsParts()
     {
         var c = MirBuildTest.Compile(
-            "struct Wrap2c3<E>\n    var value: E\n    public init(value: E) => self.value = value\n" +
+            "struct Wrap2c3<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
             "func probe<T>(x: ref/i32, w: uniq/i32, value: T, g: () -> ())\n    T is Copy\n" +
             "    var holder: ref/i32 during x = x\n    let exclusive = func [holder@uniq] () => ()\n" +
             "    var state: ref/i32 during x = x\n    let shared = func [var state] () => ()\n" +
@@ -361,7 +361,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             text.Append(System.Globalization.CultureInfo.InvariantCulture, $"struct P{i}\n    var a: P{i - 1}\n    var b: P{i - 1}\n");
         }
 
-        var (body, c) = Probe(text.Append("func probe(pairs: P24)\n    var local: P24 = pairs\n    return\n").ToString());
+        var (body, c) = Probe(text.Append("func probe(pairs: P24)\n    var local: P24 = pairs@move\n    return\n").ToString());
         var pairs = Parameters(body).Single().Type;
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         var walk = new Walk(seen);

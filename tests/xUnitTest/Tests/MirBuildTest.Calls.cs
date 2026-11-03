@@ -448,7 +448,7 @@ public sealed partial class MirBuildTest
     public void TextAloneKeepsTheProgramsOtherErrors()
     {
         var program = Compile(
-            "func touch(v: uniq/i32) => ()\nfunc f() -> string\n    var x = 1\n    let r = x@uniq\n    let s = \"a\\(x)b\"\n    touch(r)\n    return s\n" +
+            "func touch(v: uniq/i32) => ()\nfunc f() -> string\n    var x = 1\n    let r = x@uniq\n    let s = \"a\\(x)b\"\n    touch(r)\n    return s@move\n" +
             "func only() -> string => \"\\(\"only\")\"\n").BuildMir();
         Assert.Empty(program.Findings);
         Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);

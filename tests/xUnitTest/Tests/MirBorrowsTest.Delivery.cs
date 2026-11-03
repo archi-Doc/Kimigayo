@@ -21,7 +21,7 @@ public sealed partial class MirBorrowsTest
             public var h: obj/Cell
             public var q: raw/i32
             public init(h: obj/Cell)
-                self.h = h
+                self.h = h@move
                 self.q = null
         group Del
             public func keepCel(slot: uniq/(ref/Cel during a), v: ref/Cel during a) => slot@follow = v
@@ -189,26 +189,26 @@ public sealed partial class MirBorrowsTest
     [Fact]
     public void APointerTheDeliveredReceiverCarriesWarnsAtTheReturn()
         => Assert.Equal(
-            ["init: self.h = hDelivered", "init: self.h = hReset", "resetMoved: k"],
+            ["init: self.h = hDelivered@move", "init: self.h = hReset@move", "resetMoved: k"],
             this.Warnings(AnchorShapes + DeliveryShapes + """
                 struct Delivered
                     public var h: obj/Cell
                     public var q: raw/i32
                     public init(hDelivered: obj/Cell)
-                        self.h = hDelivered
+                        self.h = hDelivered@move
                         self.q = self.h@follow.x@raw
                 struct Reset
                     public var h: obj/Cell
                     public var q: raw/i32
                     public init(hReset: obj/Cell)
-                        self.h = hReset
+                        self.h = hReset@move
                         self.q = self.h@follow.x@raw
                         self.q = null
                 struct LocalPointer
                     public var h: obj/Cell
                     public var q: raw/i32
                     public init(hLocal: obj/Cell)
-                        self.h = hLocal
+                        self.h = hLocal@move
                         let p = self.h@follow.x@raw
                         Del.usePtr(p)
                         self.q = null
@@ -290,7 +290,7 @@ public sealed partial class MirBorrowsTest
                 func returned(b: uniq/Cel during a, c: ref/Cel during a) -> SelfPin during a
                     var h = SelfPin.init(b, r: c)
                     h.view = h.u@follow@ref
-                    return h
+                    return h@move
                 func tupleMoved(b: uniq/Cel, c: ref/Cel)
                     var t: (uniq/Cel, ref/Cel) = (b, c)
                     t.1 = t.0@follow@ref
@@ -299,7 +299,7 @@ public sealed partial class MirBorrowsTest
                 func tupleReturned(b: uniq/Cel during a, c: ref/Cel during a) -> (uniq/Cel during a, ref/Cel during a)
                     var t: (uniq/Cel during a, ref/Cel during a) = (b, c)
                     t.1 = t.0@follow@ref
-                    return t
+                    return t@move
                 func aggregated(b: uniq/Cel during a) -> (ref/Cel during a, uniq/Cel during a)
                     var x = b
                     return (x@follow@ref, x)

@@ -100,7 +100,7 @@ public class BindingTest
     [InlineData("let n: u8 = 3\nlet y = if true => 1 << n else => 0", "i32")]
     [InlineData("var x: i16 = 1\nlet count: u32 = 3\nx >>= count\nlet y = x", "i16")]
     [InlineData("let y = \"\\(\"a\")\\(\"b\")\"", "string")]
-    [InlineData("var s = \"a\"\ns = \"\\(s)b\"\nlet y = s", "string")]
+    [InlineData("var s = \"a\"\ns = \"\\(s)b\"\nlet y = s@move", "string")]
     [InlineData("let y = 'a' < 'b'", "bool")]
     [InlineData("let y = \"a\" >= \"b\"", "bool")]
     [InlineData("let y = () == ()", "bool")]
@@ -154,7 +154,7 @@ public class BindingTest
     [Fact]
     public void GenericCallsRetainInferredTypesAndCanonicalTupleTypes()
     {
-        var compilation = CompilationTestHelper.ParseSuccess("func identity<T>(value: T) -> T => value\nlet a = identity(1)\nlet b = identity<i64>(2)\nlet pair: (i32, i32) = (1, 2)");
+        var compilation = CompilationTestHelper.ParseSuccess("func identity<T>(value: T) -> T => value@move\nlet a = identity(1)\nlet b = identity<i64>(2)\nlet pair: (i32, i32) = (1, 2)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var calls = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.Equal("i32", calls[0].CallOf()!.TypeArguments[0]!.Name);
@@ -175,7 +175,7 @@ public class BindingTest
     [Fact]
     public void AccessAndWrongRoleDoNotStopOuterLookup()
     {
-        var compilation = CompilationTestHelper.ParseSuccess("group Outer\n    struct T\n    group Inner\n        group T\n        func f(x: T) -> T => x");
+        var compilation = CompilationTestHelper.ParseSuccess("group Outer\n    struct T\n    group Inner\n        group T\n        func f(x: T) -> T => x@move");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var function = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>());
         Assert.IsType<StructKoto>(function.Parameters[0].Type.SymbolOf()!.Declaration);
@@ -188,7 +188,7 @@ public class BindingTest
     {
         var declarations = new[]
         {
-            "func f<T>(x: T) -> T => x",
+            "func f<T>(x: T) -> T => x@move",
             "func f(x: i32, extra: i32 = 0) -> i32 => x",
             "func f(x: i32) -> i32 => x",
         };
@@ -208,7 +208,7 @@ public class BindingTest
     [Fact]
     public void ExpectedResultFillsUnresolvedGenericTypeBeforeLiteralDefaulting()
     {
-        var compilation = CompilationTestHelper.ParseSuccess("func identity<T>(value: T) -> T => value\nlet result: i64 = identity(1)");
+        var compilation = CompilationTestHelper.ParseSuccess("func identity<T>(value: T) -> T => value@move\nlet result: i64 = identity(1)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal("i64", call.CallOf()!.TypeArguments[0]!.Name);
@@ -248,7 +248,7 @@ public class BindingTest
     [Fact]
     public void RebindingReusesScratchAndDoesNotAllocatePerNode()
     {
-        var source = "func identity<T>(x: T) -> T => x\n" + string.Join("\n", Enumerable.Range(0, 256).Select(i => $"let v{i} = identity({i})"));
+        var source = "func identity<T>(x: T) -> T => x@move\n" + string.Join("\n", Enumerable.Range(0, 256).Select(i => $"let v{i} = identity({i})"));
         var compilation = CompilationTestHelper.ParseSuccess(source);
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));

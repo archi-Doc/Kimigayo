@@ -49,7 +49,7 @@ public partial class ClosureResultOriginTest
     private const string F1i = Texts + MainBody + "    var x: i32 = 1\n    let u = x@uniq\n    let t = makeText()\n" + ConsumingMaker +
         "    let a = outer@move()\n    let pa = a@move()\n";
 
-    private const string FieldHolder = "struct Holder<F>\n    public let f: F\n    public init(f: F) => self.f = f\n";
+    private const string FieldHolder = "struct Holder<F>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
 
     private const string OptionCall = "    let o = Option.Some(outer())\n    match o\n        .Some(let c)\n            let r = c()\n";
 

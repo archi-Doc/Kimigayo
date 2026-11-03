@@ -103,7 +103,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         struct Nest<T>
             public var value: T
             public var next: Option<rc/Nest<(T, T)>> = .None
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
 
         """;
 

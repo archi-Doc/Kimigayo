@@ -17,7 +17,7 @@ public sealed partial class MirBorrowsTest
             public init() => ()
         struct Keeper
             public var h: obj/Cell
-            public init(h: obj/Cell) => self.h = h
+            public init(h: obj/Cell) => self.h = h@move
         struct Store
             internal var data: raw/i32 during self
             public init()

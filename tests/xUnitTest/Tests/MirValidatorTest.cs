@@ -283,7 +283,7 @@ public sealed class MirValidatorTest
     [Fact]
     public void TypesAgreeModuloOriginsAndPremises()
     {
-        var c = MirBuildTest.Compile("func pick(x: ref/i32) -> ref/i32 during x => x\nfunc same<S, E>(a: S, b: E) -> S\n    E is S\n    return b\n");
+        var c = MirBuildTest.Compile("func pick(x: ref/i32) -> ref/i32 during x => x\nfunc same<S, E>(a: S, b: E) -> S\n    E is S\n    return b@move\n");
         Assert.Empty(c.BuildMir().Findings);
         BindingSymbol Function(string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf()!;
         var held = TyCtxt.Signature(Function("pick"), null, -1, out _)!;
