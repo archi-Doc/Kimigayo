@@ -284,3 +284,16 @@ units of an hour or less. Amendments:
     before and after the flip. That is the existing P42 limit (R5-M82, R5-M156), so the owner's 1a acceptance does not apply. Each row
     pins the collector's records and the absent old record.
 - **U-A1 moved to the (e) list** (R4, 2026-11-03; GXS's proposal takes its rows). T-23 now waits for G409 alone. Its ClosureReceiverClassification ×4 (e) rows are re-pointed to the head's records, naming the owner's decision and GXS's unit. T-23's other rows there are class 3.
+- **The owner's G264 (S) units come before H5** (R4, 2026-11-04). R4 drafts S0; R5 arranges its one SPEC review. GXS's 15.6.4 revision
+  follows S0, never in parallel. The test classes S1 and S2 change:
+  - S1: MirTypesTest, MirBorrowsTest.Guard, a MirBorrowsTest `count<S>` row, and classification.tsv;
+  - S2: MirBorrowsTest.Destructions, .ArrayDestructions, .Referents and MirBorrowsTest.cs, MirEffectsTest (Destroy's Sealed test),
+    MirTypesTest, and classification.tsv;
+  - S0: spec-cases and VerifiedSpecExampleTest.
+
+  Consequences for the T-units:
+  - T-14 (`MirEffectsTest.Destructions`) waits for S2 as well as U-B2.
+  - T-01's merged rows in `MirBorrowsTest.ArrayDestructions` meet S2's hunks when the branch merges dev. The merge keeps S2's
+    verdicts and T-01's 1r forms.
+  - T-21 (S and spec-cases) runs now. S0's spec-cases rows are merged into it when the branch merges dev.
+  - F8 leaves T-26's (e) list once S1 lands.
