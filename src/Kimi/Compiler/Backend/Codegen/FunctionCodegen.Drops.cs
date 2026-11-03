@@ -13,8 +13,8 @@ namespace Kimi.Compiler.Backend;
 // Open destroys what remains after a Partial Move (SPEC 16.3.2, 15.1.3): one level of the value through its glue item (FunctionCodegen.Glue's
 // Level), each part in destruction order by its child row, found by the part's move-path step (Governing), and a part without one by its
 // parent's own bit, a component no Place names having no path of its own (MirMoveData). In a test build a destruction runs in the cleanup
-// phase (FunctionCodegen.Phases; DECISIONS R5-M137). The Drop ends through Branch, after its own clear point. Gate step 2 has written only
-// a body whose table is exact (FunctionCodegen.Write; DECISIONS R5-M96), so a runtime Drop without a group is a broken contract, and no
+// phase (FunctionCodegen.Phases; DECISIONS R5-M137). The Drop ends through Branch, after its own clear point. Write writes only a body
+// whose table is exact (FunctionCodegen.Write; DECISIONS R5-M96, R5-M185), so a runtime Drop without a group is a broken contract, and no
 // Open row is a struct's that declares a drop (A2's MovedPlace_Kd, R4-M6b).
 internal sealed partial class FunctionCodegen
 {

@@ -9,7 +9,7 @@
 // branch and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
-// exactness (A2, R4-M6a, R4-M102: gate step 2 writes no inexact body); the compilation's Layout and runtime location texts;
+// exactness (A2, R4-M6a, R4-M102: an inexact body reaching Write is a broken contract); the compilation's Layout and runtime location texts;
 // ModuleCodegen's signatures (Signature and Import: Abi.Of under the internal and the C convention, IMPL 21.3.1), constant pool and
 // record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
@@ -89,15 +89,10 @@ internal sealed partial class FunctionCodegen
         (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
         if (program.Drops.Incomplete(body.Ordinal) is { } refusal)
         {
-            // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so a body
-            // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
-            // code at its subject, by the location rule (K 4.9: out of an inline default outside the root modules, R4-M132), and every
-            // other item is still written, so its own refusals are recorded too. Interim: a body A1 skipped at the arena limit (ViewsOf 0,
-            // R4-M15a) is one located Unsupported_Kd at the body, since a generation record is location-only, code generation's one
-            // interim Unsupported_Kd (COMPILER_ARCHITECTURE, DECISIONS R5-M146, R5-M149); removed at H3 once a record carries the arena
-            // problem's Required, Limit and Table facts (refusal.Problem's) as requiredBytes, limitBytes and table.
-            var code = program.Drops.ViewsOf(body.Ordinal) == 0 ? DiagnosticCode.Unsupported_Kd : refusal.Code;
-            this.module.Report(code, collector.Subject(item, body, refusal.Source));
+            // IC's contract (MirDropTable.Incomplete, R4-M69, R4-M102; DECISIONS R5-M96's H5 line, R5-M185): A2's verdicts are exact only
+            // for a body A1 accepts (R4-M6a), and every body A1 or A2 left inexact has a kept Error problem, its own or its template's of
+            // the same code, so check rejects its program and the gate never lets it here: a broken contract at its subject (K 4.9).
+            this.module.Report(DiagnosticCode.InternalInvariant_Kd, collector.Subject(item, body, refusal.Source));
             return;
         }
 

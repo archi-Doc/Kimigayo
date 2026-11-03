@@ -12813,6 +12813,10 @@ structure is recorded here by the unit that first implements it.
   - Rejected: composing the fact from `MirProblem.Body` (a second copy of the recording rules, and blind to a copy's dropped problem);
     every Ownership problem of a body (A5's would refuse programs the old analysis accepts); stopping generation at the first refusal (it
     hides independent gaps); a new argument-free Resource code for the arena (departs from PD12 and R5-M4).
+  - Amended (R6-check H5's unit G, 2026-11-03; R5-M185): the gate's step 2 and the arena interim end. IC's contract (`MirDrops`, R4-M69)
+    gives every inexact body a kept Error problem, its own or its template's of the same code, so check rejects its program and the gate
+    (`Accepts`) never lets it through; an inexact body reaching `FunctionCodegen.Write` is `InternalInvariant_Kd` at its subject. A
+    runtime Drop with no group stays `InternalInvariant_Kd`.
 - **R5-M97 The owner confirms E14's departure** (owner, 2026-10-22, on the R5 planning session's explanation; verbatim 「了承しました」;
   the consequences are the planning session's) The departure R5-M94 recorded for the owner's list is confirmed: under MIR code
   generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
