@@ -526,7 +526,8 @@ public sealed class MirValidatorTest
 
     // G191 (K package 4.5 row 7, DECISIONS R4-M121): the builder ensures only the statics whose initializers it builds, so over the program
     // each staticEnsure names a static whose StaticInit body the program has: the built program is valid, and with the ensure pointed at a
-    // function's symbol (Binding never gives one) the program has a StaticSlot finding at the access.
+    // function's symbol (Binding never gives one) the program has a StaticSlot finding at the access, which marks the ensuring body
+    // (MirBody.HasFinding; fail-before: no verdict).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -548,6 +549,7 @@ public sealed class MirValidatorTest
 
         new MirValidator(c.Types).Validate(program);
         Assert.Equal(broken ? [(MirViolation.StaticSlot, "Registry.total")] : [], program.Findings.Select(x => (x.Rule, c.SyntaxOf(x.Subject).ToString())));
+        Assert.Equal(broken, use.HasFinding); // The ensuring body's verdict (DECISIONS R5-M183).
     }
 
     // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's steps carry their constants, which code generation
@@ -884,6 +886,45 @@ public sealed class MirValidatorTest
         Assert.Equal([(MirViolation.Operation, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
         body.Binders.Add(binder);
         Assert.Equal([(MirViolation.Binder, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // DECISIONS R5-M183: the validator's verdict (MirBody.HasFinding) is whether it added a finding, at each of its exits: the walk's end, a
+    // projection chain out of order that Tables cannot walk, and the case bound's; a valid body validated after another body's findings has
+    // none, and a pooled body reset and rebuilt valid (MirProgram.Begin's reset) clears it. Fail-before: no verdict.
+    [Fact]
+    public void TheVerdictIsWhetherTheValidatorAddedAFinding()
+    {
+        var validator = new MirValidator(Fixture.Value.Compilation.Types);
+        var findings = new List<MirFinding>();
+        var binders = new List<PairBinder>();
+        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
+        Assert.True(Verdict(Typed("assign")));
+        var unordered = Build(null);
+        Unsafe.AsRef(in unordered.Projections[1]) = unordered.Projections[1] with { Prefix = 1 };
+        Assert.True(Verdict(unordered));
+        Assert.False(Verdict(Build(null)));
+        var pooled = new MirBody();
+        Rebuild(pooled, 7); // 128 views (ViewsBeyondTheCaseBoundAreAFinding's).
+        Assert.True(Verdict(pooled));
+        Rebuild(pooled, 0);
+        Assert.False(pooled.HasFinding);
+        Assert.False(Verdict(pooled));
+
+        bool Verdict(MirBody body)
+        {
+            validator.Validate(body, findings);
+            return body.HasFinding;
+        }
+
+        // The body started over as an empty body of a unit result with a number of two-case binders.
+        void Rebuild(MirBody body, int count)
+        {
+            body.Reset(new(null, MirBodyKind.Fn), default);
+            body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+            body.Terminate(body.AddBlock(), MirTerminator.Return(At));
+            body.Binders.AddRange(Enumerable.Repeat(binder, count));
+        }
     }
 
     // DECISIONS R5-M90 (2e-D 5.7): a region, the body or an Inlined scope's locations (a default's copy), is entered only at its first

@@ -1,9 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns structural and Type validation of producer-owned MIR in every configuration.
-// Input: MIR bodies, their program and published Type facts. Output: located invariant findings.
+// Input: MIR bodies, their program and published Type facts. Output: located invariant findings, and each body's verdict
+// (MirBody.HasFinding: whether a finding is located in it), which only the validator writes (DECISIONS R5-M183).
 // Every IR invariant is checked here; a broken producer contract is InternalInvariant_Kd.
-// Must not repair broken IR, recover silently or leave consumers to revalidate it.
+// Must not repair broken IR, recover silently or leave consumers to revalidate it; no consumer reads a body with a finding.
 
 #pragma warning disable SA1402 // The validator's rules and findings belong to it.
 
@@ -81,14 +82,16 @@ internal sealed partial class MirValidator(TyCtxt types)
     private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
 
-    /// <summary>Validates a body.</summary>
+    /// <summary>Validates a body and sets its verdict (<see cref="MirBody.HasFinding"/>): whether it added a finding.</summary>
     /// <param name="body">The body.</param>
     /// <param name="findings">The caller's list the findings are added to.</param>
     internal void Validate(MirBody body, List<MirFinding> findings)
     {
+        var count = findings.Count;
         if (MirCases.Count(body) > PairBinder.CaseBound)
         {
             findings.Add(new(MirViolation.Binder, body.Source)); // Binding binds no part of a definition beyond the bound.
+            body.HasFinding = findings.Count > count;
             return; // Nor are its views resolved.
         }
 
@@ -102,6 +105,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes, this.parts, types);
         if (!checker.Tables())
         {
+            body.HasFinding = findings.Count > count;
             return; // A chain or site out of order or range cannot be walked.
         }
 
@@ -130,6 +134,8 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             this.Entries(body, findings); // It walks the scope table and each location's scope.
         }
+
+        body.HasFinding = findings.Count > count;
     }
 
     // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports; it
