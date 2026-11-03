@@ -17,7 +17,8 @@ internal enum MirViolation : byte
     NoBlocks,
     Unterminated,
     StatementRange,
-    TargetRange, // A successor, case range, check target or MustNotComplete block out of range; a MustNotComplete end with a check or not Unreachable.
+    TargetRange, // A successor, case range, check target, MustNotComplete block or guessed-site range out of range; a MustNotComplete end with a
+    // check or not Unreachable.
     CheckTarget, // A check target on a terminator other than Goto, a Call without a target and Unreachable.
     Unreachable, // A block that neither runtime nor check edges reach from the entry.
     Entry, // An edge into a region, the body or an Inlined scope's locations, elsewhere than its first location, or from it into that block.

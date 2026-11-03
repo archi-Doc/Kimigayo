@@ -5,7 +5,8 @@
 // generation's records take too (DECISIONS R5-M65).
 // Input: the program of the latest Analyze: its report's MirReport.Merged problems (its construction and collection records among them,
 // MirRecordClass, R6-check H3-1; the analyses' problems), their members' bodies, binders and views, their merged facts, the C1-F4 rows a
-// Relation fact names (TyCtxt.OriginRows) and, for a Binding cause, Binding.FailureCauses at its site; and its validator findings.
+// Relation fact names (TyCtxt.OriginRows) and, for a Binding cause, Binding.RestingCauses at its site (DECISIONS R5-M186); and its
+// validator findings.
 // Output: adapter calls only (DiagnosticCollection.ReportLocation, Koto.Report and Koto.ReportDerived, in the subject's collection); no table
 // of its own.
 // Invariants: PublishMirRecords publishes every merged problem through Publish, then each finding as InternalInvariant_Kd located in the
@@ -88,11 +89,11 @@ public partial class Compilation
                 case Mir.MirFactKind.Cause when fact.Value >= 0:
                     (causes ??= []).Add(this.KeyOf(program, (int)fact.Value));
                     break;
-                case Mir.MirFactKind.Cause when this.Binding.FailureCauses(this.SyntaxOf(fact.Site)) is { } failures:
-                    (causes ??= []).AddRange(failures);
+                case Mir.MirFactKind.Cause when this.Binding.RestingCauses(this.SyntaxOf(fact.Site)) is { } resting:
+                    (causes ??= []).AddRange(resting);
                     break;
                 case Mir.MirFactKind.Relation: // A relation without a body, Reason ends or row source.
-                case Mir.MirFactKind.Cause: // A Binding cause at a node Binding resolved.
+                case Mir.MirFactKind.Cause: // A Binding cause at a node with no resting causes, such as one Binding resolved.
                 case Mir.MirFactKind.Inlined: // MirReport.Add drops its problem.
                 default: // A kind without a row.
                     this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject);

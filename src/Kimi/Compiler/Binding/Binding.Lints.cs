@@ -2,18 +2,21 @@
 
 // Owns the HIR lints (ARCH target pipeline P2-P5s; DECISIONS PD31, R5-M31): Binding's checks that never fail a node, one row
 // per code in the lint table below, judged once per Final pass by one walk of the source modules' evaluated syntax, the last
-// step of Bind(Final); and GuessedCompletion, the one guess rule of completion checks.
+// step of Bind(Final); and the one guess rule of completion checks (GuessedCompletion).
 // Input: the Final pass's bound tree and facts: Types and adaptations, call plans, Copy proofs, InfersUnit, structural
 // completion (ResultStructure), FailureCauses and the parser's recoveries.
 // Output: the pass's lint records (node, row, completion root), cleared by ResetPass and published by ReportDiagnostics at a
 // Final pass as Binding records: requirement Binding with BindingFailure.None and the row as condition, so a lint never shares
 // a check key with Binding's own warnings (condition 0). A row that reads Binding's result at a node Binding failed, or rests
 // on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
+// GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), and RestingCauses, the
+// causes a check resting on one of them rests on.
 // LintErrors counts the Error records for the old analysis, which rejects the program with them until H10.
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
 // Must not re-run inference or a proof to explain a record, lint the library's bodies or record from a Provisional pass.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -45,8 +48,9 @@ public sealed partial class Binding
     private LintWalk? lintWalk;
 
     // Created at the first guess query after a recovery or in an incomplete pass: completion that assumes guessed nodes never
-    // complete, and the causes of the guesses it met.
+    // complete, the guessed nodes it met and their causes.
     private StructuralCompletion? guessedCompletion;
+    private List<Koto>? guessNodes;
     private List<DiagnosticKey>? guessCauses;
 
     // The rows of the lint table.
@@ -102,34 +106,67 @@ public sealed partial class Binding
     /// <summary>Gets the node completions the latest lint walk composed, which a scaling check reads: each node once per walk.</summary>
     internal long LintCompletionWork => this.lintWalk?.CompletionWork ?? 0;
 
-    /// <summary>Gets the causes a completion check rests on when the syntax from a node up to a root completes normally only through
-    /// nodes whose completion Binding did not establish: a body the parser supplied for a missing one (docs/dev/DIAGNOSTICS.md §4.4),
-    /// whose cause is its syntax Error, or an unresolved expression, whose causes are its Binding causes. Written, resolved syntax
-    /// reaching the same completion keeps the check direct.</summary>
+    /// <summary>Gets the node completions the guess queries composed since the first, which a scaling check reads.</summary>
+    internal long GuessCompletionWork => this.guessedCompletion?.Composed ?? 0;
+
+    /// <summary>Gets the nodes a completion check rests on when the syntax from a node up to a root completes normally only through
+    /// nodes whose completion Binding did not establish: a body the parser supplied for a missing one (docs/dev/DIAGNOSTICS.md §4.4)
+    /// or an unresolved expression. Written, resolved syntax reaching the same completion keeps the check direct. Its work is the
+    /// structural walk over the node's evaluation, so a caller asks only where the syntax can complete. The span is Binding's
+    /// scratch, valid until the next guess query, so a caller copies it at once.</summary>
     /// <param name="node">The checked syntax.</param>
     /// <param name="root">The syntax whose completion, down to the node, decided the check: the node itself, or a discarded
     /// tail's descent root.</param>
-    /// <returns>The causes, or null when the check does not rest on a guess.</returns>
-    internal DiagnosticKey[]? GuessedCompletion(Koto node, Koto root)
+    /// <returns>The nodes in walk order, or empty when the check does not rest on a guess.</returns>
+    internal ReadOnlySpan<Koto> GuessedCompletionNodes(Koto node, Koto root)
     {
         if (!node.CodeContext.HasRecoveries && this.Result.IsComplete)
         {
-            return null;
+            return default;
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this.ResultNeverEvidence, this.IsGuess);
-        var causes = this.guessCauses ??= new();
+        var guessed = this.guessedCompletion ??= new(this.ResultNeverEvidence, this.RecordGuess);
+        var nodes = this.guessNodes ??= new();
         guessed.Clear();
-        causes.Clear();
+        nodes.Clear();
         var rests = false;
         for (Koto? part = node; part is not null && !rests; part = part == root ? null : part.Parent)
         {
             rests = structural.CanComplete(part) && !guessed.CanComplete(part);
         }
 
-        return rests && causes.Count > 0 ? [.. causes] : null;
+        return rests ? CollectionsMarshal.AsSpan(nodes) : default;
     }
+
+    /// <summary>Gets the causes a completion check rests on: those of its GuessedCompletionNodes in walk order.</summary>
+    /// <param name="node">The checked syntax.</param>
+    /// <param name="root">The syntax whose completion, down to the node, decided the check.</param>
+    /// <returns>The causes, or null when the check does not rest on a guess.</returns>
+    internal DiagnosticKey[]? GuessedCompletion(Koto node, Koto root)
+    {
+        var nodes = this.GuessedCompletionNodes(node, root);
+        if (nodes.IsEmpty)
+        {
+            return null;
+        }
+
+        var causes = this.guessCauses ??= new();
+        causes.Clear();
+        foreach (var guessed in nodes)
+        {
+            causes.AddRange(this.RestingCauses(guessed)!); // Never null on the guess rule's domain.
+        }
+
+        return [.. causes];
+    }
+
+    /// <summary>Gets the causes a check resting on a node rests on (docs/dev/DIAGNOSTICS.md §4.3): a supplied body's syntax Error,
+    /// else the node's Binding causes, else the unresolved mark for an expression the guess rule counts as unresolved.</summary>
+    /// <param name="node">The node, such as one of GuessedCompletionNodes.</param>
+    /// <returns>The causes, or null at a node outside the guess rule with no Binding causes.</returns>
+    internal DiagnosticKey[]? RestingCauses(Koto node)
+        => SuppliedCause(node) is { } supplied ? [supplied] : this.FailureCauses(node) ?? (IsUnresolvedGuess(node) ? [DiagnosticKey.Unresolved] : null);
 
     // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
     private static bool IsBodyItem(Koto node) => node.Parent switch
@@ -139,6 +176,18 @@ public sealed partial class Binding
         MatchKoto match => KotoHelper.IsSelectionBody(match, node),
         _ => false,
     };
+
+    // A body the parser supplied for a missing one, the empty block of an indented body or the Error of a single-item body (other
+    // Errors stand for operands): its syntax Error; otherwise null.
+    private static DiagnosticKey? SuppliedCause(Koto node)
+        => node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node)) ? node.CodeContext.RecoveryCause(node) : null;
+
+    // An expression whose completion Binding did not establish: unresolved, neither an Error nor a recovery.
+    private static bool IsUnresolvedGuess(Koto node)
+        => node.BindingState != BindingState.Resolved && node is ExpressionKoto and not ErrorKoto && node.CodeContext.RecoveryCause(node) is null;
+
+    // A node whose completion Binding did not establish, assumed not to complete: a supplied body or an unresolved expression.
+    private static bool IsGuess(Koto node) => SuppliedCause(node) is not null || IsUnresolvedGuess(node);
 
     // A Type whose value a discard loses: neither Unit nor Never.
     private static bool HasValue(BoundType? type) => type is not null && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.Never);
@@ -397,24 +446,16 @@ public sealed partial class Binding
         }
     }
 
-    // A node whose completion Binding did not establish, assumed not to complete: a body the parser supplied for a missing one,
-    // the empty block of an indented body or the Error of a single-item body (other Errors stand for operands), or an unresolved
-    // expression. Records its causes.
-    private bool IsGuess(Koto node)
+    // The guess walk's predicate: records each guessed node it meets.
+    private bool RecordGuess(Koto node)
     {
-        if ((node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node))) && node.CodeContext.RecoveryCause(node) is { } supplied)
+        var guess = IsGuess(node);
+        if (guess)
         {
-            this.guessCauses!.Add(supplied);
-            return true;
+            this.guessNodes!.Add(node);
         }
 
-        if (node.BindingState == BindingState.Resolved || node is not ExpressionKoto || node is ErrorKoto || node.CodeContext.RecoveryCause(node) is not null)
-        {
-            return false;
-        }
-
-        this.guessCauses!.AddRange(this.FailureCauses(node) ?? [DiagnosticKey.Unresolved]);
-        return true;
+        return guess;
     }
 
     // SPEC 10.2: the Type a resolved expression supplies, its one adaptation's, else its own; null while Binding has not resolved it.

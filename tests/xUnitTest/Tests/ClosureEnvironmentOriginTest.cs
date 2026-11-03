@@ -506,7 +506,8 @@ public class ClosureEnvironmentOriginTest
     // call's own input stays Unknown) or through a slot the local's Type completes from it, where the body binds the header again (dev
     // accepted the store `during r.s` of `r: ref/W during a`; it is Unknown as d6b's), an enclosing contract's (SPEC 15.3.4's `pass`),
     // an unannotated local's value, whose Type the body gives it before it binds the header again (d6u; LocalRegionCompletionTest's
-    // NestedNamedFinite), a name that selects no Origin (a non-borrow local, an absent slot: InvalidOriginBinding_Kd, SPEC 15.2.1,
+    // NestedNamedFinite; its input row is the signature's premise, DECISIONS BU-89, and a call that cannot prove it keeps the call's
+    // record, `put(rr)`), a name that selects no Origin (a non-borrow local, an absent slot: InvalidOriginBinding_Kd, SPEC 15.2.1,
     // 15.3.1) and a Closure header naming the same local set, bound in its evaluating body (BU-28's EnclosingAtom: storing the call's own
     // input is Unknown, the valid twin is accepted).
     [Theory]
@@ -524,6 +525,11 @@ public class ClosureEnvironmentOriginTest
             "    var other: Array<ref/i32> = []\n    other.append(a)\n    put(other@uniq, r)\n    return 0\npublic func main() => ()\n",
         null,
         null)]
+    [InlineData(
+        Leak + "    let r = arr[0]\n    func put(slot: ref/(ref/i32 during r) during a) -> i32 => 0\n    let rr = r@ref\n    _ = put(rr)\n" +
+            "    return 0\npublic func main() => ()\n",
+        Unsatisfied,
+        "rr)")]
     [InlineData(
         "func use(source: uniq/i32, bound: ref/i32) -> i32\n    origin source outlives bound\n" +
             "    func pass(value: uniq/i32 during bound) -> uniq/i32 during bound => value\n    let child = pass(source)\n    child@follow = 42\n" +

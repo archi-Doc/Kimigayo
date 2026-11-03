@@ -989,7 +989,13 @@ public sealed partial class MirBorrowsTest
 
             foreach (var end in built.MustNotComplete)
             {
-                body.AddMustNotComplete(end);
+                var start = body.GuessedSites.Length; // The copy's sites, re-based into this body's (R5-M186).
+                foreach (var site in built.GuessedSites.Slice(end.Start, end.Count))
+                {
+                    body.AddGuessedSite(site);
+                }
+
+                body.AddMustNotComplete(end with { Start = start });
             }
 
             foreach (var block in built.Blocks)

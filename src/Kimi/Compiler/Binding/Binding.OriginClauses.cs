@@ -16,19 +16,21 @@ namespace Kimi.Compiler;
 //   Unsupported failure of a row with an Unbound end (UnboundCause), obligations for the clauses the judge leaves to region inference,
 //   and a local clause's row and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
 // - Invariants: a clause is judged by its owner's part only, and FailedDeclaredRelation takes no steering flag; a clause's rows are its
-//   owner's body's (a local's, or none for a declaration's); a judged declaration row leaves the obligations, and a row whose ends are
-//   not declaration atoms stays for the view's validation (R4-M101 E2).
+//   owner's body's (a local's, or none for a declaration's); the declaration judge judges in its own frame (ExecutableBody.Declarations,
+//   DECISIONS BU-89), a judged declaration row leaves the obligations, and a row whose ends are not declaration atoms stays for the
+//   view's validation (R4-M101 E2).
 // - Prohibitions: no proof or judgment of its own (the proof and the judge decide); no message text (the diagnostics adapter writes it).
 public sealed partial class Binding
 {
     private readonly List<(BindingObligation Obligation, BoundOrigin Longer, BoundOrigin Shorter)> fixedRows = new();
 
-    // R4-M101 E2: an end of a declaration's row: a parameter, input, static or Unbound atom, or a meet of them.
+    // R4-M101 E2 as BU-89 widens it: an end of a declaration's row: an Unbound atom, an Origin fixed in the declaration judge's frame (a
+    // parameter, input or static, or an enclosing body's Origin the declaration names, SPEC 15.3.4), or a meet of them.
     private static bool DeclarationAtom(BoundOrigin origin)
     {
         if (origin.Kind != OriginKind.Intersection)
         {
-            return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.Unbound;
+            return origin.Kind == OriginKind.Unbound || FixedIn(origin, ExecutableBody.Declarations);
         }
 
         for (var i = 0; i < origin.Operands.Count; i++)
@@ -96,13 +98,17 @@ public sealed partial class Binding
     // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (each failing operand of a meet its own
     // record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
     // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use and a failed enclosing declaration's cleared
-    // clauses (RejectedRelations). A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract the view reports.
+    // clauses (RejectedRelations). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
+    // Origin a declaration names is fixed (SPEC 15.3.4); a judgment made while a header is bound keeps the forming body's classes and
+    // leaves such a relation to this judge as a row. A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract
+    // the view reports.
     private void JudgeDeclarationRows()
     {
         this.callRelationScratch.Clear();
         this.CollectDeclarationRows();
         var saved = this.readingFailedContracts;
         this.readingFailedContracts = this.originPremiseDepth;
+        var frame = this.EnterBody(ExecutableBody.Declarations);
         try
         {
             foreach (var (row, longer, shorter) in this.fixedRows)
@@ -115,6 +121,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.formingBody = frame;
             this.readingFailedContracts = saved;
         }
 

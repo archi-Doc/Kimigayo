@@ -823,6 +823,21 @@ public sealed class MirAnalysisTest
         Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
+    // DIAGNOSTICS 4.3, DECISIONS R5-M186: A3's problem at a falling failure body has one Cause fact of Value -1 (a Binding cause) per site
+    // its row names, so MirReport's rule derives it; a failure body written in source keeps a direct problem. Fail-before: no fact.
+    [Theory]
+    [MemberData(nameof(MirBuildTest.GuessedFailureBodies), MemberType = typeof(MirBuildTest))]
+    public void AFallthroughRestsOnItsGuessedSites(string source, string sites)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var problems = c.BuildMir().Problems;
+        var index = Assert.Single(
+            Enumerable.Range(0, problems.All.Length), i => problems.All[i] is { Code: DiagnosticCode.RequireFallthrough_Kd, Subject.Module: 0 });
+        var facts = problems.Facts(index).ToArray();
+        Assert.All(facts, static x => Assert.Equal((MirFactKind.Cause, -1L), (x.Kind, x.Value)));
+        Assert.Equal(sites, MirBuildTest.Sites(c, problems.All[index].Subject, facts.Select(static x => x.Site)));
+    }
+
     // V16: A3 on a body it judged before allocates nothing: its walk and the report keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]

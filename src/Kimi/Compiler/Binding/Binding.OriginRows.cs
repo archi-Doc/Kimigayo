@@ -141,8 +141,8 @@ public sealed partial class Binding
 
             if (!obligation.Body.IsBody)
             {
-                // DECISIONS BU-26: Binding's declaration judge consumes every row formed with no body whose ends are declaration atoms
-                // (JudgeDeclarationRows), so a remaining one is a broken contract.
+                // DECISIONS BU-26, BU-89: Binding's declaration judge consumes every row formed with no body whose ends are Unbound or
+                // fixed in its frame (JudgeDeclarationRows), so a remaining one is a broken contract.
                 this.OriginFinding(SourceRef.Of(obligation.Use));
                 continue;
             }

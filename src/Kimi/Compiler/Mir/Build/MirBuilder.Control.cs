@@ -83,6 +83,8 @@ internal sealed partial class MirBuilder
     // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3);
     // its row says no runtime path from its entry may reach its end (SPEC 14.11), which A3 checks. The failure body, a single item or a
     // block, is the scope its defers register in (SPEC 14.2, 16.1), cleaned up before its end, as a function's or a match arm's body is.
+    // Its row names the nodes Binding guessed its completion rests on (DECISIONS R5-M186), asked only where it can complete: its HIR
+    // Completion is the guess rule's own structural completion, which rests on no guess where it cannot complete.
     private void Require(RequireKoto require)
     {
         var fail = this.body.AddBlock();
@@ -93,7 +95,13 @@ internal sealed partial class MirBuilder
         this.Statement(require.ElseBody);
         this.CloseScope(failure);
         this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(require)));
-        this.body.AddMustNotComplete(new(fail, this.current, SourceRef.Of(require.ElseBody)));
+        var start = this.body.GuessedSites.Length;
+        foreach (var guessed in Completes(require.ElseBody) ? compilation.Binding.GuessedCompletionNodes(require.ElseBody, require.ElseBody) : default)
+        {
+            this.body.AddGuessedSite(SourceRef.Of(guessed));
+        }
+
+        this.body.AddMustNotComplete(new(fail, this.current, SourceRef.Of(require.ElseBody), start, this.body.GuessedSites.Length - start));
         this.Enter(pass, test);
     }
 

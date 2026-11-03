@@ -146,7 +146,8 @@ internal sealed partial class MirEffects
     {
         for (var i = item; i < itemEnd; i++)
         {
-            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
+            var local = this.items[i];
+            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Reference);
         }
 
         for (var e = edge; e < edgeEnd; e++)
@@ -178,7 +179,7 @@ internal sealed partial class MirEffects
                 // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
                 // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
                 var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement);
+                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Reference);
             }
         }
     }
@@ -186,11 +187,11 @@ internal sealed partial class MirEffects
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
     // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
     // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
-    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null)
+    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? reference = null)
     {
         if (type is not null && kind == Requires)
         {
-            this.Require(type, requirement!);
+            this.Require(type, requirement!, contract, reference);
             return;
         }
 
@@ -252,7 +253,7 @@ internal sealed partial class MirEffects
         {
             if (row.Runs is { } requirement)
             {
-                this.Process(this.Below(symbol, subst, row.On), Requires, requirement);
+                this.Process(this.Below(symbol, subst, row.On), Requires, requirement, TyCtxt.Contract(requirement));
             }
 
             if (row.Destroys >= 0)
@@ -279,28 +280,39 @@ internal sealed partial class MirEffects
         this.Compose(body.Ordinal, this.Views(body, subst), subst);
     }
 
-    // SPEC 4.9.6, 8.11.3: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
-    // the definition's premises declare it confined, else the summary's atom, composed at the callers (unknown at the top). Any other Type
-    // runs each target Binding resolves under those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's leaf
-    // witnesses, a witness body as a dynamic edge), and none resolving (a composite with an abstract part) is a limit.
-    private void Require(BoundType type, BindingSymbol requirement)
+    // SPEC 4.9.6, 8.11.3: a published requirement on a Type under the Contract reference its call recorded. An abstract Type has no
+    // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at
+    // the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a conformance only of a closed Self; a
+    // built-in target's requirement, the one a Terminator records on an abstract Self, resolves without it). Any other Type runs each
+    // target Binding resolves under that reference and those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's
+    // leaf witnesses, a witness body or an accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in
+    // target keeps its requirement's declaration), and none resolving (a composite with an abstract part, a standard Property witness) is a
+    // limit.
+    private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, BoundType? reference)
     {
         if (type.IsAbstract)
         {
             if (types.DispatchBounds(this.definition, requirement, type, null) != true)
             {
-                this.AddAtom(type, Requires, requirement);
+                this.AddAtom(type, Requires, requirement, contract);
             }
 
             return;
         }
 
         var start = this.targets.Count;
-        this.found |= types.Witnesses(requirement, type, this.definition, this.targets) ? (byte)0 : Limit;
+        this.found |= types.Witnesses(requirement, type, contract, reference, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, declaring) = this.targets[i];
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+            if (target.CompilerFunction == CompilerFunctionKind.None && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
+            {
+                this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
+            }
+            else
+            {
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+            }
         }
 
         this.targets.RemoveRange(start, this.targets.Count - start);
@@ -337,7 +349,7 @@ internal sealed partial class MirEffects
     // Type is a projection with a recursive base, which a summary never keeps (SPEC 15.6.4; TyCtxt.RecursiveBase): a destroyed abstract part
     // proven Copy does nothing (SPEC 16.3.3 "unless the Type is Copy", 8.11.2 "not proven Copy"), any other is unknown (a call through an
     // input reaches here only without confined).
-    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null)
+    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null)
     {
         if (this.reader < 0 || types.RecursiveBase(this.definition, type))
         {
@@ -345,7 +357,7 @@ internal sealed partial class MirEffects
             return;
         }
 
-        var atom = new Atom(type, kind, requirement);
+        var atom = new Atom(type, kind, requirement, contract);
         for (var i = 0; i < this.scratchCount; i++)
         {
             if (ReferenceEquals(this.scratch[i].Type, type) && this.scratch[i] == atom)
