@@ -39,17 +39,11 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
     [Theory]
     [InlineData("named", false)]
     [InlineData("named", true)]
-    [InlineData("value", false)]
     [InlineData("value", true)]
-    [InlineData("consuming", false)]
     [InlineData("consuming", true)]
     public void FixedCallStoresRetainTheActualArgument(string form, bool conflict)
     {
-        var source = "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n" +
-            (form == "named" ? "    func store(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    store(holder@uniq, z@follow@ref)\n"
-                : "    var store = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    store" + (form == "consuming" ? "@move" : string.Empty) + "(z@follow@ref)\n") +
-            (conflict ? "    z@follow = 42\n" : string.Empty) + "    return holder@follow\n";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze(FixedCallStore(form, conflict));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c));
         if (conflict)
@@ -58,9 +52,24 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
         else
         {
-            source += "\nvar z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 41 else => $abort(\"store\")";
-            ScalarEmissionTest.EmitFixture("FixedOriginRetentionStore" + form, source, string.Empty);
+            ScalarEmissionTest.EmitFixture("FixedOriginRetentionStore" + form, FixedCallStoreRun(form), string.Empty);
         }
+    }
+
+    // SPEC 15.6.4 (H3b T30, F9): a store through the Closure's capture `holder@uniq` keeps the direct Loan naming its own target past
+    // layer 1, so the MIR rejects these valid programs by the SPEC's letter at `return holder@follow`'s operand, and generation refuses
+    // them; the old analysis accepted and ran them. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS
+    // adopted with its extension, restores the acceptance and moves the rows back to FixedCallStoresRetainTheActualArgument.
+    [Theory]
+    [InlineData("value")]
+    [InlineData("consuming")]
+    public void ClosureStoresOfTheActualArgumentAreRefusedPendingGxs(string form)
+    {
+        var c = MinimalEmissionTest.Analyze(FixedCallStoreRun(form));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("return holder@follow", "holder@follow")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -438,6 +447,16 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
                 : "    let pass = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n") +
             "    let r = pass(z)\n" + (live ? "    z@follow = 42\n    return r@follow\n"
                 : "    r@follow = 42\n    return z@follow\n");
+
+    private static string FixedCallStore(string form, bool conflict)
+        => "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n" +
+            (form == "named" ? "    func store(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    store(holder@uniq, z@follow@ref)\n"
+                : "    var store = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    store" + (form == "consuming" ? "@move" : string.Empty) + "(z@follow@ref)\n") +
+            (conflict ? "    z@follow = 42\n" : string.Empty) + "    return holder@follow\n";
+
+    // A conflict-free store program with the run its fixture checks.
+    private static string FixedCallStoreRun(string form)
+        => FixedCallStore(form, false) + "\nvar z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 41 else => $abort(\"store\")";
 
     private static string LocalChild(bool annotation, bool live, string mode)
         => "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    let y" +
