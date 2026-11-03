@@ -1066,6 +1066,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amendment (2026-11-03, H3b T32b, unit U-B2; the planning session): a Requirement call whose Self is not abstract (an inline
     default copy's instance, SPEC 8.13) is decided by Solve's `Require` through the instance's witnesses; a virtual witness is judged
     by its slot's bound (SPEC 6.4.6), not by the witness body; an abstract Self keeps the caller-premise path (X2).
+  - Amendment (2026-11-03, H3b T32b, unit U-B2 split; the planning session, BU's consent C-11): the inline default copy's rule is
+    SPEC 7.2.3 (Default evaluation), not 8.13. `Require` resolves the witnesses under the Contract reference the call recorded
+    (`MirCallee.Contract` with `Subst.Declaring`, through `Binding.InstanceContract`, as `TyCtxt.Witness` does; a `Requires` atom carries
+    the recorded Contract) and runs an accessor-call Property witness's accessor; a standard Property witness stays a limit.
 - **R4-M23** (2026-10-12, planning session; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
   listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or

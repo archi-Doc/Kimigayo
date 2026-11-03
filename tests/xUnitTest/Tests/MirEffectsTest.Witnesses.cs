@@ -4,11 +4,17 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.11.3, 8.13, 8.15: a requirement call whose Self is not abstract runs what its witnesses run; one on an abstract Self keeps
+// SPEC 8.11.3, 7.2.3, 8.15: a requirement call whose Self is not abstract runs what its witnesses run; one on an abstract Self keeps
 // the caller's premises (X2).
 public sealed partial class MirEffectsTest
 {
     private const string Unconfined = "IncompatibleContractImplementation_Kd Self is Runner 1";
+
+    private const string Conv = "contract Conv<E>\n    func conv() -> E\n";
+
+    private const string Sized = "contract Sized\n    property size: i32 has get\n";
+
+    private const string Prints = "Console.writeLine(\"loud\")\n";
 
     private const string Makers = "contract Maker\n    func make() -> Self\ncontract Calm: Maker\n    effect Maker.make confined\n" +
         "struct Box\n    Self is Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Box.init(5)\n" +
@@ -18,7 +24,7 @@ public sealed partial class MirEffectsTest
         "struct Quiet\n    Self is Maker\n    public var text: string\n    public init(text: string) => self.text = text@move\n" +
         "    public func make() -> Self => Quiet.init(\"q\")\n";
 
-    // An inline default copy (SPEC 8.13) keeps `T.make()` as a requirement call on the instance's Self: Pt's, Quiet's and the pair's
+    // An inline default copy (SPEC 7.2.3) keeps `T.make()` as a requirement call on the instance's Self: Pt's, Quiet's and the pair's
     // witnesses are confined; Shout's prints and Box's residual payload runs its destructor (fail-before: the confined three, judged by
     // the default's premises, `T is Maker`). On an abstract Self the call keeps Worker's premises: `U is Calm` declares confined.
     [Theory]
@@ -40,6 +46,23 @@ public sealed partial class MirEffectsTest
                 header + $"    Self is Runner\n    public var held: {type}\n    public init(held: {type}) => self.held = held@move\n" +
                 "    public func run(self: ref/Self) -> i32 => Helpers.evaluate(self.held@ref)\n"));
     }
+
+    // SPEC 8.6.1, 11.9.2: the witness is resolved under the Contract reference the call selected (`Conv<i32>`, a bound reference:
+    // `Self is Conv<i32>` names it), and a Property requirement's accessor-call witness runs the accessor: a quiet witness is confined, a
+    // printing one is the base's independent Language record, never a limit (fail-before: `Unsupported_Kd` on all four).
+    [Theory]
+    [InlineData(Conv, "Conv<i32>", "    public func conv() -> i32 => 3\n", "T.conv()", "")]
+    [InlineData(Conv, "Conv<i32>", "    public func conv() -> i32\n        " + Prints + "        return 3\n", "T.conv()", Unconfined)]
+    [InlineData(Sized, "Sized", "    public computed size: i32\n        get() -> i32 => 4\n", "sample.size", "")]
+    [InlineData(Sized, "Sized", "    public computed size: i32\n        get() -> i32\n            " + Prints + "            return 4\n", "sample.size", Unconfined)]
+    public void AClosedSelfResolvesItsBoundReferenceAndPropertyWitnesses(string contract, string reference, string member, string marker, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(contract + $"struct S\n    Self is {reference}\n    public var n: i32\n    public init(n: i32) => self.n = n\n" + member +
+                "contract Runner\n    func run(self: ref/Self) -> i32\n        effect confined\ngroup Helpers\n" +
+                $"    public func evaluate<T>(sample: ref/T, marker: i32 = {marker}) -> i32\n        T is {reference}\n        return marker\n" +
+                "struct Worker\n    Self is Runner\n    public var held: S\n    public init(held: S) => self.held = held@move\n" +
+                "    public func run(self: ref/Self) -> i32 => Helpers.evaluate(self.held@ref)\n"));
 
     // SPEC 6.4.6 (virtual-dispatch 6): a virtual witness of a closed Self dispatches, so its slot's bound decides, never the original's
     // body: Derived's override may run.
