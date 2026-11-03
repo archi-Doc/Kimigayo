@@ -356,7 +356,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Const(this.body.Const(known));
         }
 
-        this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
+        this.Record(node, DiagnosticCode.InternalInvariant_Kd);
         return MirOperand.Move(this.Unsupported(node, derived: true));
     }
 
