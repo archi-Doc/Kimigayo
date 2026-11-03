@@ -213,5 +213,5 @@ above:
 - Two helper calls count as references: `KotoHelper.UnwrapParentheses` (`Expansions.cs:140`, `Values.cs:303`), a `ParenthesizedKoto`
   test by proxy, and `CompoundOperation`, a token read. Both are syntax data (D).
 - Rows 7-9 are syntax data (D), not child casts (C): R5-M79 names `Published`'s value-child switch as syntax data.
-Totals after the notes: 47 syntax data (+2 helpers, +3 from rows 7-9), 44 child casts, 2 violations. The fixes are R5's Minor units on
+Totals after the notes, over 96 references (94 plus the two helper calls): 50 syntax data (45, +3 from rows 7-9, +2 helpers), 44 child casts, 2 violations. The fixes are R5's Minor units on
 `claude/r5-h13fix` (R4's consent, 2026-11-03).
