@@ -110,7 +110,8 @@ identity DAG and a wide identity tree, each across four independent configuratio
 seven samples, 64 initial requests or 10,000 repeated requests per sample; history uses all 256 admitted edits.
 Variable/parameter and operation workloads additionally use four independent compiler snapshots of `ValueProgram`, at
 their actual token positions. Cached and queued requests use those same positions and immutable source text.
-The full compilation comparison uses 16 iterations per sample with collection disabled/enabled, including ownership.
+The full compilation comparison uses 16 iterations per sample with collection disabled/enabled, including check's
+analysis (`Compilation.Analyze`, the MIR's), which the ownership line reads.
 
 Review criteria on the measured host: warmed initial-target samples at most 100 ms/request, repeated lookup at most
 1 ms/request with zero lookup allocations, and an edit queued behind 100 cached requests applied within 250 ms in every
