@@ -7,7 +7,7 @@ fn f @0
   _5: Shape var @0
   _6: [3 of i32] var @0
   _7: ref/i32 var @0
-  _8: (i32) -> i32 var @0
+  _8: ref/(i32) -> i32 var @0
   _9: bool temp @0
   _10: Base var @0
   _11: Never temp @0
