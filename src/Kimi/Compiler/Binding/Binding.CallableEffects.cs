@@ -7,9 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
-    private readonly Dictionary<Koto, CallableEffectViolation> callableEffectViolations = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
-    private EffectSummary? callableEffectSummary;
 
     internal static BoundType? CallableCore(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
@@ -60,60 +58,6 @@ public sealed partial class Binding
         }
 
         return confined;
-    }
-
-    /// <summary>Discharges selected-use bounds after ownership has supplied cleanup plans.</summary>
-    /// <param name="rejected">The located failed arguments and Type formations.</param>
-    internal void ValidateCallableEffects(List<Koto> rejected)
-    {
-        this.callableEffectViolations.Clear();
-        this.callableEffectSummary?.BeginPass();
-        foreach (var use in this.callableEffectUses)
-        {
-            for (var e = 0; e < use.Clause.EffectBounds.Count; e++)
-            {
-                var bound = use.Clause.EffectBounds[e];
-                if (!this.AppliesBound(bound))
-                {
-                    continue;
-                }
-
-                if (this.CallableEffectFailure(use.Subject, use.Signature, use.Receiver, use.Use) is { } failure)
-                {
-                    this.callableEffectViolations.TryAdd(use.At, new(use.Clause, failure.Kind, failure.Node));
-                }
-            }
-        }
-
-        foreach (var pair in this.callableEffectViolations)
-        {
-            rejected.Add(pair.Key);
-        }
-    }
-
-    /// <summary>Reports a selected callable argument's failed bound using its declaration and first effect as evidence.</summary>
-    /// <param name="use">The located argument or Type formation.</param>
-    /// <param name="requirement">The Ownership diagnostic requirement.</param>
-    /// <returns>Whether a stored violation was reported.</returns>
-    internal bool ReportCallableEffectViolation(Koto use, Kimi.Diagnostics.DiagnosticRequirement requirement)
-    {
-        if (!this.callableEffectViolations.TryGetValue(use, out var violation))
-        {
-            return false;
-        }
-
-        var cause = EffectCause(violation.Kind, callable: true);
-        var virtualSlot = violation.Kind == EffectViolation.UnboundedVirtual && violation.Node is FunctionKoto { IsVirtual: true };
-        var related = violation.Node is { } effect
-            ? new (string Role, Koto At, string? Label)[] { ("bound", violation.Clause, "the bounded Callable Constraint"), (virtualSlot ? "declaration" : "effect", effect, virtualSlot ? "original virtual slot" : "the violating effect") }
-            : [("bound", (Koto)violation.Clause, (string?)"the bounded Callable Constraint")];
-        use.Report(
-            requirement,
-            DiagnosticCode.UnsatisfiedEffectBound_Kd,
-            evidence: [$"{Constants.ConfinedKeyword}: {cause}"],
-            note: "Effect bounds are checked after selection; a failed bound never selects another overload",
-            related: related);
-        return true;
     }
 
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
@@ -221,31 +165,6 @@ public sealed partial class Binding
             this.callableEffectUses.Add(new(at, use, clause, subject, substituted.RequiredType!, receiver));
         }
     }
-
-    private (EffectViolation Kind, Koto? Node)? CallableEffectFailure(BoundType type, BoundType signature, SemanticsKind receiver, Koto use)
-    {
-        type = CallableCore(type)!;
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
-        {
-            return this.AvailableCallableEffects(type, signature, receiver, use) ? null : (EffectViolation.MissingCallablePremise, null);
-        }
-
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            return (EffectViolation.ErasedCallable, null);
-        }
-
-        if (type.Symbol is not { Declaration: FunctionKoto function } symbol)
-        {
-            return (EffectViolation.UnclassifiedCall, null);
-        }
-
-        var summary = this.callableEffectSummary ??= new(this);
-        return summary.Check(symbol, this.ConstraintScope(use), true, type, receiver)
-            ? null : (summary.Violation, summary.ViolationNode);
-    }
-
-    private readonly record struct CallableEffectViolation(IsKoto Clause, EffectViolation Kind, Koto? Node);
 
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.

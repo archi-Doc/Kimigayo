@@ -14,45 +14,7 @@ public sealed partial class OwnershipBody
 
     internal int MovePathCount => this.movePaths.Count;
 
-    internal MovePath GetMovePath(int path) => this.movePaths[path];
-
-    internal int MoveRoot(int place) => this.moveRoots[place];
-
-    internal int ProjectionPath(int projection) => this.projectionPaths[projection];
-
     internal int PathSlot(int path, bool remainder = true) => this.Places.Count + (path * 2) + (remainder ? 1 : 0);
-
-    internal PlaceState GetStorageState(int operation, int place)
-    {
-        if (!this.Reachable[operation])
-        {
-            return PlaceState.None;
-        }
-
-        this.LoadInput(operation);
-        return this.State(place);
-    }
-
-    // The cleanup collector loads one converged snapshot, then reads every sparse
-    // remainder from it without replaying the block separately for each element.
-    internal void LoadPathInput(int operation) => this.LoadInput(operation);
-
-    internal PlaceState CurrentPathState(int path) => this.PathState(path);
-
-    internal PlaceState CurrentRemainderState(int path) => this.State(this.PathSlot(path));
-
-    internal bool CurrentBaseComplete(int path, int fields)
-    {
-        for (var child = this.movePaths[path].Child; child >= 0; child = this.movePaths[child].Next)
-        {
-            if (this.movePaths[child].Selector < fields && (this.CurrentPathState(child) & PlaceState.MustInit) == 0)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
 
     private static PlaceState Combine(PlaceState left, PlaceState right)
         => ((left | right) & ~PlaceState.MustInit) | (left & right & PlaceState.MustInit);

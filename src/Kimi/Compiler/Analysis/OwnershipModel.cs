@@ -324,7 +324,6 @@ public sealed partial class OwnershipBody
     internal void Reset(FunctionKoto function, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.ResetResolvedCalls();
-        this.ResetCleanupEffects();
         this.Function = function;
         this.DefaultParameter = -1;
         this.caseBit = caseBit;

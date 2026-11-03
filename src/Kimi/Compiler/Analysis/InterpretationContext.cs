@@ -11,9 +11,6 @@ namespace Kimi.Compiler;
 /// <param name="Index">The default-context index within its owning body, or -1 for the root context.</param>
 internal readonly record struct InterpretationContext(int Index)
 {
-    /// <summary>Gets the root context, outside every default interval.</summary>
-    internal static InterpretationContext Root => new(-1);
-
     /// <summary>Gets a value indicating whether no default substitution applies.</summary>
     internal bool IsRoot => this.Index < 0;
 }

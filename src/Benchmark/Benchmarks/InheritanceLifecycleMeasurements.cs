@@ -138,11 +138,11 @@ internal static class InheritanceLifecycleMeasurements
 
     private static object Storage(Compilation c) => new
     {
-        places = c.Ownership.Bodies.Sum(static body => body.Places.Count),
-        operations = c.Ownership.Bodies.Sum(static body => body.Operations.Count),
-        borrowTableBytes = c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes),
-        regionPayloadBytes = c.Ownership.Bodies.Sum(static body => body.LocalRegionStorageBytes),
-        regionIndexCapacity = c.Ownership.Bodies.Sum(static body => body.LocalRegionIndexCapacity),
+        places = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.Places.Count),
+        operations = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.Operations.Count),
+        borrowTableBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.BorrowStorageBytes),
+        regionPayloadBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionStorageBytes),
+        regionIndexCapacity = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionIndexCapacity),
     };
 
     private static string Hash(string source) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source)));

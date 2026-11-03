@@ -1916,8 +1916,8 @@ public sealed class TyCtxtTest
     }
 
     // Binding's instantiation for a call's context. A requirement's, under its conforming Self and bound Contract reference, and a direct
-    // base call's into an implementation other than the slot's original, of that implementation in the implementing Type (as
-    // Binding.EffectBounds forms that call), have no CallPlan form: theirs is Binding's instantiation under the substitution once it names the
+    // base call's into an implementation other than the slot's original, of that implementation in the implementing Type, have no
+    // CallPlan form: theirs is Binding's instantiation under the substitution once it names the
     // call's target and conforming Self (a base call's: the implementation, no Self, the implementing Type) and binds the call's Type and
     // length arguments and Origins. Any other call's is its CallPlan form.
     private static BoundType? Instance(Compilation c, BoundType declared, Subst subst, CallPlan context) => context switch
