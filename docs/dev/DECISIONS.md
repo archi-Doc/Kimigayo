@@ -10120,7 +10120,12 @@ resumed by R4-M86 (2026-10-20).
     `let` and argument) valid; RC2: w08, w09, w18 as arguments rejected (w09, w18 with dev's records, w08 NoApplicableOverload_Kd);
     r18's class: x10 (`[(u@ref, 1)]` beside `[(1, 2)]`, `let` and argument) valid, a named acceptance against dev; conflicting
     evidence, NoApplicableOverload_Kd: a05 and its mirror, p48 and w05 (Unsupported_Kd at d7f69e006: p48's limit closed), x01 and x02
-    as arguments (class (2), records only). Open item (BU's decision 2: a row chosen by a part's kind does not land): class (3)'s late
+    as arguments (class (2), records only). Named acceptance against dev (BU's reading, 2026-11-03), class "a fixed parameter Type:
+    the sources fit it, value-read": e2 `g<Array<i32>>(if c => [u@ref] else => [y])` (TypeMismatch_Kd on dev, valid at d7f69e006 and
+    Fix-D) and its sibling r17 `fi2(if c => [u@ref, 1] else => [y, 2])` at `fi2(x: [2 of i32])` (the review filed it under N3): the
+    explicit Type argument or the signature fixes the parameter Type, which after selection is the join's Target Result Type (14.9.2
+    step 1, step 2's last sentence); each array literal source is fitted to it, and `u@ref` at an `i32` element position is a value
+    read (3.5.3; aggregate elements are value positions of common adaptation, 10.2), so dev's record was a false rejection. Open item (BU's decision 2: a row chosen by a part's kind does not land): class (3)'s late
     formation of a bare slot from a waiting element and literals at the Aggregate row; p65/u6f_g_wait
     (`g(if c => [identity(1), 2] else => [3, 4])`) and its twins return to dev's UnboundTypeArgument_Kd (valid at d7f69e006 only).
 

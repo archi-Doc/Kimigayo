@@ -291,8 +291,12 @@ public partial class OriginRelationDiagnosticTest
     // and values at one part agree by a value read: an array of Tuples holding literals (w13, its argument twin w13a; a01 with two
     // elements; x10 beside literals, r18's class), a Dictionary (a13, a13a), fills holding a literal (a11). A source that supplies one is
     // compared whole: fills of references and of values conflict as their `let` twins do (w08a, w09a, w18a), and an array source's whole
-    // evidence agrees with the Type an earlier source of the join fixed (a05 and its mirror a05m, p48), never fitted to it.
+    // evidence agrees with the Type an earlier source of the join fixed (a05 and its mirror a05m, p48), never fitted to it. A parameter
+    // Type that an explicit Type argument or the signature fixes is the join's Target Result Type after selection (14.9.2 steps 1 and 2):
+    // each source is fitted to it, a reference at a value element position value-read (3.5.3, 10.2; e2, r17; dev rejected both).
     [Theory]
+    [InlineData("e2", "func g<T>(x: T) -> i32 => 0\n" + RefLocals + "    return g<Array<i32>>(if c => [x@ref] else => [y])\n", "")]
+    [InlineData("r17", "func fi2(x: [2 of i32]) -> i32 => 0\n" + RefLocals + "    return fi2(if c => [x@ref, 1] else => [y, 2])\n", "")]
     [InlineData("w13", RefLocals + "    let j = if c => [(x@ref, 1)] else => [(y, 2)]\n    return 0\n", "")]
     [InlineData("w13a", IdentityT + RefLocals + "    let r = identity(if c => [(x@ref, 1)] else => [(y, 2)])\n    return 0\n", "")]
     [InlineData("a01", RefLocals + "    let j = if c => [(x@ref, 1), (y, 2)] else => [(y, 3)]\n    return 0\n", "")]
