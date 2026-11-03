@@ -49,6 +49,11 @@ internal sealed partial class MirBorrows
         return left.Kind == right.Kind && (left.Kind == MirProjectionKind.Deref || left.Arg == right.Arg);
     }
 
+    // A step's key in the parents' trie (MirBorrows.Activations), Meets' relation as a key: a Deref or an Index step by its kind alone (an
+    // Index step meets every index step, which the trie's walk resolves), every other step by its kind and argument.
+    private static (MirProjectionKind Kind, int Arg) StepKey(in MirStep step)
+        => (step.Kind, step.Kind is MirProjectionKind.Deref or MirProjectionKind.Index ? 0 : step.Arg);
+
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
     // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
     // with rule W's elements the scan goes on past the first: the access is derived exactly when every conflicting candidate is

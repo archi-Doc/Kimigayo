@@ -67,4 +67,29 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
         Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
     }
+
+    // V16 (R4-M169): the parents' trie and its scans on a program version A5 checked before allocate nothing: the Dictionary form's two
+    // records (the trie's Field steps, a Deref parent and the ActivateThrough scan).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmActivationThroughParentsAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Prelude + StoredElement + "    change(entries[1])\n    require found == 42 else => $abort(\"value\")\n");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Equal(2, Problems(c, program, LoanCodes).Length);
+    }
+
+    // V16 (R4-M169's review B2): one activation whose parent's Place indexes a fixed array nested d deep inserts each step once, so the work
+    // is linear in d (8 / 16 / 32), whatever the index steps' ambiguity.
+    [Fact]
+    public void AnActivationsParentIndexStepsAreLinear()
+    {
+        const string Nested = "func shape(flag: bool)\n    var a: «N:[1 of »i32«N:]» = «N:[»0«N:]»\n    let i: isize = 0\n" +
+            "    var p = a«N:[i]»@uniq\n    setM(p)\n";
+        long[] work = [.. new[] { 8, 16, 32 }.Select(d => this.Measured(Prelude + Expand(Nested, d, 0)).Work)];
+        output.WriteLine($"d 8, 16, 32: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+    }
 }

@@ -15,12 +15,13 @@ namespace Kimi.Compiler.Mir;
 // its activation is already an exclusive deep use (E3: no shared cut).
 internal sealed partial class MirBorrows
 {
-    private const int AnyIndex = -1; // The index wildcard's argument: the trie child an Index step meets, every index step's continuation.
-
     private readonly List<(int Local, int Loan, DiagnosticCode Code)> reserving = []; // The reservations the location activates.
     private readonly Dictionary<(int Node, MirProjectionKind Kind, int Arg), int> throughChildren = []; // The parents' trie: a node's child by step key.
     private readonly Dictionary<int, int> throughRoots = []; // By root key: the trie node the root's parents' steps lie under.
     private bool[] throughEnds = []; // By trie node: whether a parent's steps end there.
+    private int[] throughFirst = []; // By trie node: its first child (None: none), the list an Index step of a Loan walks.
+    private int[] throughNext = []; // By trie node: its next sibling (None: none).
+    private MirProjectionKind[] throughKinds = []; // By trie node: the kind of the step it is reached by (a root node's unused).
     private int throughCount;
 
     // The reservations a location activates, those σ_in(t) carries in t: at a Call's input holders, its argument operands' and a Value
@@ -125,8 +126,8 @@ internal sealed partial class MirBorrows
     }
 
     // The parents' prefix trie of an activation: the steps of each Loan its holder carries unique, under the node of the Loan's root, and
-    // whether there is one. A node's children are by Meets' key (MirBorrows.Checks): a Deref or an Index step by its kind alone, and an index
-    // step's continuation also under the index wildcard, which an Index step of a Loan meets; a parent's last node is an end.
+    // whether there is one. A node's children are by StepKey (MirBorrows.Checks), each step inserted once, so the trie is linear in the
+    // parents' steps; a parent's last node is an end. The index ambiguity is the walk's (Below).
     private bool Parents(ulong held, int slot)
     {
         this.throughChildren.Clear();
@@ -141,7 +142,7 @@ internal sealed partial class MirBorrows
                 var parent = this.loans[index];
                 if (!this.throughRoots.TryGetValue(parent.Root, out var node))
                 {
-                    this.throughRoots[parent.Root] = node = this.Node();
+                    this.throughRoots[parent.Root] = node = this.Node(MirProjectionKind.Deref);
                 }
 
                 this.Insert(node, this.loanSteps.AsSpan(parent.Start, parent.Count));
@@ -151,41 +152,40 @@ internal sealed partial class MirBorrows
         return this.throughCount > 0;
     }
 
-    // A parent's remaining steps under a trie node: the first a child by its key, an index step also the wildcard's, each a step of Work.
+    // A parent's steps under a trie node, each a child by its key, each a step of Work; the last node an end.
     private void Insert(int node, ReadOnlySpan<MirStep> steps)
     {
-        this.Work++;
-        if (steps.IsEmpty)
+        this.Work += steps.Length + 1;
+        foreach (var step in steps)
         {
-            this.throughEnds[node] = true;
-            return;
+            node = this.Child(node, StepKey(step));
         }
 
-        var step = steps[0];
-        this.Insert(this.Child(node, step.Kind, step.Kind is MirProjectionKind.Deref or MirProjectionKind.Index ? 0 : step.Arg), steps[1..]);
-        if (step.Kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex)
-        {
-            this.Insert(this.Child(node, MirProjectionKind.Index, AnyIndex), steps[1..]);
-        }
+        this.throughEnds[node] = true;
     }
 
-    // A trie node's child by a step key, made where there is none.
-    private int Child(int node, MirProjectionKind kind, int arg)
+    // A trie node's child by a step key, made and linked into the node's child list where there is none.
+    private int Child(int node, (MirProjectionKind Kind, int Arg) key)
     {
-        if (!this.throughChildren.TryGetValue((node, kind, arg), out var child))
+        if (!this.throughChildren.TryGetValue((node, key.Kind, key.Arg), out var child))
         {
-            this.throughChildren[(node, kind, arg)] = child = this.Node();
+            this.throughChildren[(node, key.Kind, key.Arg)] = child = this.Node(key.Kind);
+            (this.throughNext[child], this.throughFirst[node]) = (this.throughFirst[node], child);
         }
 
         return child;
     }
 
-    // A new trie node, no end.
-    private int Node()
+    // A new trie node reached by a step of a kind: no end, no children.
+    private int Node(MirProjectionKind kind)
     {
-        MirDataflow.Grow(ref this.throughEnds, this.throughCount + 1);
-        this.throughEnds[this.throughCount] = false;
-        return this.throughCount++;
+        var node = this.throughCount++;
+        MirDataflow.Grow(ref this.throughEnds, this.throughCount);
+        MirDataflow.Grow(ref this.throughFirst, this.throughCount);
+        MirDataflow.Grow(ref this.throughNext, this.throughCount);
+        MirDataflow.Grow(ref this.throughKinds, this.throughCount);
+        (this.throughEnds[node], this.throughFirst[node], this.throughNext[node], this.throughKinds[node]) = (false, None, None, kind);
+        return node;
     }
 
     // hits(A, X, ActivateThrough) for the parents A on a shared Loan X's root (MirBorrows.Checks' Hits, its shallow rows): X's steps walked
@@ -203,8 +203,9 @@ internal sealed partial class MirBorrows
         return this.Below(this.throughRoots[root], steps, 0, deref);
     }
 
-    // Whether a parent in a trie node's subtree hits a Loan's steps from a depth (Meets: an Index step walks the wildcard, a ConstIndex step
-    // the Index key and its own): an end past the last borrow Deref, or the node reached at the steps' end; each node visited a step of Work.
+    // Whether a parent in a trie node's subtree hits a Loan's steps from a depth: an end past the last borrow Deref, or the node reached at
+    // the steps' end. Meets at the walk: an Index step of the Loan walks every index child of the node (each a parent step it meets, so a
+    // node is visited at most once per Loan), a ConstIndex step the parents' Index key and its own, another step its key alone.
     private bool Below(int node, ReadOnlySpan<MirStep> steps, int depth, int deref)
     {
         this.Work++;
@@ -216,13 +217,21 @@ internal sealed partial class MirBorrows
         var step = steps[depth];
         if (step.Kind == MirProjectionKind.Index)
         {
-            return this.throughChildren.TryGetValue((node, MirProjectionKind.Index, AnyIndex), out var any) && this.Below(any, steps, depth + 1, deref);
+            for (var each = this.throughFirst[node]; each != None; each = this.throughNext[each])
+            {
+                if (this.throughKinds[each] is MirProjectionKind.Index or MirProjectionKind.ConstIndex && this.Below(each, steps, depth + 1, deref))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
+        var key = StepKey(step);
         return (step.Kind == MirProjectionKind.ConstIndex && this.throughChildren.TryGetValue((node, MirProjectionKind.Index, 0), out var index) &&
             this.Below(index, steps, depth + 1, deref)) ||
-            (this.throughChildren.TryGetValue((node, step.Kind, step.Kind == MirProjectionKind.Deref ? 0 : step.Arg), out var child) &&
-            this.Below(child, steps, depth + 1, deref));
+            (this.throughChildren.TryGetValue((node, key.Kind, key.Arg), out var child) && this.Below(child, steps, depth + 1, deref));
     }
 
     // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the

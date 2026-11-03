@@ -6336,11 +6336,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
   or activated, so `giveTwo(x@uniq, c)` keeps its one record). Moves: A3 rows 28d and 131c gain the activation record the old analysis
   has. Rejected: seeding the check set with the holders the parent Loans name (adds no Loan there; the set holds `found`'s already).
   Cost (review B1, 2026-11-04): each parent root's candidates are scanned once per activation, and a shared candidate is tested against
-  all of the root's parents through one prefix trie of their steps (`Parents`, `Through`: a Deref or Index step one key, an index step
-  also under the index wildcard an Index step meets, so Meets is exact), so the work is the check set's plus the parents' steps, not
+  all of the root's parents through one prefix trie of their steps (`Parents`, `Through`: each step inserted once under `StepKey`, Meets'
+  relation as a key, so the trie is linear in the parents' steps; the index ambiguity is resolved at the walk, an Index step of the
+  candidate visiting the node's index children, each a parent step it meets), so the work is the check set's plus the parents' steps, not
   parents × candidates; the first conflicting candidate in the root's order is the record's. Rejected: one scan per distinct parent
   Place (N parents on N Fields of one root are N scans, cubic); comparing the parents' interned Places (a Reborrow's Loan has more steps
-  than its Place, and Index steps meet by kind, not by Place).
+  than its Place, and Index steps meet by kind, not by Place); inserting an index step under a wildcard key too (2^k nodes for k index
+  steps, review B2).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
