@@ -318,3 +318,12 @@ units of an hour or less. Amendments:
 - **F-a has fifteen rows:** T-15's six, T-19's five and T-16's four (cz5, cz6, e1 and e1c), all with one signature and cause under the
   owner's O-2 decision. The G216 (b) (e) unit re-points them, names F-a and U-O3 in each comment, and lists nest1, t1j_n and
   ANestedFunctionType as rows U-O3 moves.
+- **Family F-b's further rows** (R4's F-b ruling applied; each checked against the base ledger by its unit's review): T-21b's
+  TypeArgumentOriginEvidence ×2 and LocalRegionInference ×2, T-29a's r05_n, T-28's AValueCall, and T-23's CopyStore and MovedStore.
+  All are class 4. The Unsat or Unsatisfied stays asserted, and the added ComparisonLoanConflict_Kd is pinned by code and location,
+  not by its evidence. OriginPremiseCatalog's Box+Pick+g row (T-21b) is a rule-W dependent record, counted.
+- **T-12's rows** (R4's t12-triage):
+  - StorageBinding `equals` and the `Helpers.equal` row are 1r under SPEC 8.11.3 and A4's X2. BU-38 gains a dated line.
+  - StorageBinding pair, deep and deepArgument are 1x and 4: limits only, G128.
+- **The merge of dev 4835adddf into the branch** surfaced one semantic conflict: G222's MirInitTest rows against H1. T-30 re-pointed
+  it to Binding's TransferRequired_Kd.
