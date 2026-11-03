@@ -225,3 +225,11 @@ part is not Copy. They are counted by code.
 
 R5's ruling: U-T1, U-T2 and U-W are H5 blockers under the owner's third answer (fixes of an hour or less). Pinning wrong evidence would
 weaken the stopped tests, so they stay failing until the fixes land, and then they are re-pointed.
+
+### T63's last row goes on the (e) list (the owner, 2026-11-04)
+
+R4 found `RequireRecoveryDiagnosticTest.AFailureBodyInARejectedExpressionIsJudgedOnItsOwn` over the hour: Binding's HIR publisher keeps no
+resolved part under an Error (R5-M63's residual line), so a `require` inside a Binding-rejected `do` is never built and A3 has nothing to
+judge. The program stays rejected; the independent `RequireFallthrough_Kd` is lost (Q13 (3)). The owner answered board O-5, verbatim
+「(a) H5 の (e) 一覧に加える」. The row joins H5's (e) list until the kept-body unit (PLAN G414) lands; a T-unit re-points it to the head's
+records, naming this decision and G414.
