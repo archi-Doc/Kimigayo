@@ -6,6 +6,8 @@
 
 部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
 
+部分更新：[§15.6.4](#s-15-6-4)の経路Loanと[§15.8.2](#s-15-8-2)のキャプチャーの保持は、原文`056b02bb2`（GXS、DECISIONS R4-M171）に合わせた。
+
 ## 目次
 
 - [1. 概要](#s-1)
@@ -7262,6 +7264,48 @@ func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>
 
 raw引数もポインター先を参照先として同様に扱い、その型内Originを保持し得るものは読取りが運ぶものを運ぶ。引数が共有層を通らず値で保持するraw層（タプル要素、Optionのペイロード、フィールド、型引数を含む）は、rawポインター引数と同じく保持される。ただし引数値自身（Loanと指す保持元）を保持するのは、その型の値を格納できる結果・領域、または引数の領域内で形成する結果だけ。ポインターは自身のポインター先の一部でなく、raw引数経由で書く領域は引数値自身を保持しない。Origin付きraw層は、そのOriginの借用と同様のものをLoanなしで保持する。Originなし入力raw層はポインター先型が許す保持を許し、名目型フィールド外の結果raw層は全引数（rawでは経由読取りのものも）を保持し得て本体外領域へ届く。共有層以後に届くraw層を通じて呼出しが書くことはない。
 
+**経路Loan。** 引数を通じた呼出しの格納は、最初の段（**層1**）で、引数自身のLoanとアドレスが名指す保持元に届く。引数の親Loan（[§15.6.3](#s-15-6-3)）だけが名指す保持元には、再借用元の参照を通じて層1より先で届く。保持元を名指す**直接Loan**は、アクセス経路がその保持元から始まり何も逆参照しないLoan（[§15.6.2](#s-15-6-2)）、すなわちそれ自体かインライン部分の借用で、値自身のLoanとしても親Loanとしても運ばれる。層1より先で呼出しの格納が届く保持元は、その型が自身を参照し得る場合を除き、自身を名指す直接Loanを保持しない。値自身のLoanとしてのそれは保持元自身の記憶への参照で、それは型が決める。親Loanとしてのそれは保持元より先の、経路の他のLoanが守る記憶へ届くもので、保持元は経路そのものである。型が**自身を参照し得る**のは、値で保持する参照またはraw層の参照先が型自身かそのインライン部分と一致する（[§3.8](#s-3-8)、Originは除く）場合、または値で保持する排他層が他の参照と並ぶか繰り返される（長さ1以外の固定長配列の要素、[§4.9](#s-4-9)のコレクションの要素）場合である。前者は自身への参照で、後者は一つの排他層を通じた再借用をその隣に保持でき、同じ参照先への排他経路が二つになる。それを拒むのは保持したLoanだけである。抽象型、または型の抽象部分が自身を参照し得るのは、前提がそのような参照にする場合だけである。束縛が後の借用のLoanを自身の保持元へ格納するには、その借用の新しいOriginが型自身のOriginより長生きする必要があり、[§8.15.1](#s-8-15-1)がそれを反証する。引数・キャプチャー由来、排他借用を通じた読取りで届く本体外領域、および静的記憶（上の項目2・3）は、格納の経路の排他Loan（格納が届く保持元を名指すもの、またはそれが運ぶもの。Loanを持たない型の保持元も含む）を保持しない。その記憶の型は本体の外で本体より長生きするOriginで固定され、経路Loanを運ぶ値は本体ローカルの借用に上限があるので合わない（[§15.6.1](#s-15-6-1)）。Originなしraw層を通じて、または結び付かない結果から届く記憶（項目4・5）は保持する。その型は本体が作り、raw格納に型合わせは不要だからである。
+
+層1より先の格納は、経路自身のLoanを通過する保持元へ戻さない。排他層が並ぶ型は保持する：
+
+```kimi
+func put2(slot: uniq/(uniq/(ref/i32 during a) during c), value: ref/i32 during a) => slot@follow@follow = value
+func moveIn(pair: uniq/(uniq/(ref/i32 during a) during c, ref/i32 during a)) => pair@follow.0@follow = pair@follow.1
+
+func twoLayersRead()
+    var x = 1
+    var b = 2
+    var w = x@ref
+    var s = w@uniq
+    put2(s@uniq, b@ref)             // Stores into w, past layer 1 (s): w retains none of the Loans naming it, s's included.
+    inspect(w@follow@ref)
+    inspect(w@follow@ref)           // Valid: no value w holds refers into w.
+
+func acrossLayersRead()
+    var x = 1
+    var z = 3
+    var w = x@ref
+    var t = (w@uniq, z@ref)
+    moveIn(t@uniq)                  // Stores into w, past layer 1 (t).
+    inspect(w@follow@ref)
+    inspect(w@follow@ref)           // Valid.
+```
+
+```kimi
+func putU(slot: uniq/(uniq/(uniq/i32 during a) during c), value: uniq/i32 during a) => slot@follow@follow = value
+
+func twinBad()
+    var x = 1
+    var z = 2
+    var t = (x@uniq, z@uniq)
+    let r = t.0@uniq
+    var s = t.1@uniq
+    putU(s@uniq, r@follow@follow@uniq) // t.1 now holds a Reborrow of x through r, past layer 1 (s).
+    t.0@follow = 3                     // Error: t keeps r's Loan on t.0, since its Type holds an exclusive layer beside another one.
+    inspect(t.1@follow@ref)            // Error: t keeps s's Loan on t.1 too.
+```
+
+
 抽象型（[§8.2.3](#s-8-2-3)の型パラメーター・関連型射影・ペア対象・ContractのSelf）の値は、ハンドルのペイロードとしても、その保持元が運ぶLoanとアドレスを運ぶ参照が到達する範囲に到達する（[§15.6](#s-15-6)）。ペイロードの保持元は、それに到達する経路のハンドルの保持元とする。その値を通じた呼出し・破棄が書けるものは、由来ごとに次のとおり。
 
 1. 排他Loanとアドレスが名指す保持元と、そこから共有層を経ない読取りでさらに到達するもの（[§15.6](#s-15-6)）。共有Loanだけが名指す保持元は書かない。
@@ -7276,7 +7320,7 @@ raw引数もポインター先を参照先として同様に扱い、その型�
 func count<S>(items: S) -> i32
     S is Iterable
     var n: i32 = 0
-    for _ in items                  // Valid: the Iterator's Loan on items is shared, so next and its destruction write only its own holder.
+    for _ in items                  // Valid: the Iterator's Loan on items is shared; next and its destruction write only its holder, which keeps no Loan naming it.
         n += 1
     return n
 ```
@@ -7572,6 +7616,20 @@ inspectText(view)
 let other = makeText()
 let invalid = func [other@move] () -> ref/string => other@ref
 // Error: the annotated result defaults to static, not the environment borrow.
+```
+
+呼出しがキャプチャー自身の値（そのLoanと指す保持元）を保持するのは、その記憶がキャプチャーの型の値かそれを通じて形成する借用を格納できる場合だけである。キャプチャーは呼出しレシーバが値で保持する部分で、[§15.6.4](#s-15-6-4)が引数の値で保持する部分を保持する規則と同じである。本節は呼出しがどこに保持するかを、同節は何を保持するかを定める。
+
+```kimi
+// take<t/U>(y: t/U), with t is owner or uniq and U is Copy, returns at once.
+func outer<s/T>(x: s/T, y: s/T)
+    s is owner or uniq
+    T is Copy
+    let g = func (z: s/T) -> () => ()
+    var f = func [x, g@ref] (q: s/T) -> i32     // In the uniq case the call may store q in x's referent, a T.
+        take(x)
+        return 0
+    let v = f(y)                                // Valid: no premise makes T a ref to g's Type, so x's referent never retains g's Loan.
 ```
 
 <a id="s-15-8-3"></a>
