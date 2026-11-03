@@ -224,5 +224,6 @@ internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure
-/// body.</summary>
-internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject);
+/// body; the nodes Binding guessed its completion rests on (Binding.GuessedCompletionNodes), <see cref="Count"/> entries of
+/// <see cref="MirBody.GuessedSites"/> from <see cref="Start"/> (DECISIONS R5-M186).</summary>
+internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject, int Start, int Count);

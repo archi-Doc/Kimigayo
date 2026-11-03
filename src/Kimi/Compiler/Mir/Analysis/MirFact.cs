@@ -12,8 +12,8 @@
 // the storage limit's Required, Limit and Table facts (G213, R4-M132) the body and as their Values the bytes its arena needs, the
 // analyses' byte limit and the arena (a MirStorageTable), the catalog's requiredBytes, limitBytes and table of OwnershipStorageLimit_Kd,
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
-// problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 reserved for 2g-1's
-// Binding cause at the site; a kind that names no value has -1; a problem has at most one fact of each kind but its witness's and its
+// problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
+// the site (A3's guessed sites, R5-M186; 2g-1's); a kind that names no value has -1; a problem has at most one fact of each kind but its witness's and its
 // causes, which come last.
 // Must not carry message text, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 

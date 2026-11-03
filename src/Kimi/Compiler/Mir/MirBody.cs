@@ -32,6 +32,7 @@ internal sealed class MirBody
     private MirOpaque[] opaques = [];
     private int[] opaqueRoots = [];
     private MirMustNotComplete[] ends = [];
+    private SourceRef[] guessedSites = [];
     private int localCount;
     private int blockCount;
     private int statementCount;
@@ -44,6 +45,7 @@ internal sealed class MirBody
     private int opaqueCount;
     private int opaqueRootCount;
     private int endCount;
+    private int guessedSiteCount;
 
     internal MirDefKey Key { get; private set; }
 
@@ -81,6 +83,9 @@ internal sealed class MirBody
     /// <summary>Gets the failure bodies of the requires built in this body, each added where its require is finished, so one inside
     /// another's failure body precedes it; a default copy has none, A3 judges its template (SPEC 7.2.3).</summary>
     internal ReadOnlySpan<MirMustNotComplete> MustNotComplete => this.ends.AsSpan(0, this.endCount);
+
+    /// <summary>Gets the sites the MustNotComplete rows' ranges name: the nodes Binding guessed a failure body's completion rests on.</summary>
+    internal ReadOnlySpan<SourceRef> GuessedSites => this.guessedSites.AsSpan(0, this.guessedSiteCount);
 
     /// <summary>Gets a value indicating whether a value of the body is Opaque: an error or Unsupported form replaced it.</summary>
     internal bool HasOpaque => this.opaqueCount > 0;
@@ -223,7 +228,7 @@ internal sealed class MirBody
     {
         (this.Key, this.Source, this.HasFinding) = (key, source, false);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
-        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = 0;
+        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
         this.projectionIds.Clear();
         this.constIds.Clear();
         this.Binders.Clear();
@@ -323,6 +328,10 @@ internal sealed class MirBody
     }
 
     internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);
+
+    /// <summary>Adds a site to <see cref="GuessedSites"/>, which a MustNotComplete row added after it names in its range.</summary>
+    /// <param name="site">A node Binding guessed.</param>
+    internal void AddGuessedSite(SourceRef site) => Add(ref this.guessedSites, ref this.guessedSiteCount, site);
 
     private static int Add<T>(ref T[] items, ref int count, in T item)
     {

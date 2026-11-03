@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns construction and validation of one MIR body per definition or closure.
-// Input: syntax children, published HIR/plans, declaration views and TyCtxt. Output: a validated MirProgram.
+// Input: syntax children, published HIR/plans, declaration views, TyCtxt and one Binding view, the guessed completion nodes of a require's
+// failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated MirProgram.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
@@ -15,7 +16,8 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition whose
 /// value node the HIR publishes (a function, an accessor, a static's initializer, a Closure's whatever its creation) and validates it.
-/// It reads syntax children, the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through
+/// It reads syntax children, the HIR columns and plans, <see cref="TyCtxt"/> and, at a require's failure body, Binding's guessed completion
+/// nodes only. A form no rule builds goes through
 /// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; it trusts the facts each published Op guarantees
 /// (<see cref="Binding.HasFacts"/>), and records a node the publisher found without them (<see cref="HirTables.Broken"/>) as
 /// InternalInvariant_Kd; an Error node becomes a derived Opaque after the operands the HIR keeps in place (DECISIONS R5-M63).
