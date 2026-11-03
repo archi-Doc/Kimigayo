@@ -680,7 +680,7 @@ func laterAlloc<T>(y: uniq/i32)
     unsafe => Raw.release(m)
 ```
 
-Writes go on past the holders a value's addresses name by reads through no shared layer (item 1). A store that a binding makes in such a holder while another Loan on it lives is its raw access under [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) (condition 4), as in a concrete method, not an error of the call; what the call may store there is retained:
+Writes go on past the holders a value's addresses name by reads through no shared layer (item 1). A store that a binding makes in a holder that item 1 reaches while another Loan on it lives is its raw access under [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) (condition 4), as in a concrete method, not an error of the call; what the call may store there is retained:
 
 ```kimi
 contract MakeP

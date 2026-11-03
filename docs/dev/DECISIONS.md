@@ -6359,7 +6359,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     no shared layer, a Tuple element, an Option payload, a Field or a Type argument included, is retained as a raw pointer argument is.
     Reason: 15.6.4's "a part it holds by value", and the owner's reading of 2026-10-30 (BU-66, verbatim
     「(a) 今の文面に含まれると読み、今の動作のまま進める」: an erased callee's abstract result keeps its raw inputs), applied in the same way to
-    raw parts held by value; write route (4) already lists them.
+    raw parts held by value; write route (4) already lists them. A raw layer past an exclusive layer (the ruling's "past exclusive
+    layers", which the sentence's "by value" leaves out) is covered by 15.6.4's chain-of-reads rule for a borrowed argument ("A chain
+    of reads goes through a raw or borrowed layer anywhere in the argument's value ..."), which a retaining result or written raw layer
+    carries, and for writes by route (4).
   - Overrides Q1 (a) (R4-M147's "an abstract part ... may be an exclusive reference") by (S), a third option, neither (a) nor (b). The
     owner's reason, verbatim: 「調査の結果、Q1 (a) は健全性ではなく実装都合で採られていました。P13 の設計レビュー 1 は「Q1 (b) だと R4-M73 の本体ホールドと空値規則が残る」ことを理由に (a) を推しています。その後 R4-M147 でホールドは別の手段（部品単位のガード）で消えたので、(b) を妨げた理由はもう成り立っていません。」
     The planning session's record (the S0 SPEC review's B3): that reason does not hold for (b) itself. R4-M147 could remove the hold
@@ -6369,14 +6372,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Soundness (the owner's counterexample table, the SPEC review's checks): `count<S>` valid (the Iterator's Loan on `items` is shared,
     14.6.2, so `next` and its destruction write only the Iterator's holder, ending with the loop); laterWriterBad, the generic Writer
     with a setter (SPEC 15.6.4's `later<T>`: `x = T.make(p: slot@raw)`, `x.setQ(q: w@raw@raw/u8)`, `consume(x@move)`) errs at
-    `y@follow = 5` (x addresses slot; setQ and the erased drop may store q there); the generic Writer `T.make(p: slot@raw,
+    `y@follow = 5` (x addresses slot; setQ and the erased drop may store q there; also through item 5, since `T.make`'s result is
+    untied); the generic Writer `T.make(p: slot@raw,
     q: w@raw@raw/u8)` errs at `y = 5` as on dev (make itself may store q in slot); clearRcOk and truncRcOk still err at `y = 5` (the untied `T.make` result's E is writable, the owner's 「Yes, writable」) (B4's loss
     of independent records does not occur); copyRcLate errs (payload not proven Sealed; head's acceptance was a regression); a T built
     from a `Raw.allocate` result keeps E by provenance (allocBad, SPEC 15.6.4's `laterAlloc<T>`: x derives from the raw pointer m through
     no shared layer, so setQ and the erased drop may store q in E, and `y@follow = 6` errs); a drop writing a Loan into a static Field keeps the unknown environment effect
     (a raw write to static storage then used is 5's undefined behavior); `chain<T>` (x addresses pp, pp addresses slot, `x.setQ(q: w@raw@raw/u8)`,
     `consume(x@move)`) errs at `y@follow = 5` through item 1's reach on from pp (the review's B7; dev's MIR gives it too, no Mir
-    difference); its concrete twin (`HoldP`'s `setQ` doing `unsafe => **self.p = q` while `rs = slot@ref` lives) and directRsBad
+    difference), and also through item 5, `T.make`'s result being untied; its concrete twin (`HoldP`'s `setQ` doing `unsafe => **self.p = q` while `rs = slot@ref` lives) and directRsBad
     (`unsafe => *pp = slot` while rs lives) are accepted on dev (S1′'s designer, dev 358761f2b, `g264s1p-probe/b7c.kimi`): a raw store
     conflicting with a live shared Loan on its target is 5.2.1 condition 4's undefined behavior, no compile check, and not S1′'s; 1cfd105abdf6 (AC-U1's read while the item lives) stays a
     correct error and is a row S1′'s ledger must keep. The review's tries (a borrow the binding turns into a hidden pointer, a pointer
@@ -6405,6 +6409,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     on `claude/a5-g264-u1`, not on dev, and S2 removes it there); S3 (c80, a payload the final release frees) a separate unit after the
     owner's choice; S4 the pre-publication checks. Order S0, S1′, S2, S4, all before H5.
   - BU-52's interim: which of its shadow-only false errors S1′ resolves is recorded from S1′'s ledger comparison when S1′ lands.
+  - The owner's reading of the text (R7 plan RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」 (2026-11-04, R5's dialog, relayed by
+    R5), after the SPEC review's re-check 3 ACCEPT on 6f7af7358. Made after that reading, without changing meaning (round 5): the
+    soundness note that `later<T>` and `chain<T>` also err through item 5; the clause above on a raw layer past an exclusive layer;
+    15.6.4's "a holder that item 1 reaches" in the condition-4 sentence (SPECJ alike). S0 lands in R5's window W-6.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
