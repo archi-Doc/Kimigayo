@@ -15961,3 +15961,10 @@ structure is recorded here by the unit that first implements it.
   - Tests: `MirValidatorTest.TheVerdictIsWhetherTheValidatorAddedAFinding`, `AnEnsuredStaticHasItsInitializer`;
     `InstanceCollectorTest.AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (was `...FindingsEmptyTheSet`: its expectation changes
     by the owner's (a)), `ABodyWithAFindingDropsOnlyWhatRestsOnIt`, `ARequestsOwnGapAtABodyWithAFindingStays`.
+  - Amended (U2, 2026-11-03; R4's consent to the design's §4 hunk, `Met`'s fall-through included): the analyses' rule landed as staged.
+    `MirAnalysis.Run`'s `Findings.Count > 0` return, U1's staged part, is deleted (its removal condition, U2, holds): a body with the fact
+    closes an empty drop-table entry through `MirDrops.Exclude` (the table's one writer) and steps 1, 2 and 4 skip it; A4's one private
+    `Views` composes it as `Derived` at `AddEdge`, `Enter` and `Owe`; `Proved` returns `bool?` and `Unproved` `(Fact, Rests)`, so `Met`'s
+    first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
+    `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
+    (the rows that need a live static Loan, which no source program has until P42).
