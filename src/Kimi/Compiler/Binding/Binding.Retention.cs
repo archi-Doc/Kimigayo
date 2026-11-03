@@ -40,10 +40,10 @@ public sealed partial class Binding
     // The Origins the call's Type arguments, Self and declaring Type bring (Instantiation), reused.
     private readonly HashSet<BoundOrigin> retentionInstantiated = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where a raw input's own value may be held, each a raw input
-    // with a carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the
-    // computation's own erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
-    private readonly List<(int Input, BoundType? Part)> retentionFills = new();
+    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where every raw source's own value may be held, each a
+    // carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the computation's own
+    // erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
+    private readonly List<BoundType?> retentionFills = new();
 
     // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types
     // reach (Reach), reused.
@@ -111,7 +111,7 @@ public sealed partial class Binding
     // An erased signature's retention (its instantiated inputs and result, and `binder`, the Binder of its per-call Origins): it reads no
     // declaration's premises, only its own well-formedness and the relations of its fixed Origins (AddErasedRelations), which make the
     // premises of `use`, the calling definition, redundant except for its pair layers' admitted cases. Its implementation is unknown, so
-    // any abstract part of its outputs may hold each raw input's own value (rule 3, the owner's reading of SPEC 15.6.4; DECISIONS BU-66).
+    // any abstract part of its outputs may hold each raw source's own value (rule 3, the owner's reading of SPEC 15.6.4; DECISIONS BU-66).
     internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, Koto? binder)
     {
         var environment = this.BeginRetention(use, inputs, result, null, 0);
@@ -125,11 +125,7 @@ public sealed partial class Binding
 
             var nodes = this.RetentionNodes(environment);
             this.AddErasedRelations(environment, 0, binder);
-            foreach (var (input, _) in this.retentionRawInputs)
-            {
-                this.retentionFills.Add((input, null));
-            }
-
+            this.retentionFills.Add(null);
             return this.RetentionRows(environment, nodes, inputs, result, null, null);
         }
         finally
@@ -226,7 +222,7 @@ public sealed partial class Binding
         this.retentionCallables.Clear();
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
-        this.retentionRawInputs.Clear();
+        this.retentionRawSources.Clear();
         this.retentionFills.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
@@ -258,7 +254,7 @@ public sealed partial class Binding
         this.retentionCallables.Clear();
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
-        this.retentionRawInputs.Clear();
+        this.retentionRawSources.Clear();
         this.retentionFills.Clear();
         this.retentionInstantiated.Clear();
     }
@@ -371,11 +367,11 @@ public sealed partial class Binding
     }
 
     // An erased signature's own atoms, walked after the contract's in its own scope (retentionErasedScope, the contract's restored after
-    // it, which the storage walk reads), its relations added, then dropped with its raw inputs, which are no inputs of the contract.
+    // it, which the storage walk reads), its relations added, then dropped with its raw sources, which are no inputs of the contract.
     private void AddErasedSignature(OriginPremiseEnvironment environment, ErasedSignature erased)
     {
         var (atoms, signature) = (this.retentionAtoms, erased.Signature);
-        var (start, raws) = (atoms.Count, this.retentionRawInputs.Count);
+        var (start, raws) = (atoms.Count, this.retentionRawSources.Count);
         var inputs = signature.Components[0];
         var (contract, signatureInputs) = (this.retentionScope, this.retentionInputs);
         (this.retentionScope, this.retentionInputs) = (this.retentionErasedScope, 0);
@@ -397,7 +393,7 @@ public sealed partial class Binding
         this.AddErasedRelations(environment, start, erased.Binder);
         this.ErasedFills(start, raws);
         atoms.RemoveRange(start, atoms.Count - start);
-        this.retentionRawInputs.RemoveRange(raws, this.retentionRawInputs.Count - raws);
+        this.retentionRawSources.RemoveRange(raws, this.retentionRawSources.Count - raws);
         (this.retentionScope, this.retentionInputs) = (contract, signatureInputs);
     }
 
@@ -434,13 +430,13 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4's abstract-Type sentence (rule 3; DECISIONS BU-66): where an erased signature handed to the body (its atoms from `start`,
-    // its raw inputs from `raws`) may retain each contract raw input (retentionFills; the contract's raw inputs precede `raws`): at each
-    // carrier its result holds or it writes (the atoms AddErasedRelations reads, R4-M154 Revision 3) through one of its raw inputs, whatever
-    // their pointee Types (a raw cast keeps the address and provenance, SPEC 5.4; a pointer to a local holding the input is read through),
-    // but in that raw input's own pointee (a pointer is never part of its own pointee).
+    // its raw sources from `raws`) may retain every contract raw source (retentionFills): at each carrier its result holds or it writes (the
+    // atoms AddErasedRelations reads, R4-M154 Revision 3) through one of its raw sources, whatever their pointee Types (a raw cast keeps the
+    // address and provenance, SPEC 5.4; a pointer to a local holding the input is read through), but in that source's input (a pointer is
+    // never part of its own pointee; rows are per input).
     private void ErasedFills(int start, int raws)
     {
-        var (atoms, raw) = (this.retentionAtoms, this.retentionRawInputs);
+        var (atoms, raw) = (this.retentionAtoms, this.retentionRawSources);
         for (var j = start; j < atoms.Count; j++)
         {
             var stored = false;
@@ -449,9 +445,9 @@ public sealed partial class Binding
                 stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.Writable && atom.Input != raw[k].Input));
             }
 
-            for (var i = 0; stored && i < raws; i++)
+            if (stored)
             {
-                this.retentionFills.Add((raw[i].Input, atoms[j].Carrier));
+                this.retentionFills.Add(atoms[j].Carrier);
             }
         }
     }
