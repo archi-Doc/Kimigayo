@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -82,7 +84,15 @@ public class PathCapabilityDiagnosticTest
 
     private const string GroupPairs = "group State\n    public var pair: (i32, i32) = (1, 2)\n    public let lpair: (i32, i32) = (1, 2)\n";
 
+    // The heads of ElementStatics' and GroupNest's statics, each non-scalar, so P42's limit (StaticStorageRecords).
+    private const string StoreStatics = "var pt:|var pair:|var fa:|var values:|let lpair:|let lfa:";
+
+    private const string NestStatics = "var nest:|var ta:|let lnest:|let lta:";
+
     private const string PairHead = "func f<s/T>(pair: s/(i32, i32), marker: s/T)\n";
+
+    // A caller of PairHead's f with s = uniq: the instance a Library build generates.
+    private const string PairCall = "func g()\n    var t = (1, 2)\n    var m: i32 = 0\n    f(t@uniq, m@uniq)\n";
 
     private const string MakeObj =
         "func make<s/T>(value: s/T) -> s/(i32, i64)\n    s is obj\n    var x: (i32, i64) = (1, 2)\n    let made = x@s\n    return made@move\n";
@@ -320,7 +330,9 @@ public class PathCapabilityDiagnosticTest
     // DECISIONS R5-M82, R5-M156 (OI-1 (a′)): check reports each of the prelude's 26 statics whose storage P42 has not brought (one that can
     // be set or whose Type is not a scalar; `limit` is an immutable scalar) as the collector's StaticStorage record at its declaration,
     // through its accessors, on every pipeline, also beside a Binding error after the prelude (SPEC 23.1.2), so the rows above assert
-    // their own records once. P42 reverts this test.
+    // their own records once: 26 records, no longer 27, since the MIR decides acceptance (H5): the old analysis's own Unsupported_Kd at
+    // the custom setter's static write `State.counter` went with it (1x), and the collector's record at `custom` stands for that static.
+    // P42 reverts this test.
     [Theory]
     [InlineData("        ()", "")]
     [InlineData("        _ = missing", "missing")]
@@ -333,18 +345,13 @@ public class PathCapabilityDiagnosticTest
             "let ring:", "var shared:", "var leaf:", "var fn:", "let fixedFn:", "var f1:", "var rec:", "var h:", "var fns:", "var oc:", "var rcf:",
             "var ex =", "let fixedEx =", "var exs =", "let fixedExs =", "var guarded:", "var custom:",
         };
-        var group = Statics.IndexOf("group State", StringComparison.Ordinal);
-        var expected = declarations.Select(head =>
-        {
-            var start = Statics.IndexOf("    public " + head, group, StringComparison.Ordinal) + "    public ".Length;
-            return (DiagnosticCode.Unsupported_Kd.ToString(), start, Statics.IndexOf("\n    public ", start, StringComparison.Ordinal) - start);
-        }).ToList();
+        var expected = StaticStorageRecords(source, declarations).ToList();
 
-        // Beside a Binding error the old analysis does not run; in a complete program it reports its own Unsupported_Kd at the custom
-        // setter's static write (P42).
-        expected.Add(at.Length > 0
-            ? (DiagnosticCode.UnresolvedBinding_Kd.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length)
-            : (DiagnosticCode.Unsupported_Kd.ToString(), Statics.IndexOf("State.counter = value", StringComparison.Ordinal), "State.counter".Length));
+        // A complete program has the collector's records alone; a Binding error after the prelude is reported beside them.
+        if (at.Length > 0)
+        {
+            expected.Add((DiagnosticCode.UnresolvedBinding_Kd.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length));
+        }
 
         var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length));
         Assert.Equal(expected.Order(), observed.Order());
@@ -368,16 +375,9 @@ public class PathCapabilityDiagnosticTest
     }
 
     // PLAN G203 (SPEC 3.4.3, 4.7, 4.7.1, 15.1.5): an element of a mutable static's Tuple, fixed array or Array is an inline part of its
-    // path and writable as its Field is (`Store.pt.x = 3`), so Binding accepts the write, assigned or updated. The old analysis, which
-    // models no static storage (P42), gives its located Unsupported_Kd there, as at the Field's write. A `let` static's element keeps
-    // InvalidAssignment_Kd.
+    // path and writable as its Field is (`Store.pt.x = 3`), so Binding accepts the write, assigned or updated
+    // (AStaticElementWriteRestsOnTheStaticStorageLimit). A `let` static's element keeps InvalidAssignment_Kd.
     [Theory]
-    [InlineData("    Store.pt.x = 3", "Store.pt.x = 3", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("    Store.pair.0 = 3", "Store.pair.0 = 3", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("    Store.pair.0 += 1", "Store.pair.0 += 1", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("    Store.fa[1] = 3", "Store.fa[1] = 3", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("    Store.fa[0] += 1", "Store.fa[0] += 1", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("    Store.values[0] = 3", "Store.values[0] = 3", DiagnosticCode.Unsupported_Kd)]
     [InlineData("    Store.lpair.0 = 3", "Store.lpair.0", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("    Store.lfa[1] = 3", "Store.lfa[1]", DiagnosticCode.InvalidAssignment_Kd)]
     public void AStaticsElementIsWritableAsItsField(string body, string at, DiagnosticCode code)
@@ -389,34 +389,18 @@ public class PathCapabilityDiagnosticTest
     }
 
     // PLAN G203 (DECISIONS BU-15, BU-16; SPEC 3.4.3, 4.7, 11, 13.5.5, 15.1.5): the rule is general, an owned inline element is writable
-    // where its owner is. So these SPEC-valid writes also move off InvalidAssignment_Kd. They now get the old analysis's located
-    // Unsupported_Kd (the frozen path; they become accepted at H3):
-    // - a static's nested element and its Tuple's Array element;
-    // - the bare static inside its group;
-    // - `storage`'s element in a custom setter, instance and static;
-    // - a constructor's `self.pr.0`;
-    // - a pair layer's element under `s is uniq` (a parameter, a `let` copy, an update) and a `var` copy under `owner or uniq`;
-    // - a `var` obj handle's payload element.
-    // Each invalid counterpart keeps its error: a `let` static or slot, a `ref/Self` method, `owner or uniq` on a parameter or a `let`
-    // copy, a `let` handle. Only the records after each row's prelude are compared.
+    // where its owner is. So these SPEC-valid writes also move off InvalidAssignment_Kd: a static's (nested element, its Tuple's Array
+    // element, the bare static inside its group, `storage`'s element in a static's custom setter;
+    // AStaticElementWriteRestsOnTheStaticStorageLimit) and the others (AnOwnedInlineElementWriteIsGenerated). Each invalid counterpart
+    // keeps its error: a `let` static or slot, a `ref/Self` method, `owner or uniq` on a parameter or a `let` copy, a `let` handle. Only
+    // the records after each row's prelude are compared.
     [Theory]
-    [InlineData("nest", GroupNest, "func f()\n    State.nest.0.1 = 3\n", "Unsupported_Kd State.nest.0.1 = 3")]
     [InlineData("lnest", GroupNest, "func f()\n    State.lnest.0.1 = 3\n", "InvalidAssignment_Kd State.lnest.0.1")]
-    [InlineData("ta", GroupNest, "func f()\n    State.ta.0[1] = 3\n", "Unsupported_Kd State.ta.0[1] = 3")]
     [InlineData("lta", GroupNest, "func f()\n    State.lta.0[1] = 3\n", "InvalidAssignment_Kd State.lta.0[1]")]
-    [InlineData("bare", GroupPairs, "    public func g()\n        pair.0 = 3\n", "Unsupported_Kd pair.0 = 3")]
     [InlineData("bare_let", GroupPairs, "    public func g()\n        lpair.0 = 3\n", "InvalidAssignment_Kd lpair.0")]
-    [InlineData("storage", "", "struct H\n    public var item: (i32, i32) = (1, 2)\n        get() -> (i32, i32) => storage\n        set(value: (i32, i32)) -> () => storage.0 = value.0\n    public init() => ()\n", "Unsupported_Kd storage.0 = value.0")]
-    [InlineData("storage_static", "", "group G\n    public var item: (i32, i32) = (1, 2)\n        get() -> (i32, i32) => storage\n        set(value: (i32, i32)) -> () => storage.0 = value.0\n", "Unsupported_Kd storage; Unsupported_Kd storage.0 = value.0; Unsupported_Kd var item: (i32, i32) = (1, 2)")]
-    [InlineData("ctor", "", "struct H\n    public var pr: (i32, i32) = (1, 2)\n    public init() => self.pr.0 = 3\n", "Unsupported_Kd self.pr.0 = 3")]
     [InlineData("ref_self", "", "struct H\n    public var pr: (i32, i32) = (1, 2)\n    public init() => ()\n    public func m(self: ref/Self) => self.pr.0 = 3\n", "SharedPathAccess_Kd self.pr.0")]
-    [InlineData("pair_uniq", PairHead + "    s is uniq\n", "    pair@follow.0 = 3\n", "Unsupported_Kd pair@follow.0 = 3")]
-    [InlineData("pair_uniq_let", PairHead + "    s is uniq\n", "    let p = pair\n    p@follow.0 = 3\n", "Unsupported_Kd p@follow.0 = 3")]
-    [InlineData("pair_uniq_update", PairHead + "    s is uniq\n", "    pair@follow.0 += 3\n", "Unsupported_Kd pair@follow.0 += 3")]
-    [InlineData("pair_var", PairHead + "    s is owner or uniq\n", "    var p = pair\n    p@follow.0 = 3\n", "Unsupported_Kd p@follow.0 = 3")]
     [InlineData("pair_param", PairHead + "    s is owner or uniq\n", "    pair@follow.0 = 3\n", "InvalidAssignment_Kd pair@follow.0")]
     [InlineData("pair_let", PairHead + "    s is owner or uniq\n", "    let p = pair\n    p@follow.0 = 3\n", "InvalidAssignment_Kd p@follow.0")]
-    [InlineData("obj_var", MakeObj, "func f()\n    var h = make(5@obj)\n    h@follow.0 = 3\n    h@follow.1 += 1\n", "Unsupported_Kd h@follow.0 = 3; Unsupported_Kd h@follow.1 += 1")]
     [InlineData("obj_let", MakeObj, "func f()\n    let h = make(5@obj)\n    h@follow.0 = 3\n", "InvalidAssignment_Kd h@follow.0")]
     public void AnOwnedInlineElementIsWritableWhereItsOwnerIs(string form, string prelude, string body, string records)
     {
@@ -424,6 +408,53 @@ public class PathCapabilityDiagnosticTest
         var shown = DiagnosticCorpus.Check(source).Diagnostics.Where(x => x.Span!.Value.Start >= prelude.Length)
             .Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]).Order(StringComparer.Ordinal);
         Assert.True(string.Join("; ", shown) == records, $"{form}: expected [{records}], found [{string.Join("; ", shown)}]");
+    }
+
+    // PLAN G203's valid writes to a mutable static's element (an inline part, a nested element, a Tuple's Array element, the bare static
+    // in its group, `storage`'s element in a static's custom setter) rest on the P42 limit since the MIR decides acceptance (H5; 1x): the
+    // old analysis's located Unsupported_Kd at the write (and at a static getter's `storage`) went with it, and check rejects the program
+    // with the collector's StaticStorage Unsupported_Kd at each of its non-scalar statics alone (DECISIONS R5-M82, R5-M156; SPEC
+    // 7.7.2/0's limit on the owner's (e) list), so generation refuses it. P42 makes these programs accepted.
+    [Theory]
+    [InlineData(ElementStatics + "func f()\n    Store.pt.x = 3\n", StoreStatics, "Store.pt.x = 3")]
+    [InlineData(ElementStatics + "func f()\n    Store.pair.0 = 3\n", StoreStatics, "Store.pair.0 = 3")]
+    [InlineData(ElementStatics + "func f()\n    Store.pair.0 += 1\n", StoreStatics, "Store.pair.0 += 1")]
+    [InlineData(ElementStatics + "func f()\n    Store.fa[1] = 3\n", StoreStatics, "Store.fa[1] = 3")]
+    [InlineData(ElementStatics + "func f()\n    Store.fa[0] += 1\n", StoreStatics, "Store.fa[0] += 1")]
+    [InlineData(ElementStatics + "func f()\n    Store.values[0] = 3\n", StoreStatics, "Store.values[0] = 3")]
+    [InlineData(GroupNest + "func f()\n    State.nest.0.1 = 3\n", NestStatics, "State.nest.0.1 = 3")]
+    [InlineData(GroupNest + "func f()\n    State.ta.0[1] = 3\n", NestStatics, "State.ta.0[1] = 3")]
+    [InlineData(GroupPairs + "    public func g()\n        pair.0 = 3\n", "var pair:|let lpair:", "pair.0 = 3")]
+    [InlineData("group G\n    public var item: (i32, i32) = (1, 2)\n        get() -> (i32, i32) => storage\n        set(value: (i32, i32)) -> () => storage.0 = value.0\n", "var item:", "storage.0 = value.0")]
+    public void AStaticElementWriteRestsOnTheStaticStorageLimit(string program, string statics, string write)
+    {
+        var source = program + "public func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)).ToArray();
+        Assert.Equal(StaticStorageRecords(source, statics.Split('|')).Order(), records.Order());
+        Assert.DoesNotContain((DiagnosticCode.Unsupported_Kd.ToString(), source.IndexOf(write, StringComparison.Ordinal), write.Length), records);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+    }
+
+    // PLAN G203's valid writes outside static storage are accepted since the MIR decides acceptance (H5; 1a, the owner 2026-11-03),
+    // where the old analysis gave its located Unsupported_Kd: `storage`'s element in an instance's custom setter, a constructor's
+    // `self.pr.0`, a pair layer's element under `s is uniq` (a parameter, a `let` copy, an update) and a `var` copy under `owner or uniq`,
+    // and a `var` obj handle's payload element. Check accepts each program with no record, and a Library build generates the function
+    // that writes (every root, K11), a generic one as the instance `g` calls.
+    [Theory]
+    [InlineData("storage", "", "struct H\n    public var item: (i32, i32) = (1, 2)\n        get() -> (i32, i32) => storage\n        set(value: (i32, i32)) -> () => storage.0 = value.0\n    public init() => ()\n", "item.Set")]
+    [InlineData("ctor", "", "struct H\n    public var pr: (i32, i32) = (1, 2)\n    public init() => self.pr.0 = 3\n", "init")]
+    [InlineData("pair_uniq", PairHead + "    s is uniq\n", "    pair@follow.0 = 3\n" + PairCall, "f")]
+    [InlineData("pair_uniq_let", PairHead + "    s is uniq\n", "    let p = pair\n    p@follow.0 = 3\n" + PairCall, "f")]
+    [InlineData("pair_uniq_update", PairHead + "    s is uniq\n", "    pair@follow.0 += 3\n" + PairCall, "f")]
+    [InlineData("pair_var", PairHead + "    s is owner or uniq\n", "    var p = pair\n    p@follow.0 = 3\n" + PairCall, "f")]
+    [InlineData("obj_var", MakeObj, "func f()\n    var h = make(5@obj)\n    h@follow.0 = 3\n    h@follow.1 += 1\n", "f")]
+    public void AnOwnedInlineElementWriteIsGenerated(string form, string prelude, string body, string function)
+    {
+        var source = prelude + body + "public func main() => ()\n";
+        var check = DiagnosticCorpus.Check(source);
+        Assert.True(check.Accepted && check.Diagnostics.Length == 0, $"{form}: {string.Join("; ", check.Diagnostics.Select(static x => x.Code))}");
+        Assert.Contains(function, GeneratedBodies(source));
     }
 
     [Fact]
@@ -486,4 +517,35 @@ public class PathCapabilityDiagnosticTest
     private static IEnumerable<(string Code, int Start, int Length)> RowRecords(string source)
         => DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length))
             .Where(static x => x.Start >= Statics.Length);
+
+    // The collector's StaticStorage record of each static of the source's group whose declaration begins with a head ("var counter:"):
+    // Unsupported_Kd over the declaration with its accessor lines (P42; DECISIONS R5-M82, R5-M156).
+    private static IEnumerable<(string Code, int Start, int Length)> StaticStorageRecords(string source, IEnumerable<string> heads)
+        => heads.Select(head =>
+        {
+            var start = source.IndexOf("    public " + head, source.IndexOf("group ", StringComparison.Ordinal), StringComparison.Ordinal) + "    public ".Length;
+            var end = source.IndexOf('\n', start);
+            while (source.AsSpan(end + 1).StartsWith("        ", StringComparison.Ordinal))
+            {
+                end = source.IndexOf('\n', end + 1);
+            }
+
+            return (DiagnosticCode.Unsupported_Kd.ToString(), start, end - start);
+        });
+
+    // The declaration names of the bodies a Library build of the source generates (every root, K11): the program accepted and its
+    // module generated with no record.
+    private static string?[] GeneratedBodies(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Library);
+        c.Analyze();
+        Assert.True(c.Accepts && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        var set = c.Instances!;
+        return [.. Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
+            .Select(x => set.Items[x].Key.Body.Def.Decl?.Name)];
+    }
 }
