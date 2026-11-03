@@ -162,7 +162,7 @@ public class NeverContinuationTest
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         c.ReportAnalysis();
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.True(UnreachableOwnershipTest.Generates(source, OutputKind.Library), statement);
+        MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true);
     }
 
     // SPEC 14.10.3, 15.1.3, 3.5 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the
@@ -187,7 +187,7 @@ public class NeverContinuationTest
         Assert.Equal(
             codes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (x, (string?)element)),
             TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
-        Assert.Equal(codes.Length == 0, UnreachableOwnershipTest.Generates(source, OutputKind.Library));
+        MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: codes.Length == 0);
     }
 
     // The bare consume of that theory (`let x = a[(return 42)]`) is Binding's TransferRequired_Kd at the element (R6-check H1, DECISIONS

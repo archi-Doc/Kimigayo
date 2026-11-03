@@ -2,7 +2,6 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -454,7 +453,7 @@ public class PathCapabilityDiagnosticTest
         var source = prelude + body + "public func main() => ()\n";
         var check = DiagnosticCorpus.Check(source);
         Assert.True(check.Accepted && check.Diagnostics.Length == 0, $"{form}: {string.Join("; ", check.Diagnostics.Select(static x => x.Code))}");
-        Assert.Contains(function, GeneratedBodies(source));
+        Assert.Contains(function, MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
     }
 
     [Fact]
@@ -532,20 +531,4 @@ public class PathCapabilityDiagnosticTest
 
             return (DiagnosticCode.Unsupported_Kd.ToString(), start, end - start);
         });
-
-    // The declaration names of the bodies a Library build of the source generates (every root, K11): the program accepted and its
-    // module generated with no record.
-    private static string?[] GeneratedBodies(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Library);
-        c.Analyze();
-        Assert.True(c.Accepts && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        var set = c.Instances!;
-        return [.. Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
-            .Select(x => set.Items[x].Key.Body.Def.Decl?.Name)];
-    }
 }

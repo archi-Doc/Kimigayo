@@ -148,7 +148,7 @@ public class ElementMoveEmissionTest
     }
 
     // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the update. The located
-    // receiver stays protected while its index operands evaluate (SPEC 4.6.3), and a move of its sibling there does not touch it, so
+    // receiver stays protected while its index operands evaluate (SPEC 4.7.4), and a move of its sibling there does not touch it, so
     // that program is accepted (Fixtures' IndexSibling; R4's 1a verdict, the owner 2026-11-03): the old analysis's
     // ComparisonLoanConflict_Kd went with the MIR deciding acceptance (H5).
     [Theory]

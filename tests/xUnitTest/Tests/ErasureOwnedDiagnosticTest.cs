@@ -272,7 +272,7 @@ public class ErasureOwnedDiagnosticTest
     {
         const string Declarations = "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> i32 => 0\n    let c = outer(p)\n    let g: (ref/i32 during p) -> i32 = c@move\n    return 1";
         Assert.Empty(RawPointerSyntaxTest.Records(Declarations));
-        Assert.Contains("h", PublishedPlaceProjectionTest.GeneratedBodies(Declarations + "\npublic func main() => ()\n"));
+        Assert.Contains("h", MinimalEmissionTest.GeneratedBodies(Declarations + "\npublic func main() => ()\n", OutputKind.Library, accepted: true));
     }
 
     private static string[] Records(string source) => [.. DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")];

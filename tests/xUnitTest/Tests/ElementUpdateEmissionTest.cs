@@ -179,7 +179,7 @@ public class ElementUpdateEmissionTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
-    // The located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
+    // The located receiver stays protected while its index operands evaluate (SPEC 4.7.4).
     [Theory]
     [InlineData("var a: [1 of i32] = [0]\na[(label work: do\n    a[0]++\n    exit to work 0\n)]++")]
     [InlineData("var a: [1 of i32] = [21]\nlet x = a[(label work: do\n    a[0]++\n    exit to work 0\n)]")]

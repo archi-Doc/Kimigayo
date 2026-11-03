@@ -31,7 +31,7 @@ public sealed class PairBarePositionTest
         var source = "func f<s/T>(value: s/T, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var arr: [2 of s/T] = [value@move, other@move]\n    let e = arr[0]\n    _ = e@follow\npublic func main() -> ()\n    var n: i32 = 1\n    var m: i32 = 2\n    f(n, m)\n";
         var check = DiagnosticCorpus.Check(source);
         Assert.True(check.Accepted && check.Diagnostics.Length == 0, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
-        Assert.Contains("f", PublishedPlaceProjectionTest.GeneratedBodies(source));
+        Assert.Contains("f", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
     }
 
     // SPEC 13.5.6: an exclusive short adaptation borrows the written slot, which must be writable.

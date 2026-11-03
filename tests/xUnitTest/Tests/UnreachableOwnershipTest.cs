@@ -3,8 +3,6 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -54,7 +52,7 @@ public class UnreachableOwnershipTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Problems);
-        Assert.True(Generates(source, OutputKind.Application), source);
+        MinimalEmissionTest.GeneratedBodies(source, OutputKind.Application, accepted: true);
     }
 
     // The loop body's own ownership issue is the body's one record; the dead use after the loop has none.
@@ -88,34 +86,6 @@ public class UnreachableOwnershipTest
         c.ReportAnalysis();
         c.ReportAnalysis();
         Assert.Single(TestDiagnostics.Of(c));
-    }
-
-    // The evidence of a verdict through the published pipeline (SPEC 23.2.2): whether the program, checked as `output`, is generated. An
-    // accepted program is generated with no record, with a generated body for each function it declares and for its top-level statements
-    // (null; a Library generates every root, K11); a rejected one is not.
-    internal static bool Generates(string source, OutputKind output)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        c.Bind();
-        c.Binding.CheckStartup(output);
-        c.Analyze();
-        c.Binding.ReportDiagnostics();
-        c.ReportAnalysis();
-        var generated = c.Generate(TextWriter.Null);
-        Assert.True(generated == c.Accepts, MinimalEmissionTest.Describe(c));
-        if (generated)
-        {
-            var set = c.Instances!;
-            var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
-                .Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).ToArray();
-            Assert.All(
-                KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(),
-                f => Assert.Contains(f == c.Kotonoha.GeneratedFunction ? null : f, bodies));
-        }
-
-        return generated;
     }
 
     private static Compilation Parse(string source)

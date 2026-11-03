@@ -175,6 +175,6 @@ public partial class ClosureResultOriginTest
     public void ANestedStructsInheritedOriginIsOneItsSymbolDeclares(string form, string source, string mir, string published)
     {
         AssertSides(form, source, mir, published);
-        Assert.Equal(published.Length == 0, UnreachableOwnershipTest.Generates(source, OutputKind.Library));
+        MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: published.Length == 0);
     }
 }

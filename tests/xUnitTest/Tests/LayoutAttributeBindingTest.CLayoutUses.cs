@@ -2,7 +2,6 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -323,14 +322,7 @@ public partial class LayoutAttributeBindingTest
     public void AByValueUseOfAStructStoringNeverIsAccepted(string form, string declarations)
     {
         AssertUses(form, Program(declarations, string.Empty, string.Empty), string.Empty);
-        var c = Check(declarations, OutputKind.Library);
-        Assert.True(c.Accepts && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        var set = c.Instances!;
-        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => x != c.Kotonoha.GeneratedFunction).ToArray();
-        Assert.NotEmpty(functions);
-        Assert.All(
-            functions,
-            f => Assert.Contains(Enumerable.Range(0, set.Items.Length), x => set.IsGenerated(x) && set.Items[x].Key.Body.Def.Decl?.Declaration == f));
+        MinimalEmissionTest.GeneratedBodies(declarations, OutputKind.Library, accepted: true);
     }
 
     /// <summary>Checks a program and judges its Error records against the expected uses (see the file comment).</summary>
@@ -340,7 +332,7 @@ public partial class LayoutAttributeBindingTest
     internal static void AssertUses(string form, string source, string records)
     {
         var uses = records.Length == 0 ? [] : records.Split('|').Select(x => Use.Parse(x, source)).ToArray();
-        var c = Check(source, OutputKind.Application);
+        var c = Check(source);
         var errors = Errors(c);
         var counts = new int[uses.Length];
         var stray = new List<TestDiagnostic>();
@@ -385,13 +377,13 @@ public partial class LayoutAttributeBindingTest
             $"{form}: expected [{records.Replace("\n", "\\n", StringComparison.Ordinal)}]\n{string.Join("; ", problems)}; observed [{string.Join("; ", errors.Select(Show))}]");
     }
 
-    private static Compilation Check(string source, OutputKind output)
+    private static Compilation Check(string source)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(output);
+        c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
