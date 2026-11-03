@@ -237,7 +237,8 @@ public sealed partial class MirOriginsTest
     // audit-origins rows 7, 9c and 19 with their twins (2a0-D §10): the MIR's Origin problem of a body chain is the one Binding's twin or the
     // old reporter records at the same site, so the ledger pairs them: an invariant `==` one direction of which the clause proves (row 7),
     // a Reborrow through two exclusive layers and a stored exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a
-    // local's Borrow through locals with no candidate, each a local region (row 19), returned or read into a local.
+    // local's Borrow through locals with no candidate, each a local region (row 19), returned or read into a local. The twins are the old
+    // path's records (LegacyRecords, until H10b): since the flip a compilation's Problems are the MIR's own (DECISIONS R5-M185; R6-check H5).
     [Theory]
     [InlineData(R7Inv)]
     [InlineData(Layers)]
@@ -250,8 +251,7 @@ public sealed partial class MirOriginsTest
         var c = MirBuildTest.Compile(source + Main);
         var old = MinimalEmissionTest.Analyze(source + Main, "Program.kimi");
         var codes = new[] { DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd };
-        string[] twins = [.. c.Binding.Issues.Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}"),
-            .. old.Problems.Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {Line(old, x.Subject)}")];
+        string[] twins = [.. LegacyRecords.Of(old).Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}")];
         Assert.NotEmpty(twins);
         Assert.Equal(twins.Order(StringComparer.Ordinal), Origins(c).Order(StringComparer.Ordinal));
     }

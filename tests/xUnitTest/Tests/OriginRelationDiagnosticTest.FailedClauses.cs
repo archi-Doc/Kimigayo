@@ -21,34 +21,51 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + " ";
 
+    // The MIR's records since the flip (R6-check H5): its twin of Binding's record at Binding's row (the clause, or `return p.q` beside
+    // `p.q`) until H11 (H0b §5.4, DECISIONS R4-M108), its record at `let k` where Binding rests the slot (R5-M184), and its record at the
+    // statement `let p` where Binding records none.
+    private const string InitRecord = Unsatisfied + "P.init(a, l@ref)";
+
+    private const string ClauseRecord = Unsatisfied + "origin x.t outlives a";
+
+    private const string ReturnRecord = Unsatisfied + "return p.q";
+
+    private const string LetRecord = Unsatisfied + "let k: ref/i32 during a = p.q";
+
     /// <summary>Gets each local with a failed clause and its Origin records, and the repair that makes its valid twin with the twin's
     /// records.</summary>
     public static TheoryData<string, string[], string, string, string[]> LocalFailedClauses => new()
     {
         // The slots the failed clause does not name complete, so a valid clause beside it and a use of another slot are judged.
         {
-            PairLocal + "        origin x.t outlives a\n        origin x.s == zz\n    return a\n", [Unsatisfied + "P.init(a, l@ref)"],
-            "x.s == zz", "x.s == a", [Unsatisfied + "P.init(a, l@ref)"]
+            PairLocal + "        origin x.t outlives a\n        origin x.s == zz\n    return a\n", [InitRecord, ClauseRecord], "x.s == zz", "x.s == a",
+            [InitRecord, ClauseRecord]
         },
-        { PairLocal + "        origin x.s outlives zz\n    return p.q\n", [Unsatisfied + "p.q"], "x.s outlives zz", "x.s outlives a", [Unsatisfied + "p.q"] },
         {
-            PairLocal + "        origin x.zz outlives a\n    return p.q\n", [Unsatisfied + "p.q"], "x.zz", "x.t",
-            [Unsatisfied + "P.init(a, l@ref)", Unsatisfied + "p.q"]
+            PairLocal + "        origin x.s outlives zz\n    return p.q\n", [ReturnRecord, Unsatisfied + "p.q"], "x.s outlives zz", "x.s outlives a",
+            [ReturnRecord, Unsatisfied + "p.q"]
+        },
+        {
+            PairLocal + "        origin x.zz outlives a\n    return p.q\n", [ReturnRecord, Unsatisfied + "p.q"], "x.zz", "x.t",
+            [InitRecord, ClauseRecord, ReturnRecord, Unsatisfied + "p.q"]
         },
 
         // The slot it names stays Unbound, resting on it, and so does the equality class of that slot.
         {
-            PairLocal + "        origin x.t outlives zz\n    return p.q\n", [Unproven + "p.q"], "x.t outlives zz", "x.t outlives a",
-            [Unsatisfied + "P.init(a, l@ref)", Unsatisfied + "p.q"]
+            PairLocal + "        origin x.t outlives zz\n    return p.q\n", [ReturnRecord, Unproven + "p.q"], "x.t outlives zz", "x.t outlives a",
+            [InitRecord, ClauseRecord, ReturnRecord, Unsatisfied + "p.q"]
         },
         {
-            PairLocal + "        origin x.t outlives zz\n    let k: ref/i32 during a = p.q\n    return k\n", [], "x.t outlives zz", "x.t outlives a",
-            [Unsatisfied + "P.init(a, l@ref)"]
+            PairLocal + "        origin x.t outlives zz\n    let k: ref/i32 during a = p.q\n    return k\n", [LetRecord], "x.t outlives zz", "x.t outlives a",
+            [InitRecord, ClauseRecord, LetRecord]
         },
-        { PairLocal + "        origin zz outlives x.t\n    return p.q\n", [Unproven + "p.q"], "zz outlives x.t", "a outlives x.t", [Unsatisfied + "p.q"] },
+        {
+            PairLocal + "        origin zz outlives x.t\n    return p.q\n", [ReturnRecord, Unproven + "p.q"], "zz outlives x.t", "a outlives x.t",
+            [ReturnRecord, Unsatisfied + "p.q"]
+        },
         {
             PairLocal + "        origin x.t == x.s\n        origin x.s == zz\n    return a\n", [], "x.s == zz", "x.s == a",
-            [Unsatisfied + "P.init(a, l@ref)"]
+            [Unsatisfied + "let p: P{x} = P.init(a, l@ref)"]
         },
         { CellLocal + "        origin x.s outlives zz\n    let w = h.r@follow@ref\n    return w\n", [Unproven + "w"], "x.s outlives zz", "x.s outlives a", [] },
         {
