@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -45,33 +46,32 @@ public partial class LayoutAttributeBindingTest
         ("w-zarray", GenericP, "P<[0 of i32]>", GenericP, "P<[1 of i32]>"),
     ];
 
-    // The declarations storing Never (C: a Never Field; WN: P<Never>), whose twins' by-value uses are a limit outside G158 (Unsupported_Kd).
+    // The declarations storing Never (C: a Never Field; WN: P<Never>) and their twins.
     private static readonly (string Name, string Declaration, string Type, string TwinDeclaration, string TwinType)[] Never =
     [
         ("never", "#Layout(\"C\")\nstruct S\n    var n: i32\n    var v: Never\n", "S", "struct S\n    var n: i32\n    var v: Never\n", "S"),
         ("w-never", GenericP, "P<Never>", GenericP, "P<i32>"),
     ];
 
-    // The uses over X (the problem statement's rows): the records SPEC 8.15.3 gives an unavailable layout (Uses) and the records a Never
-    // Field's limit gives every by-value use of such a Type, with or without the Attribute (Limits).
-    private static readonly (string Name, string Body, string Uses, string Limits)[] Contexts =
+    // The uses over X (the problem statement's rows) and the records SPEC 8.15.3 gives an unavailable layout (Uses): a context with records
+    // uses X by value.
+    private static readonly (string Name, string Body, string Uses)[] Contexts =
     [
-        ("none", "let x = 1\n", string.Empty, string.Empty),
-        ("local", "func f() -> i32\n    var s: X\n    return 0\n", "InvalidCLayout_Kd var s: X", "Unsupported_Kd var s: X"),
-        ("param", "func f(s: X) => ()\n", "InvalidCLayout_Kd func f(s: X) => ()", "Unsupported_Kd func f(s: X) => ()"),
-        ("ret", "func f() -> X => $abort(\"x\")\n", "InvalidCLayout_Kd func f() -> X => $abort(\"x\")", "Unsupported_Kd func f() -> X => $abort(\"x\")"),
-        ("farray", "func f(a: [2 of X]) => ()\n", "InvalidCLayout_Kd func f(a: [2 of X]) => ()", "Unsupported_Kd func f(a: [2 of X]) => ()"),
-        ("array", "func f() -> i32\n    let a: Array<X> = []\n    return 0\n", "InvalidCLayout_Kd let a: Array<X> = []", "Unsupported_Kd let a: Array<X> = []|Unsupported_Kd []"),
+        ("none", "let x = 1\n", string.Empty),
+        ("local", "func f() -> i32\n    var s: X\n    return 0\n", "InvalidCLayout_Kd var s: X"),
+        ("param", "func f(s: X) => ()\n", "InvalidCLayout_Kd func f(s: X) => ()"),
+        ("ret", "func f() -> X => $abort(\"x\")\n", "InvalidCLayout_Kd func f() -> X => $abort(\"x\")"),
+        ("farray", "func f(a: [2 of X]) => ()\n", "InvalidCLayout_Kd func f(a: [2 of X]) => ()"),
+        ("array", "func f() -> i32\n    let a: Array<X> = []\n    return 0\n", "InvalidCLayout_Kd let a: Array<X> = []"),
         (
             "arg",
             "func make() -> X => $abort(\"x\")\nfunc take(s: X) => ()\nfunc f() => take(make())\n",
-            "InvalidCLayout_Kd func make() -> X => $abort(\"x\")|InvalidCLayout_Kd func take(s: X) => ()|InvalidCLayout_Kd take(make())",
-            "Unsupported_Kd func make() -> X => $abort(\"x\")|Unsupported_Kd func take(s: X) => ()|Unsupported_Kd take(make())"),
-        ("rawread", "func f(p: raw/X)\n    unsafe\n        let value = (*p)@move\n", "InvalidCLayout_Kd let value = (*p)@move", "Unsupported_Kd let value = (*p)@move|Unsupported_Kd *p"),
-        ("fieldunused", "#Layout(\"C\")\nstruct H\n    var k: i32\n    var s: X\nlet x = 1\n", string.Empty, string.Empty),
-        ("fieldused", "#Layout(\"C\")\nstruct H\n    var k: i32\n    var s: X\nfunc f(h: H) => ()\n", "InvalidCLayout_Kd func f(h: H) => ()", "Unsupported_Kd func f(h: H) => ()"),
-        ("borrow", "func f(s: ref/X) => ()\n", string.Empty, string.Empty),
-        ("raw", "func f(p: raw/X) => ()\n", string.Empty, string.Empty),
+            "InvalidCLayout_Kd func make() -> X => $abort(\"x\")|InvalidCLayout_Kd func take(s: X) => ()|InvalidCLayout_Kd take(make())"),
+        ("rawread", "func f(p: raw/X)\n    unsafe\n        let value = (*p)@move\n", "InvalidCLayout_Kd let value = (*p)@move"),
+        ("fieldunused", "#Layout(\"C\")\nstruct H\n    var k: i32\n    var s: X\nlet x = 1\n", string.Empty),
+        ("fieldused", "#Layout(\"C\")\nstruct H\n    var k: i32\n    var s: X\nfunc f(h: H) => ()\n", "InvalidCLayout_Kd func f(h: H) => ()"),
+        ("borrow", "func f(s: ref/X) => ()\n", string.Empty),
+        ("raw", "func f(p: raw/X) => ()\n", string.Empty),
     ];
 
     // Inferred instances P<T>, T := (), and the uses that need no layout (a borrow, a raw pointer, an uninstantiated body), each with its
@@ -187,9 +187,9 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
-    // The twins keep today's verdicts: accepted, but a struct by value in an import (22.6, every twin), ref/S of a Kimigayo struct (22.6)
-    // and each by-value use of a struct storing Never (a limit outside G158). The empty twin as a Field makes H itself store a zero-sized
-    // Field (the problem statement's §2), so H's twin rows are B rows: accepted unused, InvalidCLayout_Kd at f's parameter when used.
+    // The twins keep today's verdicts: accepted, but a struct by value in an import (22.6, every twin) and ref/S of a Kimigayo struct (22.6);
+    // a by-value use of a struct storing Never is NeverTwinRows'. The empty twin as a Field makes H itself store a zero-sized Field (the
+    // problem statement's §2), so H's twin rows are B rows: accepted unused, InvalidCLayout_Kd at f's parameter when used.
     public static TheoryData<string, string, string> TwinRows
     {
         get
@@ -197,14 +197,9 @@ public partial class LayoutAttributeBindingTest
             var rows = new TheoryData<string, string, string>();
             foreach (var shape in Unavailable.Concat(Never))
             {
-                foreach (var context in Contexts)
+                foreach (var context in Contexts.Where(x => shape.Name != "never" || x.Uses.Length == 0))
                 {
-                    var records = shape.Name switch
-                    {
-                        "never" => context.Limits,
-                        "empty" when context.Name.StartsWith("field", StringComparison.Ordinal) => context.Uses,
-                        _ => string.Empty,
-                    };
+                    var records = shape.Name == "empty" && context.Name.StartsWith("field", StringComparison.Ordinal) ? context.Uses : string.Empty;
                     rows.Add($"{shape.Name}.{context.Name}.twin", Program(shape.TwinDeclaration, context.Body, shape.TwinType), records.Replace("X", shape.TwinType, StringComparison.Ordinal));
                 }
 
@@ -252,8 +247,8 @@ public partial class LayoutAttributeBindingTest
     }
 
     // Part (2) of the row, judged by Layout alone (DECISIONS BU-48): a Never Field. SPEC 6.7.1 names Never among the zero-sized Fields, so each by-value use of S or
-    // P<Never> is InvalidCLayout_Kd beside the Never limit's Unsupported_Kd its twin keeps (23.1.2); the uses needing no layout stay
-    // accepted; ref/X in an import is Unsupported_Kd alone.
+    // P<Never> is InvalidCLayout_Kd, the use's one record (1x: the old analysis's Never limit, Unsupported_Kd at the same use, went with
+    // the MIR deciding acceptance, H5); the uses needing no layout stay accepted; ref/X in an import is Unsupported_Kd alone.
     public static TheoryData<string, string, string> NeverRows
     {
         get
@@ -263,11 +258,28 @@ public partial class LayoutAttributeBindingTest
             {
                 foreach (var context in Contexts)
                 {
-                    var records = string.Join('|', new[] { context.Uses, context.Limits }.Where(static x => x.Length > 0));
-                    rows.Add($"{shape.Name}.{context.Name}", Program(shape.Declaration, context.Body, shape.Type), records.Replace("X", shape.Type, StringComparison.Ordinal));
+                    rows.Add($"{shape.Name}.{context.Name}", Program(shape.Declaration, context.Body, shape.Type), context.Uses.Replace("X", shape.Type, StringComparison.Ordinal));
                 }
 
                 rows.Add($"{shape.Name}.importref", Program(shape.Declaration, ImportHead + "ref/X) -> i32\n", shape.Type), "Unsupported_Kd ref/" + shape.Type);
+            }
+
+            return rows;
+        }
+    }
+
+    // The Never twin's by-value uses (1a, the owner's list of 2026-11-03): a struct storing Never without the Attribute needs no C layout
+    // (SPEC 8.15.3), and the old analysis's limit at each use (Unsupported_Kd) went with the MIR deciding acceptance (H5). Each row is the
+    // twin's declarations; the program with its top-level statement is accepted.
+    public static TheoryData<string, string> NeverTwinRows
+    {
+        get
+        {
+            var rows = new TheoryData<string, string>();
+            var shape = Never[0];
+            foreach (var context in Contexts.Where(static x => x.Uses.Length > 0))
+            {
+                rows.Add($"{shape.Name}.{context.Name}.twin", shape.TwinDeclaration + context.Body.Replace("X", shape.TwinType, StringComparison.Ordinal));
             }
 
             return rows;
@@ -304,6 +316,23 @@ public partial class LayoutAttributeBindingTest
     public void ANeverFieldMakesCLayoutUnavailable(string form, string source, string records)
         => AssertUses(form, source, records);
 
+    // The evidence of acceptance: the declarations as a Library, whose every root generation writes (K11), are accepted and generate each
+    // function's body.
+    [Theory]
+    [MemberData(nameof(NeverTwinRows))]
+    public void AByValueUseOfAStructStoringNeverIsAccepted(string form, string declarations)
+    {
+        AssertUses(form, Program(declarations, string.Empty, string.Empty), string.Empty);
+        var c = Check(declarations, OutputKind.Library);
+        Assert.True(c.Accepts && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        var set = c.Instances!;
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => x != c.Kotonoha.GeneratedFunction).ToArray();
+        Assert.NotEmpty(functions);
+        Assert.All(
+            functions,
+            f => Assert.Contains(Enumerable.Range(0, set.Items.Length), x => set.IsGenerated(x) && set.Items[x].Key.Body.Def.Decl?.Declaration == f));
+    }
+
     /// <summary>Checks a program and judges its Error records against the expected uses (see the file comment).</summary>
     /// <param name="form">The row's name.</param>
     /// <param name="source">The program.</param>
@@ -311,7 +340,7 @@ public partial class LayoutAttributeBindingTest
     internal static void AssertUses(string form, string source, string records)
     {
         var uses = records.Length == 0 ? [] : records.Split('|').Select(x => Use.Parse(x, source)).ToArray();
-        var c = Check(source);
+        var c = Check(source, OutputKind.Application);
         var errors = Errors(c);
         var counts = new int[uses.Length];
         var stray = new List<TestDiagnostic>();
@@ -356,13 +385,13 @@ public partial class LayoutAttributeBindingTest
             $"{form}: expected [{records.Replace("\n", "\\n", StringComparison.Ordinal)}]\n{string.Join("; ", problems)}; observed [{string.Join("; ", errors.Select(Show))}]");
     }
 
-    private static Compilation Check(string source)
+    private static Compilation Check(string source, OutputKind output)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
