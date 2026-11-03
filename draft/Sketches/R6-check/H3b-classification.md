@@ -78,3 +78,58 @@ The fixture rows F4-F15 are the same programs as some tests in T30-T31 and T34, 
 | the owner | the (e) acceptance list: T31's two R4-M147 Gen rows, F11-F14 (6 programs: RawOrigin ×4, NestedReference, Utf8TryWrite FirstNever), T34's 7.7.2/0 (the collector's static record, P42); the (c) readings: F7 (G147 (8ii), GenericCase A4-box-ok and A4-field-ok), T35 with T14 (code after a Never call: 4 Language errors and 10 vanished limits), T62's index rows; the 1a list T10-T15 (77 tests) | decide |
 
 No Binding-cause row blocks. BU's rows are T40's re-points, which BU reviews as a T-unit, and the consent C-8 (D1, D2).
+
+### R4's verdicts on round 1 (2026-11-03)
+
+R4 confirmed the MIR-cause rows. Its tables are `r4-notes/post-exit/h3b-r4-verdicts.md`, `h3b-A.md` and `h3b-B.md` in R4's scratchpad,
+and their verdicts are copied here. The changes to the round's table:
+
+- **No unsound acceptance.** T62 ×5 is 1a, not 5: SPEC 4.7.4, 15.6.2, 4.9.6, 15.6.3, 15.6.6 and 16.3.3, with X-1's (a).
+- **ContentUpdate ×5 and CompilerFunctionReference are 1r**: SPEC 15.6 holders bullets 1-2, 15.6.3, 15.6.4 and R4-M95 D6. The
+  dispute (ruling 3) is closed.
+- **T30's self-Loan W family is (c), G148 (2) "GXS".** The MIR rejects these programs by the SPEC's letter, but they are intended valid:
+  F9 ×2, InputDependentValueCall, F15, MemberThroughLayers and F8 (`count<S>` over an abstract Iterable). F15's "?" is this row. It goes
+  to the owner as Q-A1.
+- **F7 with PairCaseFamilies is (c), G147 (8).** R4 reads them as valid: an A5 over-approximation. Owner Q-A2.
+- **T35 is class 3 and T14 is 1a.** SPEC 14.10.3 decides both with its own examples, so no (c) is needed.
+- **Moved to other owners:**
+  - T34's 13.7.1/0 is Binding's record. S dropped variant 0's Old side, so the row is class 3, a data fix by R5.
+  - T60 is Binding's (BU-26, the input-side mirror of U-O3's r1loc), so it goes to BU with U-O3.
+  - F14 is Binding's (`Binding.OriginRows`: a Never writer's formatting row), so it goes to BU as a new PLAN row, (e) until then.
+  - T63's prelude static row is 1x, and its InstanceCollector rows are 1x ×2 and 1a ×1. All are R5's re-points; the InstanceCollector
+    rows need BU's consent (BU-60).
+  - T63's NeverContinuation row is 1a (R5-M159's twin rule).
+- **Class 2 (b) rows R4 fixes on dev**, each ≤ 1 h, with the full ledger before review, landing in R5's windows:
+
+  | Unit | Rows | Fix |
+  | --- | --- | --- |
+  | U-B1 | T31b, F10 (G222) | A1 `MirMoveData.Resolve` (running) |
+  | U-A2 | T36 | the Fixed meet's entailment, `MirOrigins.Chains` |
+  | U-A3 | T63 DictionaryStoredReference ×2 | A5's activation seed set |
+  | U-B2 | T32b | A4's Requirement-call branch on a concrete Self |
+  | U-A1 | T30 ClosureReceiverClassification ×4 | a receiver store's W through a shared capture |
+  | U-B4 | T32a IteratorOriginEffects ×6 (G220) | design first, after G264 U1; a new MIR form is the owner's O1 |
+
+  These go after H5 under the owner's (e) unless they land first:
+  - U-B3: T31a, F11 and F12 (PQ-10, over an hour);
+  - U-B5: T31d (A5's depth bound 32 → 64);
+  - F13: G216 (b), the front's U-O3;
+  - F14: Binding's row above.
+- **T31c** (truncate/removeAll Gen) is (e) already decided (R4-M147 D″). The test is re-pointed citing it.
+- **R4's lane order:**
+  1. U-B1 with U-A2.
+  2. U-A3 with U-B2.
+  3. R6-1's builder and A3.
+  4. U-A1.
+  5. U-B4.
+  6. The GXS unit, after Q-A1.
+
+### The owner's list (board O-1)
+
+| # | Question | Rows | Recommendation |
+| --- | --- | --- | --- |
+| 1 | Q-A1, G148 (2): adopt GXS with its extension? This is a SPEC 15.6.4 revision through the full process. Under it, a store past layer 1 leaves out the direct Loans that name its target. The extension covers exclusive-element collections and the rule that an abstract part of a holder never refers into the holder's own Loan from a shared borrow. The alternative is to keep SPEC and list the rows as (e). | F9 ×2, InputDependentValueCall, F15, MemberThroughLayers, F8 | adopt (R4); until its unit lands, the rows are on H5's (e) list |
+| 2 | Q-A2, G147 (8): are F7 (A4-box-ok, A4-field-ok) and PairCaseFamilies valid? | 3 programs | valid (R4): an A5 over-approximation, fixed later, (e) for H5 |
+| 3 | Do H5's long fixes wait, or go on one (e) list with STATUS limits and PLAN rows? | PQ-10 (T31a ×7, F11, F12), the depth bound (T31d ×2), G216 (b) (F13), F14, G220 (T32a ×6), SPEC 7.7.2/0 (the collector's static record, P42), and the rows of questions 1-2 until their units land | one list (R5): H5 waits only for the ≤ 1 h fixes (U-B1, U-A2, U-A3, U-B2, U-A1, R6-1, T61) |
+| 4 | The 1a list: accept the programs that the old analysis's limits or false errors rejected | T10-T15 (77 tests), T62 ×5, T14, NeverContinuation, InstanceCollector's frame row | accept |
+| — | For information: the 1r list (unsound acceptances the MIR closes) | F1-F6, T01-T04, ContentUpdate ×5, CompilerFunctionReference | — |
