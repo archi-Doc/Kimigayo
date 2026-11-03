@@ -420,6 +420,55 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(v)
                 """));
 
+    // SPEC 3.5.1, 15.6.3: a bare read of a holder of `uniq/i32` is a Reborrow, a child Loan whose access path the holder prefixes, so
+    // Moving the holder while the child is live is an error, whether the holder is a parameter or a local, the child is written or only read
+    // after the Move, or a Closure captures it; a child used before the Move or never, and a Copy of a shared `ref` holder, are valid.
+    // PLAN G268: the old analysis accepts the four errors until R6-check (its Loans are keyed by the root referent; frozen, D5).
+    [Fact]
+    public void MovingAHolderConflictsWithItsLiveReborrow()
+        => Assert.Equal(
+            ["parameterHolder: value", "localHolder: value", "readAfterMove: value", "capturedHolder: value"],
+            Problems("""
+                func parameterHolder(value: uniq/i32)
+                    let first = value
+                    let m = value@move
+                    first@follow += 1
+                func parameterHolderUsedBefore(value: uniq/i32)
+                    let first = value
+                    first@follow += 1
+                    let m = value@move
+                func parameterHolderUnused(value: uniq/i32)
+                    let first = value
+                    let m = value@move
+                func localHolder()
+                    var x: i32 = 1
+                    let value = x@uniq
+                    let first = value
+                    let m = value@move
+                    first@follow += 1
+                func localHolderUnused()
+                    var x: i32 = 1
+                    let value = x@uniq
+                    let first = value
+                    let m = value@move
+                func sharedHolder(value: ref/i32) -> i32
+                    let first = value
+                    let m = value@move
+                    return first@follow
+                func readAfterMove(value: uniq/i32) -> i32
+                    let first = value
+                    let m = value@move
+                    return first@follow
+                func capturedHolder(value: uniq/i32)
+                    var bump = func [value] () => value@follow += 1
+                    let m = value@move
+                    bump()
+                func capturedHolderCalledBefore(value: uniq/i32)
+                    var bump = func [value] () => value@follow += 1
+                    bump()
+                    let m = value@move
+                """));
+
     // SPEC 15.6, 15.6.4 (A3's transit, 25a, 25b, 29c): a value a location stores into a holder live after it is checked with its access,
     // so storing what borrows the destination into it is an error, unless the destination is dead; a write through a reference stores
     // into the holders its Loans name (P10). `pin`'s result is `ref/i32 during slot`, which can hold neither its argument's own value nor
