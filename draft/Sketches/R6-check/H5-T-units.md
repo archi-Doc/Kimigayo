@@ -272,3 +272,7 @@ units of an hour or less. Amendments:
   These become units T-26 and later, planned by file after the T-units that share those files. They are reviewed as their causes'
   rows: by R4's verdict tables, with BU reading F14.
 - **S** (`claude/r5-h5-s`, the spec examples) lands with T-21, which carries its expected-side data fix (13.7.1/0) and its (e) rows.
+- **U-A2 moved to the (e) list** (R4, 2026-11-03: not an hour's fix; U-O3's class, BU's R7-O3; H3b-classification.md). The units that
+  waited for U-A2 alone start now: T-15, then T-16, and T-17 to T-21. T-22 still waits for G409. T-15 and T-16's file
+  (`CallableOriginForwardingTest.Conversions.cs`) also holds T36's row, which becomes an (e) re-point naming G216 (b). The units that read
+  `MirOriginsTest` get no U-A2 rows.

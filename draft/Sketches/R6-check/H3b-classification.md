@@ -155,3 +155,16 @@ The owner answered all four questions of the list above with 「推奨どおり�
    H5's Rec unit records the list in STATUS, as limits, and in PLAN rows.
 4. **The 1a list is accepted.** T10-T15, T62 ×5, T14, NeverContinuation and InstanceCollector's frame row become T-units. The frame
    row's re-point needs evidence that the program is really accepted (BU-60's condition).
+
+### After the owner's answer: U-A2 moves to the (e) list (2026-11-03)
+
+R4 found that T36 (U-A2) is not a fix of an hour or less (`r4-notes\post-exit\state-h3b-ua2.md`):
+
+- The MIR forms a body row for a nested signature's result relation and judges it under the body root's oracle, which lacks the nested
+  inputs' premises.
+- Binding judges the same relation correctly where it is written (R4-M162).
+- The fix belongs to U-O3's class: such a row forms no body row. That is BU's R7-O3.
+
+Under the owner's third answer (one (e) list; H5 waits only for the fixes of an hour or less), T36 joins F13 under G216 (b) on the
+(e) list. R4's H5 blockers are now U-B1, U-A3, U-B2, U-A1 and R6-1's builder and A3 commit, beside BU's G409 (T61 has landed on the
+branch).
