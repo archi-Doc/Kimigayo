@@ -235,6 +235,93 @@ public sealed class MirAnalysisTest
         Assert.Equal([anchor], report.Facts(0).ToArray());
     }
 
+    // R6-check H3-2 (R4-M11; R4-M71's r05): Merged has one merged problem per code, subject, Reason and class, in the order of its first
+    // member, so one subject's problems in two bodies (two constructors) are one, whose members, indices in All, name their bodies and
+    // views; another code or subject is its own; an Add or a Clear after a read recomputes it.
+    [Fact]
+    public void AMergedProblemMergesItsBodies()
+    {
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 1, 0b01));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), default, null, 0),
+                new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), default, null, 0),
+            ],
+            report.Merged.ToArray());
+        Assert.Equal([0, 2], report.Members(0).ToArray());
+        Assert.Equal([1], report.Members(1).ToArray());
+        Assert.Equal([(0, 0b01UL), (1, 0b100UL)], report.Members(0).ToArray().Select(i => (report.All[i].Body, report.All[i].Views)));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 2, 0b10));
+        Assert.Equal([3, 4], report.Members(2).ToArray());
+        report.Clear();
+        Assert.Equal(0, report.Merged.Length);
+    }
+
+    // R6-check H3-2 (H3-1's F2, R4 review B1): the class keeps a record class's rows apart from the other class's and from the analyses'
+    // problems, so a construction record, an A5 limit and a collection record at one code and subject are three merged problems.
+    [Fact]
+    public void AMergedRecordKeepsItsClass()
+    {
+        var (program, site, limit) = (new MirProgram(), new SourceRef(0, 5), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
+        program.Report(site);
+        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, limit, site, 0, 0b01));
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        Assert.Equal(
+            [
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, default, MirRecordClass.Construction, 0),
+                new(DiagnosticCode.Unsupported_Kd, limit, site, default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, default, MirRecordClass.Collection, 0),
+            ],
+            program.Problems.Merged.ToArray());
+    }
+
+    // R6-check H3-2 (R4's correction, Q-R4-1): A4 (NoBody) and A5 (a body) both record Unsupported_Kd and OwnershipDepthLimit_Kd under one
+    // requirement each, so at one subject each code is one merged problem of the analyses with both members.
+    [Fact]
+    public void ANoBodyProblemMergesWithABodysProblem()
+    {
+        var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
+        var depth = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01));
+        report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), 0, 0b10));
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b10));
+        report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), MirProblem.NoBody, 0b01));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), default, null, 0),
+            ],
+            report.Merged.ToArray());
+        Assert.Equal([0, 2], report.Members(0).ToArray());
+        Assert.Equal([1, 3], report.Members(1).ToArray());
+    }
+
+    // R6-check H3-2 (Q-R4-4): a merged problem's Ordinal is its Reason's position among the merged problems of its code, subject and class,
+    // in the order of their first members: two relations at one subject are 0 and 1, whichever body records them, and another subject is 0;
+    // a construction record and an A5 limit at one code and subject are 0 each, of their classes.
+    [Fact]
+    public void AMergedProblemsOrdinalCountsItsReasons()
+    {
+        var (program, equality) = (new MirProgram(), new MirReason(null, null, true));
+        var relation = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
+        var limit = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 5), 0, 0b01, equality));
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 5), 1, 0b01));
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 6), 0, 0b01));
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 5), 1, 0b10, equality));
+        program.Report(new(0, 5));
+        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01));
+        Assert.Equal(
+            [(equality, 0), (default, 1), (default, 0), (default, 0), (default, 0)],
+            program.Problems.Merged.ToArray().Select(static x => (x.Reason, x.Ordinal)));
+        Assert.Equal([0, 3], program.Problems.Members(0).ToArray());
+    }
+
     // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
     // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
     // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate (the depth limit, R4-M153), one
@@ -587,6 +674,28 @@ public sealed class MirAnalysisTest
             }
         }));
         Assert.Equal(64 - 16, report.All.Length);
+    }
+
+    // R6-check H3-2: a warm version's Merged allocates nothing: computed once, on its first read, in the storage an earlier version left.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmMergedViewAllocatesNothing()
+    {
+        var report = new MirReport();
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            report.Clear();
+            for (var i = 0; i < 64; i++)
+            {
+                report.Add(i % 2 == 0 ? new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 24) + 1), i / 24, 0b01)
+                    : new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 24) + 1), i / 24, 0b01));
+            }
+
+            _ = report.Merged;
+            _ = report.Members(0);
+        }));
+        Assert.Equal((64, 24), (report.All.Length, report.Merged.Length));
+        Assert.Equal([0, 24, 48], report.Members(0).ToArray());
     }
 
     // V16: A3 on a body it judged before allocates nothing: its walk and the report keep their storage.

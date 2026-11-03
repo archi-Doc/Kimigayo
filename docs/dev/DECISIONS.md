@@ -16055,6 +16055,10 @@ structure is recorded here by the unit that first implements it.
     `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
     "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or
     Collection" where H0a §2 says "body `Records`".
+  - Amended (R6-check H3-2 U1a, 2026-11-03; R4's consent, 2026-11-03, to R5's implementer writing it in `MirReport`): `MirReport.Records`
+    (H0a, revision 2) is named `MirReport.Merged`, since H3-1's class helper on `MirProgram` reads by class (review N7, N-b). The merge
+    across bodies is `Merged`'s (H0a §3.2): one merged problem per (code, subject, Reason, class), with its members and `Ordinal`,
+    computed once per version.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
