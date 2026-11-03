@@ -43,13 +43,15 @@ public sealed partial class MirBorrowsTest
     public void AnActivationMeetsOnlyTheParentLoansLiveIntoItsCall(string calls, string? record)
         => Assert.Equal(record is null ? [] : [record], Problems(StoredElement + calls));
 
-    // V16: N calls whose argument Reborrows through a reference carrying N unique Loans meet each at its root's candidates, so the work
-    // stays within the dense bound the calls' gathers of that reference already take.
-    [Fact]
-    public void AnActivationsParentLoansKeepTheWorkDense()
+    // V16: N calls whose argument Reborrows through a reference carrying N unique Loans, on N roots or on one root's Place (R4-M169's
+    // review B1), compare each distinct parent Place once, so the work stays within the dense bound the calls' gathers already take.
+    [Theory]
+    [InlineData("    var z = 3\n    var p = z@uniq\n", "    var z{1} = {1}\n    if flag\n        p = z{1}@uniq\n")]
+    [InlineData("    var z = 3\n    var p = z@uniq\n", "    if flag\n        p = z@uniq\n")]
+    [InlineData("    var z = Pair.init()\n    var p = z.a@uniq\n", "    if flag\n        p = z.a@uniq\n")]
+    public void AnActivationsParentLoansKeepTheWorkDense(string head, string each)
     {
-        const string Each = "    var z{1} = {1}\n    if flag\n        p = z{1}@uniq\n";
-        var (work, bytes) = this.Scaled("    var z = 3\n    var p = z@uniq\n", Each, "    setM(p@follow@uniq)\n");
+        var (work, bytes) = this.Scaled(head, each, "    setM(p@follow@uniq)\n");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
         Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
     }

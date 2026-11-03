@@ -14,6 +14,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private readonly List<(int Local, int Loan, DiagnosticCode Code)> reserving = []; // The reservations the location activates.
+    private readonly HashSet<MirPlace> through = []; // The parent Places an activation compared (Activated).
 
     // The reservations a location activates, those σ_in(t) carries in t: at a Call's input holders, its argument operands' and a Value
     // callee's operand's (the receiver an Exclusive call takes, SPEC 7.7.3), and at the writeback's write through a reservation.
@@ -93,10 +94,17 @@ internal sealed partial class MirBorrows
         var loan = this.loans[reservation];
         var c = this.Conflict(loan.Root, this.loanSteps.AsSpan(loan.Start, loan.Count), kind, taking, scope, reservation);
         this.Work += this.Count(held);
+        this.through.Clear();
         foreach (var element in this.ElementsOf(held))
         {
+            if (c != None)
+            {
+                break;
+            }
+
+            // Each distinct parent Place is compared once (Places are interned), so the work stays within the check set's.
             var index = element - this.loanBase;
-            if (c == None && index >= 0 && index < this.loanCount && UniqueIn(this.loans[index], slot))
+            if (index >= 0 && index < this.loanCount && UniqueIn(this.loans[index], slot) && this.through.Add(this.loans[index].Place))
             {
                 var parent = this.loans[index];
                 c = this.Conflict(parent.Root, this.loanSteps.AsSpan(parent.Start, parent.Count), AccessKind.ActivateThrough, taking, scope, reservation);
