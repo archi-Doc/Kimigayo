@@ -10428,6 +10428,25 @@ resumed by R4-M86 (2026-10-20).
     stamp and `EvaluatingBody` for named functions, which moves the nested function's own body verdicts: G230 (A)); an
     Inference-only test (one kind of an open family).
 
+- **BU-90 R6-check H5's Binding hunk (B-del): Binding's old effect-bound checks are deleted** (2026-11-04; R5-M182's H5, BU's part
+  under the division of 2026-11-02; BU's design `bu\r6check\h5-binding-design.md`, accepted by R5 on 2026-11-04 with X1 and X2; on
+  `claude/bu-h5-bdel` from `claude/r6-flip` 04c8f1e62) SPEC 8.11.
+  - No new rule: the deletion R5-M182 schedules at H5, after F stopped the Binding pass's call and R5's D1 and D2 removed the old
+    Analysis's readers. Deleted: the virtual and Callable checks (`Binding.VirtualEffects`, `Binding.CallableEffects`' checks), the
+    conformance check and its walk (`Binding.EffectBounds` with `EffectSummary`, `Binding.EffectViolations`) and their violation
+    tables. `Binding.EffectObligations` follows the conformance's and the function's own validity (R4-M23); its terms on the tables
+    were constant once F stopped the checks. No path reached the deleted code, so no verdict, record or allocation changes.
+  - `CompilerFunctionEffect.Formatting` is removed (the R4-M28 twin): only the old walk read it. `WriterWrite`, `TextToString` and
+    `TextTryFormat` are `Unclassified`, which both remaining readers treat as they treated `Formatting` (`MirEffects.Class`: Limit;
+    the collector: `BodylessWitness`), and A4 composes their published rows (`Formats`, `FormatsValue`) before `TyCtxt.Bodyless`.
+    `EffectBoundImplementationTest`'s expected class of the three kinds changes with the vocabulary only.
+  - X1 (adopted): the members only the walk read go in this unit rather than at H11: `TryResolveFormattingCallback`,
+    `HasFormattingCallback`, the R6 overload `RequirementImplementation(CallPlan, ...)`, `DestructionCall` with `destructionCalls`
+    and `SelectSpecialization(CallPlan)`. R4-12's R7 retag stands: the private `RequirementImplementation(BindingSymbol, ...)` and
+    `requirementCalls` stay for the R7 comparison composition; their Reason drops "TryResolveFormattingCallback's (H11)".
+  - X2 (adopted): `BindingFailure.VirtualEffectBound` (no producer since F), its code arm and description row stay to H11: the
+    ledger row `MirDifferenceLedger.ComparedSet` reads it until H10a, and removing it shifts the requirement catalog.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

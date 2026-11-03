@@ -181,10 +181,10 @@ internal enum IntrinsicId : byte
     FormatFinish, // The adapter's end into the string (SPEC 22.10.5, 22.10.3).
 }
 
-/// <summary>How an effect summary classifies a compiler function (SPEC 8.11.2), the effect column of the intrinsic table.</summary>
+/// <summary>How A4 classifies a call without a MIR body (SPEC 8.11.2; TyCtxt.Bodyless), the effect column of the intrinsic table.</summary>
 internal enum CompilerFunctionEffect : byte
 {
-    /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
+    /// <summary>The kind names no compiler function, or one this table does not classify.</summary>
     Unclassified,
 
     /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
@@ -192,9 +192,6 @@ internal enum CompilerFunctionEffect : byte
 
     /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
     Environment,
-
-    /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
-    Formatting,
 
     /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18): its effects are a dependent of that error.</summary>
     Dependent,
@@ -254,12 +251,11 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
-    // out of its family. Console output and the test temporary directory are environment effects. Comparison, formatting and destruction
-    // callbacks are summarized separately.
+    // out of its family. Console output and the test temporary directory are environment effects. The formatting entries are
+    // unclassified: A4 composes their published rows (Formats) first.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
         >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextValidateUtf8 =>
             CompilerFunctionEffect.Inputs,
         >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or
