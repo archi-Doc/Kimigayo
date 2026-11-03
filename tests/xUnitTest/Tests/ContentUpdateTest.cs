@@ -25,16 +25,24 @@ public class ContentUpdateTest
     public void GenericUpdatesRequireNoOwnedConstraint(string name, string function, string use)
         => ScalarEmissionTest.EmitFixture("ContentUpdate" + name, Generic + function + Inputs + use, string.Empty);
 
+    // SPEC 15.6 holders bullets 1-2, 15.6.3, 15.6.4 (DECISIONS R4-M136; R6-check H3b's 1r): `replace`, `exchange` and `swap` completely
+    // replace no holder, and a write through a reference ends no Loan, so the holder keeps its old contents' Loan: `slot` keeps a's
+    // (Replace, Assignment, and the loop, where `replace` ends only the Loans its target's path prefixes), and `old` and `other` keep b's
+    // (`exchange`'s result is tied to its value). The write to the parent conflicts with it. The old analysis accepted and ran these
+    // programs; since the MIR decides acceptance (H5, DECISIONS R5-M185) check rejects them with A5's record and generation refuses them.
     [Theory]
-    [InlineData("Replace", "    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    a@follow = 9\n    return slot@follow\n", 2)]
-    [InlineData("Assignment", "    let target = slot@uniq\n    target@follow = b\n    a@follow = 9\n    return slot@follow\n", 2)]
-    [InlineData("Exchange", "    let old = Kimi.Intrinsics.exchange(slot@uniq, with: b)\n    let seen = slot@follow\n    b@follow = 9\n    return old@follow + seen\n", 3)]
-    [InlineData("Swap", "    var other = b\n    Kimi.Intrinsics.swap(slot@uniq, other@uniq)\n    let seen = slot@follow\n    b@follow = 9\n    return other@follow + seen\n", 3)]
-    public void UpdatesTransferOnlyTheOldOrNewContentsLoans(string name, string operations, int expected)
+    [InlineData(" -> i32\n    var slot = a\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    a@follow = 9\n    return slot@follow\n", "require run(a@uniq, b@uniq) == 2 else => $abort(\"content loans\")", DiagnosticCode.ComparisonLoanConflict_Kd, "a@follow = 9")]
+    [InlineData(" -> i32\n    var slot = a\n    let target = slot@uniq\n    target@follow = b\n    a@follow = 9\n    return slot@follow\n", "require run(a@uniq, b@uniq) == 2 else => $abort(\"content loans\")", DiagnosticCode.ComparisonLoanConflict_Kd, "a@follow = 9")]
+    [InlineData(" -> i32\n    var slot = a\n    let old = Kimi.Intrinsics.exchange(slot@uniq, with: b)\n    let seen = slot@follow\n    b@follow = 9\n    return old@follow + seen\n", "require run(a@uniq, b@uniq) == 3 else => $abort(\"content loans\")", DiagnosticCode.ComparisonLoanConflict_Kd, "b@follow = 9")]
+    [InlineData(" -> i32\n    var slot = a\n    var other = b\n    Kimi.Intrinsics.swap(slot@uniq, other@uniq)\n    let seen = slot@follow\n    b@follow = 9\n    return other@follow + seen\n", "require run(a@uniq, b@uniq) == 3 else => $abort(\"content loans\")", DiagnosticCode.ComparisonLoanConflict_Kd, "b@follow = 9")]
+    [InlineData("\n    var slot = a@follow@ref\n    var i = 0\n    while i < 2\n        Kimi.Intrinsics.replace(slot@uniq, with: b@follow@ref)\n        a@follow += 1\n        require slot@follow == 2 else => $abort(\"loop reference\")\n        i += 1\n", "run(a@uniq, b@uniq)\nrequire a == 3 else => $abort(\"loop\")", DiagnosticCode.PlacementActivationConflict_Kd, "a@follow += 1")]
+    public void ContentUpdatesCompletelyReplaceNoHolder(string body, string use, DiagnosticCode code, string conflict)
     {
-        var source = "func run(a: uniq/i32 during s, b: uniq/i32 during s) -> i32\n    var slot = a\n" + operations + Inputs +
-            "require run(a@uniq, b@uniq) == " + expected + " else => $abort(\"content loans\")";
-        ScalarEmissionTest.EmitFixture("ContentUpdate" + name, source, string.Empty);
+        var c = MinimalEmissionTest.Analyze("func run(a: uniq/i32 during s, b: uniq/i32 during s)" + body + Inputs + use);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (code, new(conflict)));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -87,13 +95,6 @@ public class ContentUpdateTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, mir is null ? [] : [(DiagnosticCode.CallActivationConflict_Kd, new(mir))]);
-    }
-
-    [Fact]
-    public void ReplacementEndsOldDependenciesOnLoopBackEdges()
-    {
-        const string function = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a@follow@ref\n    var i = 0\n    while i < 2\n        Kimi.Intrinsics.replace(slot@uniq, with: b@follow@ref)\n        a@follow += 1\n        require slot@follow == 2 else => $abort(\"loop reference\")\n        i += 1\n";
-        ScalarEmissionTest.EmitFixture("ContentUpdateLoop", function + Inputs + "run(a@uniq, b@uniq)\nrequire a == 3 else => $abort(\"loop\")", string.Empty);
     }
 
     [Fact]
