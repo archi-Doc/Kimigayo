@@ -102,6 +102,32 @@ public partial class Compilation
     /// DECISIONS R5-M184, R5-M185).</summary>
     public void ReportAnalysis() => this.PublishMirRecords();
 
+    /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem: its MIR body exists and no
+    /// merged problem of the report has a member in it (DECISIONS R5-M185); hover's ownership line reads it (R6-check H6).</summary>
+    /// <param name="function">The function's symbol.</param>
+    /// <returns>Whether its body was judged without a problem; false before an analysis, after invalidation and without a body.</returns>
+    internal bool JudgedWithoutProblem(BindingSymbol function)
+    {
+        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { } body)
+        {
+            return false;
+        }
+
+        var report = program.Problems;
+        for (var merged = 0; merged < report.Merged.Length; merged++)
+        {
+            foreach (var member in report.Members(merged))
+            {
+                if (report.All[member].Body == body.Ordinal)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Gets the syntax a <see cref="SourceRef"/> of this compilation names.</summary>
     /// <param name="source">The reference.</param>
     /// <returns>The node.</returns>

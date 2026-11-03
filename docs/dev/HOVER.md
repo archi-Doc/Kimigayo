@@ -24,7 +24,9 @@ they do not change language guarantees or mark pending work as supported.
 - Virtual declarations retain their original public contract; overrides additionally display their own header and comments.
   Calls distinguish a dynamic slot from the selected direct base implementation. Detached identities retain the bound
   declaring Type, base lookup and implementation, including virtual Function Items. Receiver and erasure details read
-  checked operations; projection never creates a generation context. Binding and ownership completion remain distinct.
+  checked operations; projection never creates a generation context. Binding and ownership completion remain distinct:
+  ownership is completed when the latest analysis judged the function's MIR body without a merged problem
+  (`Compilation.JudgedWithoutProblem`, DECISIONS R5-M185), else pending; hover runs no analysis.
 - Function and Property syntax writers also write body-free headers. Verified accessor metadata supplements implicit
   operations. A missing named-function result means Unit; it is not inferred from the body.
 - Documentation inputs retain immutable partial placement maps. Editor links reuse profile validation and logical

@@ -54,6 +54,18 @@ public sealed class VirtualHoverTest
         Assert.Contains("Ownership checks: pending", rendered);
     }
 
+    // R6-check H6 (DECISIONS R5-M185): the ownership line reads the MIR of the latest analysis, completed when the function's body has no
+    // merged problem; before an analysis it is pending (above), and hover never runs one.
+    [Fact]
+    public void OwnershipChecksReadTheLatestAnalysisMir()
+    {
+        var c = Create(Source);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var info = At(HoverBuilder.Create(c), Source.IndexOf("override func read", StringComparison.Ordinal) + "override func ".Length);
+        Assert.Contains("Ownership checks: completed", HoverRenderer.Render(info, false, HoverPlacement.Canonical).Body);
+    }
+
     [Fact]
     public void AgreementIncludesTheDirectImplementationEvenWhenPresentationIsEqual()
     {
