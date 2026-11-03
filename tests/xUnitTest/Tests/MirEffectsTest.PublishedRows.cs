@@ -65,7 +65,7 @@ public sealed partial class MirEffectsTest
                 foreach (var atom in effects.Items(body, view, out _))
                 {
                     if (!(atom.Kind == MirEffects.Requires ? ReferenceEquals(atom.Requirement, row.Runs) && ReferenceEquals(atom.Type, on)
-                        : atom.Kind == MirEffects.Drop ? c.Types.Copy(operation, atom.Type) || ReferenceEquals(atom.Type, calls) || reached.Contains(atom.Type)
+                        : atom.Kind == MirEffects.Drop ? c.Types.Copies(operation).Copy(atom.Type) || ReferenceEquals(atom.Type, calls) || reached.Contains(atom.Type)
                         : atom.Kind == MirEffects.Shared && ReferenceEquals(atom.Type, calls)))
                     {
                         outside.Add($"{name}: {(atom.Kind == MirEffects.Drop ? "Drop" : atom.Kind)} {atom.Type.Name}");
