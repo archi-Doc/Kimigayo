@@ -55,8 +55,10 @@ public class OwnershipPropertyEmissionTest
         Assert.Equal(code, Assert.Single(result.Diagnostics).Code);
     }
 
+    // A1 places the one MovedPlace_Kd at its subject, the read `value.id`, not at the root `value`, as the plain twin `_ = a@move` then
+    // `_ = a.id` does (DIAGNOSTICS 4.1; class 3, R4's verdict, R6-check H5); the CLI and LSP placements follow the record.
     [Fact]
-    public void SetterMoveFailureKeepsTheUnavailableRootInCliAndLsp()
+    public void SetterMoveFailureIsRecordedAtTheReadInCliAndLsp()
     {
         var source = Resource + Holder + "var h = Holder.init(Resource.init(1))\nlet value = Resource.init(2)\nh.item = value@move\n_ = value.id";
         var path = Path.GetFullPath("ownership-property.kimi");
@@ -69,7 +71,7 @@ public class OwnershipPropertyEmissionTest
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Equal("This value may have been moved on an incoming path", record.Message);
         Assert.Equal(source.LastIndexOf("value.id", StringComparison.Ordinal), record.Span!.Value.Start);
-        Assert.Equal(5, record.Span.Value.Length);
+        Assert.Equal("value.id".Length, record.Span.Value.Length);
         Assert.Empty(record.Repairs ?? []);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
