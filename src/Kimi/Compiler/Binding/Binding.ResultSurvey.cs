@@ -64,33 +64,6 @@ public sealed partial class Binding
         };
     }
 
-    // SPEC 14.9.2 step 2 (revision B, Q1 (b)): the root of the part-by-part formation `source` is a part of: the outermost control-flow
-    // expression it is a result source of (ResultTarget), through nested ones and the aggregates formed by element it is a part of
-    // (FormedByElement), or `source` itself. An array or Dictionary literal is typed whole, so its elements are parts of no outer formation.
-    private static Koto FormationRoot(Koto source)
-    {
-        while (true)
-        {
-            if (ResultSourceForm(source).Parent is { } aggregate && FormedByElement(aggregate))
-            {
-                source = aggregate;
-            }
-            else if (ResultTarget(source) is { } target && ControlFlowExpression(target) is not null)
-            {
-                source = target.Parent is LabeledKoto label ? label : target;
-            }
-            else
-            {
-                return source;
-            }
-        }
-    }
-
-    // SPEC 14.9.2 step 2 (revision B; main's decision, 2026-11-03): whether an aggregate literal's Type is formed by element across the
-    // sources of a join, each child position holding one part of it: a Tuple, a fill. An array or Dictionary literal, whose elements or
-    // entries share a position, is typed whole.
-    private static bool FormedByElement(Koto aggregate) => aggregate is TupleLiteralKoto or ArrayLiteralKoto { FillCount: not null };
-
     // SPEC 3.5.3, 14.9.2 step 2 (Q1 (b)): the Type one join's sources agree on when literals sit beside typed sources of common Type
     // `common`: a reference's terminal read Type, which the reference sources supply by a value read; `common` otherwise.
     private BoundType BesideLiterals(BoundType common, BindingScope scope) => this.ReadTypeReferent(common, scope) ?? common;
@@ -318,7 +291,8 @@ public sealed partial class Binding
                 // SPEC 4.3.1, 14.9.2 step 2 (revision B, BU-80; the review's B3): without an expected Type an array literal whose elements
                 // all supply a Type is typed as the literal alone: Array<T> when they supply one, the candidate it supplies; bound alone to
                 // its own record when they differ (no merge across its elements' reference layers). One with a literal or unknown element
-                // supplies none. An argument source supplies none: its call fits it per candidate (10.5.1).
+                // gives the root no early candidate; whether it is compared whole is SuppliesCandidate's (BU-80 Fix-D). An argument source
+                // supplies none here: its call fits it per candidate (10.5.1).
                 BoundType? element = null;
                 var differ = false;
                 foreach (var item in array.Elements)

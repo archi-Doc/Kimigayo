@@ -37,6 +37,25 @@ public sealed partial class Binding
         Failed = 4,
     }
 
+    // What a part supplies to a formation (SuppliesCandidate): no candidate, a candidate, or no candidate because it holds a part of
+    // Type Never, which no sibling outweighs inside a literal (SPEC 14.9.2 step 2).
+    private enum Supplied : byte
+    {
+        No,
+        Yes,
+        Never,
+    }
+
+    // SPEC 14.9.2 step 2: the parts of a literal at separate positions (a Tuple's elements; a Dictionary's key and value positions) supply
+    // a candidate when each does.
+    private static Supplied EachSupplies(Supplied left, Supplied right)
+        => left == Supplied.Never || right == Supplied.Never ? Supplied.Never : left == Supplied.Yes && right == Supplied.Yes ? Supplied.Yes : Supplied.No;
+
+    // SPEC 4.3.1, 4.3.3: the parts of a literal at one shared position (an array's or fill's elements, a Dictionary's keys or values) supply
+    // a candidate when one does: it fixes the position's Type, which the others fit.
+    private static Supplied OneSupplies(Supplied left, Supplied right)
+        => left == Supplied.Never || right == Supplied.Never ? Supplied.Never : left == Supplied.Yes || right == Supplied.Yes ? Supplied.Yes : Supplied.No;
+
     // The child positions of aggregate parts of one shape: a Tuple's elements, an array's or fill's element, a Dictionary's key and value.
     private static int ShapeChildren(Koto shape) => shape switch
     {
@@ -53,6 +72,71 @@ public sealed partial class Binding
         (DictionaryLiteralKoto, DictionaryLiteralKoto) => true,
         _ => false,
     };
+
+    // SPEC 14.9.2 step 2, 10.5.1 (revision B, the owner's (A); DECISIONS BU-80 Fix-D): whether a part supplies a candidate, its complete
+    // Type fixed with no literal default and no call's expectation. The one test of formation membership, read by FormationRoot (which
+    // parts share 14.9.2's reference-layer and literal clause) and PositionKind (a position whose aggregate sources are compared whole),
+    // for a `let` and an argument alike: a part that supplies one is compared whole; parts that supply none are formed part by part.
+    // - A typed part supplies one; a literal, a part awaiting its call and a failed part (rule W: no evidence) do not.
+    // - A Tuple supplies one when each element does (EachSupplies); an array literal or fill, whose elements share one element Type
+    //   (4.3.1, 4.3.3), when one element does (OneSupplies); a Dictionary when one key and one value do.
+    // - A selection, `do` or `loop` supplies one when one of its sources other than Never does.
+    // - Never supplies none, nor does a literal or fill holding a part of Type Never at any depth.
+    // - Prohibitions: no syntax kind decides membership (a literal's kind only says which positions it has); a literal's form (Array<T>
+    //   or a fixed array, 4.3.1) is its position's, not part of this test. It reads published facts only and allocates nothing.
+    private bool SuppliesCandidate(Koto part) => this.Supply(part) == Supplied.Yes;
+
+    private Supplied Supply(Koto part)
+    {
+        if (DeliveredOperand(part) is { } operand)
+        {
+            return this.Supply(operand);
+        }
+
+        if (ReferenceEquals(part.BoundType, BoundType.Never))
+        {
+            return Supplied.Never;
+        }
+
+        var supplied = Supplied.No;
+        switch (part)
+        {
+            case TupleLiteralKoto tuple:
+                supplied = Supplied.Yes;
+                foreach (var element in tuple.Elements)
+                {
+                    supplied = EachSupplies(supplied, this.Supply(element));
+                }
+
+                return supplied;
+            case ArrayLiteralKoto array:
+                foreach (var element in array.Elements)
+                {
+                    supplied = OneSupplies(supplied, this.Supply(element));
+                }
+
+                return supplied;
+            case DictionaryLiteralKoto dictionary:
+                var values = Supplied.No;
+                foreach (var entry in dictionary.Entries)
+                {
+                    supplied = OneSupplies(supplied, this.Supply(entry.Key));
+                    values = OneSupplies(values, this.Supply(entry.Value));
+                }
+
+                return EachSupplies(supplied, values);
+            case var _ when DeliversResult(part) && this.resultContexts.TryGetValue(part, out var context):
+                // A join not yet begun has no ResultContext and reads as the unbound part it is (the default row), as AwaitsFor reads it.
+                for (var i = 0; i < context.Sources.Count && supplied != Supplied.Yes; i++)
+                {
+                    supplied = context.SourceNodes[i] is { } source && this.Supply(source) == Supplied.Yes ? Supplied.Yes : Supplied.No;
+                }
+
+                return supplied;
+            default:
+                return IsUnfittedLiteral(part) || this.AwaitsCall(part) || this.PartFailed(part) ? Supplied.No : Supplied.Yes;
+        }
+    }
 
     // SPEC 14.9.2: a Tuple, array, fill or Dictionary literal part whose Type is formed by its own parts: one waiting unbound or holding
     // a part that awaits its position. A failed part (PartFailed) is no waiting part: the position it is at has no Type formed part by
@@ -333,16 +417,40 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2 (revision B, Q1 (b)): whether the parts of [start, end) are parts of one formation: they share one FormationRoot.
     private bool OneFormation(int start, int end)
     {
-        var root = FormationRoot(this.positionParts[start]);
+        var root = this.FormationRoot(this.positionParts[start]);
         for (var i = start + 1; i < end; i++)
         {
-            if (!ReferenceEquals(FormationRoot(this.positionParts[i]), root))
+            if (!ReferenceEquals(this.FormationRoot(this.positionParts[i]), root))
             {
                 return false;
             }
         }
 
         return true;
+    }
+
+    // SPEC 14.9.2 step 2 (revision B, Q1 (b); BU-80 Fix-D): the root of the part-by-part formation `source` is a part of: the outermost
+    // control-flow expression it is a result source of (ResultTarget), through nested ones and the literals it is a part of that supply
+    // no candidate (SuppliesCandidate), or `source` itself. A literal that supplies one is compared whole, so its parts are parts of no
+    // outer formation.
+    private Koto FormationRoot(Koto source)
+    {
+        while (true)
+        {
+            if (ResultSourceForm(source).Parent is { } literal && literal is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto &&
+                !this.SuppliesCandidate(literal))
+            {
+                source = literal;
+            }
+            else if (ResultTarget(source) is { } target && ControlFlowExpression(target) is not null)
+            {
+                source = target.Parent is LabeledKoto label ? label : target;
+            }
+            else
+            {
+                return source;
+            }
+        }
     }
 
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate

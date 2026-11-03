@@ -344,7 +344,8 @@ public sealed partial class Binding
 
                     for (var i = start; i < end; i++)
                     {
-                        if (!binding.PartFailed(binding.positionParts[i]) && !this.InferArgument(pattern, binding.positionParts[i], late))
+                        var part = binding.positionParts[i];
+                        if (!binding.PartFailed(part) && !this.InferSource(pattern, part, late))
                         {
                             return false;
                         }
@@ -358,6 +359,24 @@ public sealed partial class Binding
                 default:
                     return true;
             }
+        }
+
+        // SPEC 10.5.1, 10.8 (revision B, BU-80 Fix-D): one source of a Join position as evidence. At a bare slot an aggregate source whose
+        // whole Type is evidence (InferComposite) agrees with the Type an earlier source of the position fixed there, as it binds the slot
+        // when it is open; fitting it to that Type instead would merge its elements' reference layers with the other source's (a05, p48).
+        private bool InferSource(BoundType pattern, Koto part, bool late)
+        {
+            var binding = this.Binding;
+            if (pattern.Kind != BoundTypeKind.Parameter || !binding.IsAggregatePart(part) ||
+                binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is null)
+            {
+                return this.InferArgument(pattern, part, late);
+            }
+
+            var own = binding.OpenPosition(part);
+            var whole = binding.IndependentPositionType(own, late);
+            binding.ClosePosition(own);
+            return whole is null ? this.InferArgument(pattern, part, late) : binding.Infer(pattern, whole, this.SlotOwner, this.Types, lengths: this.Lengths);
         }
 
         // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds.

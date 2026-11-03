@@ -10048,8 +10048,8 @@ resumed by R4-M86 (2026-10-20).
     after revision B (counter in `spec-b\impl-stop-B3.md`); PLAN G383 (B3a–B3c; B3c with G335 U1) schedules their removal.
   - **Fix-A** (the group review's B1 and B4; main's decisions, 2026-11-03: "one join's result sources agree exactly as 14.9.2 step 2
     forms their common Type in a `let`", Q1 (b)'s P1). PositionType is the one rule at every position: parts of one formation
-    (OneFormation: one FormationRoot, through control-flow results and Tuple elements; an array or Dictionary literal is typed whole)
-    that differ only in safe reference layers, or a reference beside literals of its Type (BesideLiterals, shared with the survey), have
+    (OneFormation: one FormationRoot, through control-flow results and the literals that supply no candidate, SuppliesCandidate; as
+    amended by Fix-D) that differ only in safe reference layers, or a reference beside literals of its Type (BesideLiterals, shared with the survey), have
     that Type and are value-read; other parts agree by no value read. A Typed position's Type is evidence as a typed argument's
     (InferAdapted at its first typed part). Moves: B1 valid again as on dev (p41, q1a, q1b, q1c, q1e, q1f, q1i, q1k, r11, s09, t01,
     t04; head's other rejection `one(if c => r else => r)` and its identity variants); B4 conflicting evidence again (q2d, q2e, q2f,
@@ -10057,7 +10057,8 @@ resumed by R4-M86 (2026-10-20).
     per-candidate leaf fitting, class (1). p46 and its `let` twin q2b stay valid.
   - **Fix-B** (the group review's B2 and B3; main's decision: an array literal source is typed whole). One representation,
     FormedByElement (a Tuple or a fill; an array or Dictionary literal is typed whole), which FormationRoot climbs and PositionKind
-    reads: several array literal sources at one position are Join, each its own evidence. IndependentPositionType forms an unbound
+    reads: several array literal sources at one position are Join, each its own evidence (superseded by Fix-D: membership by syntactic
+    kind gave the re-check's RC1 and RC2). IndependentPositionType forms an unbound
     array literal as Array<T> at a slot that takes it whole. The survey's array row types a `let` source as the literal alone: Array<T>
     when its elements supply one Type, bound alone to its own record when they differ. Moves: q3b valid again as on dev; p3f and s06
     get `zeros()`'s misfit (NoApplicableOverload_Kd) instead of UnboundTypeArgument; q2a and r10 TypeMismatch again as on dev; q2d
@@ -10070,6 +10071,23 @@ resumed by R4-M86 (2026-10-20).
   - **Fix-C** (the group review's B5): warm Bind with publication allocated 104 B on a reference join argument
     (`see(if flag => a@ref else => b@ref, n)`); Fix-A's Typed row (evidence as a typed argument's) removed it (1f65242a8 allocates,
     83dfb46e9 does not); the regression is ORDT's AWarmRebindOfAReferenceJoinArgumentAllocatesNothing.
+  - **Fix-D** (the re-check's RC1 and RC2; the owner's 「(A) 根本でもう 1 回直す」, PLAN 77d79ca32; design `spec-b\a-design.md`, BU's
+    decisions in `spec-b\a-impl-brief.md`). 14.9.2 step 2's own test decides formation membership at every position, in a `let` and
+    as an argument alike: SuppliesCandidate (Parts.cs; a part's complete Type fixed with no literal default or call expectation: a
+    typed part; a Tuple when each element does, an array literal or fill when one element does, a Dictionary when a key and a value do;
+    a selection, `do` or `loop` when one source other than Never does; Never and literals holding it at any depth never). FormationRoot
+    climbs only literals that supply none; PositionKind makes aggregate sources Join (compared whole) when one supplies a candidate,
+    Aggregate (formed part by part) otherwise. FormedByElement is deleted. An array source that supplies one is typed alone first, so
+    its own elements agree before the formation (x01, x02, x06). The Join row compares a later aggregate source's whole evidence at a
+    bare slot with the Type an earlier source fixed (InferSource), instead of fitting it there, which merged reference layers across
+    sources (a05 `identity(if c => [y, 1] else => [u@ref])` valid at d7f69e006, UnboundTypeArgument_Kd on dev). Moves against
+    d7f69e006: RC1, dev's verdict again: w13 and its argument twin, a01 (`[(u@ref, 1), (y, 2)]` beside `[(y, 3)]`), a13 (a Dictionary,
+    `let` and argument) valid; RC2: w08, w09, w18 as arguments rejected (w09, w18 with dev's records, w08 NoApplicableOverload_Kd);
+    r18's class: x10 (`[(u@ref, 1)]` beside `[(1, 2)]`, `let` and argument) valid, a named acceptance against dev; conflicting
+    evidence, NoApplicableOverload_Kd: a05 and its mirror, p48 and w05 (Unsupported_Kd at d7f69e006: p48's limit closed), x01 and x02
+    as arguments (class (2), records only). Open item (BU's decision 2: a row chosen by a part's kind does not land): class (3)'s late
+    formation of a bare slot from a waiting element and literals at the Aggregate row; p65/u6f_g_wait
+    (`g(if c => [identity(1), 2] else => [3, 4])`) and its twins return to dev's UnboundTypeArgument_Kd (valid at d7f69e006 only).
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
