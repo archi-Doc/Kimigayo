@@ -190,16 +190,20 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
 
     // SPEC 15.6.5 (DECISIONS R4-M112, BU-28): PLAN G65's h2, a `let` local's region captured `[var o@move]` and assigned a call-local
     // borrow, is Refuted at the store whether or not a later call reads it (h2b), since the Closure body fixes its captures' Origins
-    // (G227); it was accepted, then pinned as a recorded difference, before G227.
+    // (G227); it was accepted, then pinned as a recorded difference, before G227. Since H5 A5 also publishes the Loan conflict at
+    // `local`'s declaration, since the captured `o` receives the Loan through the aggregate `.Some(inner@move)` (SPEC 15.6.5 rule W;
+    // H3b T51, R4's F-b ruling: class 4). It is pinned by code and location only: its `loan` related names the conflict's own site (R4's
+    // open issue E1).
     [Theory]
     [InlineData("")]
     [InlineData(H2bRead)]
     public void ACallLocalBorrowStoredIntoACapturedRegionIsRefutedAtTheStore(string read)
     {
         var source = H2.Replace("READ", read, StringComparison.Ordinal);
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
-        Assert.StartsWith("inner@move", source[error.Span!.Value.Start..], StringComparison.Ordinal);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal("let local: i32 = n", source.Substring(errors[0].Span!.Value.Start, errors[0].Span!.Value.Length));
+        Assert.StartsWith("inner@move", source[errors[1].Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.3.6: the principal lower bound is chosen after every bound is seen, whatever the clause order, so both orders keep the one
