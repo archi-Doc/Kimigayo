@@ -71,6 +71,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
 
+    private const string Apply2Pair = "func apply2<F>(p: (F, i64)) -> i32\n    F is Callable<(i32) -> i32>\n    return 0\n" + Stop + "func k(c: bool, d: bool) -> i32\n";
+
     private const string SgJoin = "if d => identity(1) else => 2";
 
     private const string N3Join = "if c => [identity(1), 3] else => [x, 4]";
@@ -347,7 +349,9 @@ public partial class OriginRelationDiagnosticTest
     // (f2), at a child position (e3) and in a labeled `do` (dl1). A failed join that waited binds its other sources at the Type its
     // position decided, so their own records stand beside the name's (g026, g196), as in their twins without it (g026_fix, g196_fix).
     // The G340 remainder, a slot or an ambiguity that only the failed part could decide (g028; n1_ov, f2_ov, e3_ov, g238), is U1.6h's
-    // (OriginRelationDiagnosticTest.FailedFits).
+    // (OriginRelationDiagnosticTest.FailedFits). A held join whose call completed its functions beside a failed Tuple element waits
+    // by its outcome (DECISIONS BU-87), so its root judges it and its own conflict stands beside the name's (q14, G335 U1 review B1),
+    // as in its twin without the name (q14_fix).
     [Theory]
     [InlineData("U1.6", "n1", IdentityT + "func f(x: i64) -> i32 => 0\n" + KHead + "    return f(if c => undefinedName else => identity(1))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "f2", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
@@ -357,6 +361,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6", "g026_fix", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => true else => identity(4)))\n", "NoApplicableOverload_Kd identity(4); NoApplicableOverload_Kd identity(7)")]
     [InlineData("U1.6", "g196", IdentityT + GOptions + KD + "    return g([if c => (if d => undefinedName else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "g196_fix", IdentityT + GOptions + KD + "    return g([if c => (if d => .None else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8")]
+    [InlineData("G335", "q14", Apply2Pair + "    return apply2(if c => (if d => (func (v) => v, undefinedName) else => (func (v) => v + 1, 2)) else => stop())\n", "TypeMismatch_Kd if d => (func (v) => v, undefinedName) else => (func (v) => v + 1, 2); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("G335", "q14_fix", Apply2Pair + "    return apply2(if c => (if d => (func (v) => v, 1) else => (func (v) => v + 1, 2)) else => stop())\n", "TypeMismatch_Kd if d => (func (v) => v, 1) else => (func (v) => v + 1, 2)")]
     public void AFailedPartTakesNoPartInItsPosition(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 

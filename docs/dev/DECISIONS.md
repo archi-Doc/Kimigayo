@@ -10146,6 +10146,29 @@ resumed by R4-M86 (2026-10-20).
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
 
+- **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after
+  the joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03
+  (PLAN G396); design `bu\g335\design.md` §1, §2)
+  - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
+    at each question, so it grew as program size × nesting depth on nested joins (V16).
+  - Owner: ResultPropagation. The fact is a per-pass column beside the outcome on the pooled `ResultContext`, reset by `Clear` at
+    each rent. Its one writer is `ResultContext.Wait(awaiting)`, the one writer of `JoinOutcome.Waiting`: both Waiting sites
+    (`AwaitsWithoutCandidate`, `DecideResult`'s `ConflictWaits`) publish `SourcesAwait` once, when the join's sources are reached and
+    each held join's own fact is published. When a call takes a waiting argument's parts (`TakeWaiting`) and decides it again
+    (`DecideTaken`), `PublishAwaiting` republishes the argument's held Waiting joins innermost first, over the held-part walk
+    (`AddHeldParts`, G368 (3)) and each held join's waited sources, in JudgeHeld's order. Two windows take or bind parts without
+    republication: a Case construction's TakeWaiting (`Binding.Enums`) or a failing CompleteWaiting, and an enclosing root's step 3
+    before the held join's DecideWaiting; no reader of the fact was found there (G335 U1 review N1).
+  - Readers: `AwaitsFor`'s result-target row (a Waiting join answers with the fact; every AwaitsFor and AwaitsPosition caller reads
+    it) and `BoundSince` (Deferred). BoundSince's Waiting row is a decision, not a consequence of the sources: a Waiting join is
+    bound since by its outcome, whatever its sources hold since. Its effect after TakeWaiting: a held Waiting join one of whose
+    sources holds a failed Tuple element beside a function its call completed is now Deferred, where the deleted walk made it not
+    Deferred and its root rested on the cause without judging the tree. Its root now judges it (JudgeHeld), so the join's own
+    conflict among the completed functions is reported, an independent record (SPEC 23.1.2) the walk had lost.
+  - Removed: the re-walk of held Waiting joins and `BoundSince`'s walk over a Waiting join's waited sources (G335's "Completed").
+    No removal condition: the fact is canonical. AwaitsFor's other rows (literal parts, AwaitsCall, an Unvisited literal) stay
+    structural per-node answers; a column for them would be a second representation.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

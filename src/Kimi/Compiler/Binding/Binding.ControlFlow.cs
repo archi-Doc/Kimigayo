@@ -316,7 +316,7 @@ public sealed partial class Binding
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
             if (conflict && this.ConflictWaits(node))
             {
-                context.Outcome = JoinOutcome.Waiting;
+                context.Wait(this.SourcesAwait(context));
                 return Complete(node, null); // SPEC 10.5.1: no complete Type without its call's expectation; its call decides it.
             }
 
@@ -419,6 +419,11 @@ public sealed partial class Binding
 
         internal Koto? Cause { get; set; }
 
+        // What a Waiting join awaits its position for (SPEC 14.9.2 step 3; DECISIONS BU-87): published with the outcome (Wait) from its
+        // sources as they are then, and again when its call takes its parts (DecideTaken); every reader of a Waiting join's waiting
+        // reads it (AwaitsFor).
+        internal Awaiting Awaiting { get; private set; }
+
         internal bool HasLiteral { get; set; }
 
         internal bool PartialEvidence { get; set; }
@@ -440,6 +445,7 @@ public sealed partial class Binding
             this.Inferred = expected is null;
             this.Pending = this.Collecting = false;
             this.Outcome = JoinOutcome.Undecided;
+            this.Awaiting = Awaiting.None;
             this.Cause = null;
             this.Sources.Clear();
             this.SourceNodes.Clear();
@@ -453,6 +459,14 @@ public sealed partial class Binding
         {
             this.Sources.Add(type);
             this.SourceNodes.Add(node);
+        }
+
+        // The one writer of Waiting (DECISIONS BU-87): the join waits for its position or its call, awaiting what its sources await
+        // (SourcesAwait), each held join's own fact already published.
+        internal void Wait(Awaiting awaiting)
+        {
+            this.Outcome = JoinOutcome.Waiting;
+            this.Awaiting = awaiting;
         }
 
         // Records the join's own conflict, whose record it writes; it prevails over a dependence (RestOn).
