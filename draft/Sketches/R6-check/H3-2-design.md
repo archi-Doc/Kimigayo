@@ -1,7 +1,7 @@
 # R6-check H3-2: implementation design of Core's publisher of MIR records
 
 Status: implementation design under H0 ([H0-design](H0-design.md) row H3-2; [H0a](H0a-publication.md) §2-§10; [H0b](H0b-flip.md) §2.3;
-DECISIONS R5-M182 and its amendment), revision 1 (review 1's B1 and N1-N8, R4's and BU's answers; table at the end). Working record,
+DECISIONS R5-M182 and its amendment), revision 1 (review 1's B1 and N1-N8, R4's and BU's answers; table at the end), accepted by design review 2 (its N-a to N-d folded in by the planning session). Working record,
 not authority: the DECISIONS lines of §11 become authority in the units' commits. Base: dev `a6f8612d0`; H3-1 (R4, not landed) is
 designed against as GO'd on 2026-11-03 (two body values, one `MirProgram` class helper). Working time (Q12): 14:17-14:31 (revision 0)
 and 14:49-14:54 (revision 1) on 2026-11-03, logged in the designer's state file. No build, test or probe was run. Paths: `C/` =
@@ -137,10 +137,11 @@ them as unexplained prerequisites from H5 and move them again at 2g-1.
 
 - **Departure (B1 c).** From H5 until 2g-1, A3's 34 `RequireFallthrough_Kd` records that read Binding's result at a failed node, or rest
   on a guessed recovery, publish direct, where DIAGNOSTICS §4.3 "Later phases" makes such a control-flow check derived (`Binding.FailureCauses`;
-  H0b §2.3: A3's guessed-recovery derived form needs 2g-1's cause). Removal condition 2g-1. U2's commit adds a dated exception note to
-  that bullet, after its sentence "A startup or control-flow check, or a HIR lint, that reads Binding's result … is derived from those
-  Binding causes": "Exception (2026-11-03, R5-M182's H3-2 line; until 2g-1, PLAN G396): from H5 the MIR's A3 publishes such a
-  `RequireFallthrough_Kd` direct, since its Binding cause is not yet sited."
+  H0b §2.3: A3's guessed-recovery derived form needs 2g-1's cause). Removal condition 2g-1. The contract changes at H5, so H5's commit
+  (not U2's) adds one dated exception note at the end of that bullet, covering both its sentences (the check that reads Binding's
+  result, and the `GuessedBy`/`GuessedCompletion` one): "Exception (R5-M182's H3-2 line; from H5 until 2g-1, PLAN G396): the MIR's
+  A3 publishes such a `RequireFallthrough_Kd` direct, since its Binding cause or guessed recovery is not yet sited as a Cause fact."
+  (Review 2, N-a.)
 - **Not covered (N5).** (A) covers dependent Language, Proof, Resource and Unsupported records only. An analysis `InternalInvariant_Kd`
   among the 476 is not a dependent record under (A): it is a Q13 regression at H3b (a new `InternalInvariant_Kd` on any program).
 
@@ -228,14 +229,18 @@ independent reviewer reviews H3-2 once.
   wait for it. Until 2g-1 a MIR problem resting on a Binding failure carries no Cause fact and publishes as its own direct record,
   dependent under Q13 (counted by code, never blocking, never `InternalInvariant_Kd`; an analysis `InternalInvariant_Kd` stays a
   regression). H0a §4.2's null-`FailureCauses` rule applies to Cause −1 facts only, which 2g-1 produces; the probe that every Binding
-  cause has a non-null `FailureCauses` and BU-2's four shapes are 2g-1's contract items (G396). From H5 until 2g-1, A3's records that
-  read a Binding failure or a guessed recovery publish direct, departing from DIAGNOSTICS §4.3 'Later phases' (dated note there).
+  cause has a non-null `FailureCauses`, BU-2's four shapes, and no Cause fact on a located problem (§3.2's invariant makes it
+  `InternalInvariant_Kd`; A4's causes at Opaque sites on `Unsupported_Kd` rows) are 2g-1's contract items (G396). From H5 until 2g-1, A3's records that
+  read a Binding failure or a guessed recovery publish direct, departing from DIAGNOSTICS §4.3 'Later phases' (a dated note there, in
+  H5's commit, when the contract changes).
   Supersedes: R5-M182's amendment 'H3-2 lands with a null `FailureCauses` as `InternalInvariant_Kd` after 2g-1 sites every Binding
   cause at its failed node' (the null rule stays; the order goes); H0a-8's 'fixed in R4's chain before H3-2'; H0's
-  unit-table prerequisite of H3-2 'R4's exit with A6'; H0 §5's chain 'R4's exit (A6 2g-D–2g-7, A-4) → … → H3-2'. Removal condition:
+  unit-table prerequisite of H3-2 'R4's exit with A6, G11, Q17, Q8-6, OQ11', of which only 'with A6' goes; H0 §5's chain 'R4's exit (A6 2g-D–2g-7, A-4) → … → H3-2'. Removal condition:
   2g-1."
 - U1b, R4-M71 amendment (R4 consenting, 2026-11-03): the merge across bodies is `MirReport.Merged`'s (H0a §3.2), keyed with class; a
   Cause Value in `Merged` is a merged index.
+- U1a, under R5-M182's amendment: "`MirReport.Records` (H0a, revision 2) is named `MirReport.Merged`, since H3-1's class helper on
+  `MirProgram` reads by class (review N7, N-b)."
 
 ## 12. Not done
 
