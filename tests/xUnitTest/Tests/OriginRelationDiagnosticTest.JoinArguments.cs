@@ -50,14 +50,18 @@ public partial class OriginRelationDiagnosticTest
 
     private static readonly string[] FaultCodes = ["CheckFaulted_Kd", "InternalInvariant_Kd", "Unsupported_Kd"];
 
-    // R3-B1 (review 3): put's `v: T` is a position the call opens, so a contextual payload's relation inside a join argument, also inside a
-    // Tuple element (js2, js5), is recorded once at the argument with the payload related, as the direct and Tuple forms are (js3, js4);
-    // a join's well-formedness is recorded once at the argument (jt2, mj2). Each `_ok` twin passes a value that outlives `q` or states the
-    // relation.
+    // R3-B1 (review 3): put's `v: T` holds a Type slot of the call's solve, so a contextual payload's relation inside a join argument, also
+    // inside a Tuple element (js2, js5), is recorded once at the argument with the payload related, as the direct and Tuple forms are (js3,
+    // js4), although `slot`'s equality fixes T (the owner, 「引数に記録（推奨）」; DECISIONS R4-M164 U3a: RecordSite); a join's
+    // well-formedness is recorded once at the argument (jt2, mj2). Each `_ok` twin passes a value that outlives `q` or states the relation.
     [Theory]
+    [InlineData("js2", PutT + "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    let short = 2\n    put(p, if c => .Some(short@ref) else => .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd if c => .Some(short@ref) else => .None", "short@ref")]
     [InlineData("js2_ok", PutT + "func good(p: uniq/(Option<ref/i32 during q>), c: bool, w: ref/i32 during q) -> i32\n    put(p, if c => .Some(w) else => .None)\n    return 0\n", "", null)]
+    [InlineData("js3", PutT + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    put(p, .Some(short@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd .Some(short@ref)", "short@ref")]
     [InlineData("js3_ok", PutT + "func good(p: uniq/(Option<ref/i32 during q>), w: ref/i32 during q) -> i32\n    put(p, .Some(w))\n    return 0\n", "", null)]
+    [InlineData("js4", PutT + "func bad(p: uniq/((Option<ref/i32 during q>, i32))) -> i32\n    let short = 2\n    put(p, (.Some(short@ref), 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (.Some(short@ref), 1)", "short@ref")]
     [InlineData("js4_ok", PutT + "func good(p: uniq/((Option<ref/i32 during q>, i32)), w: ref/i32 during q) -> i32\n    put(p, (.Some(w), 1))\n    return 0\n", "", null)]
+    [InlineData("js5", PutT + "func bad(p: uniq/((Option<ref/i32 during q>, i32)), c: bool) -> i32\n    let short = 2\n    put(p, (if c => .Some(short@ref) else => .None, 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (if c => .Some(short@ref) else => .None, 1)", "short@ref")]
     [InlineData("js5_ok", PutT + "func good(p: uniq/((Option<ref/i32 during q>, i32)), c: bool, w: ref/i32 during q) -> i32\n    put(p, (if c => .Some(w) else => .None, 1))\n    return 0\n", "", null)]
     [InlineData("jt2_ok", JoinHead + WithPremise + NestedInner + "    return inner(if c => .None else => .None, q)\n", "", null)]
     [InlineData("mj2_ok", JoinHead + WithPremise + NestedInner + "    return inner((" + MatchNoneArms + "    ), q)\n", "", null)]
@@ -68,6 +72,7 @@ public partial class OriginRelationDiagnosticTest
     // a payload at an opened position related (dn2p, D-1); each twin states the relation or passes a value that outlives `q`.
     [Theory]
     [InlineData("dn2_ok", DepthHead + WithPremise + InnerDepth + DepthJoin, "", null)]
+    [InlineData("dn2p", PutT + "func bad(p: uniq/((Option<ref/i32 during q>, i32)), c: bool, d: bool) -> i32\n    let short = 2\n    put(p, if c => (if d => .Some(short@ref) else => .None, 1) else => (.None, 2))\n    return 0\n", "UnsatisfiedOriginRelation_Kd if c => (if d => .Some(short@ref) else => .None, 1) else => (.None, 2)", "short@ref")]
     [InlineData("dn2p_ok", PutT + "func good(p: uniq/((Option<ref/i32 during q>, i32)), c: bool, d: bool, w: ref/i32 during q) -> i32\n    put(p, if c => (if d => .Some(w) else => .None, 1) else => (.None, 2))\n    return 0\n", "", null)]
     public void ANestedJoinArgumentIsRecordedOnceAtTheArgument(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);

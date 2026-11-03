@@ -91,7 +91,8 @@ public sealed partial class Binding
 
     // As for Tuple literals, retain the acquired element Type until the enclosing
     // declaration has inferred omitted Origins. Replacing it with the expectation
-    // here would erase the very evidence needed by InferLocalOrigins.
+    // here would erase the very evidence needed by InferLocalOrigins. Elements without
+    // a common Type fail at the element, recorded at its RecordSite (R4-M164 U3a).
     private BoundType? BindContextualArrayLiteral(ArrayLiteralKoto literal, BindingScope scope, BoundType expected)
     {
         BoundType? element = null;
@@ -110,7 +111,7 @@ public sealed partial class Binding
                 var common = element is null ? actual : this.CommonOriginType(element, actual, out failure);
                 if (common is null)
                 {
-                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
+                    this.FailMismatch(literal.Elements[i], this.RecordSite(literal.Elements[i]), actual, element!, failure);
                     complete = false;
                 }
                 else

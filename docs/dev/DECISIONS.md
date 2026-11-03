@@ -6227,6 +6227,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
       only a body-local Projection or Anchor at the longer end (`RefutesOriginRelation`) and returns Unknown for the open initializer
       Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
       Unproven until G392.
+  - U3a (C5, record sites; the owner's 「引数に記録（推奨）」, PLAN e101e3395; the mixed reading, R4 planning's ruling under Q13 and the
+    owner's 「混合のままでよい」, 2026-11-03): a relation that a part's own fit fails (a Case payload's fit or its local-region obligation,
+    `CompletePayloads`; an array literal's element agreement, `BindContextualArrayLiteral`) is the call's, at the root call argument with
+    the payload related, where the selected candidate's parameter Type there holds a Type or length slot of the call's solve, whatever
+    input fixes it (SPEC 10.8 instantiates the slot at every position); otherwise the part's own (cr5, r03_n, r04_n, r06_n, cr6). F3 is
+    one bit of the argument's part record, `CallRelation.HoldsSlot`, written once by the selected call before its arguments complete
+    (`RecordSlotPositions`, from `SolveSelected`; rewritten when a deferred call selects again) and read only by `RecordSite`
+    (Binding.ArgumentKinds.Waiting.cs), which walks the part path up (PartParent, and a contextual Case's payload to its Case; not out of
+    a function). The failing node stays the part; only the fact's `At` moves. The cause was the part's own fit, not JudgeCallPosition
+    (rebaseline C5's site; corrected), and rebaseline's "not EqualitySource" holds for Type slots only. Rows: js2-js5, dn2p, swap3,
+    same9_n at the argument; pins wfm, wtm (G391), g1, g2, g5 (G392) unchanged. U3b: an Origin the solve opens (not fixed by another
+    input's equality, `EqualitySource`) also records at the argument, with the payload related through a fact column (dl1, pinned at
+    `ys`; same9_n's `b@uniq` related). Open: a value call and a property accessor call reach no SolveSelected, so their parts keep their own site;
+    U4's construction walk keeps a payload's own well-formedness at the payload.
   - Numbering: R4-M164 (R4-M163 is G375's structural core).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection

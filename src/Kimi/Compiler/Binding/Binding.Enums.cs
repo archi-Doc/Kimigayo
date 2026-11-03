@@ -496,8 +496,9 @@ public sealed partial class Binding
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
     // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
-    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required
-    // spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the construction rests.
+    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), recorded at its RecordSite (the argument whose
+    // call's solve decided it; DECISIONS R4-M164 U3a), and a bare Non-Copy Place names its required spelling (SPEC 6.5.2); a payload's
+    // own failure while bound is its record, on which the construction rests.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -541,7 +542,7 @@ public sealed partial class Binding
             // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind) ||
                 (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adaptedType, type, source, out failure) &&
-                !this.CheckLocalTypeUse(adaptedType, type, source)))
+                !this.CheckLocalTypeUse(adaptedType, type, this.RecordSite(source))))
             {
                 if (this.acquisitionFailure is { } acquisition)
                 {
@@ -549,7 +550,7 @@ public sealed partial class Binding
                 }
                 else if (failure.IsCondition || FitsStructurally(adaptedType, type))
                 {
-                    this.RecordMismatch(source, source, adaptedType, type, failure);
+                    this.RecordMismatch(source, this.RecordSite(source), adaptedType, type, failure);
                     Complete(use, null);
                 }
                 else

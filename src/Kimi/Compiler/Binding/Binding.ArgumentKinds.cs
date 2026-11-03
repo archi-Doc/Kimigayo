@@ -42,13 +42,13 @@ namespace Kimi.Compiler;
 //   candidate's contributions once its expected result has solved its slots, read by SolveLate and JudgeSelectedCall.
 // - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
 //   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
-//   row (every kind awaits but Literal), TakeArgument the one writer of Taken, and a writer of another column keeps the rest of the
-//   relation (RecordPart keeps Taken; SlotSolution.Default records a Literal's default through RecordPart); a record TakeArgument
-//   creates reads as an absent one; a producer records every part that awaits its call and a Literal control-flow part: P1
-//   (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function or Case result (AwaitsCallAtResult) or a Reference one
-//   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
-//   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
-//   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
+//   row (every kind awaits but Literal), TakeArgument the one writer of Taken, RecordSlotPositions of HoldsSlot, and a writer of another
+//   column keeps the rest of the relation (RecordPart keeps them; SlotSolution.Default records a Literal's default through RecordPart); a
+//   record TakeArgument or RecordSlotPositions creates reads as an absent one; a producer records every part that awaits its call and a
+//   Literal control-flow part: P1 (PrepareArgument) a Function, Case, Reference or Literal, P2 a Function or Case result
+//   (AwaitsCallAtResult) or a Reference one (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall,
+//   ConflictWaits) a Join, and the operand probe (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate,
+//   Function, Case and Typed; KindOf alone combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
 //   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
 //   selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 //   Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part is a wildcard: it fits every candidate and is no evidence; only a node's own
@@ -66,14 +66,16 @@ public sealed partial class Binding
 
     // A recorded part's relation to its call (DECISIONS BU-74), a column of its record, one writer and one reader per bit: Awaits, its
     // producer recorded it as awaiting its call (RecordPart's row; Awaits); Taken, on a call argument's own record, its call has
-    // selected and takes it (TakeArgument; TakenByCall). Taken ends no Awaits: a taken Join argument stays Join for TryCandidate's
-    // re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
+    // selected and takes it (TakeArgument; TakenByCall); HoldsSlot, on a call argument's own record, its selected candidate's parameter
+    // Type there holds a slot of its solve (RecordSlotPositions; RecordSite, DECISIONS R4-M164 U3a). Taken ends no Awaits: a taken Join argument stays Join for
+    // TryCandidate's re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
     [Flags]
     private enum CallRelation : byte
     {
         None = 0,
         Awaits = 1,
         Taken = 2,
+        HoldsSlot = 8,
     }
 
     private enum PartKind : byte
@@ -180,12 +182,13 @@ public sealed partial class Binding
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
-    // every recorded kind awaits its call but Literal. It keeps Taken, since ClassifiedByCall and DeferNestedCall re-record the probe
-    // while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
+    // every recorded kind awaits its call but Literal. It keeps Taken and HoldsSlot, since ClassifiedByCall and DeferNestedCall re-record
+    // the probe while DecideTaken decides it again. SlotSolution.Default records a Literal through it and adds its default.
     private ref ArgumentPart RecordPart(Koto part, PartKind kind)
     {
         ref var record = ref this.PartRecord(part);
-        record = new(kind, null, (record.Relation & CallRelation.Taken) | (kind == PartKind.Literal ? CallRelation.None : CallRelation.Awaits));
+        var taken = record.Relation & (CallRelation.Taken | CallRelation.HoldsSlot);
+        record = new(kind, null, taken | (kind == PartKind.Literal ? CallRelation.None : CallRelation.Awaits));
         return ref record;
     }
 
@@ -195,6 +198,24 @@ public sealed partial class Binding
     {
         ref var record = ref this.PartRecord(argument);
         record = record with { Relation = record.Relation | CallRelation.Taken };
+    }
+
+    // SPEC 10.8, 15.6.1 (F3; DECISIONS R4-M164 U3a): the one writer of HoldsSlot. Once a call has selected, before any part of its
+    // arguments is completed (CompleteWaiting, CompleteArguments), the record of each argument whose own parts can fit (not Typed: a typed
+    // argument's fit is the call's, JudgeCallFit) holds whether the winner's parameter Type there holds a slot of its solve. A deferred
+    // call selects again when its outer call completes it, so the bit is rewritten; a record it creates reads as an absent one.
+    private void RecordSlotPositions(in CallEvaluation evaluation, FunctionKoto selected)
+    {
+        var arguments = evaluation.Call.ArgumentNodes;
+        for (var i = 0; i < arguments.Count; i++)
+        {
+            if (ClassifyPart(arguments[i]) != PartKind.Typed || this.RecordedPart(arguments[i]).Kind != PartKind.Typed)
+            {
+                ref var record = ref this.PartRecord(arguments[i]);
+                var held = HoldsOwnSlot(selected.Parameters[evaluation.Mapping[i]].Type.BoundType!, CallSlotOwner(selected));
+                record = record with { Relation = held ? record.Relation | CallRelation.HoldsSlot : record.Relation & ~CallRelation.HoldsSlot };
+            }
+        }
     }
 
     // Whether the argument's call has selected and takes it (Taken): the one reader of Taken.
@@ -452,17 +473,18 @@ public sealed partial class Binding
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
     // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
     // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another, and a slot
-    // still unbound is the inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or
-    // failed.
+    // still unbound is the inference boundary, a failed argument part included (rule W). It first records the winner's slot positions
+    // (RecordSlotPositions). False when the call is complete: waiting or failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
+        var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
+        this.RecordSlotPositions(evaluation, selected);
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
         {
             return true;
         }
 
         var call = evaluation.Call;
-        var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
         if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))

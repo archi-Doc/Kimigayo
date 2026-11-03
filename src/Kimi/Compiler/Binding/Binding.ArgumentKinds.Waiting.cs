@@ -14,7 +14,8 @@ namespace Kimi.Compiler;
 // expectation, so that a nested call's or construction's result is typed without one, is FixesWithoutExpectation, read through
 // OpenWaitingSlots by both (DECISIONS BU-2, D4). The part path through the same forms is here too: PartCore, down to the part a form
 // delivers, the one key of a part's recorded kind (Binding.ArgumentKinds.cs); PartParent and PartHolder, up toward its argument, the
-// walk by which a part finds its argument probe (UnderArgumentProbe) and the result target its call completes it at (CallableTarget).
+// walk by which a part finds its argument probe (UnderArgumentProbe), the result target its call completes it at (CallableTarget) and
+// the node its own fit's relation records at (RecordSite, F3; DECISIONS R4-M164 U3a).
 public sealed partial class Binding
 {
     // A consumer of TakeWaiting: it takes each waiting callable at its position and slot F, and stops the walk by returning false.
@@ -72,6 +73,53 @@ public sealed partial class Binding
     // The form delivering the part or the aggregate whose part it is (CallableParts), or null.
     private static Koto? PartHolder(Koto node)
         => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || CallableParts(parent) is not null) ? parent : null;
+
+    // Whether a parameter Type holds a Type, Semantics or length slot of the owner at any depth (RecordSlotPositions' HoldsSlot).
+    private static bool HoldsOwnSlot(BoundType type, Koto owner)
+    {
+        return Holds(type, owner, 0);
+
+        static bool Holds(BoundType type, Koto owner, int depth)
+        {
+            if (OwnSlot(type, owner) >= 0 || (type.LengthExpression is { } length && HoldsLength(length, owner)))
+            {
+                return true;
+            }
+
+            for (var i = 0; depth < 64 && i < type.Components.Count; i++)
+            {
+                if (Holds(type.Components[i], owner, depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool HoldsLength(BoundLength length, Koto owner)
+            => (length.Parameter is { } parameter && ContainerSlot(owner, parameter) >= 0) ||
+                (length.Left is { } left && HoldsLength(left, owner)) || (length.Right is { } right && HoldsLength(right, owner));
+    }
+
+    // F3 (SPEC 10.5.1, 15.6.1; DECISIONS R4-M164 U3a): the node a relation that a part's own fit fails is recorded at. Payloads, elements
+    // and join sources are positions of one argument, so the part path leads up to it (PartParent, and from a contextual Case's payload
+    // to its Case; not out of a function). Where its call took that argument at a parameter Type holding a slot of the call's solve
+    // (HoldsSlot), the call's solve decided the position, and the record is at the argument; otherwise at the part (a Case whose Type
+    // its own context fixes). An Origin the solve opens is U3b's.
+    private Koto RecordSite(Koto part)
+    {
+        var root = part;
+        while ((PartParent(root) ?? ContextualCaseOf(root)) is { } parent and not FunctionKoto)
+        {
+            root = parent;
+        }
+
+        return (this.RecordedPart(root).Relation & CallRelation.HoldsSlot) != 0 ? root : part;
+
+        static Koto? ContextualCaseOf(Koto payload)
+            => payload.Parent is InvocationKoto call && NeedsEnumContext(call) && !ReferenceEquals(call.Method, payload) ? call : null;
+    }
 
     // Each waiting callable of the part at an F of the owner, in source order: the part itself, a part of its aggregate at that part's
     // position (CallableParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position
