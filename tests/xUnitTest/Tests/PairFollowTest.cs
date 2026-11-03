@@ -508,7 +508,8 @@ public class PairFollowTest
 
     // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
     // in the operand needs it exclusively writable (a let binding or an owned parameter is not), no case offers Take, and a uniq
-    // reference stored in the operand still grants Write through it.
+    // reference stored in the operand still grants Write through it. A user index through a pair layer is the located limit
+    // (PLAN G179), unlike its reference-layer twins.
     [Theory]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v += 1", DiagnosticCode.InvalidAssignment_Kd)]
@@ -548,6 +549,11 @@ public class PairFollowTest
     [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/Box<t/Array<i32> during b>)\n    s is owner or uniq\n    t is uniq\n    for v in x.item\n        v@follow += 1", null)]
     [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/(uniq/P during b) during c>)\n    s is owner or uniq\n    x.item.v = 5", null)]
     [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/Collection<Node> during b>)\n    s is owner or uniq\n    x.item[0].weight = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is owner or uniq\n    x[0] = 5", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is uniq\n    let y = x[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g(x: uniq/Collection<i32>)\n    x[0] = 5", null)]
+    [InlineData("func g(x: ref/Collection<i32>)\n    let y = x[0]", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    let y = p[0]", DiagnosticCode.NotIndexable_Kd)]
     public void SelectionsFollowPairLayers(string function, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze(Selected + function);

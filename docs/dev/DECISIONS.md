@@ -6927,6 +6927,14 @@ resumed by R4-M86 (2026-10-20).
   `Unsupported_Kd` (D5). Tuple and fixed-array elements through a pair layer stay Binding's `Unsupported_Kd` (`Binding.Elements`).
   Library, milestones and the diagnostic corpus unchanged. Open: PLAN G164 (valid element writes below a pair-layer receiver) and
   G179 (a user index through a pair layer). Not temporary.
+  - Amendment (2026-11-03, R4 after its exit, BU reviewing; PLAN G179, the owner's option (a), verbatim 「2すべてa」 and
+    「3案の通り」): a user index through a followable pair layer (`x: s/Collection<i32>`: `x[0] = 5`, `let y = x[0]`) is Binding's
+    located `Unsupported_Kd` at the index expression, no longer `NotIndexable_Kd`. `TryBindIndexer`, which decides a user index,
+    passes the receiver's reference layers and, on a pair layer, its followable pair layers (`ComparisonThroughPairs`, as
+    `BindElement`'s fallback reads them), and reports the limit when that core has an Indexable conformance or fact; a core
+    without one keeps `NotIndexable_Kd`, and with a failed key the limit rests on the key, as the pair-layered sequence's limit
+    does. Rejected: a second conformance test in the fallback (a copy of the indexer's rule). Temporary: removed by G179's
+    selection through the layer, as `TryPairReceiver` selects receivers.
 - **BU-17** (2026-10-21; the BU planning session; PLAN G163 under the full process: designs A and B, the chosen design, a design
   review (APPROVE WITH CHANGES), two revisions after the implementer's robustness rows, design review round 2 (APPROVE WITH
   CHANGES); the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole destruction receiver, is
