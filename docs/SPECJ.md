@@ -4,6 +4,8 @@
 
 翻訳元：`8ee50bf7e36708f32cf308145c5cb0debca005bd`（2026年10月23日確認）。表記は[SPECJ_TERMINOLOGY](SPECJ_TERMINOLOGY.md)に従う。本書は非規範的な翻訳であり、解釈が異なる場合は英語の定義を優先する。コード、識別子、文字列、文法、JSONは原文の綴りを保つ。
 
+部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
+
 ## 目次
 
 - [1. 概要](#s-1)
@@ -1843,7 +1845,7 @@ Originが「共有Loanだけを保つ」とは、各許容Semanticsの場合で�
 
 **スロットと所有。** raw Originは変性上は共変だが、スロットのLoan要件・Phantom判定における使用には数えない。rawが示すスロットはPhantomであってはならない。during selfの参照先はスロット特性・OwnedOriginsで格納内容と数え、その値のLoanを所有値の保持先に保つ。インライン記憶にduring self層を持つstruct・enumはCopyにならない。ただしraw層の型と、それを含むタプル・固定長配列の型はCopyで、そのPlaceは上の書込み規則と明示的Moveに従う。
 
-**呼出し。** Origin付きraw経由では、そのOriginが属する各借用の参照先型が許す値を格納できる。selfなら保持値型、staticならraw参照先型を使う。Loanを形成せず、借用と同じ保持を行う。Originなしrawパラメーターはその参照先型が許す値を格納できる。結果型のOriginなしrawは、タプル・Option・型引数内部を含め、任意の引数を通じて届く記憶と、本体が所有しない記憶を指せる。名前付き結果型のフィールド内ポインターはその型のフィールド宣言だけで定まり、隠れたポインターには到達範囲条件を適用する。
+**呼出し。** Origin付きraw経由では、そのOriginが属する各借用の参照先型が許す値を格納できる。selfなら保持値型、staticならraw参照先型を使う。Loanを形成せず、借用と同じ保持を行う。Originなしrawパラメーターはその参照先型が許す値を格納できる。結果型のOriginなしrawは、タプル・Option・型引数内部を含め、任意の引数を通じて届く記憶と、本体が所有しない記憶を指せる。名前付き結果型のフィールド内ポインターはその型のフィールド宣言だけで定まり、隠れたポインターには到達範囲条件を適用する。抽象型（[§8.2.3](#s-8-2-3)）の束縛が保持し抽象型には現れないraw層を通じて、ジェネリック本体が到達するのは[§15.6.4](#s-15-6-4)が抽象型の値に許す範囲だけで、書込みは同節が挙げる経路だけで行い、共有Loanを通じては書かない。それを超えるそのraw層経由のアクセスは宣言側のコードの責任で、[§5.2.1](#s-5-2-1)に従う。条件3は共有経路以後に書込み権限を与えず、条件5は本体が追跡できないポインターによるLoanを運ぶ値の読み書きを禁じる。格納したポインターを参照へ戻すには主張が要る（上の型合わせと主張）。
 
 ```kimi
 struct Lens<T> {source}
@@ -7258,7 +7260,72 @@ func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>
 
 結果・書込み可能領域（キャプチャー経由も含む）が引数を保持できるかは、直接・間接呼出しとも具体化した公開契約だけで決める。不保持が未証明ならアクセスを許さない。判定はOrigin別でなく引数別。借用引数の参照先型内Originを保持し得る結果・領域は、そのどのOriginを記すかによらず引数経由の読取りが運ぶ全Loanを運ぶ。それ以外のOriginを保持し得るなら引数Loanを運び、借用引数では読取りのLoanも加える。
 
-raw引数もポインター先を参照先として同様に扱い、その型内Originを保持し得るものは読取りが運ぶものを運ぶ。ただし引数値自身（Loanと指す保持元）を保持するのは、その型の値を格納できる結果・領域、または引数の領域内で形成する結果だけ。ポインターは自身のポインター先の一部でなく、raw引数経由で書く領域は引数値自身を保持しない。Origin付きraw層は、そのOriginの借用と同様のものをLoanなしで保持する。Originなし入力raw層はポインター先型が許す保持を許し、名目型フィールド外の結果raw層は全引数（rawでは経由読取りのものも）を保持し得て本体外領域へ届く。共有層以後に届くraw層を通じて呼出しが書くことはない。
+raw引数もポインター先を参照先として同様に扱い、その型内Originを保持し得るものは読取りが運ぶものを運ぶ。引数が共有層を通らず値で保持するraw層（タプル要素、Optionのペイロード、フィールド、型引数を含む）は、rawポインター引数と同じく保持される。ただし引数値自身（Loanと指す保持元）を保持するのは、その型の値を格納できる結果・領域、または引数の領域内で形成する結果だけ。ポインターは自身のポインター先の一部でなく、raw引数経由で書く領域は引数値自身を保持しない。Origin付きraw層は、そのOriginの借用と同様のものをLoanなしで保持する。Originなし入力raw層はポインター先型が許す保持を許し、名目型フィールド外の結果raw層は全引数（rawでは経由読取りのものも）を保持し得て本体外領域へ届く。共有層以後に届くraw層を通じて呼出しが書くことはない。
+
+抽象型（[§8.2.3](#s-8-2-3)の型パラメーター・関連型射影・ペア対象・ContractのSelf）の値は、ハンドルのペイロードとしても、その保持元が運ぶLoanとアドレスを運ぶ参照が到達する範囲に到達する（[§15.6](#s-15-6)）。ペイロードの保持元は、それに到達する経路のハンドルの保持元とする。その値を通じた呼出し・破棄が書けるものは、由来ごとに次のとおり。
+
+1. 排他Loanとアドレスが名指す保持元と、そこから共有層を経ない読取りでさらに到達するもの（[§15.6](#s-15-6)）。共有Loanだけが名指す保持元は書かない。
+2. 引数・キャプチャー由来、または排他借用を通じた読取りで到達する本体外領域。束縛が独自のOriginを持つ排他参照を保持し得るためである（[§8.1.1](#s-8-1-1)・[§8.15.1](#s-8-15-1)）。
+3. 静的記憶（ローカルと同じくPlaceの根となる。[§15.6](#s-15-6)）。そこへの排他Loanかアドレスを通じる場合。
+4. 共有層を経ずに派生元とするrawポインターを通じて到達する本体外領域。Originなしraw層（[§15.6](#s-15-6)の規則でどの保持元にも到達しないrawポインター、たとえば`Raw.allocate`の結果や整数由来のポインター）で、入力のタプル要素・Optionペイロード・フィールド・型引数としてのものも含む。
+5. 引数に結び付かない呼出し結果の部分から到達する本体外領域。
+
+共有Loan・共有借用を通じてだけ到達するもの、またはそれを通じた読取りで派生するもの（共有層以後で読んだアドレス・rawポインターを含む）には、読取りだけで到達する（[§5.2.1](#s-5-2-1)の条件3）。抽象型の束縛が持ち得て型には現れないraw層は、本体外領域を含め、独自の到達を加えない。この範囲を超えるそのraw層経由のアクセスは宣言側のコードの責任である（[§5.7](#s-5-7)）。束縛が保持する安全な参照はそのようなraw層ではなく、上の経路に従う。型に現れるraw層（抽象部分を保持する部分のフィールド・Caseペイロード・要素を含む）は本節と[§5.7](#s-5-7)で読む。抽象部分の呼出しと破棄はこの範囲に格納する（[§16.3.3](#s-16-3-3)）。
+
+```kimi
+func count<S>(items: S) -> i32
+    S is Iterable
+    var n: i32 = 0
+    for _ in items                  // Valid: the Iterator's Loan on items is shared, so next and its destruction write only its own holder.
+        n += 1
+    return n
+```
+
+```kimi
+// consume<T>(x: T) destroys x.
+contract MakeS
+    func make(p: raw/(raw/u8)) -> Self
+    func setQ(self: uniq/Self, q: raw/u8)
+
+func later<T>(y: uniq/i32)
+    T is MakeS
+    let w = y@follow@ref
+    var slot: raw/u8 = null
+    var x = T.make(p: slot@raw)     // x carries slot's address; make stores no Loan in slot.
+    x.setQ(q: w@raw@raw/u8)         // setQ may store q, which addresses w, in slot: x reaches slot.
+    consume(x@move)                 // x's destruction may store its content in slot too.
+    // y@follow = 5                 // Error: slot may retain w's address, and w carries y's Loan; slot is used below.
+    usep(slot)
+
+func laterAlloc<T>(y: uniq/i32)
+    T is MakeS
+    let w = y@follow@ref
+    let m = Raw.allocate<raw/u8>(1) // m reaches only storage the body does not own.
+    var x = T.make(p: m)            // x derives from the raw pointer m through no shared layer.
+    x.setQ(q: w@raw@raw/u8)         // setQ may store q in m's storage.
+    consume(x@move)
+    // y@follow = 6                 // Error: a value stored in storage the body does not own may be used after every point.
+    unsafe => Raw.release(m)
+```
+
+書込みは、値のアドレスが名指す保持元から共有層を経ない読取りでさらに先へ届く（項目1）。束縛が項目1で到達する保持元へ格納するとき別のLoanが生きていても、それは具体メソッドと同じく[§5.2.1](#s-5-2-1)（条件4）に従うrawアクセスで、呼出しのエラーではない。呼出しがそこへ格納し得るものは保持される。
+
+```kimi
+contract MakeP
+    func make(p: raw/(raw/(raw/u8))) -> Self
+    func setQ(self: uniq/Self, q: raw/u8)
+
+func chain<T>(y: uniq/i32)
+    T is MakeP
+    let w = y@follow@ref
+    var slot: raw/u8 = null
+    var pp: raw/(raw/u8) = slot@raw     // pp addresses slot.
+    var x = T.make(p: pp@raw)           // x addresses pp.
+    x.setQ(q: w@raw@raw/u8)             // setQ may store q in slot, reached on from pp by a read.
+    consume(x@move)
+    // y@follow = 5                     // Error: slot may retain w's address, reached on from pp; slot is used below.
+    usep(slot)
+```
 
 **効果要約**はアクセスし得る静的フィールドと読取り・借用・書込み・置換・破棄・初回初期化を列挙し、呼出し先、閉じた明示特殊化集合の全実装、既定値、アクセサー、遅延初期化、後処理も含む。宣言ごとに自身の型パラメーターで一度、再帰呼出しの最小不動点として計算する。**パラメーター依存効果**は、Copy未証明の型パラメーター・関連型射影の破棄、その型の公開操作のユーザーコード効果、Callable入力経由呼出し。宣言前提が射影の基底（またはその基底を反復したもの）のいずれかを再帰Contractへの適合と証明する場合、そこに保持する依存効果を未知環境効果へ広げる。他の射影深さは有界で不動点は有限。Callable入力呼出しは入力・レシーバモードごとに一度記録し、使用時に実引数と合成する。適合の効果境界は完成した要約で検査する。
 
@@ -7696,7 +7763,7 @@ owner/Tは正確にTとして破棄する。obj/Tはオブジェクトを破棄�
 
 ハンドル破棄の対象Placeはハンドルだけで、live Loanと比較する。ペイロード借用は到達元ハンドルのLoanを保持するため、所有するオブジェクト領域自体を対象にしない。rc・arc解放は最終解放の可能性があり、ペイロード破棄の観測と、staticなど他領域への後処理効果を要約に含む。呼出し先が所有ハンドル入力を破棄する場合も同じ。
 
-動的型・環境型が静的に不明な破棄は未知効果。View Target自身のdropや宣言済み派生型だけからは求めない。SealedでないView Targetのobj・rc・arc（open基底、実行時Contract）と共通関数型環境、またそれらを成分に持つ値が該当する。可変staticの全live Loanと競合し、confinedでは分類不能。Sealed対象ハンドルとowner/Tはその型の破棄要約を使う。ジェネリック本体でCopy未証明の型パラメーター・関連型射影の破棄は、本体内検査ではLoan観測可能・未知環境効果とし、要約では実型と合成するパラメーター依存効果として公開する（[§15.6.4](#s-15-6-4)で広げる場合を除く）。
+動的型・環境型が静的に不明な破棄は未知効果。View Target自身のdropや宣言済み派生型だけからは求めない。SealedでないView Targetのobj・rc・arc（open基底、実行時Contract）と共通関数型環境、またそれらを成分に持つ値が該当する。可変staticの全live Loanと競合し、confinedでは分類不能。Sealed対象ハンドルとowner/Tはその型の破棄要約を使う。ジェネリック本体でCopy未証明の型パラメーター・関連型射影の破棄は、本体内検査ではLoan観測可能・未知環境効果とし、要約では実型と合成するパラメーター依存効果として公開する（[§15.6.4](#s-15-6-4)で広げる場合を除く）。この破棄は[§15.6.4](#s-15-6-4)の`drop`呼出しと同様に保持し、部分の内容（そのLoanと指す保持元）を、同節の抽象型の値の規則で部分が書ける範囲にだけ格納する。staticへの効果は未知のまま。View Targetが抽象型（[§8.2.3](#s-8-2-3)）であるハンドルのペイロードは、Copyと証明されていてもいなくても、View TargetがSealedと証明されない限り、同様に保持する消去された破棄で破棄する。Copyと証明してもこの破棄は空にならない。派生型はCopyを個別に選ぶためである（[§3.5.2](#s-3-5-2)）。
 
 ペイロード全体置換は旧内容をその場で破棄し、領域・カウント・ライフサイクル状態を保つ。領域はUninitializedになるがlet初期化履歴は戻さず、コンストラクター・初期化子・セッターなしで新値を置く。exchangeは旧内容を結果へ移す。同じアドレスでも旧内容依存は終わる。借用・rawポインター破棄は参照先を破棄せず、Scalarに破棄処理はない。
 
