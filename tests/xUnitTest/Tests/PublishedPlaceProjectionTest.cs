@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -249,36 +250,48 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredField", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (until R6-check): the old paths reach the referent of the reference an element stores only one layer deep and
-    // only on the whitelisted paths (exclusively: not below a built-in element or a local's Tuple element; shared below a built-in
-    // element: only on a named sequence), so the old analysis reports any other read through an element's stored layers, a
-    // comparison's included, as the located Unsupported_Kd at the element, although Binding accepts it and the MIR builds it in place.
+    // DECISIONS BU-10 (until R6-check): the old paths reached the referent of the reference an element stores only one layer deep and
+    // only on the whitelisted paths, so the old analysis reported any other use through an element's stored layers, a comparison's
+    // included, as the located Unsupported_Kd at the element. Binding accepts these programs and the MIR builds them in place, so since
+    // the MIR decides acceptance (H5; 1a, the owner 2026-11-03) each has no record, and a Library build (every root, K11) generates its
+    // function.
     [Theory]
-    [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].inner.mutate()", "entries[1]")]
-    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].n", "entries[1]")]
-    [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].n = 5", "entries[1]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].inner.mutate()", "vals[0]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n = 5", "vals[0]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n += 1", "vals[0]")]
-    [InlineData("func f(a: uniq/Array<uniq/Point during x>) => a[0].n = 5", "a[0]")]
-    [InlineData("func f(value: uniq/(i32, i32) during a)\n    var vals: Array<uniq/(i32, i32) during a> = [value@move]\n    vals[0].0 = 5", "vals[0]")]
-    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var vals: Array<uniq/(uniq/Point during a) during b> = [value@move]\n    return vals[0].n", "vals[0]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].n = 5", "vals[0][1]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].inner.mutate()", "vals[0][1]")]
-    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> bool\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].name == \"a\"", "entries[1]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].n = 5", "t.0[1]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var t = (0, [1: value@move])\n    t.1[1].n = 5", "t.1[1]")]
-    [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].inner.mutate()", "t.0[1]")]
-    [InlineData("func f(value: uniq/Point during a) -> i32\n    var t = ([value@move], 0)\n    return t.0[0].n", "t.0[0]")]
-    [InlineData("func g(t: uniq/(Array<uniq/Point during a>, i32)) -> i32\n    return t.0[0].n", "t.0[0]")]
-    [InlineData("func f(value: uniq/Point during a) -> i32\n    var vals: Array<Array<uniq/Point during a>> = [[value@move]]\n    return vals[0][0].n", "vals[0][0]")]
-    [InlineData("struct Holder {a}\n    public var vals: Array<uniq/Point during a>\n    public init(vals: Array<uniq/Point during a>) => self.vals = vals@move\nfunc f(value: uniq/Point during a) -> i32\n    var vals: Array<uniq/Point during a> = [value@move]\n    var h = Holder.init(vals@move)\n    return h.vals[0].n", "h.vals[0]")]
-    public void TheOldEmissionReborrowLimitIsUnsupported(string function, string element)
+    [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].inner.mutate()", "f")]
+    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].n", "f")]
+    [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].n = 5", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].inner.mutate()", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n = 5", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n += 1", "f")]
+    [InlineData("func f(a: uniq/Array<uniq/Point during x>) => a[0].n = 5", "f")]
+    [InlineData("func f(value: uniq/(i32, i32) during a)\n    var vals: Array<uniq/(i32, i32) during a> = [value@move]\n    vals[0].0 = 5", "f")]
+    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var vals: Array<uniq/(uniq/Point during a) during b> = [value@move]\n    return vals[0].n", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].n = 5", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].inner.mutate()", "f")]
+    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> bool\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].name == \"a\"", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].n = 5", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var t = (0, [1: value@move])\n    t.1[1].n = 5", "f")]
+    [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].inner.mutate()", "f")]
+    [InlineData("func f(value: uniq/Point during a) -> i32\n    var t = ([value@move], 0)\n    return t.0[0].n", "f")]
+    [InlineData("func g(t: uniq/(Array<uniq/Point during a>, i32)) -> i32\n    return t.0[0].n", "g")]
+    [InlineData("func f(value: uniq/Point during a) -> i32\n    var vals: Array<Array<uniq/Point during a>> = [[value@move]]\n    return vals[0][0].n", "f")]
+    [InlineData("struct Holder {a}\n    public var vals: Array<uniq/Point during a>\n    public init(vals: Array<uniq/Point during a>) => self.vals = vals@move\nfunc f(value: uniq/Point during a) -> i32\n    var vals: Array<uniq/Point during a> = [value@move]\n    var h = Holder.init(vals@move)\n    return h.vals[0].n", "f")]
+    public void AUseThroughAnElementsStoredLayersIsGenerated(string declaration, string function)
+        => Assert.Contains(function, GeneratedBodies("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
+            "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" + declaration + "\n"));
+
+    // The declaration names of the bodies a Library build of the source generates (every root, K11): the program accepted with no record
+    // (Binding complete, no analysis problem) and its module generated with no record.
+    internal static string?[] GeneratedBodies(string source)
     {
-        var c = MinimalEmissionTest.Analyze("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
-            "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" + function + "\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var unsupported = Assert.Single(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Equal(element, c.SyntaxOf(unsupported.Subject).ToString());
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Library);
+        c.Analyze();
+        Assert.True(c.Accepts && c.Problems.Count == 0 && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        var set = c.Instances!;
+        return [.. Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
+            .Select(x => set.Items[x].Key.Body.Def.Decl?.Name)];
     }
 }
