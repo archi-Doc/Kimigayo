@@ -1,6 +1,6 @@
 # G157 (1) design: a body with a validator finding is no consumer's (option (a))
 
-Status: revision 1 for re-review (R5, 2026-11-03; review 1 REVISE, table at the end). The owner's GO, verbatim 「(a) で設計を始めて」: exclude only the MIR bodies that fail
+Status: revision 2 for re-review (R5, 2026-11-03; reviews 1 and 2 REVISE, tables at the end). The owner's GO, verbatim 「(a) で設計を始めて」: exclude only the MIR bodies that fail
 validation; judge and collect every other body. Classification: Major with a design review (three components). The design adds
 **one** published per-body fact (a `bool` on `MirBody`); no IR form, record kind or A4 summary representation changes, so the class
 stands. R4's constraints are cited as "R4, 2026-11-03" (items R4-1 to R4-3, with letters for item 2).
@@ -120,10 +120,15 @@ this.origins.Findings(program.Problems); // unchanged: Binding's view, no MIR bo
   - `Proved` returns `bool?`: true where an initializer without a finding proves the effect; else null where an initializer it consults
     (one that holds a candidate and may be first-accessed) has the fact; else false. The test sits before the view loop, so
     `MirCases.Count` of such a body is never read; immutable statics are covered, since they always pass the first-access test.
-  - `Unproved` returns `(MirFactKind? Fact, bool Rests)`: in its order (write, `Unknown`, read), the first kind whose proof is null
-    gives `Rests`; else the first unproved kind; else none.
-  - `Met` returns before its conflict record and its Limit when `Rests` (the rest of `Met` decides the same root at the same site);
-    `Destroying` makes no record when `Rests`. No parameter steers either. `Effect` (`:258`) reads only an initializer's `Source`.
+  - `Unproved` returns `(MirFactKind? Fact, bool Rests)`; `Fact` is meaningless when `Rests` is set (contract text). The initializers
+    `Proved` consults do not depend on the fact kind (only on `Holds` and the first-access test), so within one `Unproved` call the
+    proofs are all in {true, null} or all in {true, false}: "the first null gives `Rests`, else the first unproved kind" equals "the
+    first kind not proved decides" (write, `Unknown`, read), else none.
+  - `Met` reads the proof only in its first block (`:117-128`: the conflict record at `:125` or the Limit at `:121`): when `Rests`,
+    that block makes no record and `Met` falls through to its second block (`:129-142`), which reads A4's Limit and Deep classes
+    (`Outcome(classes)`, then a Limit where a Loan a write would meet has no key), not the proof, so its record is independent and stays
+    (AGENTS Diagnostics; SPEC 23.1.2; Q13). `Destroying` reads the proof for its whole decision, so it makes no record when `Rests`.
+    No parameter steers either. `Effect` (`:258`) reads only an initializer's `Source`.
 - Header: "Must not … analyze a program with validator findings" becomes "read a body with a finding (MirBody.HasFinding): steps 1, 2
   and 4 skip it; A4 composes a body with one as Derived (Views); the initialization proof that consults one rests on it".
 
@@ -159,8 +164,13 @@ a MIR record; `Accepts` also needs `Analysis.IsVerified`. A program with a findi
      site) gives no record (F3's path);
   3. X itself owes `confined`: no record (B1, `Owe`'s own path);
   4. a static whose initializer is X: its Field under a live Loan at an effect site gives no record, while an independent conflict in
-     the same body is reported (F2).
-  Before the fix `Problems` is empty, so rows 1 and 4 fail; rows 2 and 3 pin the dependent rule. Rerun
+     the same body is reported (F2);
+  5. `Met`'s second block beside a broken initializer: a mutable static struct `s` (initializer X) with a live unique Loan on `s.a`
+     and a shared Loan on `s.b`, at a call whose decided effect is `EffectRead` of `s` (so the read meets the unique Loan, and the
+     proof consults X: `Rests`) and whose site classes carry `Limit` or `Deep` from an independent callee; the shared Loan is one a
+     write would meet and the read does not, so `Met`'s second-block `Unsupported_Kd` (or `OwnershipDepthLimit_Kd`) is still reported
+     (review 2). Constructed by reading, not probed: if U2 finds it unreachable, it says why in its commit and keeps rows 1-4.
+  Before the fix `Problems` is empty, so rows 1, 4 and 5 fail; rows 2 and 3 pin the dependent rule. Rerun
   `TheLibraryHasNoAnalysisProblem`, `AWarmReportAllocatesNothing` and `InstanceCollectorTest.AWarmRunAllocatesNothing` (0 B).
 - The mir ledger runs before review (R4-2f; a heavy run, registered first): programs with findings newly show other bodies' records;
   each move is named in the commit.
@@ -185,14 +195,16 @@ consults, all on paths already walked; no allocation, no new pass. No timing run
 
 Two units now (the analyses' part grew with B1 and F2, so one unit no longer fits the hour):
 - **U1 (R5, about 40 minutes):** the fact (`MirBody`, `MirValidator*`: W1 hold files R4 consented to; `MirBuilder.Defaults.cs`, a hold
-  file outside that consent, needs R4's consent too), the collector, `MirValidatorTest` and `InstanceCollectorTest`; DECISIONS R5-M183
+  file R4 consented to for its one line, §10), the collector, `MirValidatorTest` and `InstanceCollectorTest`; DECISIONS R5-M183
   names R4's consent and states the analyses' rule for U2. U1 alone meets H7's prerequisite (A3b's records survive). `MirAnalysis`
   keeps its all-or-nothing gate until U2 (removal condition: U2; recorded in PLAN).
 - **U2 (R4's files, after R4 consents to §4's hunk, about 45 minutes):** the driver, `MirDrops.Exclude`, A4's `Views`, A5's proof
   result, `MirAnalysisTest`'s four rows; then the mir ledger before review.
 
-Unit checks: the named classes plus `MirBuildTest`. No behavior-preserving commit: the `Check` extraction moves one member's body
-inside the behavior change, and no other structure moves.
+Unit checks: the named classes plus `MirBuildTest`. The `Check` extraction (`MirValidator.Validate`'s body moved into a private
+member) follows AGENTS "Separate commits" (the planning session's decision): it is a behavior-preserving commit before the behavior
+change. The coordinator placed it in U2; the extraction lives in `MirValidator.cs`, which U1 changes, so it opens U1 unless the planning
+session moves the wrapper to U2.
 
 ## 10. Questions
 
@@ -204,7 +216,12 @@ Answered (review 1):
 - R4-c: a `MirDrops` member (`Exclude`), as §4 states.
 - Q3: replaced (B2).
 
-Open: none for the design; U1 needs R4's consent for `MirBuilder.Defaults.cs` (one line).
+R4's consents (recorded, review 2): §4 for U2 with `Met`'s fall-through; `MirBuilder.Defaults.cs` for U1, only the
+`Findings.Count` difference becoming `this.body.HasFinding` and its `findings` local, tested by the defaults rows that pin `Failed`;
+the split (U1 alone first, U2 next, `MirAnalysis` keeping its gate until U2; U2's mir ledger before its review; U2's landing needs no
+R4 window); W1 hold files `MirBody.cs` and `MirValidator*.cs` for U1.
+
+Open: where the `Check` extraction's behavior-preserving commit goes (U1, where its file is, or U2 as placed; §9).
 
 ## Revision 1 (review 1, REVISE)
 
@@ -217,3 +234,12 @@ Open: none for the design; U1 needs R4's consent for `MirBuilder.Defaults.cs` (o
 | R4-c: the driver writes the table | §4: `MirDrops.Exclude` with its contract |
 | Non-blocking: wrapper, test seam, header text | §2 |
 | Sizes and units | §8, §9: about +57 / −18; two units |
+
+## Revision 2 (review 2, REVISE)
+
+| Finding | Fix |
+| --- | --- |
+| Blocking (reviewer, R4): `Met` returned early on `Rests`, losing its second block's independent Limit | §4: only the first block's record is skipped; `Met` falls through to the second block; MirAnalysisTest row 5 |
+| `Unproved`'s consulted set and `Fact` under `Rests` | §4: contract states both |
+| The `Check` extraction | §9: a behavior-preserving commit before the behavior change |
+| R4's consents | §10 |
