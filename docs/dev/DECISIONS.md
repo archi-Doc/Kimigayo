@@ -6354,6 +6354,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     The raw layers a Type shows (BU-52's Field, payload and element of a by-value input) are read as before: BU-52 stands; BU-47's
     abstract row `0 Content store 0` is unchanged and 16.3.3's sentence is A5's reading of it; the handle-payload classification is the
     MIR's, one Sealed test (S2).
+    Retention of raw parts (15.6.4, beside "A raw pointer argument is retained as a borrowed one"; the owner's Q11 ruling below, which
+    asked S0 for it before landing, verbatim 「引数が共有層を通らず値で保持する raw 層（Tuple 要素、Option の payload、Field、Type 引数を含む）は、raw ポインタ引数と同じく保持される」): a raw layer that an argument holds by value through
+    no shared layer, a Tuple element, an Option payload, a Field or a Type argument included, is retained as a raw pointer argument is.
+    Reason: 15.6.4's "a part it holds by value", and the owner's reading of 2026-10-30 (BU-66, verbatim
+    「(a) 今の文面に含まれると読み、今の動作のまま進める」: an erased callee's abstract result keeps its raw inputs), applied in the same way to
+    raw parts held by value; write route (4) already lists them.
   - Overrides Q1 (a) (R4-M147's "an abstract part ... may be an exclusive reference") by (S), a third option, neither (a) nor (b). The
     owner's reason, verbatim: 「調査の結果、Q1 (a) は健全性ではなく実装都合で採られていました。P13 の設計レビュー 1 は「Q1 (b) だと R4-M73 の本体ホールドと空値規則が残る」ことを理由に (a) を推しています。その後 R4-M147 でホールドは別の手段（部品単位のガード）で消えたので、(b) を妨げた理由はもう成り立っていません。」
     The planning session's record (the S0 SPEC review's B3): that reason does not hold for (b) itself. R4-M147 could remove the hold
@@ -6382,7 +6388,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     never E on account of the hidden layer; it records from its
     ledger the change of R4-M148's rule-G self-store bullet ("which R4-M147's Q1 (a) lets be an exclusive reference") and BU-49's
     "R4-M147 Q1 (a)"; it adds the spec-case `15.6.4-abstract-reach` (`count<S>`: it lands with S1′, since MirCensusTest's
-    accepted-variant census fails on its MIR record before). S2 (Full) G264 U1 relanded without staging (R4-M150's staging text lives
+    accepted-variant census fails on its MIR record before). S1′ is its design's Revision 1 plus B7's chain reach; its Revision 2
+    retention rule goes to BU's Binding unit, not to S1′. The owner's Q11 ruling on S1′'s B2′ (2026-11-04, relayed to R4 by the session
+    「Kimigayo drop合成の問題検討」; an aide's code-reading analysis, no build), the question verbatim 「この方針（Binding ユニットを分離し S1′ は条件付き ACCEPT）で Q11 を裁定しますか？」, the answer
+    verbatim 「この方針で」: (1) B2′ (tiedOptBad, tiedTupBad: a tied abstract value does not retain a raw input wrapped in an Option or a
+    Tuple) is caused by Binding's retention rows, not by S1′'s A5 design: BU-66 rule 3's fill covers raw-typed inputs only, so
+    `make(v: Option<raw/u8>) -> Self` has only a `0 Content` row; (2) S1′ Revision 1 is ACCEPT, and tiedOptBad and tiedTupBad are its
+    fail-first ledger rows waiting for BU's Binding unit; (3) BU's lane takes that Binding unit (Major): the fill goes from "raw input" to
+    "raw source", every raw layer an input holds by value through no shared layer (its own layer, a Tuple element, an Option payload, a
+    Field, a Type argument, past exclusive layers, never past a shared one); A5 is unchanged; (5) rejected: A5 adding the input's raw
+    parts' addresses to the abstract output (the consumer would decide by shape), and giving Φ_E back to abstract results (only as an
+    interim if the Binding unit is late). BU-66 gets its override note from that Binding unit. S2 (Full) G264 U1 relanded without staging (R4-M150's staging text lives
     on `claude/a5-g264-u1`, not on dev, and S2 removes it there); S3 (c80, a payload the final release frees) a separate unit after the
     owner's choice; S4 the pre-publication checks. Order S0, S1′, S2, S4, all before H5.
   - BU-52's interim: which of its shadow-only false errors S1′ resolves is recorded from S1′'s ledger comparison when S1′ lands.
