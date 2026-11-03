@@ -181,14 +181,14 @@ public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int 
 public readonly record struct OwnershipLending(Koto Input, Koto Call);
 
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
-// Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name, such
-// as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
-// (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found under, one bit per case of the function's
-// enumeration (SPEC 8.15, 23.1.2); empty outside a case run and once every case found the problem.
+// Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name);
+// Borrow is the Borrow that created the Loan (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found
+// under, one bit per case of the function's enumeration (SPEC 8.15, 23.1.2); empty outside a case run and once every case found
+// the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
-    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0,
     OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BindingObligation? Obligation = null,
-    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
+    Koto? Borrow = null, string? Destroyed = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {

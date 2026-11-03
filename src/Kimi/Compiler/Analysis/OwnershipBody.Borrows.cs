@@ -1655,28 +1655,14 @@ public sealed partial class OwnershipBody
     }
 
     // SPEC 15.6.2, 16.2.2: the record of destroying `root` while `holder` keeps its Loan, with the Borrow that created the Loan: a
-    // conversion such as `n@ref`, an implicit Borrow at its operand, or a capture entry such as `[n@ref]` of a closure.
+    // conversion such as `n@ref`, an implicit Borrow at its operand, or the closure whose capture entry, such as `[n@ref]`, borrows.
     private OwnershipIssue DestructionIssue(Koto source, int holder, int root, int lending)
     {
         Koto? borrowed = null;
-        var capture = -1;
         if (lending >= 0 && this.LendingBorrow(lending, root) is >= 0 and var borrow)
         {
             borrowed = this.Operations[borrow].Source;
-            if (borrowed is FunctionKoto { ClosureAsCreated: { } closure, Captures: { } entries })
-            {
-                for (var i = 0; i < closure.Captures.Count && capture < 0; i++)
-                {
-                    if (this.SymbolPlaces.TryGetValue(closure.Captures[i].Source, out var captured) && captured == root)
-                    {
-                        for (var entry = 0; entry < entries.Length && capture < 0; entry++)
-                        {
-                            capture = entries[entry].Name == closure.Captures[i].Source.Name ? entry : -1;
-                        }
-                    }
-                }
-            }
-            else if (borrowed.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion)
+            if (borrowed is not FunctionKoto { ClosureAsCreated: not null, Captures: not null } && borrowed.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion)
             {
                 borrowed = conversion;
             }
@@ -1692,9 +1678,7 @@ public sealed partial class OwnershipBody
             }
         }
 
-        var temporary = name is null && this.Places[root].Kind == OwnershipPlaceKind.Temporary ? this.Places[root].Source : null;
-        var loan = this.Places[holder].Source;
-        return new(source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: loan, Borrow: borrowed, BorrowCapture: capture, Destroyed: name ?? string.Empty, DestroyedTemporary: temporary);
+        return new(source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source, Borrow: borrowed, Destroyed: name ?? string.Empty);
     }
 
     private void PrepareSlicePaths()

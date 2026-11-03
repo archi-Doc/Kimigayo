@@ -215,7 +215,7 @@ public sealed partial class OwnershipAnalysis
                     {
                         if (entries[entry].Name == capture.Source.Name)
                         {
-                            this.Report(new(closure, OwnershipRequirement.DefaultArgumentMove, Capture: entry));
+                            this.Report(new(closure, OwnershipRequirement.DefaultArgumentMove));
                             break;
                         }
                     }

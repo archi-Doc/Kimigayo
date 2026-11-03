@@ -243,7 +243,6 @@ public partial class OptionalTryDiscardTest
         var c = MinimalEmissionTest.Analyze("func save() -> Result<(), i32> => .Ok(())\nfunc run() -> Result<(), i32> => try save()");
         c.Binding.CheckBound();
         c.Binding.ReportDiagnostics();
-        c.AnalyzeControlFlow().ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Code == "TryPayloadMismatch_Kd" && d.Explanation.Contains("without try", StringComparison.Ordinal));
     }
 

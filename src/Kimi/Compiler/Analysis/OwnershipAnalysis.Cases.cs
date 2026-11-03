@@ -10,7 +10,6 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private readonly List<PairBinder> caseBinders = new();
-    private readonly List<PairBinder> namedBinders = new();
     private readonly List<OwnershipBody> casePool = new();
     private int caseBodyCount;
     private OwnershipBody? caseBody;
@@ -24,19 +23,6 @@ public sealed partial class OwnershipAnalysis
             if ((admitted & Binding.SemanticsOrder[i].ToMask()) != 0)
             {
                 return Binding.SemanticsOrder[i];
-            }
-        }
-
-        return null;
-    }
-
-    private static FunctionKoto? EnclosingFunction(Koto node)
-    {
-        for (var current = node; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto function)
-            {
-                return function;
             }
         }
 
@@ -166,21 +152,5 @@ public sealed partial class OwnershipAnalysis
         {
             this.issues.Add(storage[i]);
         }
-    }
-
-    // SPEC 23.1.2: the `case` fact of a problem, or null for a problem of every case or of no case run; the binders it names are left
-    // in namedBinders for the related declarations. Formatted only for a published record, by Binding's Semantics-case renderer
-    // (CaseFact; R6-check Q8-6, DECISIONS BU-82), which this Analysis calls until H10b deletes it.
-    private string? CaseFact(in OwnershipIssue issue, out bool single)
-    {
-        single = false;
-        this.namedBinders.Clear();
-        if (issue.Cases == 0 || EnclosingFunction(issue.Source) is not { } function)
-        {
-            return null;
-        }
-
-        this.compilation.Binding.PairBinders(function, this.caseBinders);
-        return Binding.CaseFact(this.caseBinders, issue.Cases, this.namedBinders, out single);
     }
 }
