@@ -18,10 +18,9 @@ public class CallReservationTest(ITestOutputHelper output)
     private const string Counter = "struct Counter\n    public var value: i32 = 1\n    public func add(self: uniq/Self, n: i32) => self.value += n\n    public func take(self: uniq/Self) -> i32\n        let n = self.value\n        self.value = 0\n        return n\n";
     private const string Drain = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\nstruct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public init(inner: J) => self.inner = inner@move\n    public func take(self: uniq/Self) -> Option<J.Item> => self.inner.next()\n    public func reset(self: uniq/Self, fresh: J) => self.inner = fresh@move\n";
     private const string Keeper = "struct Store\n    public var value: i32 = 1\n    public func lend(self: uniq/Self during source) -> Lent during source => Lent.init(self)\nstruct Lent {source}\n    var store: uniq/Store during source\n    public init(store: uniq/Store during source) => self.store = store\nstruct Keeper {source}\n    var inner: Lent during source\n    public init(inner: Lent during source) => self.inner = inner@move\n    public func reset(self: uniq/Self, fresh: Lent during source) => self.inner = fresh@move\n    public func peek(self: ref/Self) -> i32 => 1\n";
-    private const string ActivationConflict = "An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live";
     private const string ReservationConflict = "This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation";
     private const string LoanConflict = "This operation conflicts with an active loan";
-    private const string RetainedLoanLabel = "value retaining the conflicting loan";
+    private const string Retaining = " (value retaining the conflicting loan)"; // A6's `Store` witness: a `loan` at the holder's declaration.
     private const string ReservationLabel = "conflicting exclusive call reservation";
     private const string BorrowLabel = "borrow that created the loan";
     private const string LaterUseLabel = "later use of the value retaining the conflicting loan";
@@ -189,15 +188,11 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData(Drain + "var values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nlet second = drain.take()", "values", "values.iterateUniq())\nlet second", "borrow 18:48 values | loan 20:14 drain")]
     [InlineData(Drain + "func replace<J>(drain: uniq/Drain<J>, fresh: J)\n    J is Iterator\n    drain.reset(fresh@move)\nvar values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\nreplace(drain@uniq, values.iterateUniq())\nlet second = drain.take()", "values", "values.iterateUniq())\nlet second", "borrow 21:48 values | loan 23:14 drain")]
     [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet n = keeper.peek()", "s", "s.lend())\nlet n", "borrow 18:26 s | loan 20:9 keeper")]
+    // `keeper` has no later use, so the value retaining the Loan is related at its declaration (DIAGNOSTICS A6's `Store` witness; the
+    // U-T2 amendment of DECISIONS R4-M57); H3b T46: CallActivationConflict_Kd at `s.lend()` before.
+    [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet z = 1", "s", "s.lend())\nlet z", "borrow 18:26 s | loan 18:1 var keeper = Keeper.init(s.lend())" + Retaining)]
     public void AnImplicitReceiverMeetingARetainedLoanConflictsOnceAtTheInput(string body, string input, string at, string related)
         => this.AssertOneRecord(Cell + body, "ComparisonLoanConflict_Kd", input, LoanConflict, related, at);
-
-    // Stopped at H5 (R6-check T-10, a round-2 input; R5's F-c ruling, U-T2): A5's record at `s` relates only the Borrow, and the later
-    // use of `keeper`, which retains the Loan into its own reservation's activation, is missing. The row keeps its base expectation.
-    [Theory]
-    [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet z = 1", "s.lend()", "s.lend())\nlet z", "var keeper", "`s` implicitly borrowed exclusively as the receiver of `lend`")]
-    public void AnImplicitReceiverMeetingARetainedLoanConflictsOnceAtActivation(string body, string call, string? at, string holder, string note)
-        => this.AssertOneConflict(Cell + body, "CallActivationConflict_Kd", call, ActivationConflict, note, related: holder, at: at);
 
     // SPEC 15.6.7: when the Loan's last use is a later argument, the receiver meets it during preparation only. The record at the input
     // relates the receiver's earlier Borrow and the Loan's later use, without the implicit acquisition's Note (H5; H3b T49, until A6).
@@ -249,17 +244,18 @@ public class CallReservationTest(ITestOutputHelper output)
         => this.AssertOneRecord(Cell + body, "CallReservationConflict_Kd", call, ReservationConflict, related);
 
     // SPEC 15.6.7: a write or Move during preparation, here in an argument that catches its own transfer, conflicts with the
-    // reservation once, at the operation, relating the reserved lending point. Stopped at H5 (R6-check T-10, a round-2 input; R5's
-    // F-c ruling, U-T2): A5's record at the write relates only the reserved Borrow; the later use of the reservation, the call past the
-    // label block, is missing (the Move below, which no block separates from its call, has it). The rows keep their base expectations.
+    // reservation once, at the operation. Since the MIR decides acceptance (H5, DECISIONS R5-M185) A5's record relates the reserved
+    // Borrow and, since the reserved argument's next use, the call, lies past the label block, that argument's declaration as the value
+    // retaining the Loan (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without a `reservation` related or
+    // the implicit acquisition's Note (H3b T49, until A6; the Move below, which no block separates from its call, relates the call).
     [Theory]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "c.value = 2", "c", "c@uniq", null)]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))", "c.value = 2", "c.value = 2", "c", "c@uniq", null)]
-    [InlineData("func run()\n    var c = Cell.init()\n    set(c@uniq, (label scope: do\n        c.value = 2\n        exit to scope 3\n    ))\nrun()", "c.value = 2", "c.value = 2", "c", "c@uniq", null)]
-    [InlineData("var c = Cell.init()\nc.set((label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "c.value = 2", "c", "c.set", "`c` implicitly borrowed exclusively as the receiver of `set`")]
-    [InlineData("var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.0.value = 2\n    exit to scope 3\n))", "pair.0.value = 2", "pair.0.value = 2", "pair.0", "pair.0@uniq", null)]
-    public void AnOperationDuringPreparationConflictsOnceWithTheReservation(string body, string at, string operation, string reserved, string reservedAt, string? note)
-        => this.AssertOneConflict(Cell + body, "CallReservationConflict_Kd", operation, ReservationConflict, note, "reservation", reserved, ReservationLabel, at, reservedAt);
+    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:5 c@uniq | loan 7:5 c@uniq" + Retaining)]
+    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:5 c@uniq | loan 7:5 c@uniq" + Retaining)]
+    [InlineData("func run()\n    var c = Cell.init()\n    set(c@uniq, (label scope: do\n        c.value = 2\n        exit to scope 3\n    ))\nrun()", "c.value = 2", "borrow 8:9 c@uniq | loan 8:9 c@uniq" + Retaining)]
+    [InlineData("var c = Cell.init()\nc.set((label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:1 c | loan 7:1 c" + Retaining)]
+    [InlineData("var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.0.value = 2\n    exit to scope 3\n))", "pair.0.value = 2", "borrow 7:5 pair.0@uniq | loan 7:5 pair.0@uniq" + Retaining)]
+    public void AnOperationDuringPreparationConflictsOnceWithTheReservation(string body, string operation, string related)
+        => this.AssertOneRecord(Cell + body, "CallReservationConflict_Kd", operation, ReservationConflict, related);
 
     // SPEC 15.6.7: a Move of the reserved target during preparation is one reservation conflict at the moved operand, relating the
     // reserved Borrow and the later use of its reservation, the call, without a `reservation` related (H5; H3b T49, until A6).
@@ -377,10 +373,23 @@ public class CallReservationTest(ITestOutputHelper output)
 
     private static string Text(string source, SourceSpan? span) => source.Substring(span!.Value.Start, span.Value.Length);
 
+    // A related location's label in parentheses where it is not its role's usual one (A6's `Use` witness for `loan`), else nothing.
+    private static string OtherLabel(DiagnosticRelated related)
+    {
+        var usual = related.Role switch
+        {
+            "borrow" => BorrowLabel,
+            "loan" => LaterUseLabel,
+            "reservation" => ReservationLabel,
+            _ => string.Empty,
+        };
+        return related.Label == usual ? string.Empty : $" ({related.Label})";
+    }
+
     // The MIR's one record of a rejected program (H5, DECISIONS R5-M185), not generated: one published Error with `code` and `message`
     // at `text`, starting where `at` (by default `text`) first occurs, with no Note and the related locations `related` lists in order,
-    // each "role line:column text" (1-based, in the whole source) with its role's label, in the console and in both language-server
-    // placements.
+    // each "role line:column text" (1-based, in the whole source) with its role's label, or followed by "(label)" where A6 gives the
+    // role another one (`Retaining`), in the console and in both language-server placements.
     private void AssertOneRecord(string source, string code, string text, string message, string related, string? at = null)
     {
         var path = Path.GetFullPath("reservation-conflict.kimi");
@@ -393,15 +402,8 @@ public class CallReservationTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal((code, DiagnosticSeverity.Error, message, (string?)null), (error.Code, error.Severity, error.Message, error.Note));
         Assert.Equal((source.IndexOf(at ?? text, StringComparison.Ordinal), text), (error.Span!.Value.Start, Text(source, error.Span)));
-        Assert.Equal(related, string.Join(" | ", error.Related!.Select(x => $"{x.Role} {x.Range!.Value.Start.Line + 1}:{x.Range.Value.Start.Character + 1} {Text(source, x.Span)}")));
-        var labels = error.Related!.Select(static x => x.Role switch
-        {
-            "borrow" => BorrowLabel,
-            "loan" => LaterUseLabel,
-            "reservation" => ReservationLabel,
-            _ => string.Empty,
-        }).ToArray();
-        Assert.Equal(labels, error.Related!.Select(static x => x.Label));
+        Assert.Equal(related, string.Join(" | ", error.Related!.Select(x => $"{x.Role} {x.Range!.Value.Start.Line + 1}:{x.Range.Value.Start.Character + 1} {Text(source, x.Span)}{OtherLabel(x)}")));
+        var labels = error.Related!.Select(static x => x.Label!).ToArray();
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(code, console.Text, StringComparison.Ordinal);
@@ -420,76 +422,6 @@ public class CallReservationTest(ITestOutputHelper output)
             else
             {
                 Assert.All(labels, x => Assert.Contains(x, sent.Message, StringComparison.Ordinal));
-            }
-        }
-
-        Assert.False(c.Generate(TextWriter.Null));
-    }
-
-    // One published Error at the expected range with one related location and its Note, in the console and in both
-    // language-server placements. By default the related location is the declaration of `second` that retains the Loan; at
-    // and relatedAt, when given, fix the start of the primary and the related range and make the related text exact. Kept for the rows
-    // stopped at H5 (R6-check T-10, U-T2), which keep their base expectations; it goes when U-T2's re-point moves them to AssertOneRecord.
-    private void AssertOneConflict(string source, string code, string text, string message, string? note, string role = "loan", string related = "let second", string label = RetainedLoanLabel, string? at = null, string? relatedAt = null)
-    {
-        var path = Path.GetFullPath("reservation-conflict.kimi");
-        var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.False(c.Analysis.IsVerified);
-        c.ReportAnalysis();
-        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
-        var result = c.Diagnostics.Finalize();
-        var error = Assert.Single(result.Diagnostics);
-        Assert.Equal(code, error.Code);
-        Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-        Assert.Equal(text, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        if (at is not null)
-        {
-            Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), error.Span.Value.Start);
-        }
-
-        Assert.Equal(message, error.Message);
-        Assert.Equal(note, error.Note);
-        var retained = Assert.Single(error.Related!);
-        Assert.Equal(role, retained.Role);
-        var relatedText = source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length);
-        Assert.StartsWith(related, relatedText, StringComparison.Ordinal);
-        if (relatedAt is not null)
-        {
-            Assert.Equal(source.IndexOf(relatedAt, StringComparison.Ordinal), retained.Span.Value.Start);
-            Assert.Equal(related, relatedText);
-        }
-
-        Assert.Equal(label, retained.Label);
-
-        var console = new DiagnosticContractTest.DiagnosticConsole();
-        new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains(code, console.Text, StringComparison.Ordinal);
-        Assert.Contains(label, console.Text, StringComparison.Ordinal);
-        if (note is not null)
-        {
-            Assert.Contains("Note: " + note, console.Text, StringComparison.Ordinal);
-        }
-
-        output.WriteLine(console.Text);
-        var identity = SourceIdentity.FromPath(path);
-        foreach (var placement in new[] { false, true })
-        {
-            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, placement)[identity]);
-            Assert.Equal(error.Display!.Range, sent.Range);
-            Assert.Contains(message, sent.Message, StringComparison.Ordinal);
-            if (note is not null)
-            {
-                Assert.Contains("note: " + note, sent.Message, StringComparison.Ordinal);
-            }
-
-            if (placement)
-            {
-                Assert.Equal(retained.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
-            }
-            else
-            {
-                Assert.Contains(label, sent.Message, StringComparison.Ordinal);
             }
         }
 
