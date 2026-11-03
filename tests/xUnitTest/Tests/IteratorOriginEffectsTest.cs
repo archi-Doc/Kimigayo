@@ -57,8 +57,8 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorIntersection", source, "intersection\n");
     }
 
-    // Warm rebinding reruns the confined obligations of a Feed witness, which composes a generic helper, and of a formatting witness, and
-    // the Origins of intersection items, without allocating.
+    // Warm rebinding a program with confined witnesses (a Feed witness that composes a generic helper, a formatting witness) and
+    // intersection items' Origins allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEffectBoundChecksDoNotAllocate()

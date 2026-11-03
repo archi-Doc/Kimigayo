@@ -10442,8 +10442,11 @@ resumed by R4-M86 (2026-10-20).
     `EffectBoundImplementationTest`'s expected class of the three kinds changes with the vocabulary only.
   - X1 (adopted): the members only the walk read go in this unit rather than at H11: `TryResolveFormattingCallback`,
     `HasFormattingCallback`, the R6 overload `RequirementImplementation(CallPlan, ...)`, `DestructionCall` with `destructionCalls`
-    and `SelectSpecialization(CallPlan)`. R4-12's R7 retag stands: the private `RequirementImplementation(BindingSymbol, ...)` and
-    `requirementCalls` stay for the R7 comparison composition; their Reason drops "TryResolveFormattingCallback's (H11)".
+    and `SelectSpecialization(CallPlan)`, and `DictionaryComparison`, which departs from R5-M68 ("`ComparisonPlan(CallPlan)` and
+    `DictionaryComparison` go at H11 after their readers"): its readers went with the walk, so that reason no longer holds for it;
+    `ComparisonPlan(CallPlan)` stays to H11 for `ComparisonCompositionTest` (D-c8). R4-12's R7 retag stands: the private
+    `RequirementImplementation(BindingSymbol, ...)` and `requirementCalls` stay for the R7 comparison composition; their Reason drops
+    "TryResolveFormattingCallback's (H11)".
   - X2 (adopted): `BindingFailure.VirtualEffectBound` (no producer since F), its code arm and description row stay to H11: the
     ledger row `MirDifferenceLedger.ComparedSet` reads it until H10a, and removing it shifts the requirement catalog.
 
