@@ -16,7 +16,7 @@
 // is, its causes their union (a direct report drops the first's Cause tail; a derived one adds its new causes). Merged, the view
 // publication reads (MirReport.Merged.cs; R4-M11, R6-check H3-2), has one merged problem per code, subject, Reason and class, in the order
 // of its first member, with its members (indices in All), its facts (its first member's but their Cause tail, then by the rule above
-// over its members, each Cause's Value an index in Merged, once each) and its Ordinal, its Reason's position among the merged problems of
+// over its members, each Cause's Value an index in Merged, once each, never its own) and its Ordinal, its Reason's position among the merged problems of
 // its code, subject and class; the class keeps each record class's rows apart from the other's and from the analyses' problems, which
 // merge across bodies and NoBody: A4 (NoBody) and A5 (a body) both record Unsupported_Kd and OwnershipDepthLimit_Kd under one requirement
 // each (Ownership.Unsupported, Ownership.DepthLimit), so at one subject and Reason they merge and never disagree, and A4's obligation

@@ -16062,6 +16062,17 @@ structure is recorded here by the unit that first implements it.
     (H0a, revision 2) is named `MirReport.Merged`, since H3-1's class helper on `MirProgram` reads by class (review N7, N-b). The merge
     across bodies is `Merged`'s (H0a §3.2): one merged problem per (code, subject, Reason, class), with its members and `Ordinal`,
     computed once per version.
+  - Superseding (H3-2; R5 and R4, 2026-11-03, R4 agreeing): 2g-1 left R4's chain at the exit (G396), so H3-2 does not wait for it. Until
+    2g-1 a MIR problem resting on a Binding failure carries no Cause fact and publishes as its own direct record, dependent under Q13
+    (counted by code, never blocking, never `InternalInvariant_Kd`; an analysis `InternalInvariant_Kd` stays a regression). H0a §4.2's
+    null-`FailureCauses` rule applies to Cause −1 facts only, which 2g-1 produces; the probe that every Binding cause has a non-null
+    `FailureCauses`, BU-2's four shapes, and no Cause fact on a located problem (§3.2's invariant makes it `InternalInvariant_Kd`; A4's
+    causes at Opaque sites on `Unsupported_Kd` rows) are 2g-1's contract items (G396). From H5 until 2g-1, A3's records that read a Binding
+    failure or a guessed recovery publish direct, departing from DIAGNOSTICS §4.3 'Later phases' (a dated note there, in H5's commit, when
+    the contract changes). Supersedes: R5-M182's amendment 'H3-2 lands with a null `FailureCauses` as `InternalInvariant_Kd` after 2g-1
+    sites every Binding cause at its failed node' (the null rule stays; the order goes); H0a-8's 'fixed in R4's chain before H3-2'; H0's
+    unit-table prerequisite of H3-2 'R4's exit with A6, G11, Q17, Q8-6, OQ11', of which only 'with A6' goes; H0 §5's chain 'R4's exit (A6
+    2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and

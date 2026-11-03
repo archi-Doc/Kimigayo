@@ -371,6 +371,18 @@ public sealed class MirAnalysisTest
         Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
+    // R6-check H3-2 (R4's U1b note n2): members of one merged problem that cause one another, A4's (NoBody) and A5's Unsupported_Kd at one
+    // subject, name no other problem: the remapped self-cause is dropped, their other causes kept.
+    [Fact]
+    public void AMergedProblemNeverCausesItself()
+    {
+        var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
+        report.Add(Conflict);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(MirFactKind.Cause, new(0, 5), 1)]);
+        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+    }
+
     // R6-check H3-2 (N2, as R5-M23's disagreement): a Cause fact whose Value is neither -1 nor an index in All names no problem, a recording
     // rule's defect: the problem is not added, one InternalInvariant_Kd under Ownership.Internal is at its subject instead, and Add returns
     // -1; a Binding cause (-1) and an index in All are kept.

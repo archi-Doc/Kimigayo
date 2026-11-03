@@ -267,10 +267,18 @@ public sealed class DiagnosticCollection
     /// <param name="document">The location's document; the target's document by default.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
     internal bool ReportLocation(DiagnosticRequirement requirement, SourceSpan range, DiagnosticCode code, SourceDocument? document)
+        => this.Report(requirement.Partition, this.LocationKey(requirement, range, document), range, code, null, null, null, null, document);
+
+    /// <summary>Gets the key of a problem whose location is its subject, as <see cref="ReportLocation"/> records it, such as a derived
+    /// problem's prerequisite.</summary>
+    /// <param name="requirement">The requirement.</param>
+    /// <param name="range">The location.</param>
+    /// <param name="document">The location's document; the target's document by default.</param>
+    /// <returns>The key.</returns>
+    internal DiagnosticKey LocationKey(DiagnosticRequirement requirement, SourceSpan range, SourceDocument? document)
     {
         document ??= this.Document;
-        var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, document is null ? -1 : range.Length, requirement);
-        return this.Report(requirement.Partition, key, range, code, null, null, null, null, document);
+        return new(null, this.SourceOf(document), range.Start, document is null ? -1 : range.Length, requirement);
     }
 
     /// <summary>Gets the key of a check whose subject is a syntax node.</summary>

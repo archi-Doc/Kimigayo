@@ -13,10 +13,12 @@ namespace Kimi.Compiler.Mir;
 // - Inputs: All and its facts, as Add and Clear left them.
 // - Outputs: Merged, Members and MergedFacts.
 // - Invariants: every problem of All is a member of exactly one merged problem, which takes its first member's code, requirement, subject
-//   and Reason (a disagreement's InternalInvariant_Kd may have none); members are in All's order; a merged problem's facts are its first
-//   member's but their Cause tail, then, when every member is derived, their causes once each, a Value >= 0 the index in Merged of the
-//   problem's merged problem (the remap is total), -1 (2g-1's Binding cause) kept; the view is computed once, on its first read after an
-//   Add or a Clear, in pooled storage, so a warm version allocates nothing.
+//   and Reason (a disagreement's InternalInvariant_Kd may have none); members are in All's order; a member whose requirement disagrees
+//   stays in its key's merged problem, its body among the members and its causes counted, where Add drops such a problem for the defect
+//   (R4's U1b note n1); a merged problem's facts are its first member's but their Cause tail, then, when every member is derived, their
+//   causes once each, a Value >= 0 the index in Merged of the problem's merged problem (the remap is total) but never its own (members
+//   causing one another, across NoBody and a body, name no other problem; R4's U1b note n2), -1 (2g-1's Binding cause) kept; the view is
+//   computed once, on its first read after an Add or a Clear, in pooled storage, so a warm version allocates nothing.
 // - Prohibitions: no write to All or its facts; no publication.
 internal sealed partial class MirReport
 {
@@ -155,14 +157,14 @@ internal sealed partial class MirReport
     }
 
     // Adds a member's causes after the merged facts' tail start, each Value >= 0 remapped to the index in Merged of its problem's merged
-    // problem and -1 kept, once each.
+    // problem and -1 kept, once each; a cause in the member's own merged problem names no other problem and is skipped.
     private void AddCauses(int member, int tail)
     {
         var facts = this.Facts(member);
         foreach (var cause in facts[^Causes(facts)..])
         {
             var remapped = cause.Value < 0 ? cause : cause with { Value = this.owners[(int)cause.Value] };
-            if (CollectionsMarshal.AsSpan(this.mergedFacts)[tail..].IndexOf(remapped) < 0)
+            if (remapped.Value != this.owners[member] && CollectionsMarshal.AsSpan(this.mergedFacts)[tail..].IndexOf(remapped) < 0)
             {
                 this.mergedFacts.Add(remapped);
             }
