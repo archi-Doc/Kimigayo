@@ -103,13 +103,16 @@ public partial class Compilation
     /// DECISIONS R5-M184, R5-M185).</summary>
     public void ReportAnalysis() => this.PublishMirRecords();
 
-    /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem: its MIR body exists and no
-    /// merged problem of the report has a member in it (DECISIONS R5-M185); hover's ownership line reads it (R6-check H6).</summary>
+    /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem (R6-check H6, H0b §2.1;
+    /// GR-1a): its MIR body exists, the analyses ran on it (no validator finding, <c>MirBody.HasFinding</c>, DECISIONS R5-M183), no
+    /// construction record lies in it (<c>MirBody.HasConstructionRecord</c>) and no merged problem of the report has a member in it
+    /// (DECISIONS R5-M185); hover's ownership line reads it. A record made without a body in hand, a collection record or a module's broken
+    /// HIR contract, is outside it.</summary>
     /// <param name="function">The function's symbol.</param>
     /// <returns>Whether its body was judged without a problem; false before an analysis, after invalidation and without a body.</returns>
     internal bool JudgedWithoutProblem(BindingSymbol function)
     {
-        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { } body)
+        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { HasFinding: false, HasConstructionRecord: false } body)
         {
             return false;
         }

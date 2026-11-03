@@ -5,9 +5,10 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, and the Opaque value that replaces a node
-// Binding rejected, a form no rule builds, or a default its call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its
-// site naming the roots the node's syntax reads, writes or borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots.
+// Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one path of a construction record made
+// in the body being built (Record), and the Opaque value that replaces a node Binding rejected, a form no rule builds, or a default its
+// call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its site naming the roots the node's syntax reads, writes or
+// borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots.
 internal sealed partial class MirBuilder
 {
     // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
@@ -30,10 +31,19 @@ internal sealed partial class MirBuilder
     {
         if (!Rejected(value))
         {
-            this.program.Report(SourceRef.Of(node));
+            this.Record(node, DiagnosticCode.Unsupported_Kd);
         }
 
         this.Site(node, destination, Completes(value));
+    }
+
+    // The one path of a construction record made while a body is built (MirProgram.Report): a code at a node of the body, which marks
+    // the body (MirBody.HasConstructionRecord, its one writer; DECISIONS R5-M183's GR-1a line). The module's broken HIR contracts,
+    // recorded before its bodies, have no body in hand (Module).
+    private void Record(Koto node, DiagnosticCode code)
+    {
+        this.program.Report(SourceRef.Of(node), code);
+        this.body.HasConstructionRecord = true;
     }
 
     // An Opaque value of the destination's Type in place of a node, its site naming the locals the node's syntax reads, writes or borrows
