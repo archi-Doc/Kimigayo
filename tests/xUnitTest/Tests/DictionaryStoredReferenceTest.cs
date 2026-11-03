@@ -301,17 +301,23 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         // SPEC 15.6.2, 15.6.3 (DECISIONS BU-27): each call conflicts with `found` at its argument's reservation and at its index's indexUniq
-        // receiver, an exclusive Borrow of `entries` while `found` keeps the index result's shared Loan on it.
+        // receiver, an exclusive Borrow of `entries` while `found` keeps the index result's shared Loan on it. Each record relates A6's
+        // facts as A5 publishes an activation conflict (R4-M169, the MIR's records since H5): the Borrow of `entries` that created `found`'s
+        // Loan (Anchor), `found`'s later use (Use) and the activated reservation (Reservation): the argument, or indexUniq's receiver.
         Assert.Equal(independent ? 4 : 2, result.Diagnostics.Length);
+        var call = -1;
         for (var i = 0; i < result.Diagnostics.Length; i++)
         {
             var error = result.Diagnostics[i];
+            call = i % 2 == 0 ? source.IndexOf("change(entries[1])", call + 1, StringComparison.Ordinal) : call;
             Assert.Equal("CallActivationConflict_Kd", error.Code);
             Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-            Assert.Equal(i % 2 == 0 ? "change(entries[1])" : "entries[1]", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-            var retained = Assert.Single(error.Related!);
-            Assert.Equal("loan", retained.Role);
-            Assert.Contains("found", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+            Assert.Equal((i % 2 == 0 ? call : call + 7, i % 2 == 0 ? "change(entries[1])" : "entries[1]"), (error.Span!.Value.Start, source.Substring(error.Span.Value.Start, error.Span.Value.Length)));
+            Assert.Equal(
+                [("borrow", source.IndexOf("entries[1]@follow@ref", StringComparison.Ordinal), "entries", "borrow that created the loan"),
+                    ("loan", source.IndexOf("found == 42", StringComparison.Ordinal), "found == 42", "later use of the value retaining the conflicting loan"),
+                    ("reservation", call + 7, i % 2 == 0 ? "entries[1]" : "entries", "conflicting exclusive call reservation")],
+                error.Related!.Select(x => (x.Role, x.Span!.Value.Start, source.Substring(x.Span.Value.Start, x.Span.Value.Length), x.Label)));
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -330,7 +336,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
                 Assert.Equal(error.Display!.Range, sent.Range);
                 if (related)
                 {
-                    Assert.Equal(error.Related![0].Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+                    Assert.Equal(error.Related!.Select(static x => x.Range!.Value), sent.RelatedInformation!.Select(static x => x.Location.Range));
                 }
                 else
                 {
