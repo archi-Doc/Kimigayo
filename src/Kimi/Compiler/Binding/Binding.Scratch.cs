@@ -8,6 +8,7 @@ public sealed partial class Binding
     private readonly ScratchBuffers<BoundOrigin> originScratch = new();
     private readonly ScratchBuffers<int> indexScratch = new();
     private readonly ScratchBuffers<bool> flagScratch = new();
+    private readonly ScratchBuffers<PairCase> caseScratch = new();
 
     // Nullability describes the caller's view: argument inference leaves holes, while Type
     // construction fills every slot before publishing a span. Both share the same stack.

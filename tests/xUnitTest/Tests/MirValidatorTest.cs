@@ -801,12 +801,13 @@ public sealed class MirValidatorTest
         Assert.Empty(program.Findings);
     }
 
-    // W1 rule 1, stage B (DECISIONS R5-M139; SPEC 3.5.1, 8.15.2, 13.5.5): a Place a Ref borrows exclusively (Uniq or TwoPhaseUniq), a
-    // PairAcquire's Place where its binder admits an exclusive case, in which it Reborrows, and the Place of an exclusive borrow an Adapt
-    // resolves to under a view pass no shared layer after their last raw Deref: else one SharedPath finding at the location, here at
-    // Broken, whatever the layer (a ref, objref, rc or arc Deref, a Slice's Index, a pair layer in a shared case). The PairAcquire's binder
-    // is read in its exclusive case, so its own pair layer is no shared layer, and a binder without an exclusive case only Copies; an
-    // Adapt's pair layers are read in its view's cases. None for a Ref through a raw pointer past a shared layer (SPEC 5.2.1 (3)); a shared
+    // W1 rule 1, stage B (DECISIONS R5-M139 with its (b2) line; SPEC 3.5, 3.5.1, 8.15.2, 13.5.5): a Place a Ref borrows exclusively (Uniq
+    // or TwoPhaseUniq), a PairAcquire's Place under each view in which it Reborrows (MirCases.Reborrows: its case Type is exclusive), and
+    // the Place of an exclusive borrow an Adapt resolves to under a view pass no shared layer after their last raw Deref: else one
+    // SharedPath finding at the location, here at Broken, whatever the layer (a ref, objref, rc or arc Deref, a Slice's Index, a pair layer
+    // in a shared case). A PairAcquire's and an Adapt's pair layers are read in the view's cases, so the own pair layer is no shared layer;
+    // a PairAcquire whose case Types are no exclusive reference only Copies, and one over `uniq/i32` with `s is owner or ref` Reborrows in
+    // the owner case. None for a Ref through a raw pointer past a shared layer (SPEC 5.2.1 (3)); a shared
     // borrow and an address are the write theory's rows.
     [Theory]
     [InlineData("uniq ref", true)]
@@ -817,18 +818,28 @@ public sealed class MirValidatorTest
     [InlineData("uniq slice", true)]
     [InlineData("uniq pair", true)]
     [InlineData("acquire ref", true)]
+    [InlineData("acquire target past ref", true)]
     [InlineData("adapt ref", true)]
     [InlineData("uniq raw", false)]
     [InlineData("acquire own", false)]
     [InlineData("acquire copy", false)]
+    [InlineData("acquire target", false)]
     [InlineData("adapt own", false)]
     public void AnExclusiveAcquisitionPastASharedLayerIsAFinding(string form, bool finding)
     {
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
         PairBinder.Collect(types.Generic, body.Binders);
-        body.Binders[0] = body.Binders[0] with { Admitted = form == "acquire copy" ? SemanticsMask.Ref : SemanticsMask.Ref | SemanticsMask.Uniq };
+        var admitted = form switch
+        {
+            "acquire copy" => SemanticsMask.Ref,
+            "acquire target" or "acquire target past ref" => SemanticsMask.Owner | SemanticsMask.Ref,
+            _ => SemanticsMask.Ref | SemanticsMask.Uniq,
+        };
+        body.Binders[0] = body.Binders[0] with { Admitted = admitted };
         _ = TyCtxt.Layer(types.Pair, out var payload, out var binder); // s/T: T and s.
+        var exclusive = c.Types.Reference(SemanticsKind.Uniq, BoundType.I32);
+        var target = c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [exclusive]); // s/(uniq/i32)
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
         MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
         MirPlace Payload(SemanticsKind semantics) => body.Project(
@@ -846,6 +857,8 @@ public sealed class MirValidatorTest
             "uniq pair" or "adapt own" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
             "uniq raw" => Deref(body.Project(Deref(Local(c.Types.Reference(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
             "acquire ref" or "acquire copy" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, types.Pair))),
+            "acquire target past ref" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, target))),
+            "acquire target" => Local(target),
             "acquire own" => body.Project(Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
             _ => Deref(Local(c.Types.Reference(SemanticsKind.Ref, payload!))), // adapt ref: T of s/T, past ref.
         };

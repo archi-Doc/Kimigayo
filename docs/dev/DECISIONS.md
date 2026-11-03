@@ -14166,6 +14166,13 @@ structure is recorded here by the unit that first implements it.
   per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
   pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
   would be a false finding).
+  - **Superseded in part by (b2)** (2026-11-03, BU, with R5's consent of 2026-11-03: 「Types.cs OK. (b2)'s commit 2 may put the PairAcquire
+    shared-path check in Checker.Views (MirValidator.Types.cs) through the existing cases.Reborrows.」): "it Reborrows there" no longer
+    holds for the binder's exclusive cases alone. A pair layer's owner case now acquires its target by SPEC 3.5's rows (R6-check (b2):
+    `s/(uniq/i32)` Reborrows with `s` = owner, and a nested layer by its own cases), so one assignment no longer decides. The PairAcquire
+    half leaves `SharedPath`. `Checker.Views` resolves each PairAcquire Use per view and checks its Place under that view's cases where
+    `MirCases.Reborrows` holds (the rejected per-view pass, now required; the stored list is the Adapts' one). Writes, destructions,
+    Refs and Adapts are unchanged.
 - **R5-M140 The owner confirms C10b's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
   C10b's design; verbatim 「承認します」, answering the two departures put to the owner; the consequences are the planning session's) The
   departures R5-M137 records are confirmed:

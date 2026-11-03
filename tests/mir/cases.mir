@@ -300,3 +300,48 @@ fn caller @107
       drop _1 -> bb16 @117
   bb16:
       unreachable @120
+fn exclusive @125
+  _0: () return @137
+  _1: s/uniq/i32 arg value @132
+  _2: s/uniq/i32 var local @139 s1
+  _3: s/uniq/i32 temp @143 s1
+  s1: lexical in s0 @138
+  b0: T Value, Uniq
+  bb0:
+      StorageLive(_2) @139 s1
+    * _2 = acquire b0 _1 @141 s1
+      StorageLive(_3) @143 s1
+    * _3 = acquire b0 _2 @143 s1
+      drop _3 -> bb1 [elide] @143 s1
+  bb1:
+      StorageDead(_3) @143 s1
+      _0 = const () @138 s1
+      drop _2 -> bb2 [elide] @139 s1
+  bb2:
+      StorageDead(_2) @139 s1
+      drop _1 -> bb3 [elide] @132
+  bb3:
+      return @138
+fn nested @144
+  _0: () return @163
+  _1: s/t/U arg value @160
+  _2: s/t/U var local @165 s1
+  _3: s/t/U temp @169 s1
+  s1: lexical in s0 @164
+  b0: U Value, Uniq
+  b1: T Value, Uniq
+  bb0:
+      StorageLive(_2) @165 s1
+    * _2 = acquire b1 _1 @167 s1
+      StorageLive(_3) @169 s1
+    * _3 = acquire b1 _2 @169 s1
+      drop _3 -> bb1 [keep in v0; elide in v1, v2, v3] @169 s1
+  bb1:
+      StorageDead(_3) @169 s1
+      _0 = const () @164 s1
+      drop _2 -> bb2 [keep in v0; elide in v1, v2, v3] @165 s1
+  bb2:
+      StorageDead(_2) @165 s1
+      drop _1 -> bb3 [keep in v0; elide in v1, v2, v3] @160
+  bb3:
+      return @164

@@ -16,7 +16,8 @@ public sealed partial class MirBuildTest
     // Plan 5.6.1, SPEC 8.14, 8.15, 13.5.5: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
-    // PairAcquire Reborrows in the uniq case and Copies in the others.
+    // PairAcquire Reborrows in the uniq case and Copies in the others; an owner case acquires its target by SPEC 3.5's rows (R6-check
+    // (b2)): `uniq/i32` Reborrows, and a nested pair layer by its own case.
     [Fact]
     public void ViewsResolvePairLayersAndAcquisitions()
     {
@@ -63,6 +64,12 @@ public sealed partial class MirBuildTest
                 "Fn peek 1 [Uniq]: ",
                 "Fn caller 0 [Owner]: acquire _1 copy, @b0 itself: T",
                 "Fn caller 1 [Uniq]: acquire _1 reborrow, @b0 *uniq/T: T",
+                "Fn exclusive 0 [Owner]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn exclusive 1 [Uniq]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn nested 0 [Owner, Owner]: acquire _1 copy, acquire _2 copy",
+                "Fn nested 1 [Owner, Uniq]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn nested 2 [Uniq, Owner]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn nested 3 [Uniq, Uniq]: acquire _1 reborrow, acquire _2 reborrow",
             ],
             lines);
     }
