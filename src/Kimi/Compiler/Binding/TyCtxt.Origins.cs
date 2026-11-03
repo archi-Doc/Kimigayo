@@ -26,7 +26,6 @@ internal enum OriginRowSource : byte
     Fit,
     Declared,
     WellFormed,
-    CallBorrows,
 
     // MirOrigins' own containment edges (SPEC 15.6.3); Binding forms none.
     Contained,

@@ -186,7 +186,7 @@ public partial class Compilation
     }
 
     // The fact table's Relation row (design 3.3): an Origin problem's last edge through Binding.OriginRelationFacts, its site, clause,
-    // destination and source from the body's C1-F4 row (CallBorrows a fit), a containment edge (-1) without a row as wellFormed; the ends are
+    // destination and source from the body's C1-F4 row, a containment edge (-1) without a row as wellFormed; the ends are
     // the Reason's, the longer one also the supplier (Q-BU-1). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
     private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related)? Relation(
         Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, Mir.MirFact fact)
@@ -205,7 +205,7 @@ public partial class Compilation
         var row = this.Types.OriginRows(program.Bodies[body].Key.Body).Rows[(int)fact.Value];
         var source = row.Source switch
         {
-            OriginRowSource.Fit or OriginRowSource.CallBorrows => "fit",
+            OriginRowSource.Fit => "fit",
             OriginRowSource.Declared => "declared",
             OriginRowSource.WellFormed => "wellFormed",
             _ => null, // Contained: MirOrigins' own edge, never a row of the view.

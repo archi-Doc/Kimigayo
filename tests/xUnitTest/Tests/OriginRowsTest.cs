@@ -320,6 +320,19 @@ public sealed partial class OriginRowsTest
         Assert.All(clauses, x => Assert.True(Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
     }
 
+    // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a
+    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row.
+    [Theory]
+    [InlineData("ref/(ref/i32 during b) during a", "WellFormed")]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "Fit")]
+    public void ATypeOccurrencesRelationIsAWellFormedRow(string site, string source)
+    {
+        const string Program = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n" +
+            "    let r: ref/(ref/i32 during b) during a = slot\n    return 0\n";
+        var (_, row) = RowAt(Program, "f", site);
+        Assert.Equal(source, row.Source.ToString());
+    }
+
     // 2a0-D §4 (D8): the body's oracle, extracted once at its root, agrees with Binding's per-request proof at the use on every fixed-fixed
     // row of the census, per Semantics case; a layer's rows with the layer's oracle.
     [Fact]
