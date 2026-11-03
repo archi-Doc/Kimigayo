@@ -105,13 +105,13 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string TemporaryFunction = "func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\n" +
         "func call(f: ref/(() -> i32)) -> i32 => f()\n\npublic func main() -> ()\n    let r = mk()@ref\n    Console.writeLine(\"\\(call(r))\")\n";
 
-    private const string Transfer = "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
-
     private const string Root = "let n = 5";
 
     private const string BorrowLabel = "borrow that created the loan";
 
     private const string LoanLabel = "later use of the value retaining the conflicting loan";
+
+    private const string RetainedLabel = "value retaining the conflicting loan";
 
     // A local that keeps n's Loan through an Option payload written in the block, a definition the carrying walk does not decide; both
     // exits destroy n while it keeps the Loan.
@@ -240,23 +240,22 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Null(records[0].Note);
     }
 
-    // SPEC 15.6.6: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
-    // Loan reaches keeps a record relating only the value keeping it, while the join still adds none. The same body over a plain
-    // reference is decided: one record, at the first destruction its carrying definition reaches.
+    // SPEC 15.6.6: where the carrying walk gives up, the escaping exit is never dropped. Since the MIR decides acceptance (H5, DECISIONS
+    // R5-M185) both exits' destructions of n are A5's one record at n's declaration (H3b T44: at each exit before; the second exit's own
+    // record is the old analysis's, 1x by R5's F-c ruling), relating the Borrow and `o`, whose next use lies past the block, at its
+    // declaration (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without the destruction's Note (T49, until
+    // A6). The same body over a plain reference, which the walk decides, has the same record.
     [Fact]
     public void AnUndecidedHolderKeepsEveryDestruction()
     {
-        var records = DiagnosticCorpus.Check(UndecidedHolder).Diagnostics;
-        Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), x.Code));
-        Assert.Equal(["exit to block 0", "exit to block 1"], records.Select(x => Text(UndecidedHolder, x.Span)));
-        Assert.Equal(UndecidedHolder.IndexOf("exit to block 1", StringComparison.Ordinal), records[1].Span!.Value.Start);
-        Assert.All(records, x => Assert.Equal(("loan", "var o"), (Assert.Single(x.Related!).Role, Text(UndecidedHolder, x.Related![0].Span)[..5])));
-        Assert.All(records, static x => Assert.Equal("`n` is destroyed here while a live value keeps its Loan" + Transfer, x.Note));
         var decided = UndecidedHolder.Replace("var o: Option<ref/i32> = .Some(z@ref)", "var o = z@ref", StringComparison.Ordinal)
             .Replace("o = .Some(n@ref)", "o = n@ref", StringComparison.Ordinal);
-        var record = Assert.Single(DiagnosticCorpus.Check(decided).Diagnostics);
-        Assert.Equal("exit to block 0", Text(decided, record.Span));
-        Assert.Equal(["borrow", "loan"], record.Related!.Select(static x => x.Role));
+        foreach (var (source, holder) in new[] { (UndecidedHolder, "var o: Option<ref/i32> = .Some(z@ref)"), (decided, "var o = z@ref") })
+        {
+            var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+            Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Root, (string?)null), (record.Code, Text(source, record.Span), record.Note));
+            Assert.Equal([("borrow", "n@ref", BorrowLabel), ("loan", holder, RetainedLabel)], record.Related!.Select(x => (x.Role, Text(source, x.Span), x.Label)));
+        }
     }
 
     // SPEC 3.6, 8.15.1: an abstract receiver temporary ends with its statement as well, so the iterator it lends cannot outlive it.

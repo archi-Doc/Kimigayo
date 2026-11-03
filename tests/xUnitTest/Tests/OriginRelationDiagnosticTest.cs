@@ -350,7 +350,9 @@ public partial class OriginRelationDiagnosticTest
     // Finite region bounds keep the actual Loan through annotations, scope exits and shared views of exclusive inputs.
     [Theory]
     [InlineData("struct H {s}\n    public let item: ref/string during s\n    public init(item: ref/string during s) => self.item = item\nfunc eat(n: string) -> () => ()\nfunc peek(n: ref/string) -> () => ()\nfunc f() -> ()\n    let v = \"v\"\n    let h = H.init(v@ref)\n    let w = \"w\"\n    let r: ref/string during h.s = w@ref\n    eat(w@move)\n    peek(r)\n", "w")]
-    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n", "let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r")]
+    // A5 records w's destruction at its declaration (R6-check H5, DECISIONS R5-M185; H3b T44: formerly the `if` block's body) and
+    // relates `keep`, whose next use lies past the block, at its declaration (the U-T2 amendment of DECISIONS R4-M57; DIAGNOSTICS A6).
+    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n", "let w = 9")]
     [InlineData("func f() -> ()\n    var x: i32 = 4\n    var y: i32 = 6\n    let r: ref/i32 = x@ref\n    let s: ref/i32 during r = y@ref\n    y = 7\n    Console.writeLine(\"\\(s@follow) \\(r@follow)\")\n", "y = 7")]
     // A fixed input over a local Borrow also loses the input's Loan: the write through `x` was accepted while `h` lived. A5 records the
     // write at its statement (R6-check H5, DECISIONS R5-M185; H3b T44: formerly at `x`).

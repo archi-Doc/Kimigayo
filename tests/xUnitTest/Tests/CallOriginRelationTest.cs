@@ -222,10 +222,14 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         if (body.Contains("    if true", StringComparison.Ordinal))
         {
+            // A5's record is at the destroyed local's declaration (R6-check H5, DECISIONS R5-M185; H3b T44), relates the stored borrow
+            // and the holder `slot`, whose next use lies past the `if` block, at its declaration (DIAGNOSTICS A6's `Store` witness; the
+            // U-T2 amendment of DECISIONS R4-M57), and has no Note ("`b` is destroyed here"; T49, until A6 publishes it).
             var error = Assert.Single(errors);
-            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
-            Assert.Equal("let b = 2\n        put(slot@uniq, b@ref)", Text(source, error.Span));
-            Assert.Contains("`b` is destroyed here", error.Note, StringComparison.Ordinal);
+            Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let b = 2", (string?)null), (error.Code, Text(source, error.Span), error.Note));
+            Assert.Equal(
+                [("borrow", text, "borrow that created the loan"), ("loan", "var slot = a@ref", "value retaining the conflicting loan")],
+                error.Related!.Select(x => (x.Role, Text(source, x.Span), x.Label)));
         }
         else
         {
