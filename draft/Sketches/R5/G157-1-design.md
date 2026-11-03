@@ -25,9 +25,10 @@ stands. R4's constraints are cited as "R4, 2026-11-03" (items R4-1 to R4-3, with
 | C. A set or column by ordinal on `MirProgram` | A side table beside the body with its own grow and clear; every reader needs the program as well as the body. R4-2a's "for example" is met by A, the validator's per-body publication. |
 | D. `MirProgram`'s accessors hide broken bodies | Rejected: `null` already means "no body" (`Bodyless`, published rows), so a broken callee would silently take the bodyless path: a fallback that hides a failure. A filtered `Bodies` breaks the per-ordinal bookkeeping both consumers need (§3 `starts`, §4 `MirDropTable`). |
 
-Owner: `MirValidator` (the producer's one validator) at its two entries. `Validate(body, findings)` becomes a wrapper with one
-assignment: `var count = findings.Count; this.Check(body, findings); body.HasFinding = findings.Count > count;` (today's body, early
-returns included, moves unchanged into the private `Check`). `Validate(program)` (`MirValidator.Statics.cs:35`, G191's StaticSlot, added
+Owner: `MirValidator` (the producer's one validator) at its two entries. `Validate(body, findings)` sets
+`body.HasFinding = findings.Count > count` (`count` taken on entry) at each of its three exits: the `Binder` return, the
+out-of-order return and the end (the planning session's decision after review 3: no wrapper, so no restructuring commit and its
+behavior-preserving evidence for two lines; review 1 judged the wrapper non-blocking). `Validate(program)` (`MirValidator.Statics.cs:35`, G191's StaticSlot, added
 after the build) sets `body.HasFinding = true` beside its `Add`. `MirBody.Reset` clears it.
 - `MirBody`'s header names the verdict among what it carries: "and the validator's verdict (HasFinding), which only MirValidator
   writes; no consumer reads a body that has one". The property is `{ get; internal set; }`.
@@ -180,7 +181,7 @@ a MIR record; `Accepts` also needs `Analysis.IsVerified`. A program with a findi
 | File | + / − (lines) |
 | --- | --- |
 | `Mir/MirBody.cs` (property, reset, header) | +5 |
-| `Mir/MirValidator.cs` (wrapper), `MirValidator.Statics.cs` | +8 / −1, +1 |
+| `Mir/MirValidator.cs` (three exits), `MirValidator.Statics.cs` | +4, +1 |
 | `Mir/Build/MirBuilder.Defaults.cs` | −1 |
 | `Backend/Instances/InstanceCollector.cs` (gate removed, root condition, header), `.Templates.cs`, `.Admit.cs` | +1 / −5, +3, +2 |
 | `Mir/Analysis/MirAnalysis.cs`, `MirDrops.cs` (`Exclude`) | +6 / −4, +4 |
@@ -202,10 +203,8 @@ Two units now (the analyses' part grew with B1 and F2, so one unit no longer fit
   result, `MirAnalysisTest`'s five rows (row 5 written from the code, not probed: if U2 finds it unreachable, its commit says why and
   its reviewer checks that claim against the code); then the mir ledger before review.
 
-Unit checks: the named classes plus `MirBuildTest`. The `Check` extraction (`MirValidator.Validate`'s body moved into a private
-member) follows AGENTS "Separate commits" (the planning session's decision): it is a behavior-preserving commit before the behavior
-change. It lives in `MirValidator.cs`, which U1 changes for the wrapper, so it is U1's first commit (the planning session's decision
-after review 2).
+Unit checks: the named classes plus `MirBuildTest`. No restructuring commit: the validator sets the fact at its exits (§2; the
+planning session's decision after review 3, replacing the `Check` extraction it had placed in U1).
 
 ## 10. Questions
 
@@ -222,7 +221,7 @@ R4's consents (recorded, review 2): §4 for U2 with `Met`'s fall-through; `MirBu
 the split (U1 alone first, U2 next, `MirAnalysis` keeping its gate until U2; U2's mir ledger before its review; U2's landing needs no
 R4 window); W1 hold files `MirBody.cs` and `MirValidator*.cs` for U1.
 
-Decided (the planning session, after review 2): the `Check` extraction's behavior-preserving commit is U1's first commit (§9).
+Decided (the planning session, after review 3): no `Check` extraction; the validator sets the fact at its three exits (§2, §9).
 
 Review 3 (ebe9682ef): ACCEPT; its non-blocking text findings (§9's placement and row count, `Met`'s line numbers) are fixed in the
 commit after it.
