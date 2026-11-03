@@ -1,6 +1,6 @@
 # G157 (1) design: a body with a validator finding is no consumer's (option (a))
 
-Status: revision 2 for re-review (R5, 2026-11-03; reviews 1 and 2 REVISE, tables at the end). The owner's GO, verbatim 「(a) で設計を始めて」: exclude only the MIR bodies that fail
+Status: accepted by design review 3 (R5, 2026-11-03; reviews 1 and 2 REVISE, tables at the end). The owner's GO, verbatim 「(a) で設計を始めて」: exclude only the MIR bodies that fail
 validation; judge and collect every other body. Classification: Major with a design review (three components). The design adds
 **one** published per-body fact (a `bool` on `MirBody`); no IR form, record kind or A4 summary representation changes, so the class
 stands. R4's constraints are cited as "R4, 2026-11-03" (items R4-1 to R4-3, with letters for item 2).
