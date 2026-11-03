@@ -29,8 +29,7 @@ public class ForeignBorrowImportTest
     {
         const string Source = Native + "contract Sink\n    func put(self: uniq/Self, value: i32)\n        effect confined\n" +
             "struct ClockSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32)\n        var count: i64 = 0\n        _ = Native.query(count@uniq)\npublic func main() => ()\n";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(Source), valid: false, "Self is Sink"); // A4's record (R6-check H3b T40)
     }
 
     [Fact]
