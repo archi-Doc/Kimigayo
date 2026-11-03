@@ -103,7 +103,8 @@ public class BorrowingIterationTest
     // the holder was moved out on one path only (a conditional replacement); moving the holder out first, assigning it first, also after a
     // conditional move, or a Cursor whose destruction observes nothing is valid. The related value is the replacement that destroys
     // the old value (the MIR's record, H5). The abstract twin's second record, a self-Loan at `var other = third@move` (H3b T51,
-    // counted), left with S1′: an abstract part has Loan facts only (DECISIONS R4-M170).
+    // counted), left with S1′ (DECISIONS R4-M170): an abstract part reaches what its holder's Loans and addresses reach, and its writes
+    // go by provenance, to the holders its exclusive Loans and addresses name.
     [Theory]
     [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "it = other.iterate()")]
     [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    local = second@move\n    it = other.iterate()", "it = other.iterate()")]
