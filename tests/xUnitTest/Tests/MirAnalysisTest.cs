@@ -108,8 +108,7 @@ public sealed class MirAnalysisTest
 
         """;
 
-    // A destructor's environment effect, which A4 composes and Binding's own effect check does not see, and group H's discard, open for
-    // more members.
+    // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
 
