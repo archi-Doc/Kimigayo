@@ -185,8 +185,9 @@ public sealed partial class Binding
 
             if (ancestor >= 0)
             {
-                var inherited = this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[ancestor]));
-                this.AddConstraintFact(environment, inherited, shape.Symbol);
+                // The ancestor A is the clause `Self is A`, instantiated as the other clauses are (ContractConstraint; PLAN G180).
+                var clause = this.InternConstraint(new(ConstraintKind.Contract, this.ContractSelfType(shape.Symbol), contract: shape.Ancestors[ancestor]));
+                this.AddConstraintFact(environment, this.ContractConstraint(clause, scope, self, normalize: false), shape.Symbol);
             }
 
             this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
