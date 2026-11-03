@@ -15955,3 +15955,31 @@ structure is recorded here by the unit that first implements it.
     removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
+- **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
+  「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
+  - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
+    collected. A record that reads such a body (its own A3b checks and layout obligations, an instance it alone requests, a summary
+    composed from it) is its finding's dependent. Acceptance never moves: a finding is a MIR record, so check refuses the program.
+  - Fact: `MirBody.HasFinding`, the validator's per-body verdict, whose one writer is `MirValidator`: `Validate(body, findings)` sets
+    whether it added a finding at each of its three exits (the case bound's, Tables', the end), and `Validate(program)` sets it on the
+    ensuring body of a G191 StaticSlot finding. `MirBody.Reset` clears it; tests inject it through the setter. No consumer re-derives
+    a per-body set from `MirProgram.Findings`.
+  - Collector gates: a body enters `InstanceCollector` at three places, each testing the fact once: the `Templates` walk (an empty
+    range, `starts[o]` still written; no A3b check or need listing), the root loop, and `Admit` (-1 after the two checks that read only
+    the request, an instance without its substitution and `CarriesInstance`, before `Find`, `Instantiable`, `Grows` and `View`). Every
+    other read is of an admitted item's body. A refused request records nothing; `Report` is unchanged.
+  - Deletions: `InstanceCollector.Run`'s `Findings.Count > 0` return and its header invariant "a program with validator findings has
+    an empty set"; `MirBuilder.Defaults.cs`'s `Findings.Count` difference and its `findings` local (`Failed` reads `this.body.HasFinding`).
+  - Consents (R4, 2026-11-03): the W1 hold files `MirBody.cs` and `MirValidator*.cs` for this unit (not `MirValidator.SharedPaths.cs`);
+    `MirBuilder.Defaults.cs` for that one line only, tested by the defaults rows that pin `Failed`.
+  - Staged (U2, R4's `Mir/Analysis/**`, with R4's consent on the design's §4 hunk): `MirAnalysis.Run` skips a body with the fact in its
+    steps 1, 2 and 4 (`MirDrops.Exclude` closes its empty table entry); A4 composes such a body as `Derived` (one private `Views`); the
+    initialization proof that consults one rests on it (`Proved` returns `bool?`; `Met` drops only its first block's record and falls
+    through, `Destroying` makes none). Until U2, `MirAnalysis.Run` keeps its all-or-nothing `Findings.Count > 0` return (removal
+    condition: U2).
+  - Rejected: a body ordinal on `MirFinding` (each consumer re-derives a set), a column on `MirProgram` (a side table), accessors that
+    hide broken bodies (a `null` callee silently takes the bodyless path); a validator wrapper or `Check` extraction (a restructuring
+    commit for two lines; the planning session, after review 3); roots through `Admit` (they would count toward `Grows` and `Work`).
+  - Tests: `MirValidatorTest.TheVerdictIsWhetherTheValidatorAddedAFinding`, `AnEnsuredStaticHasItsInitializer`;
+    `InstanceCollectorTest.AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (was `...FindingsEmptyTheSet`: its expectation changes
+    by the owner's (a)), `ABodyWithAFindingDropsOnlyWhatRestsOnIt`, `ARequestsOwnGapAtABodyWithAFindingStays`.
