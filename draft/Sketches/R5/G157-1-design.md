@@ -1,6 +1,6 @@
 # G157 (1) design: a body with a validator finding is no consumer's (option (a))
 
-Status: design for review (R5, 2026-11-03). The owner's GO, verbatim 「(a) で設計を始めて」: exclude only the MIR bodies that fail
+Status: revision 1 for re-review (R5, 2026-11-03; review 1 REVISE, table at the end). The owner's GO, verbatim 「(a) で設計を始めて」: exclude only the MIR bodies that fail
 validation; judge and collect every other body. Classification: Major with a design review (three components). The design adds
 **one** published per-body fact (a `bool` on `MirBody`); no IR form, record kind or A4 summary representation changes, so the class
 stands. R4's constraints are cited as "R4, 2026-11-03" (items R4-1 to R4-3, with letters for item 2).
@@ -25,12 +25,18 @@ stands. R4's constraints are cited as "R4, 2026-11-03" (items R4-1 to R4-3, with
 | C. A set or column by ordinal on `MirProgram` | A side table beside the body with its own grow and clear; every reader needs the program as well as the body. R4-2a's "for example" is met by A, the validator's per-body publication. |
 | D. `MirProgram`'s accessors hide broken bodies | Rejected: `null` already means "no body" (`Bodyless`, published rows), so a broken callee would silently take the bodyless path: a fallback that hides a failure. A filtered `Bodies` breaks the per-ordinal bookkeeping both consumers need (§3 `starts`, §4 `MirDropTable`). |
 
-Owner: `MirValidator` (the producer's one validator) at its two entries: `Validate(body, findings)` sets
-`body.HasFinding = findings.Count > before` at each of its three exits (the `Binder` and out-of-order early returns included);
-`Validate(program)` (`MirValidator.Statics.cs:35`, G191's StaticSlot, added after the build) sets it on the ensuring body beside its
-`Add`. Contract text on `MirBody`: "set only by MirValidator; no consumer reads a body that has one". Removes: both all-or-nothing gates and the collector's
-header invariant (§6). Not removed: `MirBuilder.Defaults.cs:76-81`'s count difference, which may also count findings of bodies built inside
-the template's `Body` call; equivalence is unverified, so it stays (open question Q3).
+Owner: `MirValidator` (the producer's one validator) at its two entries. `Validate(body, findings)` becomes a wrapper with one
+assignment: `var count = findings.Count; this.Check(body, findings); body.HasFinding = findings.Count > count;` (today's body, early
+returns included, moves unchanged into the private `Check`). `Validate(program)` (`MirValidator.Statics.cs:35`, G191's StaticSlot, added
+after the build) sets `body.HasFinding = true` beside its `Add`. `MirBody.Reset` clears it.
+- `MirBody`'s header names the verdict among what it carries: "and the validator's verdict (HasFinding), which only MirValidator
+  writes; no consumer reads a body that has one". The property is `{ get; internal set; }`.
+- Test seam: tests inject the fact through that setter on a built program, as the old row injected a finding into `Findings`; the
+  validator's own writes are pinned by `MirValidatorTest` (§7). No other production writer exists (a grep in review).
+- Removes: both all-or-nothing gates, the collector's header invariant (§6) and the second copy of the rule in
+  `MirBuilder.Defaults.cs:76-81` (B2): `Body` is not reentrant (it resets the builder-wide body, locals, targets and scopes) and only
+  `Validate(body, …)` at `MirBuilder.cs:275` adds findings during it, so `this.program.Findings.Count > findings` is
+  `this.body.HasFinding`; the `findings` local goes.
 
 ## 3. The collector (R5's, `Backend/Instances/`)
 
@@ -63,7 +69,7 @@ foreach (var body in program.Bodies)
 {
     if (body.HasFinding)
     {
-        program.Drops.Close(0, 0, null); // No consumer reads it (R5-M183); its empty entry keeps the table's ordinals.
+        this.drops.Exclude(program); // No consumer reads it (R5-M183): an empty entry keeps the table's ordinals.
         continue;
     }
     ... steps 1 and 2 unchanged ...
@@ -73,21 +79,53 @@ foreach (var body in program.Bodies) { if (Judged(body, rootModules) && !body.Ha
 this.origins.Findings(program.Problems); // unchanged: Binding's view, no MIR body (R4-2e).
 ```
 
-- Finding: `MirDropTable.ends` is positional (`Close` appends "the next body"; `ViewsOf(o)` indexes it), so skipping a body without
-  closing an empty entry would shift every later body's A2 table. The empty entry gives `ViewsOf = 0`, `RowsOf` empty.
-- A4 (`MirEffects`) enters another body at exactly two places; both test the fact before `cases.Views(callee, subst)`, which reads the
-  callee's binders (a `Binder` finding means its views are unresolved):
-  - `AddEdge` (`MirEffects.cs:392`; callers `:192` staticEnsure, `:227`, `:236`): `if (callee.HasFinding) { this.found |= Derived; return; }`;
-  - `Enter` (`MirEffects.Solve.cs:249`; callers `:223, :237, :303, :332, :417`), after its `body is null` branch: the same two lines.
-  The caller composes A4's existing `Derived` class (R4-2c; R4-M10), never an empty summary and never `Unknown`; no new class. The
-  excluded body gets no node (`Local` never runs for it), so no `bases` entry is read for it; the caller's other edges and its worklist
-  dependencies are unchanged. A `Derived` callee is a constant summary, so the fixed point equals one with a node of class `Derived`.
-- A5 enters another body once more: `MirBorrows.Effects.cs:197-206` reads `effects.Summary(initializer, view)` over
-  `MirCases.Count(initializer)`. Hunk: `if (initializer.HasFinding) { continue; }` after `:197` (the static contributes no fact: a
-  `Derived` summary reports nothing by itself). A5's per-site reads (`Keys`, R4-M92) see the caller's `Derived` site class, and a Loan
-  record resting only on it is dropped by rule W's causes (R4-M132; R4-2d), reused unchanged.
+- `MirDropTable.ends` is positional (`Close` appends "the next body"; `ViewsOf(o)` indexes it), so a skipped body must still close an
+  entry or every later body's A2 table shifts. `MirDrops`, the table's one writer (`End`, `MirDrops.cs:270`), gains
+  `Exclude(MirProgram program)` with the contract "a body with a finding closes an empty entry (no rows or points, no flags,
+  `ViewsOf` 0)" (R4-c); the driver never writes `program.Drops` itself.
+- A4 (`MirEffects`) enters another body at three places, each through `cases.Views(body, subst)`, which reads the body's binders (a
+  `Binder` finding means its views are unresolved): `AddEdge` (`MirEffects.cs:395`), `Enter` (`MirEffects.Solve.cs:279`) and `Owe`
+  (`MirEffects.Solve.cs:406`, an obligation owed by the definition's own body, B1). One private A4 member replaces the three reads:
+
+  ```cs
+  // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
+  // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
+  private ulong Views(MirBody body, Subst? subst)
+  {
+      if (body.HasFinding)
+      {
+          this.found |= Derived;
+          return 0;
+      }
+
+      return cases.Views(body, subst);
+  }
+  ```
+
+  Every path, by the code: `AddEdge` stores an edge with views 0, which `Compose` (`MirEffects.Solve.cs:160`, a loop over the mask)
+  replays as nothing, and the caller's local classes carry `Derived`; `Enter` composes nothing and its summary carries `Derived`;
+  `Owe`'s own path (`perView`) loops over mask 0, so `Verdict` never runs and the obligation on the excluded definition makes no record;
+  `Owe`'s other path calls `Enter`, then `Verdict` with `Derived` only, and `Outcome` (`MirEffects.cs:69`) maps `Derived` to None: no
+  record, no `Unknown`, no `Limit`. This gives R4's required outcome on every path with one gate, so it is preferred over R4's
+  `perView = own && body is { HasFinding: false }`, which still needs `Enter`'s and `AddEdge`'s gates (three tests instead of one).
+  The excluded body gets no node (`Local` never runs for it) and no `bases` entry is read for it (answered R4-a). The `Derived` that
+  `Owe`'s own path leaves in `found` is reset by every later reader (`Owe`'s loop, `Evaluate`, `Local`).
+- A5's per-site reads (`Keys`, R4-M92) see a call of an excluded body as a `Derived` site class. `Derived` reports nothing by itself
+  through `Met` and `Destroying`: `MirEffects.Outcome` maps it to None and `Decided` reads only keys and `Unknown` (`MirBorrows.Effects`'
+  header invariant, R4-M10) (F3; rule W's `Derived` in `MirBorrows.Causes` is a candidate test, not this path).
+- A5 reads another body's summary once more, in the initialization proof (`Proved`, `MirBorrows.Effects.cs:179-215`, over
+  `effects.Summary(initializer, view)`). Skipping such an initializer would read it as "produces nothing" and let `Met` (`:125`) or
+  `Destroying` (`:167`) report a `ComparisonLoanConflict_Kd` resting on it; treating it as proving would fire their `Limit`
+  (`Unsupported_Kd`, `:121`, `:162`), also resting on it (F2). Decided in one place, the proof's result:
+  - `Proved` returns `bool?`: true where an initializer without a finding proves the effect; else null where an initializer it consults
+    (one that holds a candidate and may be first-accessed) has the fact; else false. The test sits before the view loop, so
+    `MirCases.Count` of such a body is never read; immutable statics are covered, since they always pass the first-access test.
+  - `Unproved` returns `(MirFactKind? Fact, bool Rests)`: in its order (write, `Unknown`, read), the first kind whose proof is null
+    gives `Rests`; else the first unproved kind; else none.
+  - `Met` returns before its conflict record and its Limit when `Rests` (the rest of `Met` decides the same root at the same site);
+    `Destroying` makes no record when `Rests`. No parameter steers either. `Effect` (`:258`) reads only an initializer's `Source`.
 - Header: "Must not … analyze a program with validator findings" becomes "read a body with a finding (MirBody.HasFinding): steps 1, 2
-  and 4 skip it, A4 and A5 compose a call or initializer of one as Derived".
+  and 4 skip it; A4 composes a body with one as Derived (Views); the initialization proof that consults one rests on it".
 
 ## 5. Code generation
 
@@ -99,24 +137,31 @@ a MIR record; `Accepts` also needs `Analysis.IsVerified`. A program with a findi
 - `InstanceCollector.Run`'s `if (program.Findings.Count > 0) return set;` (−4) and the header invariant "a program with validator
   findings has an empty set" (rewritten as "a body with a finding (MirBody.HasFinding) is no template, root or item").
 - `MirAnalysis.Run`'s `Findings.Count > 0` return (−4) and the header prohibition above.
+- `MirBuilder.Defaults.cs:76-81`'s count difference and its `findings` local (B2).
 - `InstanceCollectorTest.AVersionIsCollectedOnceAndFindingsEmptyTheSet`'s last two lines: the expectation changes because the owner
   chose (a) (stated in the commit); nothing else is weakened.
 
 ## 7. Tests (each fails before the fix)
 
 - `MirValidatorTest`: a body the validator rejects has `HasFinding`, a valid one does not, a pooled body rebuilt valid clears it; the
-  G191 StaticSlot finding marks the ensuring body.
-- `InstanceCollectorTest`: the old row becomes `AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (inject by setting the fact on
-  `program.Bodies[0]`, as `:477` injects a finding: that body is no item, the other roots stay). New
+  G191 StaticSlot finding marks the ensuring body. A default template with a finding stays `Failed` (B2; the defaults rows that pin
+  `Failed` today).
+- `InstanceCollectorTest`: the old row becomes `AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (the fact injected on
+  `program.Bodies[0]` where `:477` injected a finding: that body is no item, the other roots stay). New
   `ABodyWithAFindingDropsOnlyWhatRestsOnIt`: root `f` (fact set) requests a generic `h` whose instance is `OversizedLayout_Kd`
   (resting only on `f`); root `k` has an independent `InvalidCLayout_Kd` local (rows as in `.LayoutNeeds.cs`) and an A3b gap A3b
   reports today (the arithmetic shim rows at `:2032`; an `i128` division is still Binding's Opaque until H7); expect `k`'s records
   exactly. One more row pins the gate's place: an `EnclosingInstance` gap at a call into a nested function whose body has the fact
   survives. Before the fix the set is empty, so both fail.
-- `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems` (R4-2f): body X has the fact; body Y's A1 (`MovedPlace_Kd`), A3 and A5
-  problems are reported; caller Z of X under a `confined` obligation reports no `UnsatisfiedEffectBound_Kd`, and a Loan record resting
-  only on Z's call of X is dropped (R4-2d's row). Before the fix `Problems` is empty. Rerun `TheLibraryHasNoAnalysisProblem`,
-  `AWarmReportAllocatesNothing` and `InstanceCollectorTest.AWarmRunAllocatesNothing` (0 B).
+- `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems` (R4-2f), one theory, each row with the fact on body X:
+  1. body Y's A1 (`MovedPlace_Kd`), A3 and A5 problems are reported;
+  2. caller Z of X under a `confined` obligation reports no `UnsatisfiedEffectBound_Kd`, and a Loan at Z's call of X (a `Derived`
+     site) gives no record (F3's path);
+  3. X itself owes `confined`: no record (B1, `Owe`'s own path);
+  4. a static whose initializer is X: its Field under a live Loan at an effect site gives no record, while an independent conflict in
+     the same body is reported (F2).
+  Before the fix `Problems` is empty, so rows 1 and 4 fail; rows 2 and 3 pin the dependent rule. Rerun
+  `TheLibraryHasNoAnalysisProblem`, `AWarmReportAllocatesNothing` and `InstanceCollectorTest.AWarmRunAllocatesNothing` (0 B).
 - The mir ledger runs before review (R4-2f; a heavy run, registered first): programs with findings newly show other bodies' records;
   each move is named in the commit.
 
@@ -124,30 +169,51 @@ a MIR record; `Accepts` also needs `Analysis.IsVerified`. A program with a findi
 
 | File | + / − (lines) |
 | --- | --- |
-| `Mir/MirBody.cs` (property, reset) | +4 |
-| `Mir/MirValidator.cs`, `MirValidator.Statics.cs` | +4 / −1 |
-| `Backend/Instances/InstanceCollector.cs` (gate removed, root condition, header) | +1 / −5 |
-| `.Templates.cs`, `.Admit.cs` | +3, +2 |
-| `Mir/Analysis/MirAnalysis.cs`, `MirEffects.cs`, `MirEffects.Solve.cs`, `MirBorrows.Effects.cs` | +6 / −4, +5, +5, +4 |
-| Tests (`MirValidatorTest`, `InstanceCollectorTest`, `MirAnalysisTest`) | about +75 / −2 |
+| `Mir/MirBody.cs` (property, reset, header) | +5 |
+| `Mir/MirValidator.cs` (wrapper), `MirValidator.Statics.cs` | +8 / −1, +1 |
+| `Mir/Build/MirBuilder.Defaults.cs` | −1 |
+| `Backend/Instances/InstanceCollector.cs` (gate removed, root condition, header), `.Templates.cs`, `.Admit.cs` | +1 / −5, +3, +2 |
+| `Mir/Analysis/MirAnalysis.cs`, `MirDrops.cs` (`Exclude`) | +6 / −4, +4 |
+| `MirEffects.cs`, `MirEffects.Solve.cs` (`Views`, three reads replaced) | +11 / −1, +0 |
+| `MirBorrows.Effects.cs` (`Proved`, `Unproved`, `Met`, `Destroying`) | +16 / −6 |
+| Tests (`MirValidatorTest`, `InstanceCollectorTest`, `MirAnalysisTest`) | about +100 / −2 |
 
-Production about +34 / −10. Cost: one field read per body walk, per admission request and per A4 entry, all on paths already walked;
-no allocation, no new pass. No timing run (none is allowed now, and none is needed for a field read).
+Production about +57 / −18. Cost: one field read per body walk, per admission request, per A4 entry and per initializer the proof
+consults, all on paths already walked; no allocation, no new pass. No timing run (none is allowed now; a field read needs none).
 
 ## 9. Units
 
-One unit, about 50 minutes, two commits, each with its own tests: C1 (R5) the fact (`MirBody`, `MirValidator*`: hold files, R4's
-consent recorded) and the collector, with `MirValidatorTest` and `InstanceCollectorTest`, DECISIONS R5-M183; C2 (R4's files, after R4
-consents to §4's hunk) the analyses with `MirAnalysisTest`. Unit checks: those classes plus `MirBuildTest`, then the mir ledger. If
-C1 passes the hour, C2 becomes its own unit and `MirAnalysis` keeps its gate until it lands (removal condition: C2). No
-behavior-preserving commit is needed: no structure moves.
+Two units now (the analyses' part grew with B1 and F2, so one unit no longer fits the hour):
+- **U1 (R5, about 40 minutes):** the fact (`MirBody`, `MirValidator*`: W1 hold files R4 consented to; `MirBuilder.Defaults.cs`, a hold
+  file outside that consent, needs R4's consent too), the collector, `MirValidatorTest` and `InstanceCollectorTest`; DECISIONS R5-M183
+  names R4's consent and states the analyses' rule for U2. U1 alone meets H7's prerequisite (A3b's records survive). `MirAnalysis`
+  keeps its all-or-nothing gate until U2 (removal condition: U2; recorded in PLAN).
+- **U2 (R4's files, after R4 consents to §4's hunk, about 45 minutes):** the driver, `MirDrops.Exclude`, A4's `Views`, A5's proof
+  result, `MirAnalysisTest`'s four rows; then the mir ledger before review.
 
-## 10. Open questions
+Unit checks: the named classes plus `MirBuildTest`. No behavior-preserving commit: the `Check` extraction moves one member's body
+inside the behavior change, and no other structure moves.
 
-- R4-a: R4-2c says the callee's worklist node keeps its dependency edges. This design gives the excluded body no node at all (its views
-  cannot be read) and composes `Derived` at the caller; confirm that this is the intended reading.
-- R4-b: the A5 initializer gate (`MirBorrows.Effects.cs:197`) and `MirBorrows.Effects.cs:258`'s `Effect`, which reads only the
-  initializer's `Source`: confirm no other A5 path reads another body.
-- R4-c: `program.Drops.Close(0, 0, null)` from the driver, or a `MirDrops` member that closes an excluded body (R4's choice).
-- Q3 (reviewer): keep `MirBuilder.Defaults.cs:76-81`'s count difference, or replace it with `HasFinding` after showing that `Body` builds
-  no other body.
+## 10. Questions
+
+Answered (review 1):
+- R4-a, yes: the excluded body has no node; a constant `Derived` at the caller equals a node of class `Derived`, and the caller's other
+  edges and dependencies are unchanged.
+- R4-b: in A5, besides `Proved`'s summary read (`:197-206`), only `:185` (`ensured`, a reference compare) and `:258` (`Source` only)
+  touch another body; `MirBorrows.Calls` and `CallRows` read Binding's facts. In A4, `Owe` is the third entry (B1).
+- R4-c: a `MirDrops` member (`Exclude`), as §4 states.
+- Q3: replaced (B2).
+
+Open: none for the design; U1 needs R4's consent for `MirBuilder.Defaults.cs` (one line).
+
+## Revision 1 (review 1, REVISE)
+
+| Finding | Fix |
+| --- | --- |
+| B1 = F1: `Owe` reads an excluded body's views and base | §4: one A4 `Views` member replaces the three `cases.Views` reads; zero views and `Derived` give no `Verdict` and no record on every path; MirAnalysisTest row 3 |
+| B2: Defaults' count difference is a second copy | §2, §6: replaced by `this.body.HasFinding` in U1 |
+| F2: the initializer `continue` makes a conflict or Limit resting on it | §4: `Proved` returns `bool?`, `Unproved` carries `Rests`, `Met` and `Destroying` make no record; row 4 |
+| F3: rule W's causes is not the path | §4: `Outcome` maps `Derived` to None and `Decided` reads only keys and `Unknown` (R4-M10) |
+| R4-c: the driver writes the table | §4: `MirDrops.Exclude` with its contract |
+| Non-blocking: wrapper, test seam, header text | §2 |
+| Sizes and units | §8, §9: about +57 / −18; two units |
