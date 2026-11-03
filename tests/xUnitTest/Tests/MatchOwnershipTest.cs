@@ -365,7 +365,7 @@ public class MatchOwnershipTest
         Assert.Equal(at is null ? [] : [at], unsupported);
     }
 
-    private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
+    private static OwnershipBody Body(Compilation c) => c.AnalyzeLegacyOwnership().Bodies.Single(b => b.Function.Name == "f");
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);

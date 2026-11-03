@@ -312,7 +312,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(escapes == 0, c.Analysis.IsVerified);
         Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
-        Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Borrow is not null));
+        Assert.Equal(escapes, c.AnalyzeLegacyOwnership().Issues.Count(static x => x.Borrow is not null));
         var verified = escapes == 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Analyze().IsVerified));
         Assert.Equal(escapes == 0, verified);

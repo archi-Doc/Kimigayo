@@ -36,7 +36,7 @@ public class GenericCleanupCaseTest
             MinimalEmissionTest.AssertEffectBoundRejected(c);
         }
 
-        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "select");
+        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "select");
         if (partial)
         {
             Assert.Contains(body.CaseDestructions, static x => x.Type?.Semantics == SemanticsKind.Obj && (x.Cases & 2UL) != 0);

@@ -33,6 +33,9 @@ public class ArchitectureRulesTest
     // An OldRule test's attributes in a member list, for TheOldRuleRatchetEndsEachMemberAtItsOwnEnd (escaped, so the ratchet skips it).
     private const string OldRuleTest = "    [Trait(\"OldRule\", \"X\")]\n    [Fact]\n";
 
+    // A read of the old analysis: through Compilation's property, or its transitional entry (R6-check H0b §2.1, review B3).
+    private const string LegacyOwnership = @"(?:\.Ownership|\.AnalyzeLegacyOwnership\(\))\.";
+
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
@@ -59,11 +62,12 @@ public class ArchitectureRulesTest
 
     // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
     // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: the control-flow structure is read
-    // only by LegacyRecords, and direct calls of the old control-flow entries cannot grow.
-    [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", @"\.Ownership\.(?:Analyze|Result|ReportDiagnostics)\b", 0)]
-    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Issues\b", 16)]
-    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Bodies\b", 30)]
-    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.ControlFlow\b", 1)]
+    // only by LegacyRecords, and direct calls of the old control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old
+    // analysis is read through its transitional entry, AnalyzeLegacyOwnership; D3 drops the property's alternative.
+    [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", LegacyOwnership + @"(?:Analyze|Result|ReportDiagnostics)\b", 0)]
+    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 16)]
+    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 30)]
+    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 1)]
     [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.

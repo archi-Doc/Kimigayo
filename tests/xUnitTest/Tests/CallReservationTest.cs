@@ -132,7 +132,7 @@ public class CallReservationTest(ITestOutputHelper output)
     public void DiagnosticsIdentifyPreparationOrActivation(string body, bool activation)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
-        Assert.Contains(c.Ownership.Issues, x => x.Reservation >= 0 && x.Activation == activation);
+        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Reservation >= 0 && x.Activation == activation);
     }
 
     // SPEC 15.6.7: an exclusive input whose target is still lent to a live exclusive Reborrow is one conflict. The reservation

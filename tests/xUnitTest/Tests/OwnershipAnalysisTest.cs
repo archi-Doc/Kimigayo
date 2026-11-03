@@ -123,7 +123,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    s = \"b\"\n    s = s@move");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto f && f.NameKoto.IdentifierName == "s");
         var writes = body.Operations.Where(x => x.Kind == OwnershipOperationKind.Write && x.Place == s.Id).ToArray();
         Assert.Equal(PlacementKind.ConditionalReplacement, writes[^2].Placement);
@@ -139,7 +139,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func f(first: string, second: string)\n    let a = \"a\"\n    let b: string\n    b = \"b\"\n    _ = a@move\n    return");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var plan = body.CleanupPlans.First(x => x.Reason == CleanupReason.Return && x.Edge >= 0 && body.IsReachable(body.Edges[x.Edge].From));
         var steps = body.CleanupSteps.Skip(plan.Start).Take(plan.Count).Where(x => body.Places[x.Place].Kind != OwnershipPlaceKind.Temporary).ToArray();
         Assert.Equal(new[] { CleanupAction.Destroy, CleanupAction.Skip, CleanupAction.Destroy, CleanupAction.Destroy }, steps.Select(x => x.Action));
@@ -151,7 +151,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func makeText() -> string => \"a\"\nfunc f(a: string, b: i32) => ()\nfunc use(c: bool)\n    f(makeText(), if c => return else => 1)");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "use");
         var value = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Temporary && x.Source is InvocationKoto call && call.CallOf()!.Target.Name == "makeText");
         Assert.Contains(body.CleanupSteps, x => x.Place == value.Id && x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto);
         Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.CallEntry && x.Place == value.Id);
@@ -221,7 +221,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move\n    let t = 1");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto { NameKoto.IdentifierName: "s" }).Id;
         var consume = body.Operations.ToList().FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == s);
         Assert.Equal(PlaceState.MustInit | PlaceState.MayInit | PlaceState.MayAssigned | PlaceState.MayOwn, body.GetInputState(consume, s));
@@ -274,7 +274,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var local = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Local);
         Assert.Contains(body.CleanupSteps, x => x.Place == local.Id && x.Action == CleanupAction.Conditional);
     }
@@ -295,7 +295,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func f(c: bool)\n    let outer = \"a\"\n    while c\n        let inner = \"b\"\n        continue\n    Console.writeLine(outer)");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var plan = Assert.Single(body.CleanupPlans, x => x.Reason == CleanupReason.LoopTransfer);
         var local = Assert.Single(body.CleanupSteps.Skip(plan.Start).Take(plan.Count), x => body.Places[x.Place].Kind == OwnershipPlaceKind.Local);
         Assert.Equal("inner", ((FieldKoto)local.Source).NameKoto.IdentifierName);
@@ -315,7 +315,7 @@ public class OwnershipAnalysisTest
         Assert.DoesNotContain(flow.Nodes.Keys, x => ReferenceEquals(x, invalid.Kotonoha.RootKoto));
     }
 
-    private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(x => x.Function.IsGenerated);
+    private static OwnershipBody Body(Compilation c) => c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.IsGenerated);
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);

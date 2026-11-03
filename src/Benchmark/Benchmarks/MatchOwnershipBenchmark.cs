@@ -33,7 +33,7 @@ public class MatchOwnershipBenchmark
         }
 
         this.compilation.Kotonoha.CreateCodeContext().Parse(this.compilation.Kotonoha.RootKoto, source.ToString());
-        if (this.compilation.Diagnostics.HasErrors || !this.compilation.Bind().IsComplete || !this.compilation.Ownership.Analyze().IsVerified)
+        if (this.compilation.Diagnostics.HasErrors || !this.compilation.Bind().IsComplete || !this.compilation.AnalyzeLegacyOwnership().Result.IsVerified)
         {
             throw new InvalidOperationException("Benchmark source must pass ownership verification.");
         }
@@ -50,6 +50,6 @@ public class MatchOwnershipBenchmark
     public OwnershipResult BindAndAnalyze()
     {
         this.compilation.Bind();
-        return this.compilation.Ownership.Analyze();
+        return this.compilation.AnalyzeLegacyOwnership().Result;
     }
 }

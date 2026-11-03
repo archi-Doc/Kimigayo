@@ -7,6 +7,8 @@
 // it through the same Problem publication (SPEC 8.15.3, 23.2.2; DECISIONS R5-M156), the records read as the program's record classes
 // (MirProgram.Records, R6-check H3-1); its analysis problems stay unpublished (R4-M1, until H3).
 // Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
+// Analyze runs the old analysis until the flip (H5); its test and benchmark readers reach it through AnalyzeLegacyOwnership, which runs it
+// once per version (R6-check H0b §2.1, review B3; H0c D-c1; removal H10b).
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
 using Kimi.Compiler.Parsing;
@@ -26,6 +28,7 @@ public partial class Compilation
     private Backend.InstanceCollector? instances;
     private Mir.MirProgram? collected; // The program the latest collection recorded into; null before one and after invalidation.
     private Mir.MirProgram? mir; // The MIR of the latest Analyze; null before one and after invalidation.
+    private bool legacyAnalyzed; // Whether the old analysis ran for this version (AnalyzeLegacyOwnership); invalidation clears it.
 
     /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and the MIR's of the
     /// version are final: the one observation point of the difference ledger (R4-M17). Observers only read.</summary>
@@ -72,6 +75,7 @@ public partial class Compilation
     {
         this.mir = this.BuildMir();
         this.Ownership.Analyze();
+        this.legacyAnalyzed = true;
         Analyzed?.Invoke(this);
         return this.Analysis;
     }
@@ -110,9 +114,25 @@ public partial class Compilation
         return program;
     }
 
+    /// <summary>Runs the old ownership analysis once per version and returns it: the one entry of its test and benchmark readers (R6-check
+    /// H0b §2.1, review B3; H0c D-c1). A second call on one version runs nothing.</summary>
+    /// <returns>The old analysis of this version.</returns>
+    [Transitional("R6-check", Reason = "Its readers migrate off by H8a–c and H9; H10b deletes it with the old analysis.")]
+    internal OwnershipAnalysis AnalyzeLegacyOwnership()
+    {
+        if (!this.legacyAnalyzed)
+        {
+            this.Ownership.Analyze();
+            this.legacyAnalyzed = true;
+        }
+
+        return this.Ownership;
+    }
+
     internal void InvalidateOwnership()
     {
         this.ownership?.Invalidate();
+        this.legacyAnalyzed = false;
         this.mir = null;
         this.collected = null;
     }

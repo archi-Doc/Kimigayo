@@ -34,16 +34,16 @@ public class CallableRegionScalingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        var storage = c.Ownership.Bodies.Sum(x => x.LocalRegionStorageBytes);
-        var indexes = c.Ownership.Bodies.Sum(x => x.LocalRegionIndexCapacity);
+        var storage = c.AnalyzeLegacyOwnership().Bodies.Sum(x => x.LocalRegionStorageBytes);
+        var indexes = c.AnalyzeLegacyOwnership().Bodies.Sum(x => x.LocalRegionIndexCapacity);
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Analyze().IsVerified);
-            Assert.Equal(storage, c.Ownership.Bodies.Sum(x => x.LocalRegionStorageBytes));
-            Assert.Equal(indexes, c.Ownership.Bodies.Sum(x => x.LocalRegionIndexCapacity));
+            Assert.Equal(storage, c.AnalyzeLegacyOwnership().Bodies.Sum(x => x.LocalRegionStorageBytes));
+            Assert.Equal(indexes, c.AnalyzeLegacyOwnership().Bodies.Sum(x => x.LocalRegionIndexCapacity));
         }
 
-        foreach (var body in c.Ownership.Bodies)
+        foreach (var body in c.AnalyzeLegacyOwnership().Bodies)
         {
             Assert.True(body.LocalLoanFlowCapacity <= Math.Max(16L, 2L * body.PeakLocalLoanCells));
         }

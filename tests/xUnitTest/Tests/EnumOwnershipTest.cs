@@ -312,7 +312,7 @@ public class EnumOwnershipTest
         => body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
 
     private static OwnershipBody Body(Compilation c, string? name = null)
-        => c.Ownership.Bodies.Single(x => name is null ? x.Function.IsGenerated : x.Function.Name == name);
+        => c.AnalyzeLegacyOwnership().Bodies.Single(x => name is null ? x.Function.IsGenerated : x.Function.Name == name);
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);

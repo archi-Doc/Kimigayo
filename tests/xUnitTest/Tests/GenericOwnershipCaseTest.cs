@@ -84,7 +84,7 @@ public class GenericOwnershipCaseTest
 
             rejected = true;
             var (at, loan) = Locate(row.Source, expected);
-            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
+            Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
                 LineAt(row.Source, x.Source.Span.Start) == at && x.LoanSource is { } holder && Text(holder).Contains(loan, StringComparison.Ordinal));
         }
 

@@ -371,6 +371,23 @@ public sealed class PipelineSwitchTest
         }
     }
 
+    // R6-check H0b §2.1 (review B3; H0c D-c1): the old analysis's readers reach it through one transitional entry, which runs it once per
+    // version: a second call on one version runs nothing, so it allocates nothing and keeps the records check published (a run clears its
+    // partitions).
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void TheLegacyOwnershipEntryRunsOncePerVersion()
+    {
+        var c = MinimalEmissionTest.Analyze("let text = \"x\"\n_ = text@move\n_ = text@move");
+        c.ReportAnalysis();
+        var reported = TestDiagnostics.Of(c).Select(static x => x.ToString()).ToArray();
+        Assert.Contains(reported, static x => x.Contains(nameof(DiagnosticCode.MovedPlace_Kd), StringComparison.Ordinal));
+        var ownership = c.AnalyzeLegacyOwnership();
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.AnalyzeLegacyOwnership()));
+        Assert.Same(ownership, c.AnalyzeLegacyOwnership());
+        Assert.Equal(reported, TestDiagnostics.Of(c).Select(static x => x.ToString()));
+    }
+
     // Tests read a failure that OwnershipIssue.Code maps to several codes through one helper each: its codes are exactly the images
     // of that failure, whatever the issue's other facts.
     [Fact]

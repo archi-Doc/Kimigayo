@@ -64,7 +64,7 @@ public class OwnedStoredReferenceTest
         var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
+        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
             (activation is null || x.Activation == activation));
         Assert.False(c.Generate(TextWriter.Null));
     }
@@ -95,7 +95,7 @@ public class OwnedStoredReferenceTest
         if (write)
         {
             // Both preparations reserve the same stored referent; report their overlap at the second lending point.
-            var issue = Assert.Single(c.Ownership.Issues);
+            var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
             Assert.Equal(DiagnosticCode.CallReservationConflict_Kd, issue.Code);
             Assert.Equal("item.0", issue.Source.ToString());
             Assert.Equal("poke(item.0)", issue.Input?.Call.ToString());
@@ -114,7 +114,7 @@ public class OwnedStoredReferenceTest
         var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation == activation);
+        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation == activation);
         Assert.False(c.Generate(TextWriter.Null));
     }
 

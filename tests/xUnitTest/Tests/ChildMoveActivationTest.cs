@@ -53,7 +53,7 @@ public sealed class ChildMoveActivationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.Ownership.Issues);
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.False(issue.Activation);
         Assert.Equal(source.IndexOf("p@follow", StringComparison.Ordinal), issue.Source.Span.Start);
@@ -66,7 +66,7 @@ public sealed class ChildMoveActivationTest
     {
         var c = MinimalEmissionTest.Analyze(Take + Child + "let d = c\ntake(c@move)\n_ = d@follow");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.Ownership.Issues);
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.True(issue.Activation);
         Assert.Equal("let d = c", issue.LoanSource!.ToString());
@@ -81,7 +81,7 @@ public sealed class ChildMoveActivationTest
     {
         var c = MinimalEmissionTest.Analyze(Child + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.Ownership.Issues);
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(DiagnosticCode.PlacementActivationConflict_Kd, issue.Code);
         Assert.Equal(loan, issue.LoanSource!.ToString());
     }
@@ -94,7 +94,7 @@ public sealed class ChildMoveActivationTest
     {
         var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nvar p = n@uniq\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.Ownership.Issues);
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.False(issue.Activation);
         Assert.Equal("p@uniq", issue.LoanSource!.ToString());

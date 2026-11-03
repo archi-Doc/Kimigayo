@@ -33,7 +33,7 @@ public class GenericAdaptationEffectTest
         }
 
         // The first body is the ref case, and later reused side bodies must not erase the obj case's facts.
-        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "discard");
+        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "discard");
         Assert.Equal(SemanticsKind.Ref, body.Cases.Span[0].Semantics);
         Assert.Contains(body.CaseDestructions, static x => x.Type?.Semantics == SemanticsKind.Obj && (x.Cases & 2UL) != 0 && (x.Cases & 1UL) == 0);
     }

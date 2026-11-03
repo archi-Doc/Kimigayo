@@ -58,7 +58,7 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\ndefer\n    var y = 2\n    defer => y = 3\n    x = y\nvar z = 4");
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        var body = c.Ownership.Bodies[0];
+        var body = c.AnalyzeLegacyOwnership().Bodies[0];
         var seen = new HashSet<int>();
         foreach (var plan in body.CleanupPlans)
         {
@@ -146,7 +146,7 @@ public class DeferredEmissionTest
     public void NestedSelfExitsAndContinuesHaveMeasuredBoundedExpansion(int depth)
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
-        var body = c.Ownership.Bodies[0];
+        var body = c.AnalyzeLegacyOwnership().Bodies[0];
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.InRange(body.Operations.Count, 1, OwnershipAnalysis.DeferredOperationLimit);
@@ -161,7 +161,7 @@ public class DeferredEmissionTest
         {
             Assert.False(c.Analyze().IsVerified);
             Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DeferredExpansionLimit_Kd);
-            Assert.Equal(OwnershipAnalysis.DeferredOperationLimit, c.Ownership.Bodies[0].Operations.Count);
+            Assert.Equal(OwnershipAnalysis.DeferredOperationLimit, c.AnalyzeLegacyOwnership().Bodies[0].Operations.Count);
             using var writer = new StringWriter();
             Assert.False(c.Generate(writer));
             Assert.Empty(writer.ToString());
