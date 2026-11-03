@@ -43,7 +43,8 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Reads a <c>KIMI_PIPELINE</c> value: <c>mir</c>, or <c>legacy</c> or unset for the old path alone.</summary>
+    /// <summary>Reads a <c>KIMI_PIPELINE</c> value: <c>mir</c>, or <c>legacy</c> or unset for the default; both check alike, the MIR
+    /// deciding (DECISIONS R5-M185).</summary>
     /// <param name="value">The value.</param>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">Any other value: a configuration error, never a silent fallback.</exception>
@@ -60,7 +61,7 @@ public partial class Compilation
 [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
 internal enum CompilerPipeline : byte
 {
-    /// <summary>The default: the old path decides, and the MIR's records publish beside it (DECISIONS R5-M156).</summary>
+    /// <summary>The default: the MIR decides acceptance and every merged problem publishes, as on every pipeline (DECISIONS R5-M185).</summary>
     Legacy,
 
     /// <summary>As <see cref="Legacy"/>, observed by the difference ledger and marked in the compiler identity and the test manifest.</summary>
