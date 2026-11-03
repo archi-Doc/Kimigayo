@@ -52,7 +52,8 @@ public sealed partial class Binding
         // slots no evidence bound (`unbound`, which keeps those it solved); a Signature position whose parameter Type names such a slot
         // is a Result position, which the contributor of the expected result proves (SPEC 10.3). The Result is the record of the
         // candidate's evaluation (U2b): its selected candidate's later runs (CheckDefaulted, the re-run after CompleteWaiting) fix the
-        // slots the expected result solved from the construction's Type, so they keep a recorded Result and never rewrite it.
+        // slots the expected result solved from the construction's Type, so they keep a recorded Result and never rewrite it. A Case
+        // construction's is the same rule over its payloads (ContributePayloads).
         internal readonly void Contribute(int[] mapping, ref SlotSet unbound)
         {
             for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
@@ -65,10 +66,44 @@ public sealed partial class Binding
 
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
-                var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
-                this.Contributions[i] = contribution == Contribution.Signature && (this.Contributions[i] == Contribution.Result ||
-                    (this.Function.Parameters[mapping[i]].Type.BoundType is { } pattern && MentionsSlots(pattern, this.SlotOwner, unbound)))
+                var contribution = this.ContributionAt(i, this.Function.Parameters[mapping[i]].Type.BoundType, unbound);
+                this.Contributions[i] = contribution == Contribution.Signature && this.Contributions[i] == Contribution.Result
                     ? Contribution.Result : contribution;
+            }
+        }
+
+        // F1 of a Case construction (R4-M164 U4): the call's rule over its payloads. `solved` holds the slots its expected Type fixed; as
+        // in a call, only those that no evidence binds count as the expected result's (Contribute), and an Evidence payload binds each
+        // slot its Type names (SPEC 10.8), settled or not, since the expected Type fixes the slots before the payloads' evidence (c3a).
+        // That derivation is a second copy of the call's rule (R4-M164 U4c, PLAN G391): it goes when the solve publishes the slots its
+        // evidence binds for calls and constructions alike.
+        internal readonly void ContributePayloads(ReadOnlySpan<Koto> payload, SlotSet solved)
+        {
+            var slot = this.Binding.RentSlotSet(CallSlotCount(this.Binder));
+            try
+            {
+                for (var g = 0; g < CallSlotCount(this.Binder); g++)
+                {
+                    slot.Clear();
+                    slot.Add(g);
+                    for (var i = 0; solved.Contains(g) && i < payload.Length; i++)
+                    {
+                        if (this.Binding.PartContribution(this.Call.ArgumentNodes[i]) == Contribution.Evidence &&
+                            MentionsSlots(payload[i].BoundType!, this.SlotOwner, slot))
+                        {
+                            solved.Remove(g);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(slot);
+            }
+
+            for (var i = 0; i < payload.Length; i++)
+            {
+                this.Contributions[i] = this.ContributionAt(i, payload[i].BoundType, solved);
             }
         }
 
@@ -224,6 +259,15 @@ public sealed partial class Binding
             return misfit;
         }
 
+        // The i-th argument's contribution at a position whose parameter Type is `pattern`; `solved` holds the slots the expected result
+        // solved.
+        private readonly Contribution ContributionAt(int i, BoundType? pattern, SlotSet solved)
+        {
+            var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
+            return contribution == Contribution.Signature && pattern is not null && MentionsSlots(pattern, this.SlotOwner, solved)
+                ? Contribution.Result : contribution;
+        }
+
         // SPEC 10.8: the evidence of the parts at a position (Binding.ArgumentKinds.Positions.cs) for the slots of its pattern.
         private bool InferPosition(BoundType pattern, int start, bool late)
         {
@@ -344,7 +388,8 @@ public sealed partial class Binding
 
                     for (var i = start; i < end; i++)
                     {
-                        if (!binding.PartFailed(binding.positionParts[i]) && !this.InferArgument(pattern, binding.positionParts[i], late))
+                        var part = binding.positionParts[i];
+                        if (!binding.PartFailed(part) && !this.InferSource(pattern, part, late))
                         {
                             return false;
                         }
@@ -358,6 +403,24 @@ public sealed partial class Binding
                 default:
                     return true;
             }
+        }
+
+        // SPEC 10.5.1, 10.8 (revision B, BU-80 Fix-D): one source of a Join position as evidence. At a bare slot an aggregate source whose
+        // whole Type is evidence (InferComposite) agrees with the Type an earlier source of the position fixed there, as it binds the slot
+        // when it is open; fitting it to that Type instead would merge its elements' reference layers with the other source's (a05, p48).
+        private bool InferSource(BoundType pattern, Koto part, bool late)
+        {
+            var binding = this.Binding;
+            if (pattern.Kind != BoundTypeKind.Parameter || !binding.IsAggregatePart(part) ||
+                binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is null)
+            {
+                return this.InferArgument(pattern, part, late);
+            }
+
+            var own = binding.OpenPosition(part);
+            var whole = binding.IndependentPositionType(own, late);
+            binding.ClosePosition(own);
+            return whole is null ? this.InferArgument(pattern, part, late) : binding.Infer(pattern, whole, this.SlotOwner, this.Types, lengths: this.Lengths);
         }
 
         // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds.

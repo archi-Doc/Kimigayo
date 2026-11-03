@@ -367,12 +367,12 @@ public sealed partial class Binding
     // a control-flow part, which then waits with it, and a function reference that needs S waits for the selected candidate's (10.5.3).
     private bool PrepareArgument(Koto part, BindingScope scope, BindingSymbol? group, bool callableContext)
     {
-        var kind = ClassifyPart(part);
-        if (kind is PartKind.Function or PartKind.Case)
+        if (this.RecordsWaitingForm(part))
         {
-            this.RecordPart(part, kind);
-            return true; // SPEC 10.5.1, 6.5.2: it waits for a candidate's Type, as a contextual Case resolves only in its expected enum.
+            return true;
         }
+
+        var kind = ClassifyPart(part);
 
         if (this.KindOf(part) == PartKind.Join)
         {
@@ -418,6 +418,21 @@ public sealed partial class Binding
         }
 
         return this.BindFunctionItem(part, item, scope) is not null;
+    }
+
+    // P1's record of a form that waits for its call's Type (SPEC 10.5.1, 6.5.2): an anonymous function waits for a candidate's signature,
+    // and a contextual Case resolves only in its expected enum. Every named call's argument and every Case payload, a settled one too
+    // (SolveConstruction), passes through it on every pass, so their contribution reads their kind (F1); false for any other form.
+    private bool RecordsWaitingForm(Koto part)
+    {
+        var kind = ClassifyPart(part);
+        if (kind is not (PartKind.Function or PartKind.Case))
+        {
+            return false;
+        }
+
+        this.RecordPart(part, kind);
+        return true;
     }
 
     // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of

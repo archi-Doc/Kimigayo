@@ -258,8 +258,9 @@ public partial class OriginRelationDiagnosticTest
     // at the root argument (p41, its mirror q1a, `match` q1k), in a `let` (q1d) and nested (q1h) alike, at a fixed parameter (q1f), beside
     // an overload (q1e), at `ref/T` (q1i), beside a waiting call (t01) and between two references (r_one), where the position's Type is
     // evidence as a typed argument's is. They agree as 14.9.2 step 2 forms a `let` join's Type, part by part: Tuple sources by element
-    // (p46 as its `let` twin; the literal clause in each part, r18 and its argument twins s07, s08), while an array literal source is typed
-    // whole, so the elements of one literal (q2d, as alone r01) and of different array sources (q2f, r09) are conflicting evidence.
+    // (p46 as its `let` twin; the literal clause in each part, r18 and its argument twins s07, s08), while an array literal source with a
+    // typed element supplies a candidate and is compared whole (BU-80 Fix-D), so the elements of one literal (q2d, as alone r01) and of
+    // different array sources (q2f, r09) are conflicting evidence.
     [Theory]
     [InlineData("p41", IdentityT + RefLocals + "    let r = identity(if c => x@ref else => 1)\n    return 0\n", "")]
     [InlineData("q1a", IdentityT + RefLocals + "    let r = identity(if c => 1 else => x@ref)\n    return 0\n", "")]
@@ -291,6 +292,34 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("q2a", RefLocals + "    let j = if c => [x@ref] else => [y]\n    return 0\n", "TypeMismatch_Kd if c => [x@ref] else => [y]")]
     [InlineData("r10", RefLocals + "    let j = if c => [x@ref, y] else => [y, y]\n    return 0\n", "TypeMismatch_Kd y")]
     public void AnArrayLiteralSourceIsTypedWhole(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
+
+    // SPEC 14.9.2 step 2, 10.5.1, 10.8 (revision B, the owner's (A); BU-80 Fix-D): formation membership is 14.9.2's own test, whether a
+    // source supplies a candidate, in a `let` and as an argument alike. Sources that supply none are formed part by part, so references
+    // and values at one part agree by a value read: an array of Tuples holding literals (w13, its argument twin w13a; a01 with two
+    // elements; x10 beside literals, r18's class), a Dictionary (a13, a13a), fills holding a literal (a11). A source that supplies one is
+    // compared whole: fills of references and of values conflict as their `let` twins do (w08a, w09a, w18a), and an array source's whole
+    // evidence agrees with the Type an earlier source of the join fixed (a05 and its mirror a05m, p48), never fitted to it. A parameter
+    // Type that an explicit Type argument or the signature fixes is the join's Target Result Type after selection (14.9.2 steps 1 and 2):
+    // each source is fitted to it, a reference at a value element position value-read (3.5.3, 10.2; e2, r17; dev rejected both).
+    [Theory]
+    [InlineData("e2", "func g<T>(x: T) -> i32 => 0\n" + RefLocals + "    return g<Array<i32>>(if c => [x@ref] else => [y])\n", "")]
+    [InlineData("r17", "func fi2(x: [2 of i32]) -> i32 => 0\n" + RefLocals + "    return fi2(if c => [x@ref, 1] else => [y, 2])\n", "")]
+    [InlineData("w13", RefLocals + "    let j = if c => [(x@ref, 1)] else => [(y, 2)]\n    return 0\n", "")]
+    [InlineData("w13a", IdentityT + RefLocals + "    let r = identity(if c => [(x@ref, 1)] else => [(y, 2)])\n    return 0\n", "")]
+    [InlineData("a01", RefLocals + "    let j = if c => [(x@ref, 1), (y, 2)] else => [(y, 3)]\n    return 0\n", "")]
+    [InlineData("x10", RefLocals + "    let j = if c => [(x@ref, 1)] else => [(1, 2)]\n    return 0\n", "")]
+    [InlineData("x10a", IdentityT + RefLocals + "    let r = identity(if c => [(x@ref, 1)] else => [(1, 2)])\n    return 0\n", "")]
+    [InlineData("a13", RefLocals + "    let j = if c => [x@ref: 1] else => [y: 2]\n    return 0\n", "")]
+    [InlineData("a13a", IdentityT + RefLocals + "    let r = identity(if c => [x@ref: 1] else => [y: 2])\n    return 0\n", "")]
+    [InlineData("a11", IdentityT + RefLocals + "    let r = identity(if c => ([2 of (x@ref, 1)], 3) else => ([2 of (y, 2)], 4))\n    return 0\n", "")]
+    [InlineData("w08a", IdentityT + RefLocals + "    let r = identity(if c => [2 of x@ref] else => [2 of y])\n    return 0\n", "NoApplicableOverload_Kd identity(if c => [2 of x@ref] else => [2 of y])")]
+    [InlineData("w09a", IdentityT + RefLocals + "    let r = identity(if c => [2 of x@ref] else => [2 of 1])\n    return 0\n", "TypeMismatch_Kd 1")]
+    [InlineData("w18a", IdentityT + RefLocals + "    let r = identity(if c => ([2 of x@ref], 1) else => ([2 of y], 2))\n    return 0\n", "UnboundTypeArgument_Kd identity(if c => ([2 of x@ref], 1) else => ([2 of y], 2))")]
+    [InlineData("a05", IdentityT + RefLocals + "    let r = identity(if c => [y, 1] else => [x@ref])\n    return 0\n", "NoApplicableOverload_Kd identity(if c => [y, 1] else => [x@ref])")]
+    [InlineData("a05m", IdentityT + RefLocals + "    let r = identity(if c => [x@ref] else => [y, 1])\n    return 0\n", "NoApplicableOverload_Kd identity(if c => [x@ref] else => [y, 1])")]
+    [InlineData("p48", IdentityT + RefLocals + "    let r = identity(if c => [x@ref] else => [y])\n    return 0\n", "NoApplicableOverload_Kd identity(if c => [x@ref] else => [y])")]
+    public void FormationMembershipIsSupplyingACandidate(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
     // SPEC revision B (BU-80; supersedes U1.6g (a) and (b) at call arguments): typed sources in conflict at a call argument are argument
@@ -333,8 +362,9 @@ public partial class OriginRelationDiagnosticTest
     // literal-only u6f_fix_lit), Tuple elements included (u6f_fix_tup); an `Array<T>` index holds the elements of the sources that have
     // it (u6f_dyn_len, u6f_g_len). A literal index that fits no candidate leaves none (g244, b1_afix_W_fb), as a source of another length
     // does at `[N of T]` (u6f_fix_len, 4.3.1); with every index waiting no candidate is best (u6f_dyn_wait); at a bare slot the join's Type
-    // keeps one element position (14.9.2 step 2). SPEC revision B (BU-80 class (3), N4; Fix-B): a bare slot that a waiting element and
-    // literals leave open is formed after selection from their Types after the literal defaults, so u6f_g_wait is valid.
+    // keeps one element position (14.9.2 step 2). SPEC revision B (BU-80 Fix-D; BU's decision 2): array sources that supply no candidate
+    // are formed part by part (the Aggregate row), where class (3)'s late formation of a bare slot from a waiting element and literals is
+    // still open (BU-80's open item beside p48), so u6f_g_wait keeps dev's UnboundTypeArgument_Kd.
     [Theory]
     [InlineData("U1.6f", "sg4b", IdentityT + FFixed + KD + "    return f(if c => [if d => identity(1) else => 2, 3] else => [4, 5])\n", "")]
     [InlineData("U1.6f", "wj_arr", IdentityT + FFixed + KHead + "    return f(if c => [identity(1), 2] else => [2, 3])\n", "")]
@@ -350,7 +380,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6f", "b1_afix_W_fb", IdentityT + Stop + "func f(x: [2 of bool]) -> i32 => 1\n" + KD + "    return f(if c => [(if d => identity(1) else => 2), 3] else => stop())\n", "NoApplicableOverload_Kd f(if c => [(if d => identity(1) else => 2), 3] else => stop())")]
     [InlineData("U1.6f", "u6f_fix_len", IdentityT + FFixed + KHead + "    return f(if c => [identity(1), 2] else => [3, 4, 5])\n", "NoApplicableOverload_Kd f(if c => [identity(1), 2] else => [3, 4, 5])")]
     [InlineData("U1.6f", "u6f_dyn_wait", IdentityT + FArrays + KHead + "    return f(if c => [identity(1)] else => [identity(2)])\n", "AmbiguousBinding_Kd f(if c => [identity(1)] else => [identity(2)])")]
-    [InlineData("U1.6f", "u6f_g_wait", IdentityT + "func g<T>(x: T) -> i32 => 0\n" + KHead + "    return g(if c => [identity(1), 2] else => [3, 4])\n", "")]
+    [InlineData("U1.6f", "u6f_g_wait", IdentityT + "func g<T>(x: T) -> i32 => 0\n" + KHead + "    return g(if c => [identity(1), 2] else => [3, 4])\n", "UnboundTypeArgument_Kd g(if c => [identity(1), 2] else => [3, 4])")]
     public void AJoinsArrayResultsAreClassifiedPerIndex(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
