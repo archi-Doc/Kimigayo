@@ -4,8 +4,8 @@
 // Input: a prepared compilation. Output: analysis, the validated and analyzed MIR with its checked set, and diagnostics, the same on every
 // pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
 // Until R6 the legacy path decides acceptance; the MIR's construction records, validator findings and every record of its checked set join
-// it through the same Problem publication (SPEC 8.15.3, 23.2.2; DECISIONS R5-M156), the records read as the program's record classes
-// (MirProgram.Records, R6-check H3-1); its analysis problems stay unpublished (R4-M1, until H3).
+// it through Core's publisher of MIR records (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184); its analysis
+// problems stay unpublished (R4-M1, until H5).
 // Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
@@ -77,20 +77,11 @@ public partial class Compilation
     }
 
     /// <summary>Records the diagnostics of the latest <see cref="Analyze"/>: control flow, the MIR's records in the control-flow
-    /// partition, then ownership. A MIR record is a code without facts, so it is keyed by its location (plan 6.2, DIAGNOSTICS §4.1,
-    /// DECISIONS R4-M71): the records of two nodes at one location, such as the siblings a <c>for</c> expansion synthesizes with its span,
-    /// are one problem.</summary>
+    /// partition (Core's publisher, Compilation.Publication.cs), then ownership.</summary>
     public void ReportAnalysis()
     {
         this.Ownership.ControlFlow!.ReportDiagnostics();
-        this.problems.Clear();
-        this.MirRecords(this.problems);
-        foreach (var problem in this.problems)
-        {
-            var node = this.SyntaxOf(problem.Subject);
-            node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.ControlFlow, node.Span, problem.Code, node.CodeContext.SourceDocument);
-        }
-
+        this.PublishMirRecords();
         this.Ownership.ReportDiagnostics();
     }
 
@@ -123,37 +114,6 @@ public partial class Compilation
     {
         (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
         this.collected = program;
-    }
-
-    // The MIR records of the latest Analyze, added to the list when one is given: the construction records and validator findings, the
-    // library's as well as the source modules', and every record of the checked set (SPEC 23.2.2: check reports every error of the checked
-    // set, its layout obligations among them; DECISIONS R5-M156), on every pipeline.
-    private int MirRecords(List<Problem>? into)
-    {
-        var count = 0;
-        if (this.mir is { } program)
-        {
-            count = Add(program.Records(Mir.MirRecordClass.Construction), into);
-            count += program.Findings.Count;
-            foreach (var finding in program.Findings)
-            {
-                into?.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
-            }
-        }
-
-        return this.collected is { } collected ? count + Add(collected.Records(Mir.MirRecordClass.Collection), into) : count;
-
-        static int Add(Mir.MirProgram.RecordRows rows, List<Problem>? into)
-        {
-            var count = 0;
-            foreach (var row in rows)
-            {
-                count++;
-                into?.Add(row);
-            }
-
-            return count;
-        }
     }
 }
 

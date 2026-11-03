@@ -16097,3 +16097,26 @@ structure is recorded here by the unit that first implements it.
     first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
     `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
     (the rows that need a live static Loan, which no source program has until P42).
+- **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, R5; design `draft/Sketches/R6-check/H3-2-design.md`, design
+  review 2 ACCEPT; under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
+  - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the
+    diagnostics adapter: the `Located` key form, ordinal conditions, one fact table (one arm per `MirFactKind`) and derived problems
+    as `PrerequisiteUnavailable_Kd` with `DerivedFrom` by one cause resolver. It decides how a problem is published, never whether it
+    exists, whether it is dependent or its requirement (R5-M23). `Locate(requirement, code, subject)` is the one location form, code
+    generation's records too (R5-M65). No pipeline mode, flag or optional parameter steers it.
+  - Until H5 Core publishes today's rows only, on every pipeline (H0a review B1): `PublishMirRecords`, from `ReportAnalysis`, locates
+    `MirProgram.Records(MirRecordClass.Construction)`, the validator findings as `InternalInvariant_Kd`, then
+    `MirProgram.Records(MirRecordClass.Collection)`, in the ControlFlow requirement, through `MirRecords`, the one selection that
+    `Analysis`, `Problems` and the generation gate read too. Removal condition of the selection: H5, which publishes every merged problem.
+  - U0 (bp): `MirRecords` and `ReportAnalysis`'s MIR loop move out of `Compilation.Pipeline.cs`; `Compilation.Generation`'s private
+    `ReportLocation` (the same shape, requirement Emission) is folded into `Locate`. Staged without a production caller before H5:
+    `MirReport.Merged` (U1a, U1b; R4's consent on the `MirReport` hunks), `Publish(MirProgram, int merged)` with `Located`, `KeyOf`, the
+    conditions, the resolver and the fact table's switch (U2), the table's other rows and case evidence (U3).
+  - H0a §4.3 corrected for R5-M183: validator findings no longer stop the analyses. A body with a finding is excluded from the analyses
+    and the collector, every other body is judged, and a reader of the excluded body records nothing or composes it as Derived. The MIR
+    phase still never ends incomplete without a record: the excluded body's record is the validator's own `InternalInvariant_Kd`, which
+    `PublishMirRecords` publishes. No fallback producer (H0a-9).
+  - Supersedes R4-M71's placement of the merge across bodies (with U1b's amendment line) and PD30's single owner (H0a-11 (A): where one
+    call meets both, the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay, counted, until R7 removes G128's
+    bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
+    Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
