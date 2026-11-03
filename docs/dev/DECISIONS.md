@@ -2975,6 +2975,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected (design review): a Koto-keyed body table and a mutable enclosing link; scope chains and `Parent` walks; a per-node HIR column;
     per-body root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's
     `Definition` deadline in R4 (G210 is BU's); `ResultFit` windows now.
+  - Amendment (2026-11-03, R4-M168; PLAN G215): E4's recorded limit is located, no longer silent: A5 reports `Unsupported_Kd` at each
+    row of a layer no constructor body's slice includes, until the layer has a body of its own.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b for C4a's gate step 2, PD12 and package C
   §3.8; R4's rulings of 2026-10-22 and its choice (b): R5 implements under a temporary hold of `MirInit.cs`, `MirDrops.cs` and
   `MirDropTest` (PLAN 26d48164), and R4 signs off before the merge)
@@ -6304,6 +6306,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Binding.EffectBounds`; `EffectBoundImplementationTest`'s two row tests move to `MirEffectsTest`.
   - Rejected: a production judgment of each reached row body in A4 (cost on every check for a record no valid input reaches, H0b §4
     (B)); a premise mode in A4 covering the row's effects (N6: a mode steering a function).
+- **R4-M168 G215's boundary: a constructorless layer's Field-initializer rows are A5's located limit** (2026-11-03; R4 after its exit,
+  the design's option (U) with the planning session's answers to Q1-Q4; BU reviews). SPEC 6.3.3 judges a Field initializer's Origin
+  relations under the Type's public premises whether or not a constructor exists, and 15.6.5 uses no reachability, so no reading frees
+  the rows. A5 judges only in a MirBody (its Refs, containment edges and `MirCases` views), and a layer with no constructor body (an
+  omitted base clause that selects none, or a Field without an initializer and no declared constructor) has its rows in no body's slice
+  (R4-M101 E4). So `MirOrigins.Findings`, once per program after step 4, reports `Unsupported_Kd` (Ownership.Unsupported, NoBody, every
+  view) at each row's Site of a layer that no constructor body's slice (`OriginRows(body).Layer`, the view's one rule) includes. Valid
+  forms become Unsupported on MIR (census 0: no library, milestone, golden or SPEC-variant layer); the old analysis judges them until
+  R6-check. Partly supersedes R4-M101 E4's "Recorded limit": the limit is located, not silent.
+  - Removal condition (J), at R7-O3: a MIR body of the layer's initializers, built only where no constructor body exists
+    (`MirDefKey(struct, <new kind>)` whose `Body` is the layer key, a Unit `_0`, each initializer into a temporary of its Field's Type,
+    skipped by code generation, the instance roots and A1's completion rule); its body kind is the planning session's decision.
+  - Q1: the view's new read-only output `TyCtxt.OriginLayers` (the layer units with rows, listed where `OriginUnit` creates them) is the
+    owning component publishing the fact A5 lacks and changes no Binding judgement; its two `Binding/` files are BU's (hold H-1, RP17).
+  - Q2: no owner approval; the producer names its removal stage, (J) at R7-O3 (O4 and X-2 concern producers without one).
+  - Q3: the Loan, Move and drop gap of such initializers (accepted on both pipelines) is a separate PLAN row; (J) closes it.
+  - Q4: one record per row, as the Unclassed limit is per row (the rows are what goes unjudged), not one per initializer.
+  - Rejected: a rows-only judge for layers beside `Judge` (a second judging path); widening the limit to every initializer of such a
+    layer (it would refuse valid forms like `= 0` without a census).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
