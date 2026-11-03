@@ -9717,6 +9717,19 @@ resumed by R4-M86 (2026-10-20).
   - Rejected (R4's design): filtering in A5 (A5 derives no retention, and its record is per storage); building the literal another way
     (a clause for one form, user calls stay rejected). Rejected in fix round 1: option (B), RawReach's direction with a carrier-to-Field
     edge (a second reach beside Storages' test; the twins disagree).
+  - Amended 2026-11-04 (G264 (S)'s B2′; the owner's Q11 ruling, verbatim 「この方針で」; part A by the BU planning session's ruling on
+    the unit's design note, option 1): the fill unit is the raw source, not the raw input. A raw source is an input whose Type holds a
+    raw layer by value without passing a shared layer: its own layer, a Tuple element, a Type argument (an Option's payload), one past an
+    exclusive layer. This is SPEC 15.6.4's "a part it holds by value" and the owner's 2026-10-30 reading, applied to raw parts held by
+    value. The atom walk collects them (`RetentionParts`, `retentionRawSources`, each input once, for the contract and for each handed
+    signature), replacing `retentionRawInputs`. Held's three arms, RetainsErased and ErasedFills read that list. A raw source's row is the
+    input's own value (R4-M154's grain), a sound over-approximation of the wrapped pointer. "Its own pointee" is read per input. Each
+    entry records whether it is the input's own layer. Hold's R′ arm reads only those entries: R′ is a separate rule, and SPEC's text for
+    it says "the raw arguments". Over every raw source, R′ rejected MirBorrowsTest's valid `iterRaw` (an iterator's Type argument read as
+    held by value) and moved 8 rows (BU's ruling (i) on the unit's second STOP). `retentionFills` holds carriers only, since every fill applied to every raw input. Open as part B: a concrete
+    nominal's stored Fields and Case payloads. The atom walk walks Components, and BU-30's rejection of a stored-content walk there
+    stands; part B is a per-instance fact published by the stored-parts owner, with its own design. The rows that moved are listed in
+    the landing commit.
 
 - **BU-70 A published row names the Callable input an operation calls: `PublishedRow.Calls`; `truncate` and `removeAll` have rows**
   (2026-10-27, chosen 2026-10-31; PLAN G264 U0′, a Full change under WORKFLOW Q11: BU's design-first candidate `claude/bu-u0p-design`
