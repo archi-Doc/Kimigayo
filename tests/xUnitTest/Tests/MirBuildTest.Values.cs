@@ -513,6 +513,36 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
     }
 
+    // DIAGNOSTICS 4.3, DECISIONS R5-M186: a require's row names the nodes Binding guessed its failure body's completion rests on: a body
+    // the parser supplied for a missing one, the failure body or one inside it, and an unresolved call; a failure body written in source,
+    // with a written branch or a resolved call, names none. MirAnalysisTest's A3 row reads the same programs. Fail-before: no row named
+    // a site.
+    public static TheoryData<string, string> GuessedFailureBodies => new()
+    {
+        { "let a = 1\nrequire a == 1 else\nlet b = 2\n", "body" },
+        { "let a = 1\nrequire a == 1 else\n    if a == 2\n    else => $abort(\"x\")\n", "CodeBlockKoto" },
+        { "let a = 1\nrequire a == 1 else => missing()\n", "body" },
+        { "let a = 1\nrequire a == 1 else => ()\n", string.Empty },
+        { "let a = 1\nrequire a == 1 else\n    if a == 2 => ()\n    else => $abort(\"x\")\n", string.Empty },
+        { "let a = 1\nrequire a == 1 else => found()\nfunc found() => ()\n", string.Empty },
+    };
+
+    [Theory]
+    [MemberData(nameof(GuessedFailureBodies))]
+    public void ARequireRowNamesItsGuessedSites(string source, string sites)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var (body, row) = Assert.Single(program.Bodies.ToArray().Where(static x => x.Source.Module == 0)
+            .SelectMany(static x => x.MustNotComplete.ToArray().Select(row => (x, row))));
+        Assert.Equal(sites, Sites(c, row.Subject, body.GuessedSites.Slice(row.Start, row.Count).ToArray()));
+    }
+
+    // The sites a require's row or problem names: "body" for its failure body, else a site's syntax kind and first line.
+    internal static string Sites(Compilation c, SourceRef subject, IEnumerable<SourceRef> sites)
+        => string.Join(", ", sites.Select(x => x == subject ? "body" : $"{c.SyntaxOf(x).GetType().Name} {c.SyntaxOf(x).ToString().Split('\n')[0].Trim()}".Trim()));
+
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
     private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
         .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)

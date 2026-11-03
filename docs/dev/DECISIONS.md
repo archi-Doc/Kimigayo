@@ -16246,6 +16246,44 @@ structure is recorded here by the unit that first implements it.
     bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
     Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
 
+- **R5-M186 A3's require fallthrough rests on Binding's guessed nodes (R6-check R6-1)** (2026-11-03, R5 with R4 and BU; sketch
+  `draft/Sketches/R6-check/R6-1-sketch.md` with its revision 1; design review 1 REVISE, re-check ACCEPT; H3b round 1 ruling 2; under R5-M182 and Q13) Major.
+  - Rule: a require's failure-body fallthrough (A3, `RequireFallthrough_Kd`) is derived from the recovery causes of the nodes Binding's
+    guess rule says its completion rests on, as DIAGNOSTICS §4.3 states. A completion that written syntax also reaches stays direct.
+    The decisions are split as follows:
+    - Binding owns the guess rule. It publishes the guessed nodes (`GuessedCompletionNodes(node, root)`, which allocates nothing) and
+      one per-node cause query on that rule's domain, `RestingCauses`. A node outside that domain gets `FailureCauses`, so a resolved
+      node has none.
+    - The MIR builder records the nodes of `GuessedCompletionNodes(ElseBody, ElseBody)` on the require's `MirMustNotComplete` row, as a
+      range into the body's pooled `MirBody.GuessedSites` (`MirOpaque`'s shape).
+    - A3 copies each site as a `Cause` fact with Value −1 (the Binding-cause form, R5-M184).
+    - MirReport's rule W derives the problem.
+    - The publisher's Binding-cause arm names `RestingCauses(site)`. A −1 cause at a node outside the guess rule's domain that has no failure causes,
+      such as a node Binding resolved, stays a broken contract (`InternalInvariant_Kd`).
+  - The new Mir/Build view (COMPILER_ARCHITECTURE "Dependency rules": "a new view needs a reason in its commit"):
+    `Binding.GuessedCompletionNodes`. The reason: the guess rule reads the pass's completion structure and Never evidence, which no HIR
+    column carries; the builder already visits each require once, and it copies the guessed nodes into the body's pooled storage, so
+    no table outside the MIR body holds them. A valid program takes
+    Binding's fast path (no recoveries, a complete result) and records no site.
+  - Representation: `MirMustNotComplete` gains (Start, Count) into `MirBody.GuessedSites`. A default copy copies no row
+    (`MirBuilder.Defaults.Copies.cs`).
+  - Before H5 no published record changes. A3's problems publish from H5. The MIR dump `tests/mir/every-form.mir` names its validator
+    body's guessed site. The mir ledger (against shared base 5998a0ec0) moves the A3 rows of 19 programs with guessed failure bodies
+    (T4A's six, a chained require of `RequireRecoveryDiagnosticTest`, seven `syntax.json` cases, five Milestone 12 mutations; 29 raw
+    rows) from compared to old-only: the ledger compares no derived MIR problem (R4-M132) while its old side keeps the old path's
+    derived control-flow record, so 4 incomplete A3 signatures (63 rows, none blocking) are unclassified; SPEC 14's example 573 row
+    (`b1`) leaves (open (b) 158 to 157, blocking rows 105 unchanged).
+  - Rejected:
+    - a catch-all `RestingCauses` ending in the unresolved mark for every node (review B1): it hides a broken contract;
+    - the publisher asking `GuessedCompletion` at publish time: it would decide dependence, which R5-M184 forbids;
+    - a HIR column of guesses per require (B2's alternative): a published column for one consumer, held outside the MIR body that
+      reads it, for the same walk (review N8);
+    - re-pointing the tests to a direct record: it weakens DIAGNOSTICS §4.3 and its pins.
+  - Cost (review N6; BU's and R5's rulings): no pass cache in the guess walk. The builder asks only at a failure body whose HIR
+    Completion is not `Diverges`, the guess rule's own first test (the same structural completion), so nested requires whose outer
+    failure bodies cannot complete cost no walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay
+    quadratic in the walk (BU's 100/392/1552 at N = 8/16/32); the old check paid it only per falling require.
+
 ## R7, R8 and R9 (adopted 2026-11-03)
 
 Entries of the [R7, R8 and R9 Implementation Plan](../../draft/Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md) (the plan; its decisions are RP1–RP21 and its owner questions
