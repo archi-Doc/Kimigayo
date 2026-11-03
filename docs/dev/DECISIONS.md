@@ -5192,6 +5192,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Numbering: R4-M148 was reserved for 2c-3 by the R4 planning session.
   - Note (R4-M152): no A5 callee carries a closure context after 2c-5 either (F1 is a located limit); the named function example's
     `mk(1)()` is NoApplicableOverload_Kd on dev.
+  - Superseded in part by R4-M170 (S1′, 9f85ecc46): rule G's self-store bullet's "which R4-M147's Q1 (a) lets be an exclusive
+    reference" no longer holds; an abstract part writes by provenance (W's named step), and these rows arise from the `@uniq` capture's
+    exclusive Loan. The verdicts stand on S1′: f7h1, f7h2, f7n1 and f7n2 keep their records (2x-P7's cases probed on 40639bb64 and
+    9f85ecc46), and selfPair, selfPairChild and methodAbstract are unchanged (`RuleGsSelfStoreReachesAClosureReceiver`).
 - **R4-M149 An Opaque temp is no storage (PLAN G247)** (2026-10-27; unit G247: design 2's option A, chosen by the planning session
   over design 1's (C), design review ACCEPT, class Major; amends R4-M109 (a) and L1) SPEC 23.1.2, 3.4, 3.6, 13.5.6.
   - Cause: where a consumer needs a Place for an Opaque value, the builder holds the value in a temp (`Value` for a node published
@@ -6442,6 +6446,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     R5), after the SPEC review's re-check 3 ACCEPT on 6f7af7358. Made after that reading, without changing meaning (round 5): the
     soundness note that `later<T>` and `chain<T>` also err through item 5; the clause above on a raw layer past an exclusive layer;
     15.6.4's "a holder that item 1 reaches" in the condition-4 sentence (SPECJ alike). S0 lands in R5's window W-6.
+  - S1′ landed (9f85ecc46, after BU's part A, merged as 6312f8632; R4's implementer, 2026-11-04): `MirWrites.Named` (an abstract part
+    in a value's own storage; the guard reads Through, Limit, Deep, else Named), Φ_W (element 1, `Markers` 1→2, issued with Φ_E by the
+    one `escapedSet`), the strip in `Content` and `Chain` (a holder reached only through a shared Loan, and E for a set without Φ_W,
+    read without Φ_W), and W's named step (the holders of direct Loans not shared and of addresses, E where Φ_W). Record change:
+    `AnAbstractPartBesideAPartPastTheBoundIsUnsupportedAtAReferentStore` (deep, 40) moves from Unsupported_Kd to OwnershipDepthLimit_Kd
+    at `a.clear()` by the guard order Deep over Named, still a limit record at the same subject. Ledger vs shared-base/4835adddf: 415c46cf5501
+    (count<S>) leaves; fbcdc06e387e's MIR-only record at `var local = first@move` leaves (an Iterable's iterator reaches `local` only
+    through its shared Loan), its `both` row stays; 1cfd105abdf6's two rows stay; three new rows are S0's spec-case errors (`later`,
+    `laterAlloc`, `chain`); open blocking rows 105, unchanged. Cost (44 milestone programs): Loan-set bytes 101,324 → 154,488, work
+    +5.4%, cold +26,504 B, warm 0 B.
+  - Precision line (the owner's ruling item 3, verbatim 「健全側の過近似として受け入れる」, relayed by the R4 planning session): with BU's
+    part A (BU-66's raw-source fill, a row of the input's own value, R4-M154's grain), S1′ rejects two valid shapes dev accepts:
+    writerExclOk (an erased `uniq/Self` call taking `m@uniq` of a local raw pointer: the uniq Loan is kept as the input's own value) and
+    writerPairOk (a by-value Tuple holding a `ref` beside a raw pointer). tiedExclOk, tiedExclOk2 and tiedPairOk2 err on dev too (their
+    records move). BU's A2, which would remove the first shape, waits for the owner's GO. The ledger's corpus holds neither shape.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9089,6 +9108,8 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by R4-M154 (WK): `RetentionPlace.Addressed`, `MarkClosure`'s lowering and the own-Origin rows (`1 Value
     store 1` with `during q` on both layers, use2's record) are replaced by retention per storage, and A2-put-ok, B4-chained and
     B5-result-put's six a5-writes rows go.
+  - R4-M170 (S1′, 9f85ecc46): "R4-M147 Q1 (a)" above is overridden; rule G's receiver self-store over an abstract part goes by
+    R4-M170's named step (the holders of its exclusive Loans and addresses, E where reached through no shared layer).
 - **BU-51 Every slot a call fills is an input: a default's instantiated Type bounds the call's solution and is judged at the call,
   `RequireInputPremises(at, parameter, supplied)` over `DefaultSlots`** (2026-10-28; PLAN G277 (1), BU's Major unit bu54, pulled
   forward by the owner (「推奨どおり」, 2026-10-28); the planning session's design, adopted without a design review, WORKFLOW Design 4)
@@ -9195,6 +9216,9 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by BU-67 (2026-10-30, the owner's 「(B)」 on G264 S1): the interim class and S2's forms are correct errors under SPEC
     15.6's whole-holder text; rule A is SPEC's rule. Its test is now
     `MirBorrowsTest.ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn` (R4's 15.6.4 example unit).
+  - R4-M170 (S1′, 9f85ecc46): S1′'s ledger resolves no row of the interim's class (BU-67 had ruled it correct errors; its test is
+    unchanged); the MIR-only rows it removes are 415c46cf5501 (count<S>) and fbcdc06e387e's record at `var local = first@move`, both
+    reached only through a shared Loan.
 
 - **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
   struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)

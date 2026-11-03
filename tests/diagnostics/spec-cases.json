@@ -127,6 +127,8 @@
   {"Name": "15.6.4-drop-retention", "Section": "15.6.4", "Anchor": "func reset(y: uniq/i32)", "Family": "F1", "Prelude": "()\n", "Variants": [
     {"Uncomment": null, "Expected": []},
     {"Uncomment": "y@follow = 5", "Expected": [{"Code": "ComparisonLoanConflict_Kd", "Line": "y@follow = 5"}], "Old": {"Records": [], "Category": "a", "Clause": "15.6.4 5.7", "Note": "The old analysis retains nothing at a raw layer without an Origin and keeps no raw address (STATUS, Loans and returned references), so it reports no conflict, until R6-check."}, "Mir": {"Records": [], "Category": "b", "Clause": "15.6.4 16.3.1", "Note": "A5 composes no drop's retention at a destruction until PLAN G264's U1, so the reassignment's drop stores nothing."}}]},
+  {"Name": "15.6.4-abstract-reach", "Section": "15.6.4", "Anchor": "func count<S>(items: S) -> i32", "Family": "F1", "Prelude": "()\n", "Variants": [
+    {"Uncomment": null, "Expected": []}]},
   {"Name": "15.6.4-abstract-writer", "Section": "15.6.4", "Anchor": "func later<T>(y: uniq/i32)", "Family": "F1", "Prelude": "()\nfunc usep(p: raw/u8) => ()\nfunc consume<T>(x: T) => ()\n", "Variants": [
     {"Uncomment": null, "Expected": []},
     {"Uncomment": "y@follow = 5", "Expected": [{"Code": "ComparisonLoanConflict_Kd", "Line": "y@follow = 5"}], "Old": {"Records": [], "Category": "a", "Clause": "15.6.4 5.7", "Note": "The old analysis retains nothing at a raw layer without an Origin and keeps no raw address (STATUS, Loans and returned references), so it reports no conflict, until R6-check."}},
