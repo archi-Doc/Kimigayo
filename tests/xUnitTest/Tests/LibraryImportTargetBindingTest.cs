@@ -410,6 +410,9 @@ public class LibraryImportTargetBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
+    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (PLAN G329),
+    // so its import of a library other than kernel32 is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
+    // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
     [InlineData(false, true, false)]
     [InlineData(true, false, true)]
@@ -430,8 +433,21 @@ public class LibraryImportTargetBindingTest
                     library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
             });
-        Assert.Equal(!missing, c.Bind().IsComplete);
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
+        var unsupported = c.Binding.Issues.Where(x => x.Code == DiagnosticCode.Unsupported_Kd).ToArray();
+        Assert.Equal(missing ? 0 : 1, unsupported.Length);
+        Assert.All(unsupported, x => Assert.IsType<AttributeKoto>(x.Node));
+        Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Library == "codec");
+    }
+
+    // PLAN G329's twin: a dependency module's kernel32 import is linked, through the generated kernel32 import library.
+    [Fact]
+    public void ADependencyModuleImportsKernel32()
+    {
+        var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func imported() -> i32");
+        Assert.True(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualAlloc" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
     }
 
     [Theory]
