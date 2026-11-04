@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
+using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
@@ -19,9 +21,52 @@ public class OwnershipStorageLimitTest
         Assert.Equal("borrow dependencies", failure.Table);
     }
 
+    // R6-check H10a D10 (restored coverage; T-04 N3): the MIR's own arena limit publishes end to end. MirAnalysisTest's A5 program, 2,000
+    // reference locals live across 2,000 branches, fits A1's arena but not A5's Loans table, so A5 records one OwnershipStorageLimit_Kd at
+    // `func f` with its arguments and stops there (its Loan conflict at `x = 2` is not judged); an independent error elsewhere publishes
+    // beside it, and the program is refused and generates nothing (R4-M15a, R4-M132, R5-M185).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheMirsArenaLimitPublishesBesideIndependentErrors(bool independent)
+    {
+        var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
+            .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
+        foreach (var part in new[] { "    var r{0} = x@ref\n", "    if flag => r{0} = y@ref\n", "    inspect(r{0})\n" })
+        {
+            for (var n = 0; n < 2_000; n++)
+            {
+                text.AppendFormat(CultureInfo.InvariantCulture, part, n);
+            }
+        }
+
+        text.Append("    x = 2\n    inspect(r)\n    return x\n")
+            .Append(independent ? "func invalid()\n    let value = 1\n    let moved = value@move\n    let invalid = value\n" : string.Empty);
+        var source = text.Append("public func main() => ()\n").ToString();
+        var path = Path.GetFullPath("ownership-storage-mir.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        using var module = new StringWriter();
+        Assert.False(c.Generate(module));
+        Assert.Empty(module.ToString());
+
+        c.ReportAnalysis();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var limit = (nameof(DiagnosticCode.OwnershipStorageLimit_Kd), source.IndexOf("f(flag: bool)", StringComparison.Ordinal)); // At its name.
+        var moved = (nameof(DiagnosticCode.MovedPlace_Kd), source.LastIndexOf("value", StringComparison.Ordinal));
+        Assert.Equal(independent ? [moved, limit] : [limit], result.Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start)).Order());
+        var reason = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.OwnershipStorageLimit_Kd)).Reason!;
+        Assert.Equal(["requiredBytes", "limitBytes", "table"], reason.Select(static x => x.Name));
+        Assert.Equal(("67108864", "Loans"), (reason[1].Value, reason[2].Value)); // 64 MiB, MirDataflow's ByteLimit.
+        Assert.True(long.Parse(reason[0].Value!, CultureInfo.InvariantCulture) > 64L * 1024 * 1024, reason[0].Value);
+    }
+
     // R6-check H5 (DECISIONS R5-M185, H0b-3): the MIR decides acceptance, so OwnershipStorage's logical limit is the old analysis's alone,
-    // read through its legacy entry until H10b, and publishes nothing; the MIR's arenas have their own limit (R4-M15a, R4-M132;
-    // MirPublicationTest). The published records are the MIR's: an independent error stays at its use, and generation follows the verdict.
+    // read through its legacy entry until H10b, and publishes nothing; the MIR's arenas have their own limit
+    // (TheMirsArenaLimitPublishesBesideIndependentErrors). The published records are the MIR's: an independent error stays at its use, and
+    // generation follows the verdict.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -32,7 +77,7 @@ public class OwnershipStorageLimitTest
         var path = Path.GetFullPath("ownership-storage.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        c.AnalyzeLegacyOwnership(); // The old analysis's full-size preparation (the ledger's Analyzed observer may have run it already).
+        c.AnalyzeLegacyOwnership(); // The old analysis's full-size preparation.
         var previous = OwnershipStorage.ByteLimit;
         try
         {
