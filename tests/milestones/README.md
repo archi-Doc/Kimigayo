@@ -9,7 +9,7 @@ The numbering is not a claim that every feature first appears at its own milesto
 This README owns the program catalog, expected output and source/native status.
 [PLAN](../../docs/dev/PLAN.md) owns active scope, completion conditions and next actions;
 [STATUS](../../docs/STATUS.md) owns compiler support boundaries;
-[PLAN_HISTORY](../../docs/dev/PLAN_HISTORY.md) and verification artifacts retain run history.
+git history and verification artifacts retain run history.
 
 ## Implementation order
 
@@ -199,7 +199,7 @@ Specification respellings:
   Slice carries both, so the copy kept that Loan and `references = [copied]` conflicted. The copy through a shared
   view keeps the section's intent (the outer dependency dropped, the element Origins kept); the output is unchanged.
 
-Earlier specification respellings and authoring corrections remain in Git and PLAN_HISTORY.
+Earlier specification respellings and authoring corrections remain in git history.
 No target was simplified to fit an implementation limit. In particular, the refinement, Weak,
 static-storage and integrated-object targets retain their specified behavior and pending stages.
 

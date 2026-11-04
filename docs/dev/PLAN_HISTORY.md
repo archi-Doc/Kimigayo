@@ -1,10 +1,10 @@
 # Kimigayo Plan History
 
-Summaries of the anchors other documents link, maintained only on explicit request under [AGENTS Documentation](../../AGENTS.md#documentation). Everything else (sessions, closed rows, evidence paths and measurements) is in git history. Current work belongs in [PLAN.md](PLAN.md), support boundaries in [STATUS.md](../STATUS.md). Historical statements describe their checkpoints, not current support; entries before 2026-10-15 keep their original Milestone IDs ([implementation-order catalog](../../tests/milestones/README.md#implementation-order)).
+Summaries of the anchors other documents link and one-line summaries of closed PLAN rows, maintained only on explicit request under [AGENTS Documentation](../../AGENTS.md#documentation). Everything else (sessions, evidence paths and measurements) is in git history. Current work belongs in [PLAN.md](PLAN.md), support boundaries in [STATUS.md](../STATUS.md). Historical statements describe their checkpoints, not current support; entries before 2026-10-15 keep their original Milestone IDs ([implementation-order catalog](../../tests/milestones/README.md#implementation-order)).
 
 ## Closed open issues
 
-PLAN §7 rows closed from 2026-11-01 on; only the rows other documents link keep a summary here. A closed `PLAN Gnnn` cited elsewhere resolves in git history (`git log -S "Gnnn" -- docs/dev/PLAN.md docs/dev/PLAN_HISTORY.md`); DECISIONS and the commits hold the details.
+PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, verbatim 「完了済みの行を PLAN_HISTORY に要約して移す」); the rest is in git history (`git log -S "Gnnn" -- docs/dev/PLAN.md docs/dev/PLAN_HISTORY.md`). DECISIONS and the commits hold the details.
 
 <a id="g136-landed"></a>
 - **G136's landed items (R4):** V16's per-view clearing for the pooled int-valued analysis tables (`MirTable`, DECISIONS R4-M146); a Value call whose signature does not number its operands is the located `InternalInvariant_Kd` (R4-M148). The other-contract tables stay in PLAN.
@@ -86,14 +86,14 @@ Other closed rows that code, tests or documents cite, with the DECISIONS entries
 <a id="arithmetic-completion"></a>
 - **2026-10-08 — Arithmetic A0–A5 and P43 complete:** declaration/provider selection, literal fitting, common requirement Items, acquisition and replacement paths (Session `20261007-231931-542-session-arithmetic-reviewed-final`; conditions in [Arithmetic.md](../../src/Benchmark/Arithmetic.md)). G78/G83, exclusive OCC, CSP and native i128/u128 division remained separate; required behavior is in [arithmetic Contracts](../spec/13-operators-and-assignment.md).
 <a id="hover-verification"></a>
-- **2026-10-07/08 — Hover and improvements:** Session `20261006-173140-848-session-hover-final` and LSP/extension client checks (`artifacts/verify/hover-client-20261007/`); the Virtual Session `20261007-183827-283-session-virtual-remaining-session-repaired` closed the automated-test gap. Actual-client visual review stays user-owned. Policy and measurements: [HOVER.md](HOVER.md).
+- **2026-10-07/08 — Hover and improvements:** Session `20261006-173140-848-session-hover-final`. Client verification: LSP 13, commands 21, selection 14, extension unit 65 with two platform skips (`artifacts/verify/hover-client-20261007/lsp.log`). Smart App Control then blocked the improved xUnit assembly (0x800711C7); the user authorized skipping execution after six feedback failures were repaired but not rerun. The later Virtual Session `20261007-183827-283-session-virtual-remaining-session-repaired` supersedes that automated-test gap. Actual-client visual review stays user-owned. Policy and measurements: [HOVER.md](HOVER.md).
 <a id="documentation-markdown-product-switch-20260920"></a>
 - **2026-09-20 — Documentation Markdown product switch:** the record is in the [2026-10-08 snapshot](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/PLAN_HISTORY.md) (its archive L297).
 
 ## Retired audit records
 
 <a id="diagnostics-checkpoints"></a>
-- **2026-09-30–10-03 — Diagnostics D0–D5 / R1–R7:** D4's 80-case and D5's 202-case corpora, then structured repairs, check JSON and LSP quick fixes (final Repair Session `20261002-174643-505-session-repair-track-session`); dated checkpoints, not conformance certificates. Details: the [archived evaluations](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/DIAGNOSTICS.md#9-evaluation).
+- **2026-09-30–10-03 — Diagnostics D0–D5 / R1–R7:** D4's 80-case and D5's 202-case corpora and 77 syntax forms, then structured repairs, check JSON and LSP quick fixes (final Repair Session `20261002-174643-505-session-repair-track-session`); dated checkpoints, not conformance certificates. Manual VS Code Quick Fix inspection remains unverified. Details: the [archived evaluations](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/DIAGNOSTICS.md#9-evaluation) and [completed plan tables](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/PLAN.md#diagnostics-track-complete).
 <a id="diagnostics-audit"></a>
 - **2026-09-30 — Diagnostic conformance audit:** prerequisite aggregation, source order, catalog/fault validation, duplicate evidence and bounded excerpts repaired (second review `f4a9c43b`); the [full audit](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/DIAGNOSTICS_REVIEW.md) keeps the matrices and failed runs. Residual findings: [DIAGNOSTICS §11](DIAGNOSTICS.md#11-audit-findings-d1).
 <a id="ranges-audit"></a>
