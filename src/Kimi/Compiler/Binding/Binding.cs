@@ -425,7 +425,7 @@ public sealed partial class Binding
         this.RegisterInheritedConformances(complete: true);
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
-        this.BindCasePayloads();
+        this.PrepareCases();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))

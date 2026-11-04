@@ -367,11 +367,11 @@ public sealed partial class Binding
         return tuple;
     }
 
-    // SPEC 6.5.2, 15.3.3: a Case's payload Types are written Types, bound with every declaration's before any header, as a Field's Type
-    // is with its header: a Field's inferred Type (BindPropertyHeader) may construct a Case, which reads them (BindEnumConstruction).
+    // SPEC 6.5.2, 15.3.3: an enum's Cases, each Case's ordinal and its payload Types, which need no header, are prepared before every
+    // header: a Field's inferred Type (BindPropertyHeader) may construct a Case (BindEnumConstruction) or match one (CalculateMatchCoverage).
     // The Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a Field, a payload Type that failed
-    // leaves the clauses unbound, so they add no record derived from that failure.
-    private void BindCasePayloads()
+    // leaves the clauses unbound, so they add no record derived from that failure. PrepareStorage keeps the parts that need the headers.
+    private void PrepareCases()
     {
         for (var n = 0; n < this.nodes.Count; n++)
         {
@@ -381,6 +381,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[container];
+            this.storedCases.Clear();
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (!TryEnumPayload(container.Members[i], out var payload))
@@ -388,6 +389,12 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (container.Members[i].BoundSymbol?.EnumCase is { } enumeration)
+                {
+                    enumeration.Ordinal = this.storedCases.Count;
+                }
+
+                this.storedCases.Add(container.Members[i].BoundSymbol?.EnumCase);
                 var originDeclaration = this.BeginOriginDeclaration(container.Members[i], scope);
                 Koto? failedPayload = null;
                 for (var j = 0; j < payload.Operands.Length; j++)
@@ -407,6 +414,8 @@ public sealed partial class Binding
                     RestPendingOn(originDeclaration, failedPayload);
                 }
             }
+
+            (container.BoundSymbol!.Adt ??= new()).SetCases(this.storedCases);
         }
     }
 
@@ -425,7 +434,6 @@ public sealed partial class Binding
             shape.Types.Clear();
             shape.DestructorKoto = null;
             this.storedFields.Clear();
-            this.storedCases.Clear();
             this.storageDeclarations.Add(container);
             var scope = this.scopes[container];
             if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
@@ -470,14 +478,7 @@ public sealed partial class Binding
                         this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
 
-                    if (member.BoundSymbol?.EnumCase is { } enumeration)
-                    {
-                        enumeration.Ordinal = this.storedCases.Count;
-                    }
-
-                    this.storedCases.Add(member.BoundSymbol?.EnumCase);
-
-                    // The payload Types were bound before the headers (BindCasePayloads).
+                    // The Case and its payload Types were prepared before the headers (PrepareCases).
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
                         var syntax = payload.Operands[j];
@@ -504,12 +505,12 @@ public sealed partial class Binding
                 }
             }
 
-            if (container is EnumKoto && this.storedCases.Count == 0)
+            if (container is EnumKoto && shape.Cases.Length == 0)
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
 
-            shape.SetParts(this.storedFields, this.storedCases);
+            shape.SetFields(this.storedFields);
             shape.Version = this.storageVersion;
         }
 

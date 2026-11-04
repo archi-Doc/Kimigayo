@@ -9647,6 +9647,10 @@ resumed by R4-M86 (2026-10-20).
     copy; a false `==`); reading the binder's state (a later bind resets it; path c has none); sharing A5's core now (a Full unit:
     Binding about +650 and Mir about −370 lines, per-path conditions against A5's per-class one, a per-body oracle against per-use
     premises; R4's lanes are full).
+  - Step order (2026-11-04; PLAN G381, unit bu123): path c's Case payload site is `PrepareCases` (Binding.Storage), no longer
+    `PrepareStorage`. A Case's payload Types, its ordinal and the enum's `Adt.Cases` need no header, so they are prepared once per pass
+    after PrepareAssociatedInference and before the header loop: a Field's inferred Type, bound with its header, constructs and
+    matches Cases. The `RestPendingOn` write is unchanged.
 
 - **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
   them read it** (2026-10-30; PLAN G309, unit bu82, Major; design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g309\design.md` and
