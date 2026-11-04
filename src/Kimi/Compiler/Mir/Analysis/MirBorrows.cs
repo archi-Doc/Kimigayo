@@ -99,6 +99,10 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     /// <summary>Gets the element bytes of the Loan sets the runs made (MirLoanSets.Bytes, A3 6.2's ν), which Work also counts.</summary>
     internal long Bytes { get; private set; }
 
+    /// <summary>Gets the parts the runs' Type walks entered (DECISIONS R4-M174): after each walk a memo misses, its scratch map's size (the
+    /// distinct Types it entered): the observation's, the drops' composition and the holding walk's, apart from <see cref="Work"/> (V16).</summary>
+    internal long WalkedParts { get; private set; }
+
     // The role table of the per-local markers (R4-M70): local L's marker by L's role; every rule reads a marker's kind here, so a later
     // kind adds a row.
     private Marker MarkerOf(int local) => this.body.Locals[local].Role switch

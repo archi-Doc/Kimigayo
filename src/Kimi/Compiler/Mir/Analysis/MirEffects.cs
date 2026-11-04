@@ -3,7 +3,8 @@
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations); per struct or enum declaration met below an indirection, its
-// destruction's summary in its own parameters, which an instance there composes through its arguments (PLAN G349; MirTypes.Below).
+// one destruction summary in its own parameters (with Drops), which an instance there composes through its arguments (PLAN G349;
+// MirTypes.Below, Compose) for A4 and for A5's observation.
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // (MirProgram.Drops), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).
@@ -43,6 +44,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
     /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
     internal const byte Deep = 16;
+
+    /// <summary>A class of a declaration node's summary (PLAN G349 U2): its destruction runs a declared drop, which observes all it reaches
+    /// (SPEC 15.6.6), read by A5's observation (<see cref="Classes"/>); no effect, so <see cref="Outcome"/> ignores it, and stored only in
+    /// declaration nodes (a body view's summary masks it out).</summary>
+    internal const byte Drops = 32;
 
     /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
     /// a call through it.</summary>

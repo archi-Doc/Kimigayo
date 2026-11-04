@@ -151,6 +151,16 @@ internal sealed partial class TyCtxt
     internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
+    // DECISIONS R4-M172 (PLAN G349 U2): a declaration summary's atom in the instance an instance's arguments make (Arguments), read only by
+    // MirEffects.Compose and walked only below an indirection (MirTypes.Below), where an instance is read for its declaration and arguments,
+    // never its storage (SPEC 15.3.5, 16.3.3, 8.7.2): Instance, then the instance's Type where its storage verdict is a Limit (Binding's
+    // storage bound, PLAN G128), else as Readable reads it (Prepared and Rejected pass; Rejected in a complete compilation throws); null where
+    // the substitution does not complete, which Compose hands to its reader's Limit as R4-M139 reads it.
+    [Transitional("R7", Reason = "R7-T1's substitution without storage preparation replaces it (PLAN G128's removal condition).")]
+    internal BoundType? SummaryInstance(BoundType type, Subst subst)
+        => this.Instance(type, subst) is ({ } instance, var storage) && (storage == Binding.StorageOutcome.Limit || this.Readable(instance, storage))
+            ? instance : null;
+
     // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
     internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
 

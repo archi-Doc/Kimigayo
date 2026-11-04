@@ -259,6 +259,7 @@ internal sealed partial class MirBorrows
         if (!exists)
         {
             known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, out known.Writes);
+            this.WalkedParts += this.walked.Count;
         }
 
         this.writable[local] = known.Writes;

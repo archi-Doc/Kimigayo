@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Mir;
 using Xunit;
 
 namespace XunitTest;
@@ -62,6 +63,30 @@ public sealed partial class MirBorrowsTest
         }
     }
 
+    // PLAN G349 U2 (F5, N2): written nesting below an indirection, 17 handle layers of obj/S<…> over a borrow (each one level: a composed
+    // atom is walked at its instance's depth), stays within the walk's bound, as in A4 (MirEffectsTest's s17): no record for the borrowed
+    // parameter's destruction, as its 2-layer twin; and A4 then A5 over a second program version allocate nothing (the observation's
+    // composition and A4's nodes A5 meets).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(17)]
+    [InlineData(2)]
+    public void AWrittenNestingBelowAnIndirectionIsExact(int layers)
+    {
+        var type = string.Concat(Enumerable.Repeat("obj/S<", layers)) + "ref/i32 during a" + new string('>', layers);
+        var c = CompileDepthForm($"struct S<X>\n    public var x: X\nfunc deep(n: {type})\n    let r = n@ref\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var (stratum, deep) = (new Stratum(c.Types), Body(program, "deep"));
+        stratum.Run(program);
+        Assert.Empty(DepthRecords(c, program, "deep").Select(static x => $"{x.Line} {x.Code}"));
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            program.Version++;
+            stratum.Run(program, deep);
+        }));
+    }
+
     // Kept apart (problem statement §5; WORKFLOW Full step 2): br3loan and br3pl at full size, the design note's programs, which run over
     // 100 s on dev: no A5 record. Explicit: they join the counted rows when the choice lands.
     [Theory(Explicit = true)]
@@ -73,10 +98,11 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(DepthRecords(c, Analyze(c), null).Select(static x => $"{x.Line} {x.Code}"));
     }
 
-    // V16 (problem statement §3): A5's cold allocation and Work on br3loan's body (main, after every other body and A4's summaries) grow
-    // at most linearly in the growing Fields (b = 1, 2, 3 behind two wrappers per level) and in the levels (a chain of 5, 7 and 9
-    // declarations with three Fields each); the regular twins are rows that must not change. A5's Work counts no Type walk's parts on dev
-    // (constant over these sizes), so the allocation is the growth's deterministic measure.
+    // V16 (problem statement §3): A5's cold allocation, Work and the parts its Type walks enter (WalkedParts, DECISIONS R4-M174) on
+    // br3loan's body (main, after every other body and A4's summaries) grow at most linearly in the growing Fields (b = 1, 2, 3 behind two
+    // wrappers per level) and in the levels (a chain of 5, 7 and 9 declarations with three Fields each); the regular twins are rows that
+    // must not change; and A4 then A5 on main over a second program version allocate nothing (PLAN G349 U2, N2: the observation's
+    // composition on a new version).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("fields", false)]
@@ -86,7 +112,7 @@ public sealed partial class MirBorrowsTest
     public void AReassignmentBelowAnIndirectionScalesPolynomially(string axis, bool regular)
     {
         var sizes = axis == "fields" ? new[] { 1, 2, 3 } : [5, 7, 9];
-        var (work, strata) = (new long[3], new Stratum[3]);
+        var (work, parts, strata, programs) = (new long[3], new long[3], new Stratum[3], new (MirProgram Program, MirBody Main)[3]);
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
@@ -101,17 +127,24 @@ public sealed partial class MirBorrowsTest
                 stratum.Run(program, body);
             }
 
-            strata[i] = stratum;
+            (strata[i], programs[i]) = (stratum, (program, main));
             return () => stratum.Run(program, main);
         });
         for (var i = 0; i < sizes.Length; i++)
         {
-            work[i] = strata[i].Borrows.Work;
+            (work[i], parts[i]) = (strata[i].Borrows.Work, strata[i].Borrows.WalkedParts);
+            var (stratum, (program, main)) = (strata[i], programs[i]);
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                program.Version++;
+                stratum.Run(program, main);
+            }));
         }
 
-        output.WriteLine($"{axis} {string.Join(", ", sizes)} (regular {regular}): A5 Work {string.Join(", ", work)}, cold allocation of main's run " +
-            $"{string.Join(", ", allocated)}, {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms");
+        output.WriteLine($"{axis} {string.Join(", ", sizes)} (regular {regular}): A5 Work {string.Join(", ", work)}, walked parts {string.Join(", ", parts)}, " +
+            $"cold allocation of main's run {string.Join(", ", allocated)}, {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms");
         Assert.True(Grows(work, 2), string.Join(", ", work));
+        Assert.True(Grows(parts, 2), $"walked parts {string.Join(", ", parts)}");
         Assert.True(allocated[2] - allocated[1] <= (2 * (allocated[1] - allocated[0])) + 4096, $"cold allocation {string.Join(", ", allocated)}");
     }
 

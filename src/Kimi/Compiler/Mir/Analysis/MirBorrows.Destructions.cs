@@ -104,6 +104,7 @@ internal sealed partial class MirBorrows
             this.entered.Clear();
             var composer = new Composer(this);
             MirTypes.Destruction(type, ref composer);
+            this.WalkedParts += this.entered.Count;
             range = (start, this.dropRows.Count - start);
         }
 

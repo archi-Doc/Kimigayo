@@ -4720,7 +4720,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     tells Content from Chain keying: under an Origin-stated premise the content holds a Loan on each holder a second read passes (a
     `raw/T during source` Field needs its `Loan` Field), so replacing it, or writing what it refers to, conflicts either way. Numbering: R4-M138
     is free on dev and every open R4 branch (R4-M137 is 2c-9's).
-- **R4-M139 Every reader of an instance reads it by one rule: Rejected storage passes through, a Limit does not (G245 U2)** (2026-10-26;
+- **R4-M139 Every reader of an instance reads it by one rule: Rejected storage passes through, a Limit does not (G245 U2)** (departed
+  from in part by R4-M172: a declaration summary's atom keeps a storage Limit's Type) (2026-10-26;
   PLAN G245's unit U2, the R4 planning session's design B1-2 with its option (A); BU agreeing the member and its name, R5 its two
   conditions for MirCases) SPEC 23.1.1, 23.1.2; BU-36, BU-37, BU-38.
   - Cause: `TyCtxt.Apply` is the instance only when its storage is Prepared (BU-38 keeps it so), and the MIR's readers took its null,
@@ -5455,7 +5456,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     were falsely Unknown); a per-call gate (N1).
   - Numbering: R4-M152 is free on dev and every remote branch (R4-M150 is G264's, R4-M151 BU-46's R4 side).
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
-  (superseded in part by R4-M157: the holding walk's key) (2026-10-28; G272's design-first candidate, design 2 with the planning
+  (superseded in part by R4-M157: the holding walk's key; by R4-M173: below an indirection A4 and the observation compose) (2026-10-28; G272's design-first candidate, design 2 with the planning
   session's structure check and additions; class Full, Q11; the owner's 「G272: (1)」 and 「G272 要件: (a)」)
   SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis limit a Resource diagnostic at the
   affected declaration, call or token. `MirTypes`' walks end a growing Type (SPEC 15.3.5) at the bound of 32 and answered there with a
@@ -6536,6 +6537,48 @@ and migration obligations remain in force; no numeric cap changes are authorized
     what this rule lets it write; A4 and A5 share `MirTypes.SealedPayload`. count<S> stays valid by this rule, yet A5 errs at its
     `for` (`$for.iterator`, `for _ in items`) until PLAN G416: the lent item's composed destruction passes the item by next()'s
     exclusive Loan on the iterator (route (1)) and stores that Loan into the iterator, a self-row; an (e) row (R4-M150's S2 line).
+- **R4-M172 A declaration summary's atom reads its instance by `TyCtxt.SummaryInstance` (PLAN G349 U2; departs from R4-M139 only by
+  keeping a storage Limit's Type)** (2026-11-05; the owner's GO for G349's units U1′–U5, verbatim 「GO (after H3b)」; U2's design note,
+  ACCEPT after two fix rounds; R4's implementer) SPEC 15.3.5, 16.3.3, 8.7.2; R4-M139, R4-M153.
+  - `SummaryInstance`: `Instance` (Binding's `StorageInstance`, then `PrepareTypeStorage`), then the instance's Type where that storage
+    verdict is a Limit, else as `Readable` reads it (Prepared and Rejected pass; Rejected in a complete compilation throws, DIAGNOSTICS
+    rule 8); null where the substitution does not complete, which `MirEffects.Compose` hands to the reader's Limit as R4-M139 does (A4's
+    `Process(null)`, the observation's `MirOutcome.Limit`; no new default). Read only by `Compose` and walked only through
+    `MirTypes.Below`, where an instance is read for its declaration and arguments, never its storage (until U3 the Composer's
+    per-instance walk is the staged exception, which no atom reaches). No analysis verdict rests on Binding's storage bound there
+    (R4-M153); that bound publishes as the builder's or collector's storage-limit `Unsupported_Kd` where an instance is generated (PLAN
+    G128, R5-M152, R5-M184) and as nothing where none is. The reason R4-M139 gave for refusing a Limit (a reader would walk storage that
+    was not established) does not hold where nothing walks the instance's storage. Body-view atoms and every other reader keep
+    `ReadableInstance`. Replacement: R7-T1's substitution without storage preparation (PLAN G128's removal condition).
+  - Open (owner R4 with BU; PLAN G349): which inputs make `StorageInstance` null in a complete compilation. U2's design probe found the
+    storage-bound form gives a typed Limit, not null; no input giving null was found, so no pinned Limit row exists yet. The rule changes
+    no answer where the null does not arise.
+- **R4-M173 A declaration's destruction summary is A4's declaration node (PLAN G349 U2)** (2026-11-05; as R4-M172) SPEC 16.3.3, 15.3.5,
+  15.6.6; supersedes R4-M153 in part.
+  - One step below an indirection: `MirTypes.Below`, the only entry to the walk's indirect position, a private argument of the walk's
+    own recursion (no visitor holds or chooses it); there a struct or enum instance goes to `IMirDestruction.Declared` and the walk reads
+    none of its Fields, Cases or base. `MirTypes.Entered` is the dispatch after `First`, for a visitor that walks an instance per
+    instance (the Composer until U3, test visitors). One composition: `MirEffects.Compose<TReader>` (σ always `TyCtxt.Arguments`, each
+    atom once by `SummaryInstance`, no `cases.Type`; a Drop atom with an instance walked by `Below` at the instance's depth, any other or
+    a null one to the reader's `Effect`), read by A4's `Glue` and A5's observation through `IMirSummaryReader` (`Summary`, `Effect`). One
+    depth convention: a part lies one level below its holder; a composed atom at its instance's depth, so growth through a declaration
+    never deepens the walk and only written nesting meets the bound, alike in A4 and A5 (17 layers of `obj/S<…>` are exact in both).
+  - A4 publishes the class `Drops` (the destruction runs a declared drop), kept only in declaration nodes (a body view's summary masks
+    it), and `Classes(node)`; the observation reads `Outcome(classes) ⊔ (Drops ? Decided)` and stops at Decided before atoms. A node A5
+    meets first is solved at once by `DeclarationNode`, restoring the caller's selected view (`MirCases.Width`); the invariants are in
+    `MirEffects.Declarations.cs`'s contract. The Observer and `Observation` move from MirTypes to A5 (`MirBorrows.Accesses`): MirTypes
+    reads no analysis.
+  - Supersedes R4-M153 in part: below an indirection A4 (since U1′) and the observation compose instead of walking to the bound; the
+    bound keeps inline depth and written nesting; U5 supersedes the rest. Rejected: an Observer node table and worklist in MirBorrows
+    (a second copy of A4's least fixed point and a second walk of each declaration per version).
+- **R4-M174 `WalkedParts` (A4, A5): the parts the Type walks entered, apart from `Evaluations` and `Work` (PLAN G349 U2)** (2026-11-05;
+  as R4-M172) V16.
+  - One definition in both analyses: the distinct Types a walk scope entered, its scratch map's size when the scope ends (A4: each
+    evaluation's and each judged obligation's `glued`; A5: after a memo miss, the observation's and the Composer's `entered` and the
+    holding walk's `walked`). Readers read after their own phase (A4's rows after A4's `Run`; A5's after main's A5 run): the two cost
+    rows (`ADestructionBelowAnIndirectionScalesPolynomially`, `AReassignmentBelowAnIndirectionScalesPolynomially`).
+  - `Evaluations` counts node evaluations again; the owner's GO of 2026-11-03 (verbatim 「GO (after H3b)」) did not take the
+    candidate's 2 -> 16 headroom, so `AGrowingSummaryNeedsNoBound` keeps 2.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

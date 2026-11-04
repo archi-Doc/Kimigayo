@@ -29,7 +29,9 @@ public sealed partial class MirEffectsTest
     // SPEC 16.3.3, 15.3.5, 15.6.4, 8.11.2 (problem statement §2): a confined witness destroying a value of the family. The summary is
     // exact, so A4 records what the regular twin does: nothing where no part has an effect (br1, br2, br3 with wrappers, arr3's Array
     // element, a pure drop, an atom bound to i32); the decided effect where a part has one (a drop writing a mutable static, an atom
-    // bound to Loud, whose drop prints). reg3 and the twin are exact on dev and stay so.
+    // bound to Loud, whose drop prints). reg3 and the twin are exact on dev and stay so. s17 (PLAN G349 U2, F5): 17 written handle layers
+    // of obj/S<…>, one level each below an indirection (a composed atom is walked at its instance's depth), stay within the walk's bound,
+    // as in A5 (MirBorrowsTest.AWrittenNestingBelowAnIndirectionIsExact).
     [Theory]
     [InlineData("br1", "")]
     [InlineData("br2", "")]
@@ -41,6 +43,7 @@ public sealed partial class MirEffectsTest
     [InlineData("noisyDrop", Failed)]
     [InlineData("atom", Failed)]
     [InlineData("atomFlat", "")]
+    [InlineData("s17", "")]
     public void ADestructionBelowAnIndirectionUsesTheTypesSummary(string form, string expected)
     {
         var (declarations, local) = IndirectionForm(form);
@@ -100,10 +103,11 @@ public sealed partial class MirEffectsTest
     public void TheFullSizeFormsGiveTheCollectorsRecord(string form, string site, string expected)
         => Assert.Equal(expected, CollectorRecords(form == "br3" ? (Growing(3, 0), "Option<obj/T<i32>>") : (Growing(3, 0, array: true), "Option<T<i32>>"), site));
 
-    // V16 (problem statement §3): A4's evaluations and its cold allocation over the program grow at most linearly in the growing Fields
-    // (b = 1, 2, 3 of br3's family behind two wrappers per level, the levels a depth of 32 holds fixed) and in the levels (a chain of 5, 7
-    // and 9 declarations with three Fields each), and a warm re-analysis allocates nothing and takes the same evaluations; the regular twins
-    // are rows that must not change. Each size runs a fresh A4 over a built program, as SummariesScaleLinearly does.
+    // V16 (problem statement §3): A4's evaluations, the parts its walks enter (WalkedParts, DECISIONS R4-M174) and its cold allocation over
+    // the program grow at most linearly in the growing Fields (b = 1, 2, 3 of br3's family behind two wrappers per level, the levels a depth
+    // of 32 holds fixed) and in the levels (a chain of 5, 7 and 9 declarations with three Fields each), and a warm re-analysis allocates
+    // nothing and takes the same evaluations and parts; the regular twins are rows that must not change. Each size runs a fresh A4 over a
+    // built program, as SummariesScaleLinearly does.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("fields", false)]
@@ -113,7 +117,7 @@ public sealed partial class MirEffectsTest
     public void ADestructionBelowAnIndirectionScalesPolynomially(string axis, bool regular)
     {
         var sizes = axis == "fields" ? new[] { 1, 2, 3 } : [5, 7, 9];
-        var (evaluations, analyses) = (new long[3], new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3]);
+        var (evaluations, parts, analyses) = (new long[3], new long[3], new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3]);
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
@@ -131,19 +135,21 @@ public sealed partial class MirEffectsTest
         for (var i = 0; i < sizes.Length; i++)
         {
             var (effects, flow, cases, program, report) = analyses[i];
-            evaluations[i] = effects.Evaluations;
+            (evaluations[i], parts[i]) = (effects.Evaluations, effects.WalkedParts);
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 program.Version++;
                 report.Clear();
                 Analyze(effects, flow, cases, program, report);
             }));
-            Assert.Equal(evaluations[i], effects.Evaluations);
+            Assert.Equal((evaluations[i], parts[i]), (effects.Evaluations, effects.WalkedParts));
         }
 
-        output.WriteLine($"{axis} {string.Join(", ", sizes)} (regular {regular}): evaluations {string.Join(", ", evaluations)}, cold A4 allocation " +
+        output.WriteLine($"{axis} {string.Join(", ", sizes)} (regular {regular}): evaluations {string.Join(", ", evaluations)}, walked parts " +
+            $"{string.Join(", ", parts)}, cold A4 allocation " +
             $"{string.Join(", ", allocated)}, {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms");
         Assert.True(evaluations[2] - evaluations[1] <= (2 * (evaluations[1] - evaluations[0])) + 64, $"evaluations {string.Join(", ", evaluations)}");
+        Assert.True(parts[2] - parts[1] <= (2 * (parts[1] - parts[0])) + 64, $"walked parts {string.Join(", ", parts)}");
         Assert.True(allocated[2] - allocated[1] <= (2 * (allocated[1] - allocated[0])) + 4096, $"cold A4 allocation {string.Join(", ", allocated)}");
     }
 
@@ -191,6 +197,7 @@ public sealed partial class MirEffectsTest
         "noisyDrop" => (Metrics + Growing(3, 6, "    drop => Metrics.n += 1\n"), "Option<obj/T<i32>>"),
         "atom" => (Growing(3, 6, "    public var v: Option<X>\n"), "Option<obj/T<Loud>>"),
         "atomFlat" => (Growing(3, 6, "    public var v: Option<X>\n"), "Option<obj/T<i32>>"),
+        "s17" => ("struct S<X>\n    public var x: X\n", $"Option<{string.Concat(Enumerable.Repeat("obj/S<", 17))}i32{new string('>', 17)}>"),
         _ => throw new ArgumentOutOfRangeException(nameof(form), form, null),
     };
 

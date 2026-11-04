@@ -111,21 +111,24 @@ public sealed partial class MirBorrowsTest
 
     // Problem r2 §3 p4, own steps and the existing pins: the bound's located Unsupported_Kd becomes the limit record at the same subject,
     // and every other record stays: p4's borrowed deep root d at its `let d` (dev: Unsupported_Kd there; its twin is p5); deepAtReturn
-    // keeps its Warning; AnUnclassifiedDestructionOrCallIsUnsupported's made (`let n`'s call) and deep (p4's form on a parameter, at its
-    // function), and AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart's ownLimitLocal (`let n`'s call), ownDeep's two records and DeepBuf's
-    // init (the call ownDeep's first record makes). Those pins keep their other functions' records; a lane updates their bound records to
-    // these verdicts. A parameter's Drop is located at its Type occurrence (BU-48's locations, settled (a): deepAtReturn's and deep's).
+    // keeps its Warning; AnUnclassifiedDestructionOrCallIsUnsupported's made (`let n`'s call), and AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart's
+    // ownLimitLocal (`let n`'s call) and DeepBuf's init. A parameter's Drop is located at its Type occurrence (BU-48's locations, settled
+    // (a): deepAtReturn's and deep's). PLAN G349 U2: below an indirection a growing Nest is exact (AGrowingNestGivesItsRegularTwinsRecords),
+    // so deepAtReturn, deep and ownDeep take an inline-depth representative of the same rule (the 40-deep Tuple of p4 as DeepStore's and
+    // DeepBuf's n, and deep's parameter holding its borrow 40 deep); ownDeep's assignment destroys the old value past the bound.
     [Theory]
     [InlineData("p4", "let d = mk(value@ref) OwnershipDepthLimit_Kd")]
-    [InlineData("deepAtReturn", "DeepStore OwnStepDeparture_Kd|DeepStore OwnershipDepthLimit_Kd")]
+    [InlineData("deepAtReturn40", "DeepStore OwnStepDeparture_Kd|DeepStore OwnershipDepthLimit_Kd")]
     [InlineData("made", "Nest<ref/i32>.init(value: y@ref) OwnershipDepthLimit_Kd")]
-    [InlineData("deep", "Nest<ref/i32 during a> OwnershipDepthLimit_Kd")]
+    [InlineData("deep40", "Tuple40 OwnershipDepthLimit_Kd")]
     [InlineData("ownLimitLocal", "Nest<ref/i32>.init(value: x) OwnershipDepthLimit_Kd")]
-    [InlineData("ownDeep", "Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd|d.n = Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd")]
+    [InlineData("ownDeep40", "d.n = Value40 OwnershipDepthLimit_Kd")]
     [InlineData("init", "Nest<i32>.init(value: 1) OwnershipDepthLimit_Kd")]
     public void TheBoundsLocatedRecordsBecomeTheLimitRecord(string form, string expected)
     {
-        Assert.Equal(Rows(expected), DepthRows(form).Select(static x => $"{x.Line} {x.Code}"));
+        var line = expected.Replace("Tuple40", Nested("ref/i32 during a", 40, type: true), StringComparison.Ordinal)
+            .Replace("Value40", Nested("0", 40), StringComparison.Ordinal); // The representatives' 40-deep Type and value.
+        Assert.Equal(Rows(line), DepthRows(form).Select(static x => $"{x.Line} {x.Code}"));
         AssertTheDepthLimitIsAResourceError();
     }
 
@@ -254,6 +257,9 @@ public sealed partial class MirBorrowsTest
         "shallowAtReturn" or "flatAtReturn" or "arrAtReturn" or "deepAtReturn" => (Prelude + RawShapes + OwnStepShapes + DepthStores, form),
         "made" or "deep" => (Prelude + UnclassifiedPin, form),
         "ownLimitLocal" or "ownDeep" or "init" => (Prelude + RawShapes + OwnStepShapes + OwnStepPin, form),
+        "deepAtReturn40" => (Prelude + RawShapes + OwnStepShapes + Inline(DepthStores), "deepAtReturn"),
+        "deep40" => (Prelude + UnclassifiedPin.Replace("func deep(n: Nest<ref/i32 during a>)", $"func deep(n: {Nested("ref/i32 during a", 40, type: true)})", StringComparison.Ordinal), "deep"),
+        "ownDeep40" => (Prelude + RawShapes + OwnStepShapes + Inline(OwnStepPin).Replace("d.n = Nest<i32>.init(value: 2)", $"d.n = {Nested("0", 40)}", StringComparison.Ordinal), "ownDeep"),
         _ => throw new ArgumentOutOfRangeException(nameof(form), form, null),
     };
 
@@ -273,8 +279,14 @@ public sealed partial class MirBorrowsTest
         => $"func mk(r: ref/i32) -> {NestedType(40)} => {Nested("0", 40)}\nfunc f() -> ()\n    var value = 42\n    let d = mk(value@ref)\n" +
             borrow + "    value = 99\n    return\n";
 
-    // A value nested in Tuples to a depth, paired with the levels' indices, and its Type, paired with i32.
-    private static string Nested(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    // A value nested in Tuples to a depth, paired with the levels' indices (or, for a Type, with i32), and its Type, paired with i32.
+    private static string Nested(string inner, int levels, bool type = false)
+        => new string('(', levels) + inner + string.Concat(Enumerable.Range(0, levels).Select(i => type ? ", i32)" : $", {i})"));
+
+    // A store's Nest<i32> Field as the 40-deep Tuple of i32 (PLAN G349 U2's inline-depth representative), initialized in place.
+    private static string Inline(string stores)
+        => stores.Replace("internal var n: Nest<i32>", $"internal var n: {NestedType(40)}", StringComparison.Ordinal)
+            .Replace("self.n = Nest<i32>.init(value: 1)", $"self.n = {Nested("0", 40)}", StringComparison.Ordinal);
 
     private static string NestedType(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
 }

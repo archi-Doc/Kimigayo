@@ -99,6 +99,14 @@ internal sealed class MirCases(TyCtxt types)
     /// (an obligation Binding publishes for a use, R4-M22).</summary>
     internal void Deselect() => this.width = 0;
 
+    /// <summary>Gets or sets the selected view's width (0 when deselected): a solve that deselects between a caller's reads (an A4
+    /// declaration node solved at once, MirEffects.DeclarationNode, in which no <see cref="Select"/> runs) restores the caller's view by it.</summary>
+    internal int Width
+    {
+        get => this.width;
+        set => this.width = value;
+    }
+
     /// <summary>Gets the binders the selected view makes borrows, as bits of the body's binder order: the Semantics case a relation is
     /// required in (SPEC 15.6.5; a C1-F4 row's CaseMask, Binding's Condition renumbered to the body), so a row whose mask they cover is
     /// checked in the view.</summary>

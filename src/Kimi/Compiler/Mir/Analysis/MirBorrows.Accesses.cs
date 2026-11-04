@@ -9,7 +9,8 @@ namespace Kimi.Compiler.Mir;
 // (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
 // also read by MirBorrows.OwnSteps' MayDepart, Dropping by MirBorrows.Holders (drop slots), Dropping and Destruction by MirBorrows.Liveness
 // and MirBorrows.Activations, and Dropping by MirBorrows.Destructions' receivers. It owns the observation (Observation, its Observer over
-// MirTypes' destruction walk; SPEC 15.6.6, 16.3.3), whose one product reader is Destruction.
+// MirTypes' destruction walk, which composes A4's declaration summaries below an indirection; SPEC 15.6.6, 16.3.3, 15.3.5; PLAN G349 U2), whose
+// one product reader is Destruction.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -25,15 +26,17 @@ internal sealed partial class MirBorrows
     /// since any rc or arc release may be final (decided, where the walk stops); an abstract part not proven Copy, whose instance decides
     /// (Limit, DECISIONS R4-M147); and a part past the walk's bound (Deep, DECISIONS R4-M153). The answer is the Join of its parts' (the
     /// walk goes on past Limit and Deep), so it is the same in every order of the parts: decided whatever an unknown part is, and Limit
-    /// beside a part past the bound. A payload is walked below its handle: a recursive Type ends, exactly where it repeats and at the walk's
-    /// bound where it grows.</summary>
+    /// beside a part past the bound. Below a handle or a sequence a struct or enum instance is its declaration's summary at its arguments
+    /// (A4's node, <see cref="MirEffects.Compose"/>: its outcome, decided where it runs a declared drop, and its Drop atoms walked on; DECISIONS
+    /// R4-M173), so a growing Type is exact at any depth of its instances; only written nesting meets the walk's bound. Reads A4's last
+    /// <see cref="MirEffects.Run"/>.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="definition">The definition whose premises prove Copy and Sealed.</param>
     /// <returns>What the destruction may observe.</returns>
     internal MirOutcome Observation(BoundType? type, BindingSymbol? definition)
     {
         this.entered.Clear();
-        var observer = new Observer(this, types, definition);
+        var observer = new Observer(this, types, effects, definition);
         MirTypes.Destruction(type, ref observer);
         return observer.Answer;
     }
@@ -100,6 +103,7 @@ internal sealed partial class MirBorrows
         if (!known)
         {
             observation = this.Observation(type, this.body.Key.Decl);
+            this.WalkedParts += this.entered.Count;
         }
 
         if (observation.IsDeep)
@@ -200,8 +204,9 @@ internal sealed partial class MirBorrows
     // Observation's visitor: the Join of the reported parts' outcomes, a part that may observe decided (the walk stops), an abstract part
     // not proven Copy Limit, after which the walk goes on, since another part may decide, and Deep where a part past the walk's depth
     // bound has a Type the walk never enters within it (MirDepths). A string's or a sequence's own release observes nothing; its elements
-    // are parts of their own.
-    private struct Observer(MirBorrows owner, TyCtxt types, BindingSymbol? definition) : IMirDestruction
+    // are parts of their own. Below an indirection an instance is its declaration's summary (Summary: A4's outcome of its classes, decided
+    // where it runs a declared drop; its Drop atoms walked on, a null one the Limit, R4-M139).
+    private struct Observer(MirBorrows owner, TyCtxt types, MirEffects effects, BindingSymbol? definition) : IMirDestruction, IMirSummaryReader
     {
         internal readonly MirOutcome Answer => this.Outcome.Join(owner.entered.ContainsValue(MirDepths.Past) ? MirOutcome.Deep : MirOutcome.None);
 
@@ -233,8 +238,23 @@ internal sealed partial class MirBorrows
             return false;
         }
 
-        // PLAN G349 U2: the Observer keeps no declaration summary yet; it walks the instance (R4-M153's bound below an indirection).
-        public bool Declared(BoundType instance, int depth) => MirTypes.Entered(instance, ref this, depth);
+        public bool Declared(BoundType instance, int depth)
+        {
+            effects.Compose(instance, depth, ref this);
+            return this.Outcome.IsDecided;
+        }
+
+        public bool Summary(int node)
+        {
+            var classes = effects.Classes(node);
+            this.Outcome = this.Outcome.Join(MirEffects.Outcome(classes)).Join((classes & MirEffects.Drops) != 0 ? MirOutcome.Decided : MirOutcome.None);
+            return !this.Outcome.IsDecided;
+        }
+
+        // A non-Drop atom arises only below a declared drop, whose Drops decided the answer before any atom is read.
+        public void Effect(BoundType? type, in MirEffects.Atom atom)
+            => this.Outcome = this.Outcome.Join(type is null ? MirOutcome.Limit
+                : throw new InvalidOperationException("A summary's non-Drop atom reached the observation, which Drops decides."));
 
         // A part known to observe: the decided answer, the Join's top, where the walk stops.
         private bool Decide()

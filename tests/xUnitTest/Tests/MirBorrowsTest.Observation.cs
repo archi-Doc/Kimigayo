@@ -60,22 +60,23 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6.6, 16.3.3: destroying a value observes what it holds where its destruction runs a user drop (Logger, also as an element
     // or a Sealed handle's payload), destroys a Function value, or releases a handle whose payload is not Sealed; an abstract part not
-    // proven Copy, whose instance decides, is the Limit (DECISIONS R4-M147); a Sealed recursive handle ends. A part past the walk's depth
-    // bound, also below a growing recursive handle, is Deep (DECISIONS R4-M153). An observing part is the decided answer (MirOutcome).
+    // proven Copy, whose instance decides, is the Limit (DECISIONS R4-M147); a Sealed recursive handle ends. Below a growing recursive
+    // handle the instance is its declaration's summary, exact (nest: PLAN G349 U2, R4-M173); a part past the walk's depth bound, a Tuple
+    // nested 40 deep, is Deep (DECISIONS R4-M153). An observing part is the decided answer (MirOutcome).
     [Fact]
     public void DestructionObservesUserDropsAndUnknownParts()
     {
         var (body, c) = MirTypesTest.Probe(
             "func probe<T, C>(holder: Holder, logger: Logger, loggers: Array<Logger>, owned: obj/Logger, shared: rc/Plain, atomic: arc/Plain, " +
             "based: obj/Base, action: () -> (), value: T, copied: C, chain: Chain, tree: Tree, forest: Forest, table: Table, logged: Logged, " +
-            "nest: Nest<i32>)\n    C is Copy\n    return\n");
+            $"nest: Nest<i32>, deep: {new string('(', 40)}i32{string.Concat(Enumerable.Repeat(", i32)", 40))})\n    C is Copy\n    return\n");
         var observation = Observations(c);
         Assert.Equal(
             [("holder", "None"), ("logger", "Decided"), ("loggers", "Decided"),
                 ("owned", "Decided"), ("shared", "None"), ("atomic", "None"),
                 ("based", "Decided"), ("action", "Decided"), ("value", "Limit"),
                 ("copied", "None"), ("chain", "None"), ("tree", "None"), ("forest", "None"),
-                ("table", "None"), ("logged", "Decided"), ("nest", "Deep")],
+                ("table", "None"), ("logged", "Decided"), ("nest", "None"), ("deep", "Deep")],
             MirTypesTest.Parameters(body).Select(x => (x.Name, observation(x.Type, body.Key.Decl).ToString())).ToArray());
     }
 

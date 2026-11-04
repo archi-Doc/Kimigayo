@@ -36,9 +36,12 @@ internal sealed partial class MirEffects
     private int scratchCount;
     private int dependentCount;
 
-    /// <summary>Gets the work of the last <see cref="Run"/>: its node evaluations and the parts their destruction walks enter, linear in
-    /// the program's calls and declarations (V16).</summary>
+    /// <summary>Gets the work of the last <see cref="Run"/>: its node evaluations, linear in the program's calls and declarations (V16).</summary>
     internal int Evaluations { get; private set; }
+
+    /// <summary>Gets the parts the last <see cref="Run"/>'s destruction walks entered (DECISIONS R4-M174): the distinct Types each walk
+    /// scope entered, each evaluation's and each judged obligation's, apart from <see cref="Evaluations"/> (V16).</summary>
+    internal int WalkedParts { get; private set; }
 
     // The current evaluation's classes: what it found, with Deep where its destruction walks met a part past the bound whose Type they
     // never entered within it (MirDepths: a slot left Past).
@@ -52,7 +55,7 @@ internal sealed partial class MirEffects
     internal void Run(MirProgram program, MirReport report)
     {
         this.program = program;
-        (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
+        (this.atomCount, this.dependentCount, this.Evaluations, this.WalkedParts) = (0, 0, 0, 0);
         var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
         (this.bodyNodes, this.nodes, this.head, this.length) = (count, count, 0, count);
         this.declarationNodes.Clear();
@@ -152,12 +155,11 @@ internal sealed partial class MirEffects
     }
 
     // A node's summary from its local facts and its callees' current summaries: whether it grew. A declaration node's local input is the
-    // destruction of its Type in its own parameters, under no definition's premises.
+    // destruction of its Type in its own parameters, under no definition's premises; only a declaration node keeps Drops.
     private bool Evaluate(int node)
     {
         this.Evaluations++;
         this.glued.Clear();
-        this.below = node >= this.bodyNodes;
         if (node < this.bodyNodes)
         {
             var body = this.program.Bodies[this.owners[node]];
@@ -172,7 +174,8 @@ internal sealed partial class MirEffects
             this.Process(this.declarationTypes[node - this.bodyNodes], Drop);
         }
 
-        var found = this.Found;
+        this.WalkedParts += this.glued.Count;
+        var found = (byte)(this.Found & (node < this.bodyNodes ? ~Drops : byte.MaxValue));
         if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
             return false; // The summary only grows, so equal counts are equal sets.
@@ -210,24 +213,18 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A node's current summary composed through a substitution into the current evaluation (Fold, then its atoms).
+    // A body view's current summary composed through a call's substitution into the current evaluation (Fold, then its atoms).
     private void Read(int node, Subst? subst)
     {
         this.Fold(node);
-        var (below, declaration) = (this.below, node >= this.bodyNodes);
-        this.below |= declaration; // A declaration's atoms are parts of a value below an indirection.
         for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
         {
             var atom = this.atoms[a];
             // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
-            // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit. A declaration's atom is a part of the
-            // instance's stored Types, read as AdtDef reads its Fields, with no storage verdict of its own (PLAN G349): below an indirection
-            // a growing instance meets Binding's storage bound (PLAN G128), on which no destruction rests.
-            var type = subst is null ? atom.Type : declaration ? types.Instance(atom.Type, subst).Type : types.ReadableInstance(atom.Type, subst);
+            // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
+            var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
             this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Reference);
         }
-
-        this.below = below;
     }
 
     // A node's classes and keys folded into the current evaluation; a reading node records the reader, so the node's growth queues it.
@@ -381,9 +378,9 @@ internal sealed partial class MirEffects
 
     // SPEC 16.3, 8.11.3 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
     // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3, MirTypes.SealedPayload, the one
-    // test A5 reads too), walked on below the handle (Glue.Below: an instance there composes its declaration's node, SPEC 15.3.5), else any
-    // more-derived destructor may run; a struct's destructor runs; a string's, an Array's or a Dictionary's storage is released (its
-    // elements are parts of their own).
+    // test A5 reads too), walked on below the handle (MirTypes.Below: an instance there composes its declaration's node, SPEC 15.3.5), else
+    // any more-derived destructor may run; a struct's destructor runs, a declared drop (Drops, which a declaration node keeps); a string's,
+    // an Array's or a Dictionary's storage is released (its elements are parts of their own).
     private void Destroy(BoundType type, int depth)
     {
         if (type.IsAbstract)
@@ -405,13 +402,12 @@ internal sealed partial class MirEffects
             }
 
             this.found |= payload is null ? Unknown : (byte)0;
-            var (below, glue) = (this.below, new Glue(this));
-            this.below = true;
+            var glue = new Glue(this);
             _ = MirTypes.Below(payload, ref glue, depth + 1);
-            this.below = below;
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
+            this.found |= Drops;
             this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, []), destructor);
         }
     }
@@ -454,7 +450,7 @@ internal sealed partial class MirEffects
         this.reader = -1;
         foreach (var row in this.rows)
         {
-            (this.found, this.scratchCount, this.definition, this.below) = (0, 0, row.Definition, false);
+            (this.found, this.scratchCount, this.definition) = (0, 0, row.Definition);
             this.glued.Clear();
             if (row.Callable is { } callable)
             {
@@ -464,6 +460,7 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
+                this.WalkedParts += this.glued.Count;
                 Verdict(report, row, this.Found, ulong.MaxValue);
             }
             else if (row.Definition is not { } target)
@@ -500,29 +497,23 @@ internal sealed partial class MirEffects
                 this.Enter(body, null, implementation);
             }
 
+            this.WalkedParts += this.glued.Count;
             Verdict(report, row, this.Found, view);
         }
     }
 
-    // The destruction walk's visitor: each part reached, each entered part counted as work, past the walk's depth bound a part this
-    // implementation does not follow (Deep), and below an indirection a struct or enum instance its declaration's node composed through
-    // the instance's arguments (PLAN G349).
-    private readonly struct Glue(MirEffects owner) : IMirDestruction
+    // The destruction walk's visitor: each part reached, past the walk's depth bound a part this implementation does not follow (Deep),
+    // and below an indirection a struct or enum instance its declaration's summary composed through the instance's arguments (Compose,
+    // PLAN G349 U2): the node read (Fold), a Drop atom walked on, any other atom, or a null one (the Limit, R4-M139), processed.
+    private readonly struct Glue(MirEffects owner) : IMirDestruction, IMirSummaryReader
     {
-        public bool First(BoundType type, int depth)
-        {
-            var enters = MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _), depth);
-            owner.Evaluations += enters ? 1 : 0;
-            return enters && !owner.Declaration(type);
-        }
+        public bool First(BoundType type, int depth) => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _), depth);
 
         public bool Declared(BoundType instance, int depth)
         {
-            var (below, glue) = (owner.below, this);
-            owner.below = true;
-            var stops = !owner.Declaration(instance) && MirTypes.Entered(instance, ref glue, depth);
-            owner.below = below;
-            return stops;
+            var glue = this;
+            owner.Compose(instance, depth, ref glue);
+            return false;
         }
 
         public bool Visit(BoundType type, int depth)
@@ -536,5 +527,13 @@ internal sealed partial class MirEffects
             MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _));
             return false;
         }
+
+        public bool Summary(int node)
+        {
+            owner.Fold(node);
+            return true;
+        }
+
+        public void Effect(BoundType? type, in Atom atom) => owner.Process(type, atom.Kind, atom.Requirement, atom.Contract, atom.Reference);
     }
 }
