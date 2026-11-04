@@ -8598,6 +8598,9 @@ resumed by R4-M86 (2026-10-20).
     a `MovedPlace_Kd` beside `take(x@follow)` (implementation review 1's `i-masked-old-path-error-head`), also in another function
     (`i-masked-other-function`), and `g(x@follow)`'s UnprovenOriginRelation_Kd (`i-vc-uniq-only`). The same gate already masks them
     for every Binding argument rejection (`take(x)` with `owner or uniq` and no Copy). No verdict changes: each program was rejected.
+  - Superseded in part by R5-M184 and R5-M185 (2026-11-05, H5): the old path decides nothing, and the MIR's records publish beside
+    Binding's rejection, so the `MovedPlace_Kd` records above are published (in the same and in another function); `g(x@follow)`'s
+    value-call Origin relation stays unjudged, its UnprovenOriginRelation_Kd lost (PLAN G421).
   - Cost: one allocation-free walk per bare `uniq`/`objuniq` or exclusive-admitting pair Place; `CaseAdmitted` reads its callers'
     `TryPairLayer`. An interleaved, unpinned A/B (Release, one folder, 10 rounds in alternating order, other sessions' heavy runs on
     the machine; warm Bind and HIR publish, medians of 200): Bind B/A 0.97–1.00, publish 0.99–1.01 on Milestone34, Milestone26 and the
