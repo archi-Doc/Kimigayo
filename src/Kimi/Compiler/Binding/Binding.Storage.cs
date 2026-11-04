@@ -367,6 +367,49 @@ public sealed partial class Binding
         return tuple;
     }
 
+    // SPEC 6.5.2, 15.3.3: a Case's payload Types are written Types, bound with every declaration's before any header, as a Field's Type
+    // is with its header: a Field's inferred Type (BindPropertyHeader) may construct a Case, which reads them (BindEnumConstruction).
+    // The Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a Field, a payload Type that failed
+    // leaves the clauses unbound, so they add no record derived from that failure.
+    private void BindCasePayloads()
+    {
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is not EnumKoto container)
+            {
+                continue;
+            }
+
+            var scope = this.scopes[container];
+            for (var i = 0; i < container.Members.Count; i++)
+            {
+                if (!TryEnumPayload(container.Members[i], out var payload))
+                {
+                    continue;
+                }
+
+                var originDeclaration = this.BeginOriginDeclaration(container.Members[i], scope);
+                Koto? failedPayload = null;
+                for (var j = 0; j < payload.Operands.Length; j++)
+                {
+                    if (this.BindType(payload.Operands[j], scope) is null)
+                    {
+                        failedPayload ??= payload.Operands[j];
+                    }
+                }
+
+                if (failedPayload is null)
+                {
+                    this.CompleteOriginDeclaration(originDeclaration);
+                }
+                else
+                {
+                    RestPendingOn(originDeclaration, failedPayload);
+                }
+            }
+        }
+    }
+
     private void PrepareStorage()
     {
         this.storageDeclarations.Clear();
@@ -434,27 +477,7 @@ public sealed partial class Binding
 
                     this.storedCases.Add(member.BoundSymbol?.EnumCase);
 
-                    // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
-                    // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
-                    var originDeclaration = this.BeginOriginDeclaration(member, scope);
-                    Koto? failedPayload = null;
-                    for (var j = 0; j < payload.Operands.Length; j++)
-                    {
-                        if (this.BindType(payload.Operands[j], scope) is null)
-                        {
-                            failedPayload ??= payload.Operands[j];
-                        }
-                    }
-
-                    if (failedPayload is null)
-                    {
-                        this.CompleteOriginDeclaration(originDeclaration);
-                    }
-                    else
-                    {
-                        RestPendingOn(originDeclaration, failedPayload);
-                    }
-
+                    // The payload Types were bound before the headers (BindCasePayloads).
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
                         var syntax = payload.Operands[j];

@@ -6,7 +6,8 @@ namespace XunitTest;
 
 // SPEC 11.6, 15.2.3 (DECISIONS BU-73, PLAN G353; the owner accepted the support reduction): a stored Property whose inferred Type holds,
 // at any depth, a Closure whose call signature names an enclosing container's Origin is one located Unsupported_Kd at the first such
-// Closure literal, until imaging (PLAN, after R6-check): directly, in a Tuple, in a generic holder, as a Closure's result, inherited.
+// Closure literal, until imaging (PLAN, after R6-check): directly, in a Tuple, in a generic holder or Case (o1, a Type mismatch before
+// G381), as a Closure's result, inherited.
 // Every use of the Field rests on it (a read, a call, an erasure, a move of the container, a narrowing), so it is the only record:
 // L2j, L2k, N1, N3, N3c (f4b), N3e (f4c), R2, R3 and h2 were accepted (valid, now Unsupported_Kd), L2g, m2 and the f4m rows were
 // accepted unsoundly, L2i, N1b, N3d, f4d, R1, h1, m1, v1 and v2 had other records. A generic holder's Closure (N4, N4b) is Binding's
@@ -54,6 +55,7 @@ public partial class PropertyBindingTest
     [InlineData("f4m", TupleView + Narrow, AtLiteral)]
     [InlineData("h1", HolderView + Static + "    return need(view.h)", AtLiteral)]
     [InlineData("h2", HolderView + Static + "    return need(view@move)", AtLiteral)]
+    [InlineData("o1", ViewHead + "cb = Option.Some(func (y: ref/i32 during source) => ())" + ViewInit + Static + "    return need(view.cb)", AtLiteral)]
     [InlineData("N4", BoxOf + "func f(r: ref/i32 during static) -> i32\n    let b = Box.init(r)\n    return need(b.cb)", "Unsupported_Kd: (x: T)")]
     [InlineData("N4b", BoxOf + "func f(r: ref/i32) -> i32\n    let b = Box.init(r)\n    return need(b.cb)", "Unsupported_Kd: (x: T)")]
     [InlineData("O5", "struct Outer {source}\n    public let data: ref/i32 during source\n    public init(data: ref/i32 during source) => self.data = data\n    struct Inner\n        public let cb = func (y: ref/i32 during source) => ()\n", AtLiteral)]
