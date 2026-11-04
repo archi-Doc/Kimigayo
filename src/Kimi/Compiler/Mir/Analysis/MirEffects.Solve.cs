@@ -14,10 +14,8 @@ internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
     private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
-    private readonly Dictionary<BindingSymbol, int> declarationNodes = new(ReferenceEqualityComparer.Instance); // Each declaration's destruction node (PLAN G349).
     private Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths),
     private Dictionary<BoundType, byte> spare = new(ReferenceEqualityComparer.Instance); // and a judged obligation's, kept while a new node is solved.
-    private BoundType[] declarationTypes = []; // Each declaration node's Type in its own parameters, by its node after the body views'.
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
     private int[] atomCounts = [];
@@ -31,8 +29,6 @@ internal sealed partial class MirEffects
     private MirProgram program = null!;
     private BindingSymbol? definition; // The definition whose premises resolve atoms: the evaluated node's, or an obligation's.
     private int reader; // The evaluated node, -1 while judging an obligation, whose atoms are resolved at once.
-    private int bodyNodes; // The run's body view nodes; each declaration node the run adds follows them (DeclarationNode).
-    private bool below; // Whether the walked value lies below an indirection, where every struct or enum instance composes its declaration.
     private int nodes; // All nodes of the run.
     private int head; // The ring of queued nodes over queue: its first and its length; a node is queued at most once at a time.
     private int length;
@@ -155,44 +151,6 @@ internal sealed partial class MirEffects
         this.queued[node >> 6] |= 1UL << node;
     }
 
-    // PLAN G349 (SPEC 16.3.3, 15.3.5, 15.6.4): the destruction node of a struct or enum declaration, its summary in its own parameters,
-    // added and queued once per run where an instance below an indirection is first met; one met while an obligation is judged is solved
-    // at once, the judged row's state kept.
-    private int DeclarationNode(BindingSymbol declaration)
-    {
-        if (this.declarationNodes.TryGetValue(declaration, out var known))
-        {
-            return known;
-        }
-
-        var node = this.nodes++;
-        this.declarationNodes.Add(declaration, node);
-        MirDataflow.Grow(ref this.classes, this.nodes);
-        MirDataflow.Grow(ref this.atomStarts, this.nodes);
-        MirDataflow.Grow(ref this.atomCounts, this.nodes);
-        MirDataflow.Grow(ref this.readers, this.nodes);
-        MirDataflow.Grow(ref this.dependentHeads, this.nodes);
-        MirDataflow.Grow(ref this.queued, (this.nodes + 63) >> 6);
-        MirDataflow.Grow(ref this.declarationTypes, this.nodes - this.bodyNodes);
-        MirDataflow.Grow(ref this.keys, this.nodes * this.keyWords); // Keys are composed once Spread solved them (a node met while judging).
-        this.keys.AsSpan(node * this.keyWords, this.keyWords).Clear();
-        (this.classes[node], this.atomStarts[node], this.atomCounts[node], this.readers[node], this.dependentHeads[node]) = (0, 0, 0, -1, -1);
-        this.declarationTypes[node - this.bodyNodes] = types.DeclarationType(declaration);
-        this.queued[node >> 6] &= ~(1UL << node);
-        this.Enqueue(node);
-        if (this.reader < 0)
-        {
-            var (found, definition, below) = (this.found, this.definition, this.below);
-            (this.glued, this.spare) = (this.spare, this.glued);
-            this.Solve();
-            (this.glued, this.spare) = (this.spare, this.glued);
-            (this.found, this.definition, this.below, this.reader, this.scratchCount) = (found, definition, below, -1, 0);
-            cases.Deselect();
-        }
-
-        return node;
-    }
-
     // A node's summary from its local facts and its callees' current summaries: whether it grew. A declaration node's local input is the
     // destruction of its Type in its own parameters, under no definition's premises.
     private bool Evaluate(int node)
@@ -279,20 +237,6 @@ internal sealed partial class MirEffects
         }
 
         this.below = below;
-    }
-
-    // PLAN G349 (SPEC 16.3.3, 15.3.5): a struct or enum instance below an indirection, but the evaluated declaration's own Type at its
-    // root: its declaration's node composed through the instance's arguments, exact at any depth of the instance.
-    private bool Declaration(BoundType type)
-    {
-        if (!this.below || !(AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) ||
-            (this.reader >= this.bodyNodes && ReferenceEquals(type, this.declarationTypes[this.reader - this.bodyNodes])))
-        {
-            return false;
-        }
-
-        this.Read(this.DeclarationNode(type.Symbol!), type.Components.Count == 0 ? null : types.Arguments(type));
-        return true;
     }
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
