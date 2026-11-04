@@ -233,7 +233,8 @@ public sealed class SemanticSnapshotTest
         public override string ToString()
             => this.text.ToString();
 
-        // The tree, the outcome of each phase, the problems Binding, control flow and ownership retain, and the published records.
+        // The tree, the outcome of each phase, the MIR side (MirTargetSide.MirSide: Binding's records without the twins, then the MIR's
+        // rows; R6-check H10a D8) and the published records.
         internal void Print(Compilation compilation, Kotonoha kotonoha)
         {
             // The generated function of top-level statements is printed once: where the tree holds it, or else after the tree.
@@ -251,14 +252,10 @@ public sealed class SemanticSnapshotTest
             text.Append("= binding ").Append(binding.Mode).Append(' ').Append(binding.ResolvedCount).Append('/').Append(binding.UnresolvedCount).Append('/').Append(binding.InvalidCount)
                 .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(CompilationTestHelper.Location(body))
                 .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.ErrorCount).Append('\n');
-            foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
+            foreach (var (requirement, code, node) in MirTargetSide.MirSide(compilation))
             {
-                text.Append(requirement.Partition switch
-                {
-                    DiagnosticPartition.Binding => $"? binding {code} {(BindingFailure)requirement.Kind} ",
-                    DiagnosticPartition.ControlFlow => $"? flow {code} ",
-                    _ => $"? ownership {code} {(OwnershipRequirement)requirement.Kind} ",
-                }).Append(CompilationTestHelper.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
+                text.Append(requirement is { } failure ? $"? binding {code} {(BindingFailure)failure.Kind} " : $"? mir {code} ")
+                    .Append(CompilationTestHelper.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
             }
 
             foreach (var diagnostic in TestDiagnostics.Of(compilation))
