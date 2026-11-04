@@ -10520,6 +10520,19 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a fit by punnable Types only (raw storage also holds what `Raw.initialize` places through a cast); a referent-side
     parameter for Holds (a bool steering one rule); an A5-side widening (A5 derives no retention).
 
+- **BU-92 A dependency module's native supply is Binding's located limit at its import** (2026-11-04; PLAN G329, from R6-gen G9's
+  design Q4; BU's design note `bu\batch\G329\design.md`) AGENTS Diagnostics: a valid form not implemented is the location-only
+  `Unsupported_Kd`. Moves the report of this limit from publication to Binding.
+  - Rule: `ValidateLibraryImports` fails an import whose defining module is not the root and whose library is not the reserved
+    kernel32 supply as `Unsupported` at its `#LibraryImport`, after the import's own checks, so a missing requirement, an invalid
+    signature or a conflict stays its record, and the import still joins the symbol table. No valid `kimi_backend` import exists
+    (its catalog names are reserved), so the set is publication's (`EmissionArtifacts.ResolveForeignSupplies`).
+  - Moves: such a program, used or not, `check` accepted -> `Unsupported_Kd` at the attribute; `kimi build`'s
+    `ArtifactPublicationFailed_Kd` at the project no longer occurs (the import is no `LibraryImports` entry and only accepted
+    compilations publish). Publication's throw is unreachable; deleting it is the back's (`C/Emission`, R9-M2).
+  - Rejected: an `Unsupported_Kd` from publication (a reporter beyond ARCH's three, G9 Q4); the check before the import's own ones
+    (it would hide their Language errors).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
