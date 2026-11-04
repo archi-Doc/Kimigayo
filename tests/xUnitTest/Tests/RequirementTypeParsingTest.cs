@@ -22,6 +22,9 @@ public class RequirementTypeParsingTest
     [InlineData("(Pair<i32, string> or [1 of (bool, i32)])")]
     [InlineData("(::Api.Box<(i32, string)>.C.Element and Copy)")]
     [InlineData("(i32, string) and not Box<i32>.C.Element")]
+    [InlineData("(S during y).Item")]
+    [InlineData("(S during y).(C).Item")]
+    [InlineData("((S during y).Item or i32)")]
     public void RequirementsPreserveSyntaxThroughWritingAndReload(string requirement)
     {
         var tree = ParseTestHelper.ParseSuccess($"func use<T>(value: T)\n    T is {requirement}\n    ()");
@@ -116,6 +119,20 @@ public class RequirementTypeParsingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
+    }
+
+    // A grouped projection base `(S during y).Item` is a requirement Type in a where clause and an associated specification, as in a
+    // local annotation: the clause is a premise of the body and the specification completes the conformance; a missing member is the
+    // Binding's record, not a parse error.
+    [Theory]
+    [InlineData("func g<T>(x: ref/T, y: ref/i32) -> T.(Src).Item\n    T is Src\n    T.(Src).Item is (S during y).Item\n    return y\n", "")]
+    [InlineData("struct W {w}\n    Self is Src\n    associate Item is (S during w).Item\n    public let v: ref/i32 during w\n    public init(v: ref/i32 during w) => self.v = v\n    public func read(self: ref/Self) -> ref/i32 during w => self.v\n", "")]
+    [InlineData("func g<T>(x: ref/T, y: ref/i32) -> i32\n    T is Src\n    T.(Src).Item is (S during y).Nope\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    public void GroupedProjectionRequirementsBindAsTypes(string declarations, string codes)
+    {
+        const string Base = "contract Src\n    associate Item\n    func read(self: ref/Self) -> Self.Item\nstruct S {s}\n    Self is Src\n    public let v: ref/i32 during s\n    public init(v: ref/i32 during s) => self.v = v\n    public func read(self: ref/Self) -> ref/i32 during s => self.v\n";
+        var records = ContextualCaptureTest.PublishedRecords(Base + declarations + "public func main() => ()\n");
+        Assert.Equal(codes, string.Join(' ', records.Select(static x => x.Code)));
     }
 
     [Theory]
