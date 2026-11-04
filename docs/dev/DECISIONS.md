@@ -1801,6 +1801,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Place of Type Never goes into a fresh Never temp, which every consumer takes as it is (the placement rule unchanged), and an
   adapted one is built as Binding publishes it. Amended by R5-M159: an element whose index diverges has its element Type, so the
   increment's target node is no longer Never (`++a[(return 0)]`); its one stays of the old value's Type.
+  Amended by PLAN G410's builder half (2026-11-04, R4): `$tryWrite`'s writer leaves the exception list. SPEC 22.10.4 evaluates the
+  writer first, then the segments in order, and SPEC 14.10.3 continues after a Never writer. `MirBuilder.Format` no longer returns
+  early at a Never writer: its status and writes take the Never value as R5-M38's `Acquire` does, so the embedded expressions are
+  built and checked (`MovedPlace_Kd`, `UninitializedPlace_Kd` as with a real writer), and the result is placed (no
+  `UninitializedPlace_Kd` at `let r = $tryWrite(<Never>, ...)`).
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
   of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result";
   its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
