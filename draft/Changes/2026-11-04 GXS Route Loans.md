@@ -20,7 +20,14 @@ Closure, `count<S>` and `hold<C>` under S2). PLAN G148 (2) proposed leaving such
   does not make the argument refer to that holder.
 - **Direct Loans** naming a holder: access path from the holder, no dereference, implicit receiver Borrows included; own or parent.
 - **S1.** A holder a store reaches past layer 1 retains none of the direct Loans naming it, unless its Type may refer into itself.
-- **S2 (Type condition; fix round 1).** Three cases: a reference layer held by value or past an own step (a payload, a `during self`
+- **S2 (Type condition; fix round 2, form C).** The owner, after re-check 1's REVISE (Q11), verbatim 「先に設計を」 (O-6), then, to
+  "Which form should S2's Type condition take?", verbatim 「C: closed whitelist」 (O-7): a Type cannot refer into itself only where
+  everything it holds, by value or past an own step, is listed (scalars and Function Items; reference layers not identical to the Type
+  or listed storage it holds, an exclusive one alone and not repeated; raw layers, an Origin-less or `self` one only with no reference
+  beside it; an abstract part with no reference beside it; aggregates' parts, each in turn); every other Type may. Rejected: (A) the
+  open list (a missing row is a soundness hole); (B) R5's whitelist as written (measured unsound on takenOut and keptOut); (B′) B with
+  identity (loses count<S>, hold<C>, iterated and the ForKoto gains). "Raw storage holds any Type" is BU-91's fact (G415), which A5
+  reads through Binding (`TyCtxt.RawStep` / retention). Fix round 1's form, kept for the record: three cases: a reference layer held by value or past an own step (a payload, a `during self`
   layer, 4.9 elements) whose referent is identical, Origins aside (3.8, 15.6.1), to the Type or storage it holds the same way (B1:
   elementBad); such a layer beside an abstract part; an exclusive layer beside another reference layer or repeated (a fixed array whose
   length may be other than 1, a 4.9 collection). An abstract referent by identity premises (8.2.3); an abstract Type or part with no
@@ -50,7 +57,8 @@ viaUniqMixed): A5 needs E's route first (OQ-1).
 | Part | Where |
 | --- | --- |
 | Layer 1, direct Loans, S1, S2, S5 | SPEC §15.6.4 "Route Loans" paragraphs; examples twoLayersRead/acrossLayersRead (valid), twinBad, elementBad, leakBad |
-| S6 | SPEC §15.6.4's per-argument sentence (the Closure-receiver exception) and §15.8.2; example `outer<s/T>` (U-A1's cr1, valid) |
+| S6 | SPEC §15.6.4's per-argument sentence, dev's word for word, and its own Closure-receiver sentence (R1-B2, R1-B3); §15.8.2; examples `outer<s/T>` (cr1, valid) and pairBad |
+| Form C | SPEC §15.6.4's closed whitelist with RN1–RN3; example bufBad (spec-case with H+C) |
 | `count<S>`'s comment | SPEC §15.6.4: its holder keeps no Loan naming it (S1, the lent item under S2) |
 | A5 H+C (Full) | S1, S2, S6 in `MirBorrows.Calls.Keep` and `MirTypes` (`Refers`); spec-cases `15.6.4-route-layers` and `15.8.2-capture-retention` land with it |
 | A5 E (Full) | S5 with E's route (OQ-1, an owner question: a route-2/3 marker or BU's raw steps) |

@@ -1308,3 +1308,4 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   with its examples; S6 → §15.8.2; DECISIONS R4-M171 (replaces PLAN G148 (2)). SPECJ follows in this unit (RQ10 (a)); GUIDE is not
   refreshed. Integration implies no implementation support (A5 units H+C and E).
   Revised after its one SPEC review's REVISE (B1–B5, N1–N10) with the designer's replacement text (fix round 1).
+  Fix round 2: S2's Type condition is form C, the closed whitelist (the owner, verbatim 「先に設計を」 and 「C: closed whitelist」), with RN1–RN3 and the per-argument sentence restored (R1-B2, R1-B3).

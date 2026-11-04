@@ -6485,27 +6485,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rule (15.6.4 "Route Loans", the designer's text after the SPEC review, B1-B5 and N1-N10): layer 1 is the holders the argument's
     own value names (its Loans other than its parent Loans, and its addresses); a parent Loan's holder is past it. The direct Loans
     naming a holder start at it and dereference nothing (a Borrow of it or an inline part, implicit receiver Borrows included), own or
-    parent. (S1) A holder a store reaches past layer 1 retains none of them unless its Type may refer into itself. (S2) Three cases: a
-    reference layer it holds by value or past an own step (a payload, a `during self` layer, 4.9 elements) has a referent identical,
-    Origins aside (3.8, 15.6.1), to the Type or storage it holds the same way (B1: elementBad); such a layer beside an abstract part; an
-    exclusive layer beside another reference layer or repeated (a fixed array whose length may be other than 1, a 4.9 collection). An
-    abstract referent is identical where the identity premises make it so (8.2.3); an abstract Type or part with no reference beside it
-    only where the premises make it such a reference, a handed callable likewise (N10), a binding's own store refuted by 8.15.1. Raw
-    layers count in no case (N3: a precision choice; raw access is 5.2.1's obligation). (S5) A store's route Loans are the exclusive
-    direct Loans by which it steps between the body's own holders; E retains none of them where every step from the parameter, capture
-    or static root dereferences a safe borrow (items 2, 3; B2), and keeps them where a raw layer without an Origin or an untied result's
-    part lies on the route (items 4, 5); any other Loan stays (B3: a Reborrow of a parameter's referent, leakBad). 15.6.4 (B4): from a
-    Closure's call receiver a capture's own value is carried only where the result or storage can hold the capture's Type or a borrow
-    formed through it; 15.8.2 (S6) points there. S0's write routes (R4-M170) are unchanged.
+    parent. (S1) A holder a store reaches past layer 1 retains none of them unless its Type may refer into itself. (S2, form C, fix round 2) A
+    Type cannot refer into itself only where everything it holds, by value or past an own step, is on a closed list; every other Type
+    may: a scalar or Function Item; a reference layer (a safe borrow, a pair layer in a borrow case, a Slice, an object view) whose
+    referent is identical, Origins aside (3.8, 15.6.1), neither to the Type nor to listed storage it holds, an exclusive one only where
+    not repeated (fixed arrays whose length may be other than 1, 4.9 collections, UniqSlices) and alone; a raw layer (an address), one
+    without an Origin or with `self` only where no reference layer lies beside it, since its storage may hold any Type (5.7; bufBad);
+    an abstract part with no reference layer beside it (premises decide); and the components, elements, Fields and base, Case payloads,
+    captures, 4.9 elements, a handle's payload and a string's text, each in turn. The twin's reason, the identity-premise, premise,
+    handed-callable (N10) and 8.15.1 sentences stay; RN2: a raw layer is no reference layer here (a raw pointer into the holder carries
+    what its borrow would, without that Borrow's own Loan; access is its author's obligation, 5.2.1). (S5) A store's route Loans are the
+    exclusive direct Loans by which it steps between the body's own holders (RN3: the last-holder sentence is gone); E retains none of
+    them where every dereference on the route from the parameter, capture or static root is of a safe borrow (items 2, 3; B2, RN1), and
+    keeps them where a raw layer without an Origin or an untied result's part lies on the route (items 4, 5); any other Loan stays (B3:
+    leakBad). 15.6.4's per-argument sentence is dev's again word for word (R1-B3); its own next sentence (R1-B2): of a Closure's call
+    receiver, under either rule, a capture's own value is carried only where the result or storage can hold a value of the capture's
+    Type, of a part it holds by value, or a borrow formed through it (pairBad errs; cr1 stays valid); 15.8.2 (S6) points there. S0's
+    write routes (R4-M170) are unchanged.
+  - The owner on S2's form (fix round 2): after re-check 1's REVISE went to the owner under Q11, verbatim 「先に設計を」 (O-6), then,
+    to "Which form should S2's Type condition take?" with four forms compared (`r4-notes\post-exit\gxs-fix2.md`), verbatim
+    「C: closed whitelist」 (O-7). Rejected: (A) the open list with R1-B1's additions (each new storage form needs a row, and a missing
+    row is a soundness hole, as R1-B1 showed twice); (B) R5's whitelist as written (measured unsound: takenOut and keptOut accepted, its
+    "another holder's storage" is no fact of the Type); (B′) B with the identity comparison (closed and sound, but loses count<S>,
+    hold<C>, iterated, statedSlotBad and the ForKoto gains). Form C's "raw storage holds any Type" is the fact of BU-91 (G415); the A5
+    unit reads it through Binding (`TyCtxt.RawStep` / retention), not deriving it again.
   - Supersedes in part R4-M73 (its "Rejected: ... GXS" and the "no loss" of twoLayersRead's self-row and E as one node).
   - Replaces PLAN G148 (2) (GXS as first written: it named only the direct Loans of the target and left E as one node); PLAN is the
     planning session's to update. STATUS records the SPEC-valid examples the MIR still rejects through H5's Rec unit, per the (e) list.
   - Examples: 15.6.4's twoLayersRead and acrossLayersRead (valid), twinBad (errs at `t.0@follow = 3` and `inspect(t.1@follow@ref)`,
     S2's exclusive case) and elementBad (errs at `h.0.clear()` and `inspect(h.1)`, S2's owned-storage case), leakBad (errs at
     `p@follow.clear()`, B3), `count<S>`'s comment (next, its item's destruction and the Iterator's write only the Iterator's holder);
-    15.8.2's `outer<s/T>` (U-A1's cr1, valid). The designer measured twinBad and elementBad as errors in every mode (N8). Spec-cases
+    15.8.2's `outer<s/T>` (U-A1's cr1, valid) and pairBad (errs at `values.clear()` and `inspect(slot.0)`, R1-B2); 15.6.4's bufBad
+    (errs at `h.0.free()` and `inspect(h.1)`, form C's raw item). The designer measured twinBad and elementBad as errors in every mode (N8). Spec-cases
     `15.6.4-route-twin` (twinBad and elementBad) and `15.6.4-route-leak` land now (dev's MIR gives the records; the old path differs,
-    class (a)); `15.6.4-route-layers` and `15.8.2-capture-retention` land with A5 H+C, since dev's MIR rejects them and MirCensusTest's
+    class (a)), and `15.8.2-capture-part` (pairBad; dev's MIR gives both records, checked under a landed family; the old path errs at the
+    Closure's formation, class (a)); `15.6.4-route-layers`, `15.8.2-capture-retention` and `15.6.4-route-buf` (bufBad: dev's MIR adds
+    two coarser E records at `var zero` and `var h`) land with A5 H+C, since dev's MIR rejects them and MirCensusTest's
     accepted-variant census would fail. Twins that stay errors (MirBorrowsTest.Raw): twoLayers's `var b` and viaUniqMixed's `var w`
     (items 4 and 5), with leakBad and c80.
   - Units: A5 H+C (Full: S1, S2, S6 in `MirBorrows.Calls.Keep` and `MirTypes`; F9 ×2, InputDependentValueCall, U-A1 ×4, `count<S>`
