@@ -123,6 +123,21 @@ public class DictionaryIndexTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
+    // The boundary of that (e) row (R4's triage for O-14): its twins with a concrete V, a Copy V, no index assignment, or a `tryInsert` in
+    // its place compose no erased destruction of an abstract V that stores into `owned`, so they are valid, accepted and generated.
+    [Theory]
+    [InlineData("func consume<K>(entries: Dictionary<K, string>, key: ref/K, value: string)\n    K is Equatable\n    var owned = entries@move\n    owned[key] = value@move\n", "string", "consume(entries@move, (1, 2), \"new\")")]
+    [InlineData("func consume<K, V>(entries: Dictionary<K, V>, key: ref/K, value: V)\n    K is Equatable\n    V is Copy\n    var owned = entries@move\n    owned[key] = value@move\n", "i32", "consume(entries@move, (1, 2), 5)")]
+    [InlineData("func keep<K, V>(entries: Dictionary<K, V>)\n    K is Equatable\n    var owned = entries@move\n", "string", "keep(entries@move)")]
+    [InlineData("func insert<K, V>(entries: Dictionary<K, V>, key: K, value: V)\n    K is Equatable\n    var owned = entries@move\n    _ = owned.tryInsert(key@move, value@move)\n", "string", "insert(entries@move, (1, 2), \"new\")")]
+    public void GenericIndexTwinsAreAccepted(string declaration, string value, string call)
+    {
+        var c = MinimalEmissionTest.Analyze(declaration + $"var entries: Dictionary<(i32, i32), {value}> = [:]\n" + call);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+    }
+
     [Fact]
     public void MissingKeyAbortsAfterTheRhsAndBeforePlacement()
     {

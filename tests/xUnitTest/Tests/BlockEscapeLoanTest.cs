@@ -277,9 +277,9 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     }
 
     // SPEC 3.6, 8.15.1: an abstract receiver temporary ends with its statement as well, so the iterator it lends cannot outlive it. Since
-    // G264 (S) S2 A5 also errs at `var it = make().iterate()`, the abstract iterator's composed end, as the old analysis did (ledger
-    // b4fcbfb1691b, old to both; class 4: both reject, the MIR adds the record), an S2 record of the family PLAN G416 decides (H5's (e)
-    // list, row "S2's self-row family", the owner's O-9).
+    // G264 (S) S2 A5 also errs at `var it = make().iterate()`, the abstract iterator's composed end: the old analysis's own record, which
+    // the MIR now publishes too (s2-alone.md's Gain, ledger b4fcbfb1691b, old to both; class 4: both reject, the MIR adds the record). It
+    // is not an (e)-family record, and PLAN G416 is not expected to remove it.
     [Fact]
     public void AnAbstractReceiverTemporaryEndsWithItsStatement()
     {

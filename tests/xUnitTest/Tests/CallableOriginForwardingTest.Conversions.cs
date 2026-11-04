@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -477,30 +478,41 @@ public partial class CallableOriginForwardingTest
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // PLAN G404 (DECISIONS BU-93, R4-M162): a nested Function Type identical to the required one keeps its implementation's condition,
-    // so the Closure records UnprovenOriginContract_Kd, a Binding-level relation record. Since the MIR decides acceptance the MIR's records
-    // are published beside Binding's (R6-check H3-2, DECISIONS R5-M184), so the independent records stay (SPEC 23.1.2; class 1r): the
-    // let annotation's UnprovenOriginRelation_Kd (pl_n, p3_n), that one and the Closure parameter annotation's (pl_n_written), and the
-    // second `v@move`'s MovedPlace_Kd with the annotation's UnprovenOriginRelation_Kd (pmv_let). dev, where the old ownership analysis
-    // stops beside the Binding record (PLAN G56's owner-accepted limit, R4-M162's lost records), loses them until H11. A non-identical
-    // form already recorded only the Closure (pl_nonid).
+    // so the Closure records UnprovenOriginContract_Kd, a Binding-level relation record. The old ownership analysis stops beside that
+    // record (PLAN G56's owner-accepted limit, R4-M162's lost records), so before H5 these independent records were lost: the let
+    // annotation's UnprovenOriginRelation_Kd (pl_n at 8:19, p3_n at 8:20), that one and the Closure parameter annotation's (pl_n_written
+    // at 8:19 and 8:66), and the second `v@move`'s MovedPlace_Kd at 10:13 with the annotation's UnprovenOriginRelation_Kd at 11:19
+    // (pmv_let). Since the MIR decides acceptance (H5) its records are published beside Binding's (R6-check H3-2, DECISIONS R5-M184), so
+    // they stay (SPEC 23.1.2; class 1r), each pinned at its site with the Closure's record (`sites`, line:column). A non-identical form
+    // already recorded only the Closure (pl_nonid).
     [Theory]
-    [InlineData("pl_n", NestedLet + "func [] (g) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during s>")]
-    [InlineData("p3_n", NestedT + NestedHost + "    let f: ((() -> Option<T during s>) -> i32) -> i32 = func [] (h) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (h) => 5; UnprovenOriginRelation_Kd Option<T during s>")]
-    [InlineData("pl_n_written", NestedLet + NestedWritten + "\n    return 0\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>; UnprovenOriginRelation_Kd Option<T during s>")]
-    [InlineData("pmv_let", NestedT + NestedHost + "    var v = [1, 2]\n    let m = v@move\n    let n = v@move\n    let f: (() -> Option<T during s>) -> i32 = func [] (g) => 5\n    return 0\n", "MovedPlace_Kd v; UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during s>")]
-    public void ANestedIdenticalContractKeepsTheIndependentRecords(string form, string body, string records)
-        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+    [InlineData("pl_n", NestedLet + "func [] (g) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during s>", "UnprovenOriginContract_Kd 8:48; UnprovenOriginRelation_Kd 8:19")]
+    [InlineData("p3_n", NestedT + NestedHost + "    let f: ((() -> Option<T during s>) -> i32) -> i32 = func [] (h) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (h) => 5; UnprovenOriginRelation_Kd Option<T during s>", "UnprovenOriginContract_Kd 8:57; UnprovenOriginRelation_Kd 8:20")]
+    [InlineData("pl_n_written", NestedLet + NestedWritten + "\n    return 0\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>; UnprovenOriginRelation_Kd Option<T during s>", "UnprovenOriginContract_Kd 8:48; UnprovenOriginRelation_Kd 8:19; UnprovenOriginRelation_Kd 8:66")]
+    [InlineData("pmv_let", NestedT + NestedHost + "    var v = [1, 2]\n    let m = v@move\n    let n = v@move\n    let f: (() -> Option<T during s>) -> i32 = func [] (g) => 5\n    return 0\n", "MovedPlace_Kd v; UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during s>", "MovedPlace_Kd 10:13; UnprovenOriginContract_Kd 11:48; UnprovenOriginRelation_Kd 11:19")]
+    public void ANestedIdenticalContractKeepsTheIndependentRecords(string form, string body, string records, string sites)
+    {
+        OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+        Assert.Equal($"{form}: {sites}", $"{form}: {Sites(body + Main)}");
+    }
 
     // PLAN G418 (DECISIONS BU-93; STATUS Diagnostics, G10/G56): a failed Closure contract hides the call's other argument Origin
     // records. A nested identical Function Type now fails the Closure's (UnprovenOriginContract_Kd), so the call loses k's clause record,
     // UnprovenOriginRelation_Kd at `s` (12:14), and its own UnprovenConstraint_Kd at `k` (12:12), as base does beside a non-identical
     // Closure (pk_noclause_nonid_n); a Function value argument keeps both. When G418 lands these rows fail, and the restored records join
-    // them. The written Closure's own parameter annotation record, UnprovenOriginRelation_Kd at `Option<T during s>` (pk_noclause_int),
-    // is not the call's: the flip publishes it beside the Closure's (R6-check H3-2, DECISIONS R5-M184; SPEC 23.1.2, class 1r), which dev
-    // loses until H11 as ANestedIdenticalContractKeepsTheIndependentRecords' pl_n_written.
+    // them. The written Closure's own parameter annotation record, UnprovenOriginRelation_Kd at `Option<T during s>` (pk_noclause_int,
+    // 12:35, its only occurrence), is not the call's: the old ownership analysis lost it beside the Closure's record before H5, as
+    // ANestedIdenticalContractKeepsTheIndependentRecords' pl_n_written at 8:66, and H3-2 publishes it (DECISIONS R5-M184; SPEC 23.1.2,
+    // class 1r).
     [Theory]
     [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
     [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>")]
     public void AFailedClosureContractMasksTheCallsOtherRecordsUntilG418(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // The published Error records of a source: each code and its span's start as line:column (1-based), in ordinal order.
+    private static string Sites(string source)
+        => string.Join("; ", ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
+            .Select(x => $"{x.Code} {source.AsSpan(0, x.Span.Start).Count('\n') + 1}:{x.Span.Start - source.LastIndexOf('\n', Math.Max(x.Span.Start - 1, 0))}")
+            .Order(StringComparer.Ordinal));
 }
