@@ -175,13 +175,15 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(("ref/(ref/i32 during y.s) during b", "requires self.a outlives self.b, which is not proven"), (Text(source, error.Span), error.Label));
     }
 
-    // A warm rebind judges a failed declaration's chains from reused storage: a pair reached both ways, and two paths under nested
-    // conditions. (A node with more than one record allocates its further records on every pass, as on dev; PLAN G321.)
+    // A warm rebind judges a failed declaration's chains from reused storage: a pair reached both ways, two paths under nested
+    // conditions, and a node with several records (two sources at one last edge; a meet's two failing operands at one Type occurrence).
     [Theory]
     [Trait("Purpose", "Allocation")]
     [InlineData(Cell + "struct D {a, b}\n    public let f: (" + Cycle + ")\n        origin x.s == zz\n        origin y.s == a\n")]
     [InlineData(Cell + "struct D<s/T> {a, b}\n    s is owner or ref\n    T is Copy\n    public let f: (" + Nested + ")\n        origin x.s == zz\n" +
         "        origin y.s == a\n")]
+    [InlineData(Cell + "struct D {a, b, k}\n    public let c: (" + Chain + ", ref/(ref/i32 during k) during x.s, Missing)\n        origin x.s == a\n")]
+    [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n")]
     public void AWarmRebindJudgesDependentChainsWithoutAllocating(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
