@@ -90,12 +90,24 @@ public static partial class Parser
         }
         else
         {
-            // The vocabulary is closed; the rest of the item belongs to the rejected bound.
+            // The vocabulary is closed; the rest of the item belongs to the rejected bound, with every grouping it opens, closer
+            // included. Only a boundary at the item's own depth, a closer it did not open among them, ends a single item.
             var missing = reader.Expect(SyntaxForm.EffectBound);
             cause ??= missing;
-            while (reader.CanRead && !(single ? IsExpressionBoundary(ref reader) : reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock))
+            for (var depth = 0; reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock); reader.Advance())
             {
-                reader.Advance();
+                if (reader.CurrentTokenKind is TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace)
+                {
+                    depth++;
+                }
+                else if (depth > 0 && reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace)
+                {
+                    depth--;
+                }
+                else if (single && depth == 0 && IsExpressionBoundary(ref reader))
+                {
+                    break;
+                }
             }
         }
 
