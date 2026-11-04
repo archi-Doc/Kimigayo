@@ -782,6 +782,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   of `Compilation.Problems` (order-dependent; computing SourceRefs numbers unnumbered nodes under the observer) and its
   shipping only the hook in U0b (two parallel analysis units would invent the driver and record). R4-M35 ends its role as an exit
   gate, and tier 1 gains expected codes for the SPEC examples.
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the difference harness ends; W-14's ledger is the last.
 - **R4-M18** (2026-10-12, main session; two independent designs: A chosen with B's table-free report, publication rule and
   dependent adaptations; revised after the independent review for SPEC 23.1) The Semantics case bound (`PairBinder.CaseBound`,
   64; SPEC 8.15, 23.1.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
@@ -3350,6 +3351,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): with the ledger gone, the twin subset is the test MIR side's
+    filter (`Binding.IsTwinRecord`), until H11.
 - **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; unit 2a0-3b under R4-M94's package,
   2a0-D §5.2 and D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under the R4 planning session's redo
   rulings R1–R3; round 1 never landed, so this entry supersedes nothing on dev; one BU review, DEC Q6 form 1)
@@ -4648,6 +4651,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
   - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
     the 70% rule).
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the MIR target side is `MirTargetSide.MirSide`, the publisher's
+    rows.
 - **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (superseded in part
   by R4-M155: its result half, the owner's (A)) (2026-10-26, R4's
   implementer lane under R4-M126 §2.15 (P10) and D-11, the planning session's scope confirmation; supersedes R4-M101 O1)
@@ -16610,6 +16615,8 @@ structure is recorded here by the unit that first implements it.
     2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
   - Amended (the H5 split plan's ruling X1, 2026-11-03): PD29 holds per merge: F stops both old producers; the dead code goes in D1-D3 of
     the same group merge.
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a, amended by H8a): its departures from H0 and H0c (the twin filter
+    to H11, `LegacyRecords` to H8a, `MirTargetSide` kept).
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -16750,7 +16757,8 @@ structure is recorded here by the unit that first implements it.
     check (R5-M185); an inexact body that reaches generation is `InternalInvariant_Kd` (R5-M96's amendment). Supersedes R5-M4's
     step 2.
 - **R5-M188 The ledger harness ends; the test MIR side reads the publisher's rows (R6-check H10a)** (2026-11-05, R5; design
-  `draft/Sketches/R6-check/H10a-design.md` revision 1 with §9's fixes, two design reviews) Major.
+  `draft/Sketches/R6-check/H10a-design.md` revision 1 with §9's fixes, two design reviews) Major. Amended in place by R6-check H8a
+  (2026-11-05, R5's ruling on its OQ1; design `draft/Sketches/R6-check/H8a-design.md` D4) before the entry landed: `LegacyRecords`.
   - The difference ledger (R4-M17) ends: its observer, compared set, matcher, aggregation, classification table and tests, and
     `Compilation.Analyzed`. Nothing classifies against it since H5 (D-c2); W-14's `shared-base/1415d6b42/mir-diff/` is the last
     ledger. The difference categories (a)–(e) stay defined (COMPILER_ARCHITECTURE).
@@ -16761,8 +16769,10 @@ structure is recorded here by the unit that first implements it.
   - Departures from R5-M182 (H0's row and H0c), each with the reason that no longer holds:
     - `Binding.IsTwinRecord` stays to H11 (D-c2 named H10a): Binding's twins publish beside A5's since H5 (T50), so dropping the
       filter now would move every twin-node expectation twice; MirSide's filter is its reader, and H11 removes both.
-    - `LegacyRecords.Of` stays to H10b: its remaining readers assert the old analysis for its own subject; only `Location`,
-      `Document` and `Library` move to `CompilationTestHelper`.
+    - `LegacyRecords` ends at H8a (H10a's text, which its review accepted, kept `LegacyRecords.Of` to H10b because its remaining
+      readers asserted the old analysis for its own subject): H8a deletes those readers' old halves (its D1) and re-points the
+      Binding-subject reads to `MirTargetSide.MirSide` or `Binding.Issues`, so H10b finds no reader. Only `Location`, `Document` and
+      `Library` move to `CompilationTestHelper` (H10a).
     - "MIR helpers into `CompilationTestHelper`" and H0c's "else goes": `MirTargetSide` keeps its name, `Check` and `At` and owns
       `MirSide` (the group's one record pin, 79 call sites), and the MIR's (requirement, code, analysis) pairs of R4-M67 with
       `BindingComplete` move to their one reader, `MirCensusTest`.
