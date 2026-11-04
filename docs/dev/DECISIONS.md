@@ -4403,6 +4403,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     SPEC session).
   - Superseded in part by R4-M148: a Value callee's environment is no marking site (the temporary rule is deleted); a Closure call's
     result is marked as a method's.
+  - 2026-11-05 (PLAN G263, R4's window W-14): the indirect markers above are interned by `MirLoanSets.Add(set, run)` in one pass and one
+    node per `Marked` (`MirLoanSets.Of` is deleted), the same Loan sets as sets; rule W's Bytes on W-dense programs -16.6 %.
+    `MirBorrows.Covers` is a pure query and `Gather` the update (no mode flag). The text above is otherwise unchanged.
 - **R4-M134 SPEC rest: the later SPEC session's items after N2** (owner, 2026-10-25, the R4 planning session's dialog, verbatim:
   RZ1 「(a) 借用のモードで (推奨)」, RZ3 「(a) その場で破棄 (推奨)」, RZ5 「(b) 閉じた一覧 (推奨)」, RZ7 「(a) 宣言された型に合わせる (推奨)」,
   element storage 「(a) 集合型の Loan も及ぶ (推奨)」, G86 「(a) 場合ごとに (推奨)」, G159 (2) 「(b) 部分ごとに (推奨)」, §15.4.2 「(a)
