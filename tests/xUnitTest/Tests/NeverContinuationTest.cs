@@ -461,7 +461,7 @@ public class NeverContinuationTest
         var operand = moves ? HirAcquire.Move : HirAcquire.Copy;
         var c = MinimalEmissionTest.Analyze("func pass(x: Never, y: Never) => ()\nfunc absurd(x: Never) => pass(" + acquisition + ", x)\n");
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(moves, LegacyRecords.Of(c).Any(static x => x.Code == DiagnosticCode.MovedPlace_Kd));
+        Assert.Equal(moves, MirTargetSide.MirSide(c).Any(static x => x.Code == DiagnosticCode.MovedPlace_Kd));
         HirTables.Publish(c);
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Equal((HirOp.Group, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
@@ -481,7 +481,7 @@ public class NeverContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(conflict, LegacyRecords.Of(c).Any(static x => x.Code.IsLoanConflict()));
+        Assert.Equal(conflict, MirTargetSide.MirSide(c).Any(static x => x.Code.IsLoanConflict()));
         HirTables.Publish(c);
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(x => x.ToString() == borrow);
         Assert.Equal((HirOp.Borrow, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));

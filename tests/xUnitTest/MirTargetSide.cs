@@ -2,7 +2,6 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
@@ -11,11 +10,11 @@ namespace XunitTest;
 
 /// <summary>The MIR side of a test (DECISIONS R4-M136, refining R4-M50 and R4-M60; R6-check H10a D3, D4, D7): the Error records that
 /// decide a program's verdict, each at its exact subject, so a changed MIR verdict fails the test. Its rows are Binding's records except
-/// the twins of A5's rows (until H11), then the MIR's (<see cref="MirSide"/>).</summary>
+/// the twins of A5's rows (until H11), then the publisher's MIR rows (<see cref="MirSide"/>).</summary>
 internal static class MirTargetSide
 {
     /// <summary>Asserts an analyzed compilation's MIR side (<see cref="MirSide"/>).</summary>
-    /// <param name="compilation">The compilation after <see cref="Compilation.Analyze"/>.</param>
+    /// <param name="compilation">The compilation after final Binding and the startup check.</param>
     /// <param name="mir">The MIR side's Error records: a code and its subject's span.</param>
     internal static void Check(Compilation compilation, params (DiagnosticCode Code, SyntaxLocation At)[] mir)
     {
@@ -23,8 +22,8 @@ internal static class MirTargetSide
         Assert.Equal(Rows(source, mir), Observed(MirSide(compilation)));
     }
 
-    /// <summary>Asserts the MIR side of a source compiled as an Application and bound, without <see cref="Compilation.Analyze"/>, for a
-    /// test whose own compilation is out of reach (a native fixture's, the command line's).</summary>
+    /// <summary>Asserts the MIR side of a source compiled as an Application, bound and analyzed (<see cref="MirSide"/>), for a test whose
+    /// own compilation is out of reach (a native fixture's, the command line's).</summary>
     /// <param name="source">The source, as the Application's one document.</param>
     /// <param name="mir">The MIR side's Error records: a code and its subject's span.</param>
     internal static void Check(string source, params (DiagnosticCode Code, SyntaxLocation At)[] mir)
@@ -35,15 +34,16 @@ internal static class MirTargetSide
         Assert.Equal(Rows(source, mir), Observed(MirSide(c)));
     }
 
-    /// <summary>Lists a compilation's MIR side: Binding's issues and HIR lint Error records in their order, without a twin (D4: an Origin
-    /// relation record of a node <see cref="Binding.IsTwinRecord"/> names, whose A5 row stands for it until H11), then the MIR's
-    /// construction records, validator findings (as <c>InternalInvariant_Kd</c>) and the problems no cause derives, a record or finding
-    /// without a requirement. It never runs the old analysis.</summary>
-    /// <param name="compilation">The bound compilation.</param>
-    /// <returns>The rows with their requirement, code and subject.</returns>
+    /// <summary>Lists a compilation's MIR side (R6-check H10a D3, D4) after <see cref="Compilation.Analyze"/>, which it runs (a no-op on an
+    /// analyzed version): Binding's issues and HIR lint Error records in their order, without a twin (D4: an Origin relation record of a
+    /// node <see cref="Binding.IsTwinRecord"/> names, whose A5 row stands for it until H11), then <c>Compilation.Problems</c>' rows as the
+    /// publisher has them, without a requirement: every merged problem of the MIR's report under its own code (construction and collection
+    /// records, derived problems), then each validator finding as <c>InternalInvariant_Kd</c>. It never runs the old analysis.</summary>
+    /// <param name="compilation">The compilation after final Binding and the startup check.</param>
+    /// <returns>The rows with their requirement (Binding's; none for a MIR row), code and subject.</returns>
     internal static List<(DiagnosticRequirement? Requirement, DiagnosticCode Code, Koto Node)> MirSide(Compilation compilation)
     {
-        var program = compilation.BuildMir();
+        compilation.Analyze();
         var rows = new List<(DiagnosticRequirement? Requirement, DiagnosticCode Code, Koto Node)>();
         foreach (var issue in compilation.Binding.Issues)
         {
@@ -58,17 +58,7 @@ internal static class MirTargetSide
             rows.Add((DiagnosticRequirement.Binding(BindingFailure.None), code, node));
         }
 
-        rows.AddRange(program.Records(MirRecordClass.Construction).Select(x => ((DiagnosticRequirement?)null, x.Code, compilation.SyntaxOf(x.Subject))));
-        rows.AddRange(program.Findings.Select(x => ((DiagnosticRequirement?)null, DiagnosticCode.InternalInvariant_Kd, compilation.SyntaxOf(x.Subject))));
-        for (var i = 0; i < program.Problems.All.Length; i++)
-        {
-            var problem = program.Problems.All[i];
-            if (!problem.IsRecord && program.Problems.Facts(i) is not [.., { Kind: MirFactKind.Cause }])
-            {
-                rows.Add((problem.Requirement, problem.Code, compilation.SyntaxOf(problem.Subject))); // Derived problems' Cause facts come last.
-            }
-        }
-
+        rows.AddRange(compilation.Problems.Select(x => ((DiagnosticRequirement?)null, x.Code, compilation.SyntaxOf(x.Subject))));
         return rows;
     }
 

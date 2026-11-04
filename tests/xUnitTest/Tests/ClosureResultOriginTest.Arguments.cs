@@ -89,7 +89,7 @@ public partial class ClosureResultOriginTest
     [InlineData("x3_nopremise_bad", HpQ + PthenQ + "    return c()\n" + MainUnit, Unproven + " return c()")]
     [InlineData("y1_params_nocall", HpQi32 + PthenQ + "    return 0\n" + MainUnit, "")]
     [InlineData("y4_param_and_local", "func h(p: ref/i32) -> i32\n" + Local + "    return 0\n" + MainUnit, "")]
-    [InlineData("y4_ret_bad", "func h(p: ref/i32) -> ref/i32 during p\n" + Local + "    return c()\n" + MainUnit, Unsatisfied + " return c()")]
+    [InlineData("y4_ret_bad", "func h(p: ref/i32) -> ref/i32 during p\n" + Local + "    return c()\n" + MainUnit, Conflict + " let local: i32 = 1; " + Unsatisfied + " return c()")]
     [InlineData("y5_store_into_param_var", HpQi32 + StoreA + "    return 0\n" + MainUnit, "")]
     [InlineData("y5_ret_bad", HpQ + StoreA + "    return c()\n" + MainUnit, Unproven + " return c()")]
     [InlineData("y7_static_and_param", "func h(p: ref/i32) -> i32\n" + Literal + "    return 0\n" + MainUnit, "")]

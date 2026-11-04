@@ -301,17 +301,21 @@ public sealed class MirPublicationTest
         Assert.Equal(["OwnershipDepthLimit_Kd", "Unsupported_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
     }
 
-    // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording; R6-check H10a D12): a MIR problem with Cause facts is derived and
-    // leaves the MIR side, as publication suppresses it while its causes publish; its cause, the Origin problem, stays.
+    // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording; R6-check H10a D12, design §10 Q7): a MIR problem with Cause facts is
+    // derived; it is a row of the MIR side under its own code, the row the verdict counts, beside its cause, the Origin problem, and
+    // finalization suppresses its PrerequisiteUnavailable_Kd while the cause publishes (DiagnosticOwner).
     [Fact]
-    public void ADerivedProblemLeavesTheMirSide()
+    public void ADerivedProblemIsAMirRowAndPublishesOnlyItsCause()
     {
         var c = MirBuildTest.Compile("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    var r = local@ref\n    return r\n");
-        var program = c.BuildMir();
-        Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
-        var mir = MirTargetSide.MirSide(c).Where(static x => x.Requirement?.Partition != DiagnosticPartition.Binding).ToArray();
-        Assert.Contains(mir, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
-        Assert.DoesNotContain(mir, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        var mir = MirTargetSide.MirSide(c).Where(static x => x.Requirement is null).Select(static x => x.Code).ToArray();
+        Assert.Contains(DiagnosticCode.UnsatisfiedOriginRelation_Kd, mir);
+        Assert.Contains(DiagnosticCode.ComparisonLoanConflict_Kd, mir);
+        c.ReportAnalysis();
+        var published = Records(c).Select(static x => x.Code).ToArray();
+        Assert.Contains(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), published);
+        Assert.DoesNotContain(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), published);
+        Assert.DoesNotContain(nameof(DiagnosticCode.PrerequisiteUnavailable_Kd), published);
     }
 
     // A bound compilation of a valid source and an empty program whose report a test fills.
