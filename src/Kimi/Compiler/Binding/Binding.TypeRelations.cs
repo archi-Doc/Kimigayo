@@ -27,28 +27,33 @@ public sealed partial class Binding
         => new RelationWalk(null, null, OriginPart.Everywhere).Fits(actual, expected);
 
     // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
-    // result Never when the implementation's is (CompatibleResult), judged without recording a bound; `own` is the declaration whose
-    // per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
+    // result Never when the implementation's is (CompatibleResult), judged without recording a bound and without premises; `own` is the
+    // declaration whose per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
     internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var walk = new RelationWalk(null, null, OriginPart.Contract);
         var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
         failure = walk.Failure;
         return fits;
     }
 
-    // SPEC 10.7, 15.3.7: callable compatibility of a Closure's or a Function value's signature with a required one: CallableSubtype and
-    // the implementation's conditions, its own well-formedness proven from the required signature's and the premises at `use` under
-    // the instantiation in position (the owner's (a); FailedSignatureWellFormedness, the one judgment FunctionFits makes too).
+    // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Closure's or a Function value's signature with a required one at `use`, a
+    // whole-contract comparison: its member Origins and the implementation's conditions, its own well-formedness among them (the
+    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93). The walk
+    // reaches no Callable comparison for a signature identical to the required one, whose own well-formedness at `use` is judged here.
     internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, out ComparisonFailure failure)
     {
-        if (!this.CallableSubtype(actual, expected, own, out failure))
+        var required = this.CompatibleSignature(actual, expected);
+        var walk = new RelationWalk(this, use, OriginPart.Contract);
+        var fits = walk.Fits(actual, required, own: own);
+        failure = walk.Failure;
+        if (!fits || !ReferenceEquals(actual, required) || actual is not { Kind: BoundTypeKind.Function, Components.Count: 2 })
         {
-            return false;
+            return fits;
         }
 
-        var instance = Comparison(actual, own, this.CompatibleSignature(actual, expected), null);
-        if (actual is not { Kind: BoundTypeKind.Function, Components.Count: 2 } || this.FailedSignatureWellFormedness(actual, instance, use) is not { } formed)
+        var instance = Comparison(actual, own, required, null);
+        if (this.FailedSignatureWellFormedness(actual, instance, use) is not { } formed)
         {
             return true;
         }

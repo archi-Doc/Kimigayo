@@ -5859,6 +5859,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     candidate's refuted Note as for a function) and a Function Item's argument or container clause, and one dev
     `InternalInvariant_Kd` (a refuted reference `id<K<string>>` at a fixed Function Type) becomes its `UnsatisfiedConstraint_Kd`;
     `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
+  - (2026-11-04) A1 does not apply in a whole-contract comparison (a Callable proof, a conversion; SPEC 15.6, 15.3.7): there the
+    Origin part is judged from premises alone, so a body-local region decides nothing and a failing member keeps its Proof-category
+    record (G404, BU-93).
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -10510,6 +10513,24 @@ resumed by R4-M86 (2026-10-20).
     ledger: see the landing commit.
   - Rejected: a fit by punnable Types only (raw storage also holds what `Raw.initialize` places through a cast); a referent-side
     parameter for Holds (a bool steering one rule); an A5-side widening (A5 derives no retention).
+
+- **BU-93 A whole-contract comparison judges its Origin part from premises alone, at its use** (2026-11-04; PLAN G404, found by BU's
+  2c-9 review N3 and G216 (b)'s design; the planning session's ruling, R4 agreeing as R4-M155's owner) SPEC 15.6.1 ("judged under
+  15.3.7 from premises alone, so it is Proven or Unknown"), 15.3.7, 10.7. Amends R4-M155's A1.
+  - Cause: `CallableSignatureFits` (a Closure's conversion, a Callable proof's subject) walked without a Binding, so a member between
+    fixed Origins was judged without the use's premises: `(ref/i32 during b) -> i32` from `func [] (p: ref/i32 during a)` under
+    `origin b outlives a`, and the two-clause and `uniq` forms, were rejected.
+  - Rule: the walk's query names the comparison: `OriginPart.Contract`, every Origin binding judged from the premises at the use (the
+    required signature's own well-formedness among them), and no region decides, so a failing member is its Proof-category condition,
+    never A1's Limit. `CallableSignatureFits`, `CallableSubtype` and ContractFits' walks take it; Contract stays Contract inside nested
+    Function Types. A signature identical to the required one reaches no Callable comparison, so `CallableSignatureFits` judges its own
+    well-formedness at the use itself (ResultPremiseTest n1a).
+  - Moves (generated gate, 90 programs): 16 valid programs accepted (conversion at let and return, a Closure argument after
+    selection, a Function Type proven Callable at a Type argument); 2 invalid ones record at `w` (UnprovenOriginRelation_Kd) instead
+    of the Closure, whose solution `(b and a)` now fits. Open: a Closure passed for `F is Callable<(T) -> i32>` at a call stays
+    NoApplicableOverload_Kd (Infer's known-signature evidence, G56's relate-later branch; SPEC 10.8).
+  - Rejected: a bool or mode parameter for the premise-only judgment; deleting A1 for value fits (a Function value's subtyping, SPEC
+    3.8, keeps it).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

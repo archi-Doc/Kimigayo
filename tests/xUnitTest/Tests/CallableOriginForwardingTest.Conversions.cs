@@ -124,6 +124,36 @@ public partial class CallableOriginForwardingTest
 
     private const string FlatApply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\n";
 
+    private const string InnerHead = "func k(a: ref/i32, w: ref/(ref/i32 during b)) -> i32\n";
+
+    private const string BOutlivesA = "    origin b outlives a\n";
+
+    private const string BothWays = BOutlivesA + "    origin a outlives b\n";
+
+    private const string InnerClosure = "func [] (p: ref/(ref/i32 during a)) -> i32 => p@follow@follow";
+
+    private const string InnerLet = "    let f: (ref/(ref/i32 during b)) -> i32 = " + InnerClosure + "\n    return f(w)\n";
+
+    private const string UniqHead = "func k(a: ref/i32, w: ref/(uniq/i32 during b)) -> i32\n";
+
+    private const string UniqClosure = "func [] (p: ref/(uniq/i32 during a)) -> i32 => p@follow@follow";
+
+    private const string UniqLet = "    let f: (ref/(uniq/i32 during b)) -> i32 = " + UniqClosure + "\n    return f(w)\n";
+
+    private const string OuterClosure = "func [] (p: ref/i32 during a) -> i32 => p@follow";
+
+    private const string OuterHead = "func k(a: ref/i32, w: ref/i32 during b) -> i32\n";
+
+    private const string OuterLet = "    let f: (ref/i32 during b) -> i32 = " + OuterClosure + "\n    return f(w)\n";
+
+    private const string ValueRun = "func run<T>(f: (T) -> i32, s: T) -> i32\n    return f(s@move)\n";
+
+    private const string CallableHolder = "struct H<F, T>\n    F is Callable<(T) -> i32>\n    public init() => ()\n";
+
+    private const string InnerHolder = "    let o: Option<H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>> = .None\n    return 0\n";
+
+    private const string HolderConstraint = "UnprovenConstraint_Kd H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>";
+
     private const string LeakMk = "func mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n";
 
     private const string LeakUse = "func use(g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let local: i32 = 5\n    let pair = g(local@ref)\n    return pair.1\n";
@@ -376,5 +406,28 @@ public partial class CallableOriginForwardingTest
     [InlineData("c15", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c15_c", StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "ComparisonLoanConflict_Kd x = 2")]
     public void AnIllFormedHeadLosesTheIndependentRecordUntilH11(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // PLAN G404 (SPEC 10.7, 15.3.7; DECISIONS BU-93): a Closure's or a Function Type's whole-contract comparison, at a conversion and in a Callable proof,
+    // is judged at its use with the use's premises, as a Function value's is (nest2_c): a member Origin that a clause relates (one1, `b
+    // outlives a`), a member and the Closure's own well-formedness each related by one of two clauses (two2), an invariant member equal
+    // through two clauses (uniq2), the Closure converted at an argument after selection (arg2) and a Function Type proven Callable at a
+    // Type argument (cal2) are valid. Equality by one clause (eq2) holds without premises. The invalid twins lack a clause the relation
+    // needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n; arg2_n's solution of T is `(b and a)`, which the Closure now fits, so its record
+    // is the argument `w`, whose fit needs `a outlives w`).
+    [Theory]
+    [InlineData("one1", OuterHead + BOutlivesA + OuterLet, "")]
+    [InlineData("one1_n", OuterHead + "    origin a outlives b\n" + OuterLet, "UnprovenOriginContract_Kd " + OuterClosure)]
+    [InlineData("two2", InnerHead + BothWays + InnerLet, "")]
+    [InlineData("two2_n", InnerHead + BOutlivesA + InnerLet, "UnprovenOriginContract_Kd " + InnerClosure)]
+    [InlineData("two2_none", InnerHead + InnerLet, "UnprovenOriginContract_Kd " + InnerClosure)]
+    [InlineData("eq2", InnerHead + "    origin a == b\n" + InnerLet, "")]
+    [InlineData("uniq2", UniqHead + BothWays + UniqLet, "")]
+    [InlineData("uniq2_n", UniqHead + BOutlivesA + UniqLet, "UnprovenOriginContract_Kd " + UniqClosure)]
+    [InlineData("arg2", ValueRun + InnerHead + BothWays + "    return run(" + InnerClosure + ", w)\n", "")]
+    [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginRelation_Kd w")]
+    [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
+    [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint + "; " + HolderConstraint)]
+    public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 }
