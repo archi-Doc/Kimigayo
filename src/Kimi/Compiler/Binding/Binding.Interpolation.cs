@@ -134,7 +134,12 @@ public sealed partial class Binding
         var writerType = actual is { Semantics: not SemanticsKind.Owner, Components.Count: 1 } ? actual.Components[0] : actual;
         if (ReferenceEquals(actual, BoundType.Never))
         {
-            writerType = this.Library.GetSymbol(KimiDeclarationId.Utf8Writer)!.Type;
+            // SPEC 14.10.3, 15.3.4 (PLAN G410): a Never operand has no value, so its writer's Origin arguments are static, which every
+            // relation proves and a meet drops; the declaration's own atoms are universal in Utf8Writer only, not in this body.
+            var declared = this.Library.GetSymbol(KimiDeclarationId.Utf8Writer)!;
+            var statics = new BoundOrigin[declared.Schema!.Origins.Count];
+            Array.Fill(statics, BoundOrigin.Static);
+            writerType = this.types.Rebuild(declared.Type!, [], null, statics);
         }
 
         if (writerType?.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer)
