@@ -1761,7 +1761,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     copy); a taint by role alone (it would taint an explicit argument's slot).
   - Limit: err(ended) reads γ_H without the taint check (the rule names Loan problems); the closure reads a holder a tainted set names
     clean too (R4-M73's default-taint records: right per value for an inline copy).
-- **R4-M71** (2026-10-19; group 1c's owner-approved design, R4-M75; PLAN G125; amended by R6-check H3-2 U1b) It supersedes R4-M3a's and
+- **R4-M71** (2026-10-19; group 1c's owner-approved design, R4-M75; PLAN G125 and G157 (8); amended by R6-check H3-2 U1b) It supersedes R4-M3a's and
   R4-M67's key (code, subject) and places R4-M11's merge across bodies at publication.
   - Representation: `MirProblem(Code, Requirement, Subject, Body, Views)`. `Body` is the ordinal of the body whose case views `Views`
     numbers, `MirProblem.NoBody` (−1) where no body describes the problem: A4's obligation rows, which lie at Binding's rows (a row an
@@ -1864,6 +1864,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Losses: P13 (listed, A3 §2). The letter-consistent rejections (SPEC 15.6.4 per argument and E's "used after every point"; rustc
     and the old path accept) are no loss: a self-row that returns a route's Loan to its holder (twoLayersRead, p03), an exclusive
     iteration over Loan-holding elements, E as one node (L3r), route cycles at depth ≥ 3 (s2f).
+  - Evidence: N calls through a four-layer chain are dense, the walk the same order as A5's access scans on the states it reads
+    (V16); a warm run allocates nothing.
   - Found, not this unit: rule G's raw clause misses Loans stored through raw pointers that W does not name (PLAN G160).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19; its PD21 and §3.7 superseded by DEC Q9) The owner's answers to all thirteen questions
   of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md). Its unit and
@@ -2210,7 +2212,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reach their third change with 2b-3: their next editors split first (PLAN §3.7; superseded by DEC Q9).
   - Cost: per checked site one `Keys` query per view where an effect root has a candidate or R3 applies, Θ(effect roots + their
     candidates) tests and scans, and on a conflict Θ(the body's statics + their initializers' views × ⌈2F/64⌉) for the proof; Field
-    numbers per view and the stamps, pooled. The query's own composition, Θ(terminator inputs + composed views × ⌈2F/64⌉), is A4's and
+    numbers per view and the stamps, pooled; warm 0 B. The query's own composition, Θ(terminator inputs + composed views × ⌈2F/64⌉), is A4's and
     uncounted. V16 "F5 effects" lives in `MirBorrowsTest.EffectsScaleWithCallsAndStaticLoans`: linear in N calls at M = 4, K = 8;
     within the M × sites term in M at N = 32.
   - Rejected: W6 as a gather pass marking activated reservations unique (a new pass and taking); a site row `Effect` in `AccessKind`
@@ -2436,7 +2438,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Cost: per Loan-issuing copy per view one gather (a check's Based pass and the live words) and an `Add` per Loan carried in from an
     earlier evaluation; per view with a copy one pass over the Loans and over the locations (an `Inlining` walk each); per conflicting
     candidate O(depth) walks and a binary search. V16 "F9 copies" (`MirBorrowsTest.ACopysEntryWorkStaysDense`, N Loan-issuing copies at
-    depth 2 in a loop): dense as E8's ended points × holders (each copy adds a holder).
+    depth 2 in a loop): dense as E8's ended points × holders (each copy adds a holder). Warm 0 B.
   - Rejected: R4-M69's access-scope rule (unsound, G171); R20Own alone (unsound on loops); B's γ entry test (a second record); a
     copy-on-a-cycle rule; per-evaluation Loan twins; template certificates; copies without Loans; dropping on the template's validity;
     staging Entry(B) until a source witness exists (a departure); one entry set per location of every Loan found (an `Add` per caller
@@ -2639,7 +2641,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a general definition in 23.1.2 (required failures made optional, cycles); an arrival test by Origins (fixed Origins are
     shared names and regions are flow-insensitive); calls without the call clause (`return id(local@ref)` and `rv-g-param` would stay
     independent); R, the same rule as an implementation contract only; H, rules 1 and 2 as approved.
-- **R4-M105 Raw pointer rules left open by G160** (owner, 2026-10-22, verbatim 「以下で決定します」 with OQ-R1 「(a) 逆参照を通らない書き込みは null だけ許す」,
+- **R4-M105 Raw pointer rules left open by G160** (owner, 2026-10-22, verbatim 「以下で決定します」 with OQ-R1 「(a) 逆参照を通らない 書き込みは null だけ許す」,
   OQ-R2 「(a)」, OQ-R3 「(b) Warning」 and OQ-R4 「(a) drop で解放する Field への Information の診断」; the proposal
   `draft/Changes/2026-10-22 Raw Pointer Rules Left Open by G160.md`)
   - OQ-R1 (a), SPEC 5.7 "Writing a Field": a write through a dereference gives a `during self` layer the Origin that reading it
