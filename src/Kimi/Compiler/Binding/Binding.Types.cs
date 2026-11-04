@@ -385,7 +385,7 @@ public sealed partial class Binding
             case TypeSemanticsKoto semantics:
                 if (semantics.Type is not null)
                 {
-                    var transparent = semantics.IsTransparentWrapper || (semantics.SemanticsParameter is null && semantics.SemanticsKind == SemanticsKind.Owner);
+                    var transparent = TransparentInner(semantics) is not null;
                     var innerContext = transparent ? context with { SuppressOuter = true } : context.Nested;
                     // A pair target is a projection, not a complete value type until its role is proved.
                     BoundType? inner;
