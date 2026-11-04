@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -98,7 +99,11 @@ public class DictionaryIndexTest
         NativeAllocationAudit.WriteFixture("DictionaryIndexBorrowedKey", Source, 2, 2, 192);
     }
 
-    [Trait("Purpose", "Allocation")]
+    // SPEC 15.6.4, 16.3.3: the program is valid, but since G264 (S) S2 A5 errs at `var owned = entries@move` (the replaced abstract V's
+    // composed erased destruction, a `uniq/Self` call, stores the Loan on `owned` into `owned`'s storage, a self-row), and generation
+    // refuses it; the old analysis accepted it, and the native allocation audit ran it (fixture DictionaryIndexGeneric, 1, 1, 192). A
+    // refused program has no run to audit, so the audit and the Allocation purpose wait with it. H5's (e) list, row "S2's self-row family"
+    // (the owner's O-9, 「(a) 加えて着地」, and O-14, 「加える」): PLAN G416 restores the acceptance and re-points this test back to its audit.
     [Fact]
     public void GenericIndexUsesTheConcreteEqualityWitness()
     {
@@ -111,7 +116,11 @@ public class DictionaryIndexTest
             _ = entries.tryInsert((1, 2), "old")
             consume(entries@move, (1, 2), "new")
             """;
-        NativeAllocationAudit.WriteFixture("DictionaryIndexGeneric", Source, 1, 1, 192);
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("var owned = entries@move")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
