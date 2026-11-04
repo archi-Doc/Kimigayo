@@ -45,8 +45,8 @@ fn effects @4
   bb3:
       return @4
   bb4:
-      _0 = move _4 @11 s1
-      goto bb3 @11 s1
+      _0 = move _4 @4
+      goto bb3 @4
   bb5:
       drop _2 -> bb6 [flag f0] [clear f0] @6
   bb6:

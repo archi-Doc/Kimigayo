@@ -95,8 +95,8 @@ fn generic @61
   bb2:
       return @61
   bb3:
-      _0 = move _5 @72 s1
-      goto bb2 @72 s1
+      _0 = move _5 @61
+      goto bb2 @61
   bb4:
       StorageDead(_4) @73 s1
       StorageDead(_3) @73 s1
@@ -163,8 +163,8 @@ fn elementComparison @87
   bb1:
       return @87
   bb2:
-      _0 = move _5 @95 s1
-      goto bb1 @95 s1
+      _0 = move _5 @87
+      goto bb1 @87
   bb3:
       drop _1 -> bb4 [keep] @90 s1
   bb4:

@@ -53,8 +53,8 @@ fn fill @16
   bb1:
       return @16
   bb2:
-      _0 = move _7 @32 s1
-      goto bb1 @32 s1
+      _0 = move _7 @16
+      goto bb1 @16
   bb3:
       StorageDead(_6) @33 s1
       goto bb2 @16
@@ -77,8 +77,8 @@ fn kind @34
   bb1:
       return @34
   bb2:
-      _0 = move _2 @40 s1
-      goto bb1 @40 s1
+      _0 = move _2 @34
+      goto bb1 @34
   bb3:
       StorageDead(_1) @37 s1
       goto bb2 @34

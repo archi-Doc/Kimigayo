@@ -6,7 +6,8 @@
 // Input: the program of the latest Analyze, its construction records (MirProgram.Records with MirRecordClass.Construction, R6-check H3-1)
 // and validator findings, and the program the latest collection recorded into, its collection records (MirRecordClass.Collection), the
 // library's as well as the source modules'; for Publish, a program's MirReport.Merged problem, its members' bodies, binders and views,
-// its merged facts, the C1-F4 rows a Relation fact names (TyCtxt.OriginRows) and, for a Binding cause, Binding.FailureCauses at its site.
+// its merged facts, the C1-F4 rows a Relation fact names (TyCtxt.OriginRows) and, for a Binding cause, Binding.RestingCauses at its site
+// (DECISIONS R5-M186).
 // Output: adapter calls only (DiagnosticCollection.ReportLocation, Koto.Report and Koto.ReportDerived, in the subject's collection); no table
 // of its own. MirRecords is the one selection of the records, which Analysis, Problems, the generation gate and PublishMirRecords read.
 // Invariants: until H5, which publishes every merged problem and removes the selection, the publisher publishes today's rows only, on every
@@ -90,11 +91,11 @@ public partial class Compilation
                 case Mir.MirFactKind.Cause when fact.Value >= 0:
                     (causes ??= []).Add(this.KeyOf(program, (int)fact.Value));
                     break;
-                case Mir.MirFactKind.Cause when this.Binding.FailureCauses(this.SyntaxOf(fact.Site)) is { } failures:
-                    (causes ??= []).AddRange(failures);
+                case Mir.MirFactKind.Cause when this.Binding.RestingCauses(this.SyntaxOf(fact.Site)) is { } resting:
+                    (causes ??= []).AddRange(resting);
                     break;
                 case Mir.MirFactKind.Relation: // A relation without a body, Reason ends or row source.
-                case Mir.MirFactKind.Cause: // A Binding cause at a node Binding resolved.
+                case Mir.MirFactKind.Cause: // A Binding cause at a node with no resting causes, such as one Binding resolved.
                 case Mir.MirFactKind.Inlined: // MirReport.Add drops its problem.
                 default: // A kind without a row.
                     this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject);
@@ -185,7 +186,7 @@ public partial class Compilation
     }
 
     // The fact table's Relation row (design 3.3): an Origin problem's last edge through Binding.OriginRelationFacts, its site, clause,
-    // destination and source from the body's C1-F4 row (CallBorrows a fit), a containment edge (-1) without a row as wellFormed; the ends are
+    // destination and source from the body's C1-F4 row, a containment edge (-1) without a row as wellFormed; the ends are
     // the Reason's, the longer one also the supplier (Q-BU-1). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
     private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related)? Relation(
         Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, Mir.MirFact fact)
@@ -204,7 +205,7 @@ public partial class Compilation
         var row = this.Types.OriginRows(program.Bodies[body].Key.Body).Rows[(int)fact.Value];
         var source = row.Source switch
         {
-            OriginRowSource.Fit or OriginRowSource.CallBorrows => "fit",
+            OriginRowSource.Fit => "fit",
             OriginRowSource.Declared => "declared",
             OriginRowSource.WellFormed => "wellFormed",
             _ => null, // Contained: MirOrigins' own edge, never a row of the view.

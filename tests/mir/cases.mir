@@ -51,8 +51,8 @@ fn keep @4
   bb4:
       return @4
   bb5:
-      _0 = move _9 @34 s1
-      goto bb4 @34 s1
+      _0 = move _9 @4
+      goto bb4 @4
   bb6:
       drop _2 -> bb7 [keep] @16
   bb7:
@@ -139,8 +139,8 @@ fn both @38
   bb5:
       return @38
   bb6:
-      _0 = move _12 @84 s1
-      goto bb5 @84 s1
+      _0 = move _12 @38
+      goto bb5 @38
   bb7:
       drop _3 -> bb8 [keep] @61
   bb8:
@@ -213,8 +213,8 @@ fn peek @87
   bb1:
       return @87
   bb2:
-      _0 = move _4 @105 s1
-      goto bb1 @105 s1
+      _0 = move _4 @87
+      goto bb1 @87
   bb3:
       drop _2 -> bb4 [keep] @99
   bb4:
@@ -265,8 +265,8 @@ fn caller @107
   bb3:
       return @107
   bb4:
-      _0 = move _6 @121 s1
-      goto bb3 @121 s1
+      _0 = move _6 @107
+      goto bb3 @107
   bb5:
       drop _1 -> bb6 [keep in v0; elide in v1] @117
   bb6:

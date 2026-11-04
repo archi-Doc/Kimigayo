@@ -1145,13 +1145,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 15.6.7, 15.7.1, 4.9.6 (A3 err(activate); 10a–10d, 28a–28d, 31a, 31b): a reservation is shared until its call activates it, as
     // an exclusive borrow checked against the holders live into the call but its own, so a read during it is valid, and so are disjoint or
     // shared arguments and two parameters; an overlapping reservation or shared argument, or a live view, conflicts at the activation, a
-    // stored exclusive borrow where the shared argument is formed.
+    // stored exclusive borrow where the shared argument is formed and at the activation of its Reborrow, its parent Loan (SPEC 15.6.7).
     [Fact]
     public void AReservationIsSharedUntilItsActivation()
         => Assert.Equal(
             [
                 "r10b: tasks.remove(0) CallReservationConflict_Kd", "r10d: Kimi.Intrinsics.swap(p@uniq, p@uniq) CallReservationConflict_Kd",
-                "r28a: two(a@uniq, a@ref) CallActivationConflict_Kd", "r28d: a@ref", "r31b: r31a(x@uniq, x@uniq) CallReservationConflict_Kd",
+                "r28a: two(a@uniq, a@ref) CallActivationConflict_Kd", "r28d: a@ref", "r28d: two(r, a@ref) CallActivationConflict_Kd",
+                "r31b: r31a(x@uniq, x@uniq) CallReservationConflict_Kd",
                 "sorted: values.sort() CallActivationConflict_Kd",
             ],
             Problems("""
@@ -1577,7 +1578,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
     // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
     // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s abstract iterator passes the guard (an abstract part may
-    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is.
+    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is; its
+    // erased destruction (16.3.3, BU-47's `0 Content store 0`), composed as a uniq/Self call (R4-M150), may store past `it` into storage
+    // the body does not own what `it` carries, its own Loan after `it.next()`'s self-row (R4-M154), so `it`'s storage end errs too.
     [Fact]
     public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
     {
@@ -1625,7 +1628,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """);
         Assert.Equal(
-            ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            ["hold: local = second@move", "hold: var it = local.iterate()", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
@@ -1633,14 +1636,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // operands in order and uses each one's value after its access, so operand i's access is checked with the values of the operands up to
     // it and the holders of the later ones: a Place read before a later operand reads through an exclusive reference to it errs, read
     // after it is valid, whether the operands are a call's (named ones, an unbound reference's receiver supplied after a parameter, a
-    // setter's value before its receiver, a Value callee before its arguments), a by-value receiver's, an aggregate's or an operator's.
+    // setter's value before its receiver, a Value callee before its arguments), a by-value receiver's, an aggregate's or an operator's; a
+    // later shared argument also meets the earlier argument's activation at its Reborrow's parent Loan (131c; SPEC 15.6.7, 23.1.2).
     [Fact]
     public void AnOperandIsCheckedWithTheValuesEvaluatedAroundIt()
         => Assert.Equal(
             [
                 "o136b: give2(x, r@follow)", "o136d: (x, r@follow)", "o136f: x + r@follow", "o136g: x.plus(r@follow)", "o137b: (x@uniq, x)",
                 "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "rs1: x",
-                "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o130g: bump(value)",
+                "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o131c: giveS(r, x) CallActivationConflict_Kd", "o130g: bump(value)",
             ],
             Problems(Order + """
                 func o136a()
@@ -2269,8 +2273,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // A3 6.4, R4-M3a: a problem's facts are its Loan's or guard candidate's anchor and its witness: the holder's next use in its chain (for
-    // an activation from its call on; none in a later chain), or the store that carries the Loan (TheWarningCarriesItsFacts's `Store b`); and an
-    // activation's reservation. selfStore is valid (AStoredValueIsCheckedInTransit; DECISIONS R4-M154).
+    // an activation from its call on; past it the holder's declaration as a Store, as `saved` after the match), or the store that carries
+    // the Loan (TheWarningCarriesItsFacts's `Store b`); and an activation's reservation. selfStore is valid (AStoredValueIsCheckedInTransit;
+    // DECISIONS R4-M154).
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -2301,9 +2306,39 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             [
                 "x = 2: Anchor x@ref, Use inspect(r)", "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq",
-                "let d: Anchor let d",
+                "let d: Anchor let d, Store var saved = fallback@ref",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code)).Select(x =>
+                $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
+    }
+
+    // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the block or `if` it leaves, is witnessed by its
+    // declaration, the value retaining the Loan: an undecided holder and its decided twin (BlockEscapeLoanTest), a chain between body Origins
+    // (OriginRelationDiagnosticTest) and a fixed input's capture (InputDependentValueCallTest).
+    [Theory]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
+        "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Store var o: Option<ref/i32> = .Some(z@ref)")]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
+        "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Store var o = z@ref")]
+    [InlineData(
+        "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
+        "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
+        "let w = 9: Anchor w@ref, Store var keep = h.item")]
+    [InlineData(
+        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
+        "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
+        "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
+    public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = Analyze(c);
+        Assert.Equal(
+            [problem],
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 

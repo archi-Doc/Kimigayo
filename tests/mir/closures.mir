@@ -31,8 +31,8 @@ fn makeAdder @12
   bb1:
       return @12
   bb2:
-      _0 = move _4 @19 s1
-      goto bb1 @19 s1
+      _0 = move _4 @12
+      goto bb1 @12
   bb3:
       drop _3 -> bb4 [elide] @20 s1
   bb4:
@@ -164,8 +164,8 @@ fn run @25
   bb9:
       return @25
   bb10:
-      _0 = move _30 @97 s1
-      goto bb9 @97 s1
+      _0 = move _30 @25
+      goto bb9 @25
   bb11:
       StorageDead(_14) @82 s1
       drop _12 -> bb12 [keep] @70 s1
@@ -298,8 +298,8 @@ closure @84
   bb2:
       return @84
   bb3:
-      _0 = move _5 @94 s1
-      goto bb2 @94 s1
+      _0 = move _5 @84
+      goto bb2 @84
   bb4:
       StorageDead(_2) @87 s1
       goto bb3 @84

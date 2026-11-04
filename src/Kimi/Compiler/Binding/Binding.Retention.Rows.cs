@@ -92,12 +92,12 @@ public sealed partial class Binding
     // premises followed) from one of its targets reaches an occurrence of the input, by Value where the closure from a position's node
     // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held from its
     // holds, the result's whole Type or each position the storage walk names for input j, DECISIONS BU-52; each position once per lent
-    // bit, BU-35, BU-40): a raw input's own value at a raw layer with an Origin and where a callable may retain it at an abstract part
-    // (DECISIONS BU-66), every input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule
-    // narrowing it), the raw inputs at
-    // one the result lends (R′); one stepping Unstated or Static, not lent, unties every storage of the output, where a transfer operation
-    // writes it (TransferWrites, as for rule A), and a result atom whose non-static Origin reaches no input unties the result. A result
-    // the call forms within a raw parameter's storage (`within`) retains that argument's own value. The transfer key by declaring identity
+    // bit, BU-35, BU-40): a raw source's own value (an input holding a raw layer by value) at a raw layer with an Origin and where a
+    // callable may retain it at an abstract part (DECISIONS BU-66), every input at a raw layer the call writes without an Origin (rule A,
+    // WrittenUnstated, the transfer rule narrowing it), the raw arguments at one the result lends (R′); one stepping Unstated or Static,
+    // not lent, unties every storage of the output, where a transfer operation writes it (TransferWrites, as for rule A), and a result
+    // atom whose non-static Origin reaches no input unties the result. A result the call forms within a raw parameter's storage
+    // (`within`) retains that argument's own value. The transfer key by declaring identity
     // also gives the stores written only where the receiver refers (ReferentStores). The work is one closure per node a target names, each
     // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
     // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance
@@ -483,9 +483,10 @@ public sealed partial class Binding
     // An output's hold walk (Held from each of its holds: the result's whole Type, or each position of input j's storages the storage walk
     // emits with the Type its declaration writes there and the instance holding it, DECISIONS BU-52; each position once per lent bit)
     // and what it keeps (`kept`): rule A's rows at a written unstated layer (WrittenUnstated, the transfer read once per contract), the
-    // raw inputs at a lent one (R′); whether it met a layer stepping Unstated or Static, not lent, which unties the output. A published
-    // transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's `next` writes each),
-    // so at another it neither forms rule A's rows nor unties it: the output has no record from these layers.
+    // raw arguments at a lent one (R′: SPEC's "the raw arguments", the raw sources at their own layer, never a wrapped one); whether it
+    // met a layer stepping Unstated or Static, not lent, which unties the output. A published transfer operation writes only its own
+    // outputs (TransferWrites, by the declaring-identity key: an Iterator's `next` writes each), so at another it neither forms rule A's
+    // rows nor unties it: the output has no record from these layers.
     private bool Hold(
         int output,
         ReadOnlySpan<(BoundType Type, BoundType? Written, BoundType? Holder)> holds,
@@ -509,9 +510,9 @@ public sealed partial class Binding
         }
         else if ((met & Holding.Lent) != 0)
         {
-            foreach (var (input, _) in this.retentionRawInputs)
+            foreach (var (input, kind) in this.retentionRawSources)
             {
-                kept[input] |= RetentionKind.Value | RetentionKind.Chain;
+                kept[input] |= kind is null ? RetentionKind.Value | RetentionKind.Chain : RetentionKind.None; // R′: SPEC's "the raw arguments".
             }
         }
 
@@ -536,7 +537,7 @@ public sealed partial class Binding
     // it there (`holder`, whose case a declared slot's step reads, SPEC 15.3.5; DECISIONS BU-44), and whether it is
     // `lent`: below a borrow in the result (BorrowReferent: a borrow layer, a pair layer admitting only borrows, a Slice's or UniqSlice's
     // elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as that borrow
-    // would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw input other than `output`
+    // would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw source other than `output`
     // retains its own value at a raw layer stating an Origin or `static`, whatever its pointee Type (it retains as the borrow its Origin
     // belongs to would, SPEC 15.6.4, and a raw cast keeps the address, 5.4), and at an abstract part only where a callable the call may
     // run may retain it there (HoldsRaw: rule 3, DECISIONS BU-66; no premise makes an abstract part such storage); at a raw
@@ -572,11 +573,11 @@ public sealed partial class Binding
         }
 
         RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
-        var rawCase = (this.LayerAdmitted(type) & SemanticsMask.Raw) != 0;
-        foreach (var (input, _) in this.retentionRawInputs)
+        var holds = this.retentionRawSources.Count > 0 &&
+            ((this.LayerAdmitted(type) & SemanticsMask.Raw) != 0 || (Abstract(type) && this.HoldsRaw(type)) || step is not (null or RawStep.Unstated));
+        foreach (var (input, kind) in this.retentionRawSources)
         {
-            var holds = rawCase || (Abstract(type) && this.HoldsRaw(type, input)) || step is not (null or RawStep.Unstated);
-            kept[input] |= input != output && holds ? RetentionKind.Value : RetentionKind.None;
+            kept[input] |= input != output && holds ? kind ?? RetentionKind.Value : RetentionKind.None;
         }
 
         var met = step switch

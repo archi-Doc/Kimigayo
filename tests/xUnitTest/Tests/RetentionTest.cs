@@ -185,6 +185,35 @@ public sealed partial class RetentionTest
     public void ReceiversRetainByTheirLayer(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(View), method));
 
+    // SPEC 15.6.4, 5.7, 5.2 (PLAN G415; DECISIONS BU-91): storage a value holds through a raw layer (`during self` content, or the pointee
+    // of a layer stating no Origin) holds any Type, so a borrow formed within it, punned to another Type than the pointee's, is a borrow
+    // formed through the receiver's layer: `at` keeps the receiver by Value, as the `raw/i32` twin does. Fails on dev a788e14d5: the
+    // punned forms keep `{0 Content}` only.
+    [Theory]
+    [InlineData("raw/u8 during self")]
+    [InlineData("raw/u8")]
+    [InlineData("raw/i32")]
+    public void ABorrowFormedInRawStorageRetainsTheReceiver(string layer)
+    {
+        var c = Bind($"struct P\n    internal var buffer: {layer}\n    public func at(self: ref/Self) -> ref/i32\n" +
+            "        unsafe => return (*(self.buffer@raw/i32))@ref\n");
+        Assert.Equal("result {0 Value}", Declared(c, "at"));
+    }
+
+    // The same rule at a position (SPEC 5.7 Calls: through `during self` a call may store what the holder's Type admits, an Origin bound):
+    // a result whose `during self` storage `x` reaches by its Origin can hold `x`'s own value, so `make` keeps it by Value; without the
+    // raw layer, Content (PLAN G415's review B1). Fails on dev a788e14d5: `{0 Content, 1 Value}` with the layer.
+    [Theory]
+    [InlineData("raw/u8 during self", "null", "result {0 Value, 1 Value}")]
+    [InlineData("i32", "0", "result {0 Content, 1 Value}")]
+    public void AResultHoldingRawStorageCanHoldAnInputOfAnyType(string buffer, string initial, string expected)
+    {
+        var c = Bind($"struct H {{a}}\n    public var r: ref/i32 during a\n    public var buffer: {buffer}\n" +
+            $"    public init(r: ref/i32 during a)\n        self.r = r\n        self.buffer = {initial}\n" +
+            "func make(x: ref/i64 during a, y: ref/i32 during a) -> H during a => H.init(y)\n");
+        Assert.Equal(expected, Declared(c, "make"));
+    }
+
     // SPEC 15.6, 15.6.4, 15.3.5: an input written through an exclusive or raw layer, also one an owned aggregate holds (an invariant slot),
     // is an output; another input whose Origin outlives the written positions is stored there, the target's own content too. An exclusive
     // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read
@@ -799,6 +828,32 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Value, 1 Value}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(c, "make"));
     }
 
+    // The rule above at the raw source (DECISIONS BU-66, the owner's Q11 ruling of 2026-11-04): a raw layer an argument holds by value
+    // without passing a shared layer, a Tuple element, a Type argument (an Option's payload) or one past an exclusive layer, is retained as
+    // a raw argument is, by the argument's own value (R4-M154's grain), so `T.make`'s abstract result keeps it (fails before: no row; the
+    // result stays untied until PLAN G264's S0); past an exclusive borrow, by its chain, never the borrow's own Loan (A2: `0 Chain`, before
+    // `0 Value`); past a shared layer it is not (SPEC 5.2.1). A concrete nominal's stored Field is BU-66's part B (PLAN).
+    [Theory]
+    [InlineData("Option<raw/u8>", "v", "result {0 Value}, untied")]
+    [InlineData("(raw/u8, i32)", "v", "result {0 Value}, untied")]
+    [InlineData("Array<raw/u8>", "v@move", "result {0 Value}, untied")]
+    [InlineData("uniq/Option<raw/u8>", "v", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
+    [InlineData("ref/(raw/u8)", "v", "untied")]
+    public void AnAbstractResultHoldsARawLayerItsArgumentHoldsByValue(string type, string argument, string expected)
+        => Assert.Equal([expected], Calls(Bind($"contract MakeO\n    func make(v: {type}) -> Self\nfunc g<T>(v: {type}) -> ()\n    T is MakeO\n    let t = T.make(v: {argument})\n"), "make"));
+
+    // The raw sources through the hold walk's other arms (DECISIONS BU-66 at the raw source), each a sound over-approximation of the
+    // wrapped pointer by the argument's own value: the generic wrapper whose handed `make` takes one (rule 3, ErasedFills), a pair layer
+    // admitting `raw` and a result raw layer stating an Origin. A lent one keeps only the raw arguments (R′, SPEC's "the raw arguments"),
+    // never a wrapped source (BU's ruling on part A: fails with R′ over the raw sources, `0 Value Chain`).
+    [Theory]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeO\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<s/T>(dst: uniq/(s/T), t: (raw/i32, i32))\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
+    [InlineData("func f(b: ref/i32, t: (raw/i32, i32)) -> raw/i32 during b => b@follow@raw", "result {0 Value, 1 Value}")]
+    [InlineData("func f(t: (raw/u8, i32), x: ref/(raw/u8)) -> Option<ref/(raw/u8) during x> => .None", "result {1 Value}")]
+    public void TheHoldWalkKeepsARawLayerItsArgumentHoldsByValue(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind("contract MakeO\n    func make(v: Option<raw/u8>) -> Self\n" + function + "\n"), "f"));
+
     // SPEC 5.7 Calls, 15.6 (the design review's S2 and R-B2; DECISIONS R4-M116 item 5): a raw pointer in an unstated or `static` Field or
     // Case payload is stated by the Type's Fields alone, so a call that forms it ties it to no argument: a result that stores one, at any
     // depth of its stored content, is untied (`make`, `Hid.init`, an enum's payload, a Tuple element of an Option's struct) and retains
@@ -958,7 +1013,8 @@ public sealed partial class RetentionTest
     // as that borrow would, so what it addresses is that borrow's storage and the unstated layers there are lent, not written by the
     // result: dictionaryStorage's handle over a V holding one, as the MIR's Dictionary literal calls it, and a user function of its
     // shape, are not untied (fail-before: untied, so each such literal's entries reached storage the body does not own on the MIR); the
-    // input's own storage stays an untied store, written by rule A.
+    // input's own storage stays an untied store, written by rule A. The input holds raw layers past its exclusive borrow, a raw source whose
+    // chain the stated layer keeps (DECISIONS BU-66, A2; before `0 Value`).
     [Theory]
     [InlineData("raw/u8")]
     [InlineData("(raw/u8, i32)")]
@@ -969,8 +1025,8 @@ public sealed partial class RetentionTest
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "lit");
         var call = body.Blocks.ToArray().Select(static x => x.Terminator)
             .Single(static x => x is { Kind: MirTerminatorKind.Call } && x.Callee.Symbol?.LibraryDeclaration == KimiDeclarationId.StorageDictionaryLayout);
-        Assert.Equal("result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied", Show(c.Types.Retains(call.Callee.Symbol!, call.Callee.Subst, body.Key.Decl)));
-        Assert.Equal("result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied", Declared(c, "f"));
+        Assert.Equal("result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied", Show(c.Types.Retains(call.Callee.Symbol!, call.Callee.Subst, body.Key.Decl)));
+        Assert.Equal("result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied", Declared(c, "f"));
     }
 
     // SPEC 15.6.4, 22.2.3, 15.7, 4.9.6 (DECISIONS R4-M131, BU-40): a published operation that transfers values retains a borrowed argument
@@ -1032,7 +1088,8 @@ public sealed partial class RetentionTest
     // `iterateUniq`, UniqSlice `sliceUniq` after Array's and `indexUniq`, ResolvedRange `iterateUniq`, whose contract has no row) and the
     // fixed array's (`sliceUniq`, `iterateUniq`, `tryGetPairUniq`). None where the receiver is no exclusive borrow (Array `slice`, a
     // shared one; `intoIterator`, by value, though its elements' pointees are a store) or the callee no such operation (SliceIterator's
-    // `next`). Fail-before: no row prints it.
+    // `next`). Fail-before: no row prints it. A `sliceUniq` receiver holds its raw elements past its exclusive borrow, a raw source whose
+    // chain the result's stated raw layer keeps (DECISIONS BU-66, A2; before `0 Value`).
     [Theory]
     [InlineData("var a: Array<ref/i32> = []\nvar x = 1\na.append(x@ref)\n", "append", "store 0: own {0 Content, 1 Value}, reached {}, referent store 0")]
     [InlineData(
@@ -1049,13 +1106,13 @@ public sealed partial class RetentionTest
     [InlineData(
         "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.sliceUniq()\n",
         "sliceUniq",
-        "result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0 | result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+        "result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0 | result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.indexUniq(0)\n",
         "indexUniq",
         "result {0 Value}, store 0: own {0 Chain, 1 Chain}, reached {0 Chain, 1 Chain} untied, referent store 0")]
     [InlineData("var r = (0..2).resolve(5)\nlet it = r.iterateUniq()\n", "iterateUniq", "referent store 0")]
-    [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "result {0 Value}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
+    [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
         "var f: [2 of raw/u8] = [null, null]\nlet it = f.iterateUniq()\n",
         "iterateUniq",

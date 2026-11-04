@@ -113,8 +113,8 @@ fn consumedThenReturned @42
   bb7:
       return @42
   bb8:
-      _0 = move _8 @57 s3
-      goto bb7 @57 s3
+      _0 = move _8 @42
+      goto bb7 @42
   bb9:
       drop _2 -> bb10 [flag f0] [clear f0] @44
   bb10:
@@ -163,8 +163,8 @@ fn returnThenExit @68
   bb2:
       return @68
   bb3:
-      _0 = move _2 @74 s2
-      goto bb2 @74 s2
+      _0 = move _2 @68
+      goto bb2 @68
   bb4:
       StorageDead(_1) @71 s1
       goto bb3 @68
@@ -236,8 +236,8 @@ fn divergingCondition @89
   bb6:
       return @89
   bb7:
-      _0 = move _5 @97 s2
-      goto bb6 @97 s2
+      _0 = move _5 @89
+      goto bb6 @89
   bb8:
       StorageDead(_2) @93 s1
       goto bb7 @89
@@ -291,8 +291,8 @@ fn abandoned @101
   bb4:
       return @101
   bb5:
-      _0 = move _7 @116 s2
-      goto bb4 @116 s2
+      _0 = move _7 @101
+      goto bb4 @101
   bb6:
       StorageDead(_5) @111 s1
       StorageDead(_4) @109 s1

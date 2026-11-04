@@ -152,8 +152,8 @@ fn generic @81
   bb2:
       return @81
   bb3:
-      _0 = move _8 @94 s1
-      goto bb2 @94 s1
+      _0 = move _8 @81
+      goto bb2 @81
   bb4:
       drop _2 -> bb5 [keep] @89
   bb5:

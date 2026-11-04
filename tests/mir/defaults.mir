@@ -107,8 +107,8 @@ defaulttemplate evaluate#1 @139
       _6 = move (_4 as case 0).0 [clear f0] @158 s2
     * goto bb13 check bb14 @160 s2
   bb5:
-      _0 = move _7 @160 s2
-      goto bb1 @160 s2
+      _0 = move _7 @140
+      goto bb1 @140
   bb6:
       drop _2 -> bb7 [elide] @142 s1
   bb7:
@@ -208,8 +208,8 @@ fn pick @37
   bb1:
       return @37
   bb2:
-      _0 = move _4 @47 s1
-      goto bb1 @47 s1
+      _0 = move _4 @37
+      goto bb1 @37
   bb3:
       drop _2 -> bb4 [keep] @43
   bb4:
@@ -397,8 +397,8 @@ fn use @79
   bb14:
       return @79
   bb15:
-      _0 = move _31 @108 s1
-      goto bb14 @108 s1
+      _0 = move _31 @79
+      goto bb14 @79
   bb16:
       StorageDead(_18) @103 s1
       StorageDead(_14) @98 s1
@@ -532,8 +532,8 @@ fn replicas @169
       _8 = move (_6 as case 0).0 [clear f0] @158 s4
     * goto bb14 check bb15 @160 s4
   bb6:
-      _3 = move _9 @160 s4
-      goto bb2 @160 s4
+      _3 = move _9 @140 s2
+      goto bb2 @140 s2
   bb7:
       drop _4 -> bb8 [elide] @142 s3
   bb8:
@@ -614,8 +614,8 @@ fn replicas @169
       _18 = move (_16 as case 0).0 @158 s8
     * goto bb39 check bb40 @160 s8
   bb31:
-      _13 = move _19 @160 s8
-      goto bb27 @160 s8
+      _13 = move _19 @140 s6
+      goto bb27 @140 s6
   bb32:
       goto bb33 @142 s7
   bb33:

@@ -200,8 +200,8 @@ fn use @95
   bb6:
       return @95
   bb7:
-      _0 = move _13 @110 s1
-      goto bb6 @110 s1
+      _0 = move _13 @95
+      goto bb6 @95
   bb8:
       StorageDead(_12) @119 s1
       StorageDead(_11) @116 s1

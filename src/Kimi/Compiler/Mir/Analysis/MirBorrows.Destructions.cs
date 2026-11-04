@@ -9,10 +9,11 @@ namespace Kimi.Compiler.Mir;
 // destroyed root's plain address (MirBorrows.Addresses), formed in the pre-pass for each Drop whose destruction may run a drop (Dropping:
 // Observe), so every reader of a direct Loan reads it as a reference to that root; it is never a conflict candidate and cannot be stored
 // (BU-47: input 0 has no Value row). The drops are the destruction walk's (MirTypes.Destruction): a struct's declared drop, then its parts
-// (16.3.2, MirTypes.Parts); a Sealed handle's payload, walked on (an rc or arc release may be final); an erased destruction where the walk
-// cannot see the drop (a Function value, a handle whose payload is not proven Sealed; an abstract part composes nothing, R4-M150's staging;
-// TyCtxt.RetainsErasedDestruction). Each drop's retention (TyCtxt.Retains over the drop and its declaring layer) stores through its
-// output as a Call's does (MirBorrows.Calls' Keep, W from the receiver); a Limit retention is the depth limit at the location (R4-M153).
+// (16.3.2, MirTypes.Parts); a Sealed handle's payload, walked on (an rc or arc release may be final; MirTypes.SealedPayload, A4's one
+// test); an erased destruction where the walk cannot see the drop (an abstract part not proven Copy, a Function value, a handle whose
+// payload is not proven Sealed, Copy or not; TyCtxt.RetainsErasedDestruction). Each drop's retention (TyCtxt.Retains over the drop and
+// its declaring layer) stores through its output as a Call's does (MirBorrows.Calls' Keep, W from the receiver, so an abstract part's
+// store reaches what R4-M170's reach rule lets it write, SPEC 15.6.4); a Limit retention is the depth limit at the location (R4-M153).
 // A published operation's cleanup is the destruction its row lists (SPEC 4.9.6; PublishedRow.Destroys, DECISIONS BU-70), composed at the
 // call after its own rows over the destroying argument's value (Destroying), which replaces C3's referent guard (R4-M143).
 // Input: the view's kept Drops, A2's verdicts (Dropping), Binding's drop retention, the published rows and A4's Type below a parameter
@@ -62,13 +63,8 @@ internal sealed partial class MirBorrows
             effects.Below(symbol, call.Callee.Subst, row.Destroys) is { } type)
         {
             var position = MirCallee.Position(symbol, row.Destroys);
-            var (input, receiver) = (call with { Count = 0, Operand = this.body.Operands[call.Start + position] }, this.argValues[position]);
-            this.Compose(state, input, receiver, type, checks);
-
-            // Where only an abstract part not proven Copy observes, which Composing leaves out, the store stays undecided as on dev
-            // (R4-M147): one that would add a Loan or an address past the receiver's referents is the located Unsupported_Kd at the call.
-            this.limit |= checks && this.Destruction(type, out var unproven) == AccessKind.Observe && unproven &&
-                this.sets.Elements(this.Content(state, receiver)) is [.., var last] && last >= this.loanBase;
+            var input = call with { Count = 0, Operand = this.body.Operands[call.Start + position] };
+            this.Compose(state, input, this.argValues[position], type, checks);
         }
     }
 
@@ -115,28 +111,25 @@ internal sealed partial class MirBorrows
     }
 
     // A part the destruction walk reports (SPEC 16.3): a declared drop over its layer, then the struct's parts (16.3.2); a Sealed handle's
-    // payload walked on; an erased destruction where the walk cannot see the drop (a Function value, a handle whose payload is not proven
-    // Sealed; an abstract part composes nothing, below). A string's or a sequence's own release runs none; its elements are parts of their own.
+    // payload walked on; an erased destruction where the walk cannot see the drop (an abstract part not proven Copy, a Function value, a
+    // handle whose payload is not proven Sealed, MirTypes.SealedPayload). A string's or a sequence's own release runs none; its elements
+    // are parts of their own.
     private bool Composing(ref Composer composer, BoundType type, int depth)
     {
         var definition = this.body.Key.Decl;
         BoundType? erased = null;
         if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
         {
-            // An abstract part composes nothing (the owner, 2026-11-03: 「(A)pf を入れ、抽象部分の破棄の合成だけは Drop で当面行わない」;
-            // DECISIONS R4-M150), at every site, as on dev, until an owner SPEC revision bounds what an erased destruction may store (E
-            // receives no Loan bounded by Self's own Origins or by a per-call Origin; SPEC 22.2.1's `step`); then it is composed.
-            erased = type.Kind == BoundTypeKind.Function ? type : null;
+            erased = type.Kind == BoundTypeKind.Function || !types.Copy(definition, type) ? type : null;
         }
         else if (type.Kind == BoundTypeKind.Semantics)
         {
-            var payload = type.Components[0];
-            if (types.Sealed(definition, payload))
+            if (MirTypes.SealedPayload(type, types, definition) is { } payload)
             {
                 return composer.Below(payload, depth);
             }
 
-            erased = payload;
+            erased = type.Components[0];
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {

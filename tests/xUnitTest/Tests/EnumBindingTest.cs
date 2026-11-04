@@ -219,8 +219,11 @@ public class EnumBindingTest
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction takes the expected Type's slots first, then its payloads' evidence by kind,
     // element by element, then the Literal defaults; under the argument probe a construction with an unbound slot waits for its call.
     // An anonymous payload's written header is evidence at a callable position (SPEC 10.5.4), and a waiting callable at an F binds it and
-    // is completed once every other slot is bound (SPEC 10.5).
+    // is completed once every other slot is bound (SPEC 10.5). A Field's inferred Type, bound with its header, constructs a Case whose
+    // payload Types are bound before every header (G381), also of an enum declared later.
     [Theory]
+    [InlineData("struct S\n    public let x = Option.Some(1)")]
+    [InlineData("struct S\n    public var x = P.Pair(1, (2, 3))\nenum P<T>\n    Pair(T, (T, T))")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v) => v)")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: i64) -> i64 => v)")]
     [InlineData("enum F<T>\n    Pair(T, (T, (T) -> T))\nfunc f()\n    let x = F.Pair(1@i32, (2, func (v) => v))")]
@@ -263,6 +266,8 @@ public class EnumBindingTest
     [InlineData("func f()\n    let x = Option.Some(func (v) => v)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
     [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
+    [InlineData("func f()\n    let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
+    [InlineData("struct S\n    public let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     public void ACaseConstructionReportsItsOwnFailure(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);

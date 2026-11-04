@@ -264,6 +264,30 @@ public sealed class MirPublicationTest
         Assert.Equal(before + (sited ? 0 : 1), Errors(c).Length);
     }
 
+    // DIAGNOSTICS 4.3, DECISIONS R5-M186: a Binding cause (-1) at a node of Binding's guess rule names Binding.RestingCauses there, so A3's
+    // problem at a guessed failure body is PrerequisiteUnavailable_Kd in its partition: at a body the parser supplied, its syntax Error's
+    // key, which explains it alone; at an unresolved call, the call's Binding causes; at an operand Binding left unresolved without causes
+    // (a recovered call's callee), the unresolved mark, as the lints name it, which nothing explains. Fail-before: the last row's site has
+    // no FailureCauses, InternalInvariant_Kd; the first two are guards (FailureCauses gives the same keys there).
+    [Theory]
+    [InlineData("let a = 1\nrequire a == 1 else\nlet b = 2\n", "MissingSyntax_Kd ")]
+    [InlineData("let a = 1\nrequire a == 1 else => missing()\n", "UnresolvedBinding_Kd missing")]
+    [InlineData(
+        "let a = 1\nrequire a == 1 else\n    let y = f(1,, 2)\nfunc f(a: i32, b: i32) -> i32 => a\n",
+        "ExpectedSyntax_Kd ,; PrerequisiteUnavailable_Kd let y = f(1,, 2)")]
+    public void ABindingCauseAtAGuessIsTheGuessRulesCause(string source, string errors)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        c.Binding.ReportDiagnostics();
+        var program = c.BuildMir();
+        var merged = Index(program, DiagnosticCode.RequireFallthrough_Kd);
+        Assert.All(program.Problems.MergedFacts(merged).ToArray(), static x => Assert.Equal((MirFactKind.Cause, -1L), (x.Kind, x.Value)));
+        c.Publish(program, merged);
+        var derived = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.ControlFlow, DiagnosticPartition.ControlFlow).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.PrerequisiteUnavailable_Kd), derived.Code);
+        Assert.Equal(errors, string.Join("; ", Errors(c).Select(static x => $"{x.Code} {x.Text}").Order(StringComparer.Ordinal)));
+    }
+
     // H0a 5.2 (A; PLAN G128): where one call meets G128's bound, the collector's Unsupported_Kd and A5's OwnershipDepthLimit_Kd both publish,
     // two located records of one implementation bound at Chain<i32>'s need(c@move) (ComponentSummaryTest's program; built without Analyze,
     // so the difference ledger, which observes Analyze, does not count it twice).

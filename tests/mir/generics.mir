@@ -121,8 +121,8 @@ fn largest @4
   bb18:
       return @4
   bb19:
-      _0 = move _20 @36 s1
-      goto bb18 @36 s1
+      _0 = move _20 @4
+      goto bb18 @4
   bb20:
       drop _2 -> bb21 [keep] @16
   bb21:
@@ -215,8 +215,8 @@ fn unwrapTry @61
   bb7:
       return @61
   bb8:
-      _0 = move _8 @89 s2
-      goto bb7 @89 s2
+      _0 = move _8 @61
+      goto bb7 @61
   bb9:
       drop _1 -> bb10 [elide] @63
   bb10:

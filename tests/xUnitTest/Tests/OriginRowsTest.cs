@@ -46,6 +46,18 @@ public sealed partial class OriginRowsTest
     private const string Getter = "struct Wrap {s}\n    public let values: Slice<i32> during s\n    public init(values: Slice<i32> during s) => self.values = values\n" +
         "    public computed first: i32\n        get() -> i32\n            var sum = 0\n            for v in self.values\n                sum = sum + v@follow\n            return sum\n";
 
+    // An enclosing body's local whose value Origin a named nested signature names (BU-56's unannotated class; DECISIONS BU-89).
+    private const string Local = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let r = arr[0]\n";
+
+    // The same in a Closure body, and a root function naming a document-local.
+    private const string ClosureBodyLocal = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let c = func [arr@ref] () -> i32\n" +
+        "        let r2 = arr[0]\n        func put(slot: uniq/Array<ref/i32 during r2>, v: ref/i32 during r2) => slot@follow.append(v)\n        return 0\n" +
+        "    _ = c()\n    return 0\n";
+
+    private const string DocumentLocal = "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r = arr[0]\n" +
+        "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32 during r) => slot@follow.append(v)\nvar other: Array<ref/i32> = []\nother.append(z@ref)\n" +
+        "put(other@uniq, r)\n";
+
     // SPEC 15.6.1: in the library, the milestones, the goldens and the accepting SPEC variants, each Origin row lies once in the slice of the
     // body Binding formed it in; Binding's declaration judge consumes a declaration's rows (DECISIONS BU-26), so none remains; no broken
     // contract is found; no row names another declaration's universal atom (+cen: I-1's shape, PLAN G195, is the only one, and it occurs in
@@ -117,11 +129,19 @@ public sealed partial class OriginRowsTest
     // DECISIONS R4-M101 E2, E3 and BU-26: rows formed while Binding binds a declaration (an instance Field's or computed Property's declared
     // Type, a requirement's or an override's signature) are formed with no body and consumed by Binding's declaration judge, so no row whose
     // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result records.
+    // BU-89 (SPEC 15.3.4): a named nested or root function's row naming an enclosing body's Origin, a fixed Origin of it, is the judge's
+    // too: an input's (also in a Closure body or naming a document-local) and a nested Function Type's result its inputs entail are its
+    // premises, and one they do not entail is Binding's record (dev left each row to the view's InternalInvariant_Kd finding, PLAN G409).
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", false)]
     [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", false)]
     [InlineData("contract C\n    func f(x: ref/(ref/i32 during b) during a) -> i32\n", true)]
     [InlineData("open struct Base\n    public init() => ()\n    public virtual func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 0\nstruct Derived : Base\n    public init() : base() => ()\n    override func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 1\n", true)]
+    [InlineData(Local + "    func put(slot: uniq/Array<ref/i32 during r>) -> i32 => 0\n    return 0\n", true)]
+    [InlineData(Local + "    func k(cb: (ref/(ref/i32 during r)) -> Option<ref/(ref/i32 during r)>) -> i32 => 0\n    return 0\n", true)]
+    [InlineData(Local + "    func k(cb: (ref/i32) -> Option<ref/(ref/i32 during r)>) -> i32 => 0\n    return 0\n", false)]
+    [InlineData(ClosureBodyLocal, true)]
+    [InlineData(DocumentLocal, true)]
     public void ADeclarationsRowsAreConsumedByBinding(string source, bool complete)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -298,6 +318,37 @@ public sealed partial class OriginRowsTest
         var clauses = Rows(c, false).Where(static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto)).ToList();
         Assert.NotEmpty(clauses);
         Assert.All(clauses, x => Assert.True(Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
+    }
+
+    // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a
+    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row.
+    [Theory]
+    [InlineData("ref/(ref/i32 during b) during a", "WellFormed")]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "Fit")]
+    public void ATypeOccurrencesRelationIsAWellFormedRow(string site, string source)
+    {
+        const string Program = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n" +
+            "    let r: ref/(ref/i32 during b) during a = slot\n    return 0\n";
+        var (_, row) = RowAt(Program, "f", site);
+        Assert.Equal(source, row.Source.ToString());
+    }
+
+    // SPEC 15.6.1, 23.1.2 (PLAN G412): an occurrence's well-formedness is one row. A transparent wrapper (parentheses, a named Type's
+    // layer) returns its inner node's Type, whose relation that node formed; the wrapper forms it only where it supplies the outer
+    // Origin itself (a slice's trailing `during`, written or omitted).
+    [Theory]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "ref/(ref/i32 during b) during a")]
+    [InlineData("let r: ((ref/(ref/i32 during b) during a)) = slot", "ref/(ref/i32 during b) during a")]
+    [InlineData("var r: Option<(ref/(ref/i32 during b) during a)> = .None", "ref/(ref/i32 during b) during a")]
+    [InlineData("let r: S.Item(b, a) = slot", "S.Item(b, a)")]
+    [InlineData("var r: Option<(S.Item(b, a))> = .None", "S.Item(b, a)")]
+    [InlineData("var r: Option<(Slice<ref/i32 during b> during a)> = .None", "Slice<ref/i32 during b> during a")]
+    [InlineData("var r: Option<Slice<ref/i32 during b>> = .None", "Slice<ref/i32 during b>")]
+    public void AnOccurrencesWellFormednessIsOneRow(string local, string site)
+    {
+        var c = MirBuildTest.Compile("contract C\n    associate Item(a, b) is ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n" +
+            $"func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n    {local}\n    return 0\n" + Main);
+        Assert.Equal(site, First(Assert.Single(Rows(c, false), static x => x.WellFormed).Use));
     }
 
     // 2a0-D §4 (D8): the body's oracle, extracted once at its root, agrees with Binding's per-request proof at the use on every fixed-fixed

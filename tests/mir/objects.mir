@@ -79,8 +79,8 @@ fn shared @15
   bb8:
       return @15
   bb9:
-      _0 = move _13 @73 s1
-      goto bb8 @73 s1
+      _0 = move _13 @15
+      goto bb8 @15
   bb10:
       StorageDead(_9) @68 s1
       drop _7 -> bb11 [keep] @55 s1
@@ -231,8 +231,8 @@ fn eitherCell @115
   bb10:
       goto bb13 check bb14 @129 s1
   bb11:
-      _0 = move _9 @129 s1
-      goto bb7 @129 s1
+      _0 = move _9 @115
+      goto bb7 @115
   bb12:
       StorageDead(_8) @130 s1
       StorageDead(_7) @130 s1

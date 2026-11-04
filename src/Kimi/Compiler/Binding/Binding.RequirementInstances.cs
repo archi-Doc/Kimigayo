@@ -6,27 +6,35 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, as the witness core resolves it under a definition's
-    // premises, each target with its declaring instance: a built-in comparison's plan leaves, another built-in target itself (no
-    // instance), else the conformance's witness, an inherited one included; false where none resolves. The requirement takes `ref/Self`
-    // (SPEC 4.9.6's rows and the comparisons), which no virtual function implements (virtual-dispatch 1, 6.3).
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, as the witness core resolves it under the Contract reference
+    // the call selected (InstanceContract: `recorded`, the call's dispatching Contract reference, and `reference`, that reference instantiated
+    // in the call's substitution, as TyCtxt.Witness reads them) and a definition's premises, each target with its declaring instance: a
+    // built-in comparison's plan leaves, another built-in target itself (no instance), else the conformance's witness, an inherited one
+    // included, or the accessor an accessor-call Property witness runs (SPEC 11.9.2); false where none resolves, a standard Property
+    // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads. A virtual witness dispatches
+    // through its slot, whose bound the caller reads (SPEC 6.4.6, DispatchBounds).
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
     {
-        var contract = requirement.Scope.Owner.BoundSymbol!;
+        var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
         if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { } target } &&
             target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
         {
-            return this.ComparisonPlan(target, self, contract.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
+            var declaring = requirement.Scope.Owner.BoundSymbol!; // The comparison's own Contract, whose mapping the plan follows.
+            return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
         }
 
-        if (witness.Kind is not (RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance))
+        switch (witness.Kind)
         {
-            return false;
+            case RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance:
+                into.Add((witness.Target!, witness.Declaring));
+                return true;
+            case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
+                into.Add((this.AccessorFunction(witness.Property.Implementation).BoundSymbol!, witness.Declaring));
+                return true;
+            default:
+                return false;
         }
-
-        into.Add((witness.Target!, witness.Declaring));
-        return true;
 
         static bool Leaves(BoundComparison plan, List<(BindingSymbol Target, BoundType? Declaring)> into)
         {

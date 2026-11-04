@@ -141,8 +141,8 @@ public sealed partial class Binding
 
             if (!obligation.Body.IsBody)
             {
-                // DECISIONS BU-26: Binding's declaration judge consumes every row formed with no body whose ends are declaration atoms
-                // (JudgeDeclarationRows), so a remaining one is a broken contract.
+                // DECISIONS BU-26, BU-89: Binding's declaration judge consumes every row formed with no body whose ends are Unbound or
+                // fixed in its frame (JudgeDeclarationRows), so a remaining one is a broken contract.
                 this.OriginFinding(SourceRef.Of(obligation.Use));
                 continue;
             }
@@ -151,8 +151,7 @@ public sealed partial class Binding
             shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation.Use));
             if (!ReferenceEquals(longer, shorter))
             {
-                var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed
-                    : obligation.Discharge == OriginDischarge.CallBorrows ? OriginRowSource.CallBorrows : OriginRowSource.Fit;
+                var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed : OriginRowSource.Fit;
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
                 unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask));

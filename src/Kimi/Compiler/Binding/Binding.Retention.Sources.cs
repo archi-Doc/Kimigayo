@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // Responsibility: the input fold of the one walk (StorageWalk; DECISIONS R4-M154, r2.3): the Value sources of each input
 // (RetentionSources, Source, Through: a value of its Type, of a part it holds by value, or a borrow formed through it, each named by its
 // layer's node with the layers it is formed through), whether a position can hold one (CanHold, Holds, Borrows, Fits), and whether an
-// abstract part keeps a raw input's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
+// abstract part keeps a raw source's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
 // them into a storage's Value kinds and pairs, and the hold walk reads HoldsRaw.
 // Inputs: the contract's instantiated inputs, the walk's visits, the nodes of a Type's own layers and arguments (OwnNodes), the parts a
 // value holds (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
@@ -17,8 +17,9 @@ namespace Kimi.Compiler;
 // position's Type can hold a source.
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
-// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and a library Type
-// keeping no part hold any; the input fold's walks and the fits stop at the depth bound (StorageBound).
+// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind, a library Type
+// keeping no part and raw storage a value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound
+// (StorageBound).
 // Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {
@@ -197,9 +198,10 @@ public sealed partial class Binding
     }
 
     // Whether a storage holds a value of a Type as itself or a part (HeldParts; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
-    // and a library Type keeping no part (compiler-implemented storage, Opaque) hold any (a referent an abstract part is may hold any part,
-    // as an implementation of its Contract may).
+    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36),
+    // a library Type keeping no part (compiler-implemented storage, Opaque) and raw storage a value holds (an Admitted part: `during self`
+    // content, an unstated raw layer's pointee; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
+    // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
     private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
     {
         if (storage is null)
@@ -226,22 +228,23 @@ public sealed partial class Binding
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {
-            holds = this.retentionHeld[i].Addressed && this.Holds(this.retentionHeld[i].Type, value, carried, depth + 1);
+            var part = this.retentionHeld[i];
+            holds = part.Place == PartPlace.Admitted || (part.Addressed && this.Holds(part.Type, value, carried, depth + 1));
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return holds;
     }
 
-    // Whether an abstract part can hold a raw input's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
-    // callable the call may run may retain it there (rule 3), a fill of the input (retentionFills) at any part or at a carrier that,
-    // Origins erased, is the part or occurs in it (an associated projection's base); no premise makes an abstract part storage that can
-    // hold it (rule 2's one test, Storages: a carrier's closure reaches only the relations of those callables).
-    private bool HoldsRaw(BoundType part, int input)
+    // Whether an abstract part can hold a raw source's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
+    // callable the call may run may retain it there (rule 3), a fill (retentionFills) at any part or at a carrier that, Origins erased, is
+    // the part or occurs in it (an associated projection's base); no premise makes an abstract part storage that can hold it (rule 2's one
+    // test, Storages: a carrier's closure reaches only the relations of those callables).
+    private bool HoldsRaw(BoundType part)
     {
-        foreach (var (filled, at) in this.retentionFills)
+        foreach (var at in this.retentionFills)
         {
-            if (filled == input && (at is null || this.Occurs(part, at, 0)))
+            if (at is null || this.Occurs(part, at, 0))
             {
                 return true;
             }

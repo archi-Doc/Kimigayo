@@ -7,7 +7,9 @@
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BoundClosure.EvaluatingBody (BindConcreteClosure), and ParameterVisible's answer.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
-//   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body.
+//   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
+//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed or stamped in it, and it
+//   is never a MIR key.
 // - Prohibitions: no body derived from a scope chain, Use.Parent or syntax.
 
 using Kimi.Compiler.Parsing;
@@ -24,13 +26,18 @@ internal readonly record struct ExecutableBody
 
     internal ExecutableBody(BindingSymbol? definition, int index = -1) => (this.Definition, this.index) = (definition, index + 1);
 
+    /// <summary>Gets the declaration judge's frame (SPEC 15.3.4; DECISIONS BU-89): no body, distinct from the default value, in which
+    /// every executable body's Origin a declaration's row names is a fixed Origin of that declaration, until PLAN G230 (A) records the
+    /// declaring body.</summary>
+    internal static ExecutableBody Declarations { get; } = new(null, -2);
+
     internal BindingSymbol? Definition { get; }
 
     /// <summary>Gets a default template's parameter index, or a module's ordinal for its top-level statements; -1 otherwise.</summary>
     internal int Index => this.index - 1;
 
     /// <summary>Gets a value indicating whether this names a body, not a declaration.</summary>
-    internal bool IsBody => this.Definition is not null || this.index != 0;
+    internal bool IsBody => this.Definition is not null || this.index > 0;
 }
 
 public sealed partial class Binding

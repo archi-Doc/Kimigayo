@@ -27,7 +27,8 @@ internal sealed partial class MirBorrows
         var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
         (this.program, this.body, this.view, this.views, this.held) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all, false);
         this.sets.Clear();
-        (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
+        (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
+        this.escapedSet = this.sets.Add(this.writableSet, Escaped);
         this.Loans();
         this.Addresses();
         this.Receivers();
@@ -66,8 +67,8 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
-    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), so
-    // every value read through E carries Φ_E (R4-M120, B1).
+    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), which
+    // a call may write (Φ_W; SPEC 15.6.4, R4-M170), so every value read through E carries Φ_E (R4-M120, B1).
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
