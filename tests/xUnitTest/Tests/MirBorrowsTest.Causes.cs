@@ -325,8 +325,8 @@ public sealed partial class MirBorrowsTest
     // V16 (DECISIONS R4-M132; G:A5-F4's group review N2, after the 2a-2 review's A-B1): rule W's Bytes stay within a constant c times the
     // W-free run's on A-B1's shape (N locals borrowed, each stored through a parameter and read through it after the store, each conflict
     // derived), against its twin storing into a local slot (no Refuted relation, so no W element, no marker and no conflict). Measured
-    // 3.87, 3.94 and 3.97 at N = 32, 64 and 128, tending to 4; c = 4.5 leaves 13% over the largest. A-B1's cubic form (one marker added at
-    // a time) would grow the ratio with N.
+    // 2.49, 2.50 and 2.50 at N = 32, 64 and 128 since Indirect adds its markers in one pass (G263; 2.99 to 3.00 with a node of the markers
+    // first); c = 2.8 leaves 12% over the largest. A-B1's cubic form (one marker added at a time) would grow the ratio with N.
     [Fact]
     public void RuleWsBytesStayWithinAConstantOfItsWFreeTwin()
     {
@@ -357,7 +357,7 @@ public sealed partial class MirBorrowsTest
             output.WriteLine($"N {size}: bytes {ruled.Bytes} with rule W, {free.Bytes} without");
         }
 
-        Assert.All(ratios, static x => Assert.True(x <= 4.5, x.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.All(ratios, static x => Assert.True(x <= 2.8, x.ToString(System.Globalization.CultureInfo.InvariantCulture)));
     }
 
     // DECISIONS R4-M132 (the gate, the design review's row 2): rule W sets nothing up in a body MirOrigins finds no Refuted relation in,

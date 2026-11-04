@@ -6,8 +6,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
-/// have one id, 0 is the empty set, Add, Union (of two or of any number, R4-M138), Remove, Range and Of keep the set laws and repeat
-/// through their memos (Of through its run), and the storage is pooled.</summary>
+/// have one id, 0 is the empty set, Add (of an element or a run), Union (of two or of any number, R4-M138), Remove and Range keep the set
+/// laws and repeat through their memos (a run's Add through its result), and the storage is pooled.</summary>
 public sealed class MirLoanSetsTest(ITestOutputHelper output)
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -63,18 +63,24 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal([3, 5, 6], sets.Elements(sets.Remove(run, four)).ToArray());
     }
 
-    // DECISIONS R4-M132 (the design review's A-B1): Of interns an ascending run in one pass, the set its elements make one at a time, the
-    // empty run node 0; a run equal to an existing set makes no node, and it scans the run once.
+    // DECISIONS R4-M132 (the design review's A-B1), G263: a set with an ascending run added is interned in one pass, the set its elements
+    // make one at a time, an empty run the set itself; it makes one node, none of the run itself, none where the result exists, and it
+    // scans the set and the run once.
     [Fact]
-    public void OfIsTheSetOfItsAscendingRun()
+    public void AddingARunMakesOneNodeInOnePass()
     {
         var sets = new MirLoanSets();
-        var set = sets.Of([2, 5, 8, 13]);
-        Assert.Equal([set, 0], new[] { Of(sets, 13, 8, 5, 2), sets.Of([]) });
+        var set = sets.Add(0, [2, 5, 8, 13]);
+        Assert.Equal([set, 0, set], new[] { Of(sets, 13, 8, 5, 2), sets.Add(0, []), sets.Add(set, []) });
         Assert.Equal([2, 5, 8, 13], sets.Elements(set).ToArray());
         var (bytes, scanned) = (sets.Bytes, sets.Scanned);
-        Assert.Equal(set, sets.Of([2, 5, 8, 13]));
+        Assert.Equal(set, sets.Add(0, [2, 5, 8, 13]));
         Assert.Equal((bytes, scanned + 4), (sets.Bytes, sets.Scanned));
+        var added = sets.Add(set, [1, 5, 20]);
+        Assert.Equal([1, 2, 5, 8, 13, 20], sets.Elements(added).ToArray());
+        Assert.Equal((bytes + (6 * sizeof(int)), scanned + 4 + 7), (sets.Bytes, sets.Scanned));
+        Assert.Equal(added, sets.Add(added, [2, 13]));
+        Assert.Equal(bytes + (6 * sizeof(int)), sets.Bytes);
     }
 
     // R4-M53, A3 §6.2: an operation repeated, in either operand order for a Union, returns its first result and makes no node, and a

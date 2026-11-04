@@ -1,17 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns interned immutable Loan sets: Add, Union (of two or of any number), Remove, Range, Of; the only Loan-set form in Mir (design A3 §6.1;
-// DECISIONS R4-M53).
+// Owns interned immutable Loan sets: Add (an element or an ascending run), Union (of two or of any number), Remove, Range; the only Loan-set
+// form in Mir (design A3 §6.1; DECISIONS R4-M53).
 // Input: the elements, the Loan and marker ids A5 numbers. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
-// sets, the set of a Range of consecutive elements and the set of an ascending run (Of, interned in one pass, R4-M132) as node ids,
-// Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and Scanned, the
+// sets, a set with an ascending run added (interned in one pass, R4-M132, G263) and the set of a Range of consecutive elements as node
+// ids, Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and Scanned, the
 // elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
-// equal exactly when their ids are; a node never changes once made. Each operation but Of and the n-ary Union is memoized by its operands,
-// so repeating it costs one lookup; Of's run is its own key, and the n-ary Union reads each element once and sorts the marker words it
-// sets, never the range between its least and greatest element (its caller memoizes it). Storage is pooled: Clear empties it per body
-// view in proportion to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a warm run of a sized workload
-// allocates nothing.
+// equal exactly when their ids are; a node never changes once made. Each operation but a run's Add and the n-ary Union is memoized by its
+// operands, so repeating it costs one lookup; a run's Add makes no node of the run itself, and the n-ary Union reads each element once and
+// sorts the marker words it sets, never the range between its least and greatest element (their callers memoize them). Storage is
+// pooled: Clear empties it per body view in proportion to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a
+// warm run of a sized workload allocates nothing.
 // Must not number or interpret elements, read MIR, or keep a set in another form.
 
 using System.Numerics;
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>Interned immutable Loan sets (design A3 §6.1, DECISIONS R4-M53): a set is a node id, 0 the empty set, and equal sets have one
-/// id, so a set is stored and compared as an int; <see cref="Add"/>, <see cref="Union(int, int)"/>, <see cref="Remove"/> and
+/// id, so a set is stored and compared as an int; <see cref="Add(int, int)"/>, <see cref="Union(int, int)"/>, <see cref="Remove"/> and
 /// <see cref="Range"/> are memoized.</summary>
 internal sealed class MirLoanSets
 {
@@ -96,6 +96,13 @@ internal sealed class MirLoanSets
 
         return added;
     }
+
+    /// <summary>Gets a set with the elements of a strictly ascending run added, interned in one pass: one merge and one node, none of the
+    /// run itself (G263); unmemoized, its caller memoizes it.</summary>
+    /// <param name="set">The set.</param>
+    /// <param name="run">The elements, strictly ascending.</param>
+    /// <returns>The set and the run's elements.</returns>
+    internal int Add(int set, ReadOnlySpan<int> run) => run.IsEmpty ? set : this.Merge(set, run);
 
     /// <summary>Gets the union of two sets.</summary>
     /// <param name="a">A set.</param>
@@ -235,21 +242,6 @@ internal sealed class MirLoanSets
         }
 
         return range;
-    }
-
-    /// <summary>Gets the set of a strictly ascending run, interned in one pass (its node, made once, is found by the run itself).</summary>
-    /// <param name="run">The elements, strictly ascending.</param>
-    /// <returns>The set.</returns>
-    internal int Of(ReadOnlySpan<int> run)
-    {
-        if (run.IsEmpty)
-        {
-            return 0;
-        }
-
-        run.CopyTo(this.Candidate(run.Length));
-        this.Scanned += run.Length;
-        return this.Intern(run.Length);
     }
 
     // set \ removed: each element of the smaller operand searched in the larger.

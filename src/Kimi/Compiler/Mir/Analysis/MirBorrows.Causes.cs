@@ -67,7 +67,7 @@ internal sealed partial class MirBorrows
         {
             if (this.Binds(statements[s]) is var h and >= 0)
             {
-                this.guards[h] = this.guards[h] == 2 || !this.Covers(origins.Causes(s), adding: false) ? 2 : 1;
+                this.guards[h] = this.guards[h] == 2 || !this.Covers(origins.Causes(s)) ? 2 : 1;
                 this.guardStart[h + 1]++;
             }
         }
@@ -93,7 +93,7 @@ internal sealed partial class MirBorrows
                 var start = h == 0 ? 0 : this.guardStart[h - 1];
                 foreach (var s in this.guardRefs.AsSpan(start, this.guardStart[h] - start))
                 {
-                    this.Covers(origins.Causes(s), adding: true);
+                    this.Gather(origins.Causes(s));
                 }
 
                 this.wOfLocal[h] = this.wCount;
@@ -104,8 +104,9 @@ internal sealed partial class MirBorrows
         for (var l = 0; l < this.loanCount; l++)
         {
             var location = this.loans[l].Location;
-            if (location < statements.Length && this.Covers(origins.Causes(location), adding: true))
+            if (location < statements.Length && origins.Causes(location) is var found && this.Covers(found))
             {
+                this.Gather(found);
                 this.wOfLoan[l] = this.wCount;
                 this.wStart[++this.wCount] = this.wCauses.Count;
             }
@@ -120,8 +121,8 @@ internal sealed partial class MirBorrows
         => statement is { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 and var root }, Rvalue.Kind: MirRvalueKind.Ref } &&
             this.MarkerOf(root) == Marker.Guard ? root : -1;
 
-    // Whether a Ref's causes cover the run's views; adding, those with a view of the run join the element being made, each once.
-    private bool Covers(ReadOnlySpan<int> found, bool adding)
+    // Whether a Ref's causes cover the run's views.
+    private bool Covers(ReadOnlySpan<int> found)
     {
         var problems = this.program.Problems.All;
         var covered = 0UL;
@@ -130,20 +131,20 @@ internal sealed partial class MirBorrows
             covered |= problems[p].Views;
         }
 
-        if (found.IsEmpty || (covered & this.views) != this.views)
-        {
-            return false;
-        }
+        return !found.IsEmpty && (covered & this.views) == this.views;
+    }
 
-        for (var i = 0; adding && i < found.Length; i++)
+    // A covering Ref's causes with a view of the run join the element being made, each once.
+    private void Gather(ReadOnlySpan<int> found)
+    {
+        var problems = this.program.Problems.All;
+        foreach (var p in found)
         {
-            if ((problems[found[i]].Views & this.views) != 0 && this.wCauses.IndexOf(found[i], this.wStart[this.wCount]) < 0)
+            if ((problems[p].Views & this.views) != 0 && this.wCauses.IndexOf(p, this.wStart[this.wCount]) < 0)
             {
-                this.wCauses.Add(found[i]);
+                this.wCauses.Add(p);
             }
         }
-
-        return true;
     }
 
     // The escape holders (after Holders): E, _0's slot and the Result temps' (MirLocalRole.Result, the body's result in transit).
@@ -177,7 +178,7 @@ internal sealed partial class MirBorrows
     // A set with the indirect marker of each of its W elements; the gate is inlined where the run has none (a measured cost, U3).
     private int Indirect(int set) => this.wCount == 0 || set == 0 ? set : this.Marked(set);
 
-    // Indirect for a nonempty set of a W run: memoized per set, its markers one ascending run (MirLoanSets.Of).
+    // Indirect for a nonempty set of a W run: memoized per set, its markers one ascending run added in one pass (MirLoanSets.Add).
     private int Marked(int set)
     {
         MirDataflow.Grow(ref this.memo, set + 1);
@@ -197,7 +198,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        var result = this.marks.Count == 0 ? set : this.sets.Union(set, this.sets.Of(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(this.marks)));
+        var result = this.sets.Add(set, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(this.marks));
         MirDataflow.Grow(ref this.memo, result + 1);
         MirDataflow.Grow(ref this.memoRun, result + 1);
         (this.memo[set], this.memoRun[set], this.memo[result], this.memoRun[result]) = (result, this.run, result, this.run);
