@@ -130,7 +130,7 @@ public sealed partial class Binding
             }
             else if (function.BindingFailure == BindingFailure.None)
             {
-                var capture = new CaptureFailure(default, source.Name, type, source, null, null);
+                var capture = new CaptureFailure(default, source.Name, type, source, null, null, null);
                 this.FailExplained(ref this.captureFailures, function, BindingFailure.TransferRequired, capture);
             }
         }

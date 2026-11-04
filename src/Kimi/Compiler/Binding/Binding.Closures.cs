@@ -314,7 +314,7 @@ public sealed partial class Binding
                 {
                     // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                     // which self is reached only through its Fields (Receiver).
-                    return this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type ?? BoundType.Unit, source);
+                    return this.FailCaptureEntry(function, repeats, BindingFailure.Capture, CaptureFailure.Of(capture, source));
                 }
 
                 if (source is not null && this.HelperCarrier(function, source) is { } helper)
@@ -325,20 +325,20 @@ public sealed partial class Binding
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
                 {
                     // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
-                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, capture, BindingFailure.None, null, null)
-                        : this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, null, null);
+                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
+                        : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
                 }
 
                 environment.MutableCapture = capture.IsMutable;
                 if (this.CaptureEntry(function, capture, source, environment) is { } failure)
                 {
-                    return this.FailCaptureEntry(function, repeats, capture, failure, source.Type!, source);
+                    return this.FailCaptureEntry(function, repeats, failure, CaptureFailure.Of(capture, source));
                 }
             }
 
             if (repeats is not null)
             {
-                return this.FailCaptureEntry(function, repeats, default, BindingFailure.None, null, null);
+                return this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
             }
         }
 
