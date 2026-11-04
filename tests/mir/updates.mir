@@ -520,3 +520,91 @@ fn wholeBorrowed @182
       StorageDead(_7) @207 s1
       _0 = const () @187 s1
       return @187
+fn conditionalReplacement @215
+  _0: () return @215
+  _1: bool arg c @216
+  _2: string var mut s @218 s1
+  _3: () temp @221 s1
+  _4: bool temp @222 s1
+  _5: () temp @224 s2
+  _6: string temp @225 s2
+  _7: () temp @227 s1
+  _8: string temp @228 s1
+  _9: () temp @230 s1
+  _10: string temp @231 s1
+  s1: lexical in s0 @217
+  s2: lexical in s1 @223
+  flags 1
+  bb0:
+      StorageLive(_2) [clear f0] @218 s1
+      StorageLive(_3) @221 s1
+      StorageLive(_4) @222 s1
+    * _4 = copy _1 @222 s1
+      switch copy _4 [0: bb3, otherwise: bb2] @222 s1
+  bb1:
+      StorageDead(_3) @221 s1
+      StorageLive(_7) @227 s1
+      StorageLive(_8) @228 s1
+    * _8 = const "b" @229 s1
+      drop _2 -> bb6 [flag f0] [clear f0] @227 s1
+  bb2:
+      StorageDead(_4) @222 s1
+      StorageLive(_5) @224 s2
+      StorageLive(_6) @225 s2
+    * _6 = const "a" @226 s2
+      drop _2 -> bb4 [elide] [clear f0] @224 s2
+  bb3:
+      StorageDead(_4) @222 s1
+      _3 = const () @221 s1
+      goto bb1 @221 s1
+  bb4:
+      _2 = move _6 [set f0] @224 s2
+      _5 = const () @224 s2
+      drop _6 -> bb5 [elide] @225 s2
+  bb5:
+      StorageDead(_6) @225 s2
+      StorageDead(_5) @224 s2
+      _3 = const () @223 s2
+      goto bb1 @223 s1
+  bb6:
+      _2 = move _8 [set f0] @227 s1
+      _7 = const () @227 s1
+      drop _8 -> bb7 [elide] @228 s1
+  bb7:
+      StorageDead(_8) @228 s1
+      StorageDead(_7) @227 s1
+      StorageLive(_9) @230 s1
+      StorageLive(_10) @231 s1
+    * _10 = move _2 [clear f0] @233 s1
+      drop _2 -> bb8 [elide] [clear f0] @230 s1
+  bb8:
+      _2 = move _10 [set f0] @230 s1
+      _9 = const () @230 s1
+      drop _10 -> bb9 [elide] @231 s1
+  bb9:
+      StorageDead(_10) @231 s1
+      StorageDead(_9) @230 s1
+      _0 = const () @217 s1
+      drop _2 -> bb10 [keep] [clear f0] @218 s1
+  bb10:
+      StorageDead(_2) [clear f0] @218 s1
+      return @217
+fn scalarSelfAssignment @235
+  _0: () return @235
+  _1: i32 var mut x @237 s1
+  _2: () temp @240 s1
+  _3: i32 temp @241 s1
+  s1: lexical in s0 @236
+  bb0:
+      StorageLive(_1) @237 s1
+    * _1 = const 1_i32 @239 s1
+      StorageLive(_2) @240 s1
+      StorageLive(_3) @241 s1
+    * _3 = copy _1 @242 s1
+      _1 = move _3 @240 s1
+      _2 = const () @240 s1
+      StorageDead(_3) @241 s1
+      StorageDead(_2) @240 s1
+      _0 = const () @236 s1
+      StorageDead(_1) @237 s1
+      return @236

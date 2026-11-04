@@ -40,3 +40,12 @@ func wholeBorrowed(x: uniq/i32, y: uniq/i32)
     _ = Kimi.Intrinsics.replace(x, with: 2)
     _ = Kimi.Intrinsics.exchange(x, with: 2)
     _ = Kimi.Intrinsics.swap(x, y)
+func conditionalReplacement(c: bool)
+    var s: string
+    if c
+        s = "a"
+    s = "b"
+    s = s@move
+func scalarSelfAssignment()
+    var x = 1
+    x = x

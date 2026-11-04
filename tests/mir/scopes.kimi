@@ -68,3 +68,20 @@ func nestedDefer()
         defer => y = 3
         x = y
     var z = 4
+func exitOrder(first: string, second: string)
+    let a = "a"
+    let b: string
+    b = "b"
+    _ = a@move
+    return
+func showText(s: ref/string) => ()
+func borrowedArgument()
+    let s = "a"
+    showText(s)
+    showText(s)
+func discardedLiteral()
+    "discarded"
+func branchMove(c: bool)
+    let s = "a"
+    if c
+        _ = s@move

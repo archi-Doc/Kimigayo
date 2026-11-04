@@ -916,3 +916,158 @@ fn nestedDefer @242
       StorageDead(_4) @249 s2
       StorageDead(_3) @247 s1
       goto bb1 @248 s1
+fn exitOrder @263
+  _0: () return @263
+  _1: string arg first @264
+  _2: string arg second @265
+  _3: string var a @267 s1
+  _4: string var b @270 s1
+  _5: () temp @273 s1
+  _6: string temp @274 s1
+  _7: string temp @277 s1
+  _8: () temp (Result) @263
+  s1: lexical in s0 @266
+  bb0:
+      StorageLive(_3) @267 s1
+    * _3 = const "a" @269 s1
+      StorageLive(_4) @270 s1
+      StorageLive(_5) @273 s1
+      StorageLive(_6) @274 s1
+    * _6 = const "b" @275 s1
+      drop _4 -> bb1 [elide] @273 s1
+  bb1:
+      _4 = move _6 @273 s1
+      _5 = const () @273 s1
+      drop _6 -> bb2 [elide] @274 s1
+  bb2:
+      StorageDead(_6) @274 s1
+      StorageDead(_5) @273 s1
+      StorageLive(_7) @277 s1
+    * _7 = move _3 @278 s1
+      drop _7 -> bb3 [keep] @277 s1
+  bb3:
+      StorageDead(_7) @277 s1
+    * goto bb12 check bb13 @280 s1
+  bb4:
+      return @263
+  bb5:
+      _0 = move _8 @263
+      goto bb4 @263
+  bb6:
+      drop _2 -> bb7 [keep] @265
+  bb7:
+      drop _1 -> bb8 [keep] @264
+  bb8:
+      goto bb5 @263
+  bb9:
+      drop _4 -> bb10 [keep] @270 s1
+  bb10:
+      StorageDead(_4) @270 s1
+      drop _3 -> bb11 [elide] @267 s1
+  bb11:
+      StorageDead(_3) @267 s1
+      goto bb6 @263
+  bb12:
+      _8 = const () @280 s1
+      goto bb9 @280 s1
+  bb13:
+      drop _4 -> bb14 @270 s1
+  bb14:
+      StorageDead(_4) @270 s1
+      drop _3 -> bb15 @267 s1
+  bb15:
+      StorageDead(_3) @267 s1
+      drop _2 -> bb16 @265
+  bb16:
+      drop _1 -> bb17 @264
+  bb17:
+      unreachable @266
+fn showText @281
+  _0: () return @281
+  _1: ref/string arg s @282
+  _2: () temp @284
+  bb0:
+      StorageLive(_2) @284
+    * _2 = const () @284
+      StorageDead(_2) @284
+      _0 = const () @284
+      return @284
+fn borrowedArgument @285
+  _0: () return @285
+  _1: string var s @287 s1
+  _2: () temp @290 s1
+  _3: ref/string temp @292 s1
+  _4: () temp @293 s1
+  _5: ref/string temp @295 s1
+  s1: lexical in s0 @286
+  bb0:
+      StorageLive(_1) @287 s1
+    * _1 = const "a" @289 s1
+      StorageLive(_2) @290 s1
+      StorageLive(_3) @292 s1
+    * _3 = &_1: ref/string @292 s1
+      _2 = showText(move _3) -> bb1 @290 s1
+  bb1:
+      StorageDead(_3) @292 s1
+      StorageDead(_2) @290 s1
+      StorageLive(_4) @293 s1
+      StorageLive(_5) @295 s1
+    * _5 = &_1: ref/string @295 s1
+      _4 = showText(move _5) -> bb2 @293 s1
+  bb2:
+      StorageDead(_5) @295 s1
+      StorageDead(_4) @293 s1
+      _0 = const () @286 s1
+      drop _1 -> bb3 [keep] @287 s1
+  bb3:
+      StorageDead(_1) @287 s1
+      return @286
+fn discardedLiteral @296
+  _0: () return @296
+  _1: string temp @298 s1
+  s1: lexical in s0 @297
+  bb0:
+      StorageLive(_1) @298 s1
+    * _1 = const "discarded" @298 s1
+      drop _1 -> bb1 [keep] @298 s1
+  bb1:
+      StorageDead(_1) @298 s1
+      _0 = const () @297 s1
+      return @297
+fn branchMove @299
+  _0: () return @299
+  _1: bool arg c @300
+  _2: string var s @302 s1
+  _3: () temp @305 s1
+  _4: bool temp @306 s1
+  _5: string temp @309 s2
+  s1: lexical in s0 @301
+  s2: lexical in s1 @307
+  flags 1
+  bb0:
+      StorageLive(_2) [clear f0] @302 s1
+    * _2 = const "a" [set f0] @304 s1
+      StorageLive(_3) @305 s1
+      StorageLive(_4) @306 s1
+    * _4 = copy _1 @306 s1
+      switch copy _4 [0: bb3, otherwise: bb2] @306 s1
+  bb1:
+      StorageDead(_3) @305 s1
+      _0 = const () @301 s1
+      drop _2 -> bb5 [flag f0] [clear f0] @302 s1
+  bb2:
+      StorageDead(_4) @306 s1
+      StorageLive(_5) @309 s2
+    * _5 = move _2 [clear f0] @310 s2
+      drop _5 -> bb4 [keep] @309 s2
+  bb3:
+      StorageDead(_4) @306 s1
+      _3 = const () @305 s1
+      goto bb1 @305 s1
+  bb4:
+      StorageDead(_5) @309 s2
+      _3 = const () @307 s2
+      goto bb1 @307 s1
+  bb5:
+      StorageDead(_2) [clear f0] @302 s1
+      return @301
