@@ -17,8 +17,7 @@ public sealed partial class MirOriginsTest
         foreach (var size in new[] { 1, 2, 8 })
         {
             var c = MinimalEmissionTest.Analyze(Verification.OriginProofWorkloads.Create(family, size));
-            var (common, _, _, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-            Assert.Equal(code is null ? [] : [code], common.Concat(mir).Select(static x => x.Code.ToString()));
+            Assert.Equal(code is null ? [] : [code], MirTargetSide.MirSide(c).Select(static x => x.Code.ToString()));
         }
     }
 }

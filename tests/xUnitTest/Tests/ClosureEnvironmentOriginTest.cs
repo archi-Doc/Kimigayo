@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Verification;
 using Xunit;
@@ -292,8 +293,7 @@ public class ClosureEnvironmentOriginTest
         var source = "func peek(o: ref/Option<i32>) -> i32 => 1\n" + Main + body + "    let v = f()\n";
         var c = VerifiedSpecExampleTest.Bind(source);
         c.Analyze();
-        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        foreach (var side in new List<MirDifferenceLedger.Entry>[] { [.. common, .. old, .. passed], [.. common, .. mir] })
+        foreach (var side in new[] { LegacyRecords.Of(c).Select(static x => (x.Code, x.Node)), MirTargetSide.MirSide(c).Select(static x => (x.Code, x.Node)) })
         {
             var errors = side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error).ToArray();
             if (at is null)
@@ -393,8 +393,7 @@ public class ClosureEnvironmentOriginTest
         var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var (common, _, _, mir) = MirDifferenceLedger.Sides(c, program);
-        var error = Assert.Single([.. common, .. mir], static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
+        var error = Assert.Single(MirTargetSide.MirSide(c), static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
         Assert.Equal((DiagnosticCode.UnsatisfiedOriginRelation_Kd, text), (error.Code, error.Node.ToString()!.Split('\n')[0].Trim()));
     }
 
@@ -853,13 +852,12 @@ public class ClosureEnvironmentOriginTest
         var c = VerifiedSpecExampleTest.Bind(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Analyze();
-        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        Assert.Empty(Errors([.. common, .. mir]));
-        var errors = Errors([.. common, .. old, .. passed]);
+        Assert.Empty(Errors(MirTargetSide.MirSide(c).Select(static x => (x.Code, x.Node))));
+        var errors = Errors(LegacyRecords.Of(c).Select(static x => (x.Code, x.Node)));
         Assert.All(errors, static x => Assert.Equal(DiagnosticCode.ComparisonLoanConflict_Kd, x.Code));
         Assert.Contains(errors, x => source[x.Node.Span.Start..].StartsWith(at, StringComparison.Ordinal));
 
-        static MirDifferenceLedger.Entry[] Errors(List<MirDifferenceLedger.Entry> side)
+        static (DiagnosticCode Code, Koto Node)[] Errors(IEnumerable<(DiagnosticCode Code, Koto Node)> side)
             => [.. side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)];
     }
 

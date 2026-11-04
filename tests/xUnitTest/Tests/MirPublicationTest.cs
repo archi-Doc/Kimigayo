@@ -301,6 +301,19 @@ public sealed class MirPublicationTest
         Assert.Equal(["OwnershipDepthLimit_Kd", "Unsupported_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
     }
 
+    // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording; R6-check H10a D12): a MIR problem with Cause facts is derived and
+    // leaves the MIR side, as publication suppresses it while its causes publish; its cause, the Origin problem, stays.
+    [Fact]
+    public void ADerivedProblemLeavesTheMirSide()
+    {
+        var c = MirBuildTest.Compile("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    var r = local@ref\n    return r\n");
+        var program = c.BuildMir();
+        Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        var mir = MirTargetSide.MirSide(c).Where(static x => x.Requirement?.Partition != DiagnosticPartition.Binding).ToArray();
+        Assert.Contains(mir, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
+        Assert.DoesNotContain(mir, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+    }
+
     // A bound compilation of a valid source and an empty program whose report a test fills.
     private static (Compilation Compilation, MirProgram Program) Program(string source)
     {

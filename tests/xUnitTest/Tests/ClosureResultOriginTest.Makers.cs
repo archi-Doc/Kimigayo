@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -12,7 +13,7 @@ namespace XunitTest;
 // of the inner Closure Type with the Origin bindings its creation made in that call (SPEC 3.2.1, 7.7.2, 7.7.3, 15.8.2, 15.6.4): the
 // maker's receiver ρ and its environment bindings stand for the receiver acquisition's Origin, its per-call input for the argument's
 // Origin, and every later use reads the call signature with those bindings, in every Origin position, raw layers included (SPEC 5.7,
-// 15.3.4). Each row states the MIR side exactly (MirDifferenceLedger.Sides: Binding's records and the MIR's), the default side D1 or D2
+// 15.3.4). Each row states the MIR side exactly (MirTargetSide.MirSide: Binding's records and the MIR's), the default side D1 or D2
 // (problem-check K2), and a verdict Binding owns exactly as published (AssertSides).
 public partial class ClosureResultOriginTest
 {
@@ -376,10 +377,10 @@ public partial class ClosureResultOriginTest
     public void AClosuresImagesReachEveryPartAfterAClosurePart(string form, string source, string mir, string? published)
         => AssertSides(form, ConcreteClosureTest.NeedOwned + source + MainUnit, mir, published);
 
-    // A program's two sides (MirDifferenceLedger.Sides) after Binding and the old analysis, each program parse-clean. The MIR side,
-    // Binding's records and the MIR's, is exactly `mir`: each Error record as its code and the trimmed source line its subject starts on,
-    // in source order. The default side, Binding's records and the old analysis's (published on both pipelines until R6-check, DECISIONS
-    // R5-M156), rejects an invalid form (D1) and gives a valid one no record but a located Unsupported_Kd (D2). A verdict Binding owns, an
+    // A program's two sides after Binding and the old analysis, each program parse-clean. The MIR side (MirTargetSide.MirSide), Binding's
+    // records and the MIR's, is exactly `mir`: each Error record as its code and the trimmed source line its subject starts on, in source
+    // order. The default side, Binding's records and the old analysis's (LegacyRecords.Of, until R6-check H10b), rejects an invalid form
+    // (D1) and gives a valid one no record but a located Unsupported_Kd (D2). A verdict Binding owns, an
     // Origin relation at a returned or stored value or a Callable or erasure constraint, holds on both sides: the published records are
     // exactly `published`, code and span (since the MIR decides, H5, an Origin relation's record beside A5's twin at its statement until
     // H11: H0b §5.4, R4-M108).
@@ -387,9 +388,9 @@ public partial class ClosureResultOriginTest
     {
         var c = VerifiedSpecExampleTest.Bind(source);
         c.Analyze();
-        var (common, old, passed, records) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        Assert.True(mir == Lines(source, [.. common, .. records]), $"{form}: MIR side\n  expected: {mir}\n  observed: {Lines(source, [.. common, .. records])}");
-        var defaults = Errors([.. common, .. old, .. passed]);
+        var side = MirTargetSide.MirSide(c).Select(static x => (x.Code, x.Node)).ToArray();
+        Assert.True(mir == Lines(source, side), $"{form}: MIR side\n  expected: {mir}\n  observed: {Lines(source, side)}");
+        var defaults = Errors(LegacyRecords.Of(c).Select(static x => (x.Code, x.Node)));
         Assert.True(
             mir.Length == 0 ? defaults.All(static x => x.Code == DiagnosticCode.Unsupported_Kd && x.Node.CodeContext?.SourceDocument?.Path == Document) : defaults.Length > 0,
             $"{form}: default side {(mir.Length == 0 ? "D2" : "D1")}: {Lines(source, defaults)}");
@@ -401,11 +402,11 @@ public partial class ClosureResultOriginTest
 
     // A side's Error records as their codes and the trimmed source lines their subjects start on (a record outside the program as its
     // location), in source order.
-    private static string Lines(string source, IEnumerable<MirDifferenceLedger.Entry> side)
+    private static string Lines(string source, IEnumerable<(DiagnosticCode Code, Koto Node)> side)
         => string.Join("; ", Errors(side).OrderBy(static x => x.Node.Span.Start).Select(x => x.Node.CodeContext?.SourceDocument?.Path == Document
-            ? $"{x.Code} {Line(source, x.Node.Span.Start)}" : $"{x.Code} {LegacyRecords.Location(x.Node)}"));
+            ? $"{x.Code} {Line(source, x.Node.Span.Start)}" : $"{x.Code} {CompilationTestHelper.Location(x.Node)}"));
 
-    private static MirDifferenceLedger.Entry[] Errors(IEnumerable<MirDifferenceLedger.Entry> side)
+    private static (DiagnosticCode Code, Koto Node)[] Errors(IEnumerable<(DiagnosticCode Code, Koto Node)> side)
         => [.. side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)];
 
     // The trimmed text of the source line holding an offset.

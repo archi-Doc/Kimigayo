@@ -382,8 +382,7 @@ public class PairFollowTest
         foreach (var c in new[] { MinimalEmissionTest.Analyze(Box + pair), MinimalEmissionTest.Analyze(Box + concrete) })
         {
             Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], c.Binding.Issues.Select(x => x.Code));
-            var (common, _, _, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-            Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], common.Concat(mir).Select(static x => x.Code));
+            Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], MirTargetSide.MirSide(c).Select(static x => x.Code));
         }
     }
 

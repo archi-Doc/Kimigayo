@@ -71,13 +71,6 @@ public sealed partial class MirDifferenceLedger : IDisposable
         Aggregate(this.directory!);
     }
 
-    /// <summary>Gets whether a compilation is Binding-complete (R4-M47): Binding accepted its program, a complete result and no lint
-    /// Error, which leaves it complete (R5-M31).</summary>
-    /// <param name="compilation">The bound compilation.</param>
-    /// <returns>Whether it is Binding-complete.</returns>
-    internal static bool BindingComplete(Compilation compilation)
-        => compilation.Binding.Result.IsComplete && compilation.Binding.LintErrors == 0;
-
     /// <summary>Gets the hash that names a compilation's sources in the ledger, a raw row's <c>sha</c> and its saved source's name: the first
     /// 12 hexadecimal digits of the SHA-256 of the sources, each document after a <c>// name</c> line (an OldRule key's, DECISIONS R4-M136).
     /// </summary>
@@ -137,13 +130,13 @@ public sealed partial class MirDifferenceLedger : IDisposable
     {
         var source = Source(compilation);
         var sha = Hash(source);
-        var section = BindingComplete(compilation) ? "complete" : "incomplete";
+        var section = MirCensusTest.BindingComplete(compilation) ? "complete" : "incomplete";
         var comparison = $"{Environment.ProcessId}.{Interlocked.Increment(ref this.events)}";
         var rows = new StringBuilder();
         foreach (var (side, (code, requirement, analysis, node)) in matched)
         {
-            rows.Append($"{comparison}\t{section}\t{side}\t{analysis}\t{code}\t{requirement}\t{LegacyRecords.Location(node)}+{node.Span.Length}\t")
-                .Append($"{node.GetType().Name}\t{LegacyRecords.Location(BodyOf(node))}\t{sha}\n");
+            rows.Append($"{comparison}\t{section}\t{side}\t{analysis}\t{code}\t{requirement}\t{CompilationTestHelper.Location(node)}+{node.Span.Length}\t")
+                .Append($"{node.GetType().Name}\t{CompilationTestHelper.Location(BodyOf(node))}\t{sha}\n");
         }
 
         lock (this.sources)

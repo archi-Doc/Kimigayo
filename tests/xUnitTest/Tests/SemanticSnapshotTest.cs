@@ -249,7 +249,7 @@ public sealed class SemanticSnapshotTest
             var (binding, startup, ownership) = (compilation.Binding.Result, compilation.Binding.Startup, compilation.Analysis);
             var body = startup.Kind == StartupKind.Implicit ? compilation.Kotonoha.GeneratedFunction : startup.Symbol?.Declaration;
             text.Append("= binding ").Append(binding.Mode).Append(' ').Append(binding.ResolvedCount).Append('/').Append(binding.UnresolvedCount).Append('/').Append(binding.InvalidCount)
-                .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(LegacyRecords.Location(body))
+                .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(CompilationTestHelper.Location(body))
                 .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.ErrorCount).Append('\n');
             foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
             {
@@ -258,7 +258,7 @@ public sealed class SemanticSnapshotTest
                     DiagnosticPartition.Binding => $"? binding {code} {(BindingFailure)requirement.Kind} ",
                     DiagnosticPartition.ControlFlow => $"? flow {code} ",
                     _ => $"? ownership {code} {(OwnershipRequirement)requirement.Kind} ",
-                }).Append(LegacyRecords.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
+                }).Append(CompilationTestHelper.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
             }
 
             foreach (var diagnostic in TestDiagnostics.Of(compilation))
@@ -271,11 +271,11 @@ public sealed class SemanticSnapshotTest
             => this.text.Append("exception ").Append(exception.GetType().Name).Append(": ").Append(exception.Message.Split('\n')[0]).Append('\n');
 
         private static string Symbol(BindingSymbol? symbol)
-            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{LegacyRecords.Location(symbol.Declaration)}";
+            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}";
 
         private static string Length(BoundLength? length)
             => length is null ? "_" : length.IsConstant ? length.Value.ToString(CultureInfo.InvariantCulture) :
-                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + LegacyRecords.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
+                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + CompilationTestHelper.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
 
         private static string Origin(BoundOrigin origin)
         {
@@ -288,7 +288,7 @@ public sealed class SemanticSnapshotTest
 
             if (origin.Binder is { } binder)
             {
-                builder.Append('@').Append(LegacyRecords.Location(binder)).Append('#').Append(origin.Slot);
+                builder.Append('@').Append(CompilationTestHelper.Location(binder)).Append('#').Append(origin.Slot);
             }
 
             if (origin.Operands.Count != 0)
@@ -320,7 +320,7 @@ public sealed class SemanticSnapshotTest
             builder.Append(type.Name);
             if (type.Kind != BoundTypeKind.Primitive && type.Symbol is { } symbol)
             {
-                builder.Append('@').Append(LegacyRecords.Location(symbol.Declaration));
+                builder.Append('@').Append(CompilationTestHelper.Location(symbol.Declaration));
             }
 
             if (type.Semantics != SemanticsKind.Owner)
@@ -411,7 +411,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var text = this.text;
-            text.Append(this.depth).Append(' ').Append(LegacyRecords.Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
+            text.Append(this.depth).Append(' ').Append(CompilationTestHelper.Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
             if (node.StateOf() != BindingState.Unvisited)
             {
                 text.Append(' ').Append(node.StateOf());

@@ -74,7 +74,7 @@ public sealed partial class MirDifferenceLedger
         var programs = new Dictionary<string, bool>(StringComparer.Ordinal);
         var table = Table;
         var used = new HashSet<string>(StringComparer.Ordinal);
-        var ledger = Differences(rows).Select(x => (x.Signature, x.Sha, x.Unsound, Library: x.Location.StartsWith(LegacyRecords.Library, StringComparison.Ordinal),
+        var ledger = Differences(rows).Select(x => (x.Signature, x.Sha, x.Unsound, Library: x.Location.StartsWith(CompilationTestHelper.Library, StringComparison.Ordinal),
             Milestone: x.Signature.StartsWith("complete", StringComparison.Ordinal) && Milestone(x.Sha)))
             .GroupBy(static x => x.Signature, StringComparer.Ordinal).Select(x =>
             {

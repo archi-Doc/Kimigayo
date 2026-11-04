@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Tinyhand;
 using Xunit;
 
@@ -9,6 +10,9 @@ namespace XunitTest;
 
 internal static class CompilationTestHelper
 {
+    /// <summary>The prefix of a library document's location.</summary>
+    internal const string Library = "Kimi/";
+
     // Preparation and parsing only: callers choose when to Bind and analyze ownership.
     internal static Compilation Parse(string source, string? path = null)
     {
@@ -86,4 +90,16 @@ internal static class CompilationTestHelper
     // The problem codes of an unproven Origin obligation: what is unproven decides the code (OwnershipIssue.Code).
     internal static bool IsUnprovenOrigin(this DiagnosticCode code)
         => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd;
+
+    /// <summary>Gets a node's location as its document and start offset; a library document is <c>Kimi/</c> and its file name.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The location, or <c>?</c> without a node.</returns>
+    internal static string Location(Koto? node)
+        => node is null ? "?" : Document(node) + ":" + node.Span.Start;
+
+    private static string Document(Koto? node)
+    {
+        var path = node?.CodeContext?.SourceDocument?.Path;
+        return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? Library + path[(path.LastIndexOf('/') + 1)..] : path;
+    }
 }

@@ -176,7 +176,7 @@ public partial class ClosureResultOriginTest
 
         var c = VerifiedSpecExampleTest.Bind(source);
         c.Analyze();
-        var effects = MirDifferenceLedger.Sides(c, c.BuildMir()).Mir.Where(static x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
+        var effects = MirTargetSide.MirSide(c).Where(static x => x.Requirement?.Partition != DiagnosticPartition.Binding && x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
         Assert.Equal(effect is null ? [] : [effect], effects.Select(x => source.Substring(x.Node.Span.Start, x.Node.Span.Length)));
     }
 

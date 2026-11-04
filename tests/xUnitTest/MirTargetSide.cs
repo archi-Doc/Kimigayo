@@ -2,25 +2,25 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The MIR side of a test (DECISIONS R4-M136, refining R4-M50 and R4-M60; the OldRule traits went at R6-check H5): the Error
-/// records of <see cref="MirDifferenceLedger.Sides"/>' common and MIR sides, each at its exact subject, so a changed MIR verdict fails the
-/// test. They are a subset of the published records: Binding's twin records, derived MIR problems and collection records are outside it.
-/// It stays until H10a, with the difference ledger.</summary>
+/// <summary>The MIR side of a test (DECISIONS R4-M136, refining R4-M50 and R4-M60; R6-check H10a D3, D4, D7): the Error records that
+/// decide a program's verdict, each at its exact subject, so a changed MIR verdict fails the test. Its rows are Binding's records except
+/// the twins of A5's rows (until H11), then the MIR's (<see cref="MirSide"/>).</summary>
 internal static class MirTargetSide
 {
-    /// <summary>Asserts an analyzed compilation's MIR side (<see cref="MirDifferenceLedger.Sides"/>: Binding's and the MIR's records).</summary>
+    /// <summary>Asserts an analyzed compilation's MIR side (<see cref="MirSide"/>).</summary>
     /// <param name="compilation">The compilation after <see cref="Compilation.Analyze"/>.</param>
     /// <param name="mir">The MIR side's Error records: a code and its subject's span.</param>
     internal static void Check(Compilation compilation, params (DiagnosticCode Code, SyntaxLocation At)[] mir)
     {
-        var (common, _, _, records) = MirDifferenceLedger.Sides(compilation, compilation.BuildMir());
         var source = Assert.Single(compilation.SourceModules.SelectMany(static x => x.SourceDocuments)).SourceText;
-        Assert.Equal(Rows(source, mir), Observed([.. common, .. records]));
+        Assert.Equal(Rows(source, mir), Observed(MirSide(compilation)));
     }
 
     /// <summary>Asserts the MIR side of a source compiled as an Application and bound, without <see cref="Compilation.Analyze"/>, for a
@@ -32,8 +32,44 @@ internal static class MirTargetSide
         var c = CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        var (common, _, _, records) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        Assert.Equal(Rows(source, mir), Observed([.. common, .. records]));
+        Assert.Equal(Rows(source, mir), Observed(MirSide(c)));
+    }
+
+    /// <summary>Lists a compilation's MIR side: Binding's issues and HIR lint Error records in their order, without a twin (D4: an Origin
+    /// relation record of a node <see cref="Binding.IsTwinRecord"/> names, whose A5 row stands for it until H11), then the MIR's
+    /// construction records, validator findings (as <c>InternalInvariant_Kd</c>) and the problems no cause derives, a record or finding
+    /// without a requirement. It never runs the old analysis.</summary>
+    /// <param name="compilation">The bound compilation.</param>
+    /// <returns>The rows with their requirement, code and subject.</returns>
+    internal static List<(DiagnosticRequirement? Requirement, DiagnosticCode Code, Koto Node)> MirSide(Compilation compilation)
+    {
+        var program = compilation.BuildMir();
+        var rows = new List<(DiagnosticRequirement? Requirement, DiagnosticCode Code, Koto Node)>();
+        foreach (var issue in compilation.Binding.Issues)
+        {
+            if (!(issue.Failure == BindingFailure.OriginRelation && issue.Code.IsUnprovenOrigin() && compilation.Binding.IsTwinRecord(issue.Node)))
+            {
+                rows.Add((DiagnosticRequirement.Binding(issue.Failure), issue.Code, issue.Node));
+            }
+        }
+
+        foreach (var (node, code) in compilation.Binding.LintErrorRecords)
+        {
+            rows.Add((DiagnosticRequirement.Binding(BindingFailure.None), code, node));
+        }
+
+        rows.AddRange(program.Records(MirRecordClass.Construction).Select(x => ((DiagnosticRequirement?)null, x.Code, compilation.SyntaxOf(x.Subject))));
+        rows.AddRange(program.Findings.Select(x => ((DiagnosticRequirement?)null, DiagnosticCode.InternalInvariant_Kd, compilation.SyntaxOf(x.Subject))));
+        for (var i = 0; i < program.Problems.All.Length; i++)
+        {
+            var problem = program.Problems.All[i];
+            if (!problem.IsRecord && program.Problems.Facts(i) is not [.., { Kind: MirFactKind.Cause }])
+            {
+                rows.Add((problem.Requirement, problem.Code, compilation.SyntaxOf(problem.Subject))); // Derived problems' Cause facts come last.
+            }
+        }
+
+        return rows;
     }
 
     /// <summary>Gets the span of a subject within a context that occurs once in the source, the whole context without a subject.</summary>
@@ -53,14 +89,11 @@ internal static class MirTargetSide
             .Order(StringComparer.Ordinal)];
 
     // A side's Error records as code, offset and length; a record outside the program's document as code and location.
-    private static string[] Observed(IEnumerable<MirDifferenceLedger.Entry> side)
-        => [.. Errors(side).Select(static x => InProgram(x)
-                ? $"{x.Code} {x.Node.Span.Start}+{x.Node.Span.Length}" : $"{x.Code} {LegacyRecords.Location(x.Node)}")
+    private static string[] Observed(List<(DiagnosticRequirement? Requirement, DiagnosticCode Code, Koto Node)> side)
+        => [.. side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
+            .Select(static x => InProgram(x.Node) ? $"{x.Code} {x.Node.Span.Start}+{x.Node.Span.Length}" : $"{x.Code} {CompilationTestHelper.Location(x.Node)}")
             .Order(StringComparer.Ordinal)];
 
-    private static IEnumerable<MirDifferenceLedger.Entry> Errors(IEnumerable<MirDifferenceLedger.Entry> side)
-        => side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
-
-    private static bool InProgram(MirDifferenceLedger.Entry entry)
-        => entry.Node.CodeContext?.SourceDocument?.Path is { } path && !path.StartsWith("compiler://", StringComparison.Ordinal);
+    private static bool InProgram(Koto node)
+        => node.CodeContext?.SourceDocument?.Path is { } path && !path.StartsWith("compiler://", StringComparison.Ordinal);
 }
