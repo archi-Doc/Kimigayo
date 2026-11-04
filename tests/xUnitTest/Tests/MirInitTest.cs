@@ -69,8 +69,6 @@ public sealed class MirInitTest(ITestOutputHelper output)
     // SPEC 13.5.3, 15.1.1-15.1.3 (PLAN G228): `@move` marks a Copy-typed part Moved like any part: a read, a second Move or a whole use
     // after it is MovedPlace until the part is written again, also across a loop, and a Type with drop needs the part restored before
     // the drop runs, a `during self` layer's Move restored by null included (SPEC 5.7, DECISIONS R4-M110); Copies of a part move nothing.
-    // The old analysis, which both published pipelines use until R6-check, accepts these forms (OwnershipAnalysis.AcquireElement ignores
-    // the explicit Move); the rows pin the verdicts R6-check publishes.
     [Fact]
     public void AMoveOfACopyTypedPartMarksItMoved()
     {

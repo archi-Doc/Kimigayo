@@ -127,10 +127,18 @@ public class BorrowAcquisitionTest
         Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
+    // SPEC 3.5.1, 8.15.2 (DECISIONS BU-45): the pair layer's Reborrow through an exclusive path, and through the acquiring binder's own
+    // layers into a payload, keeps its plan in every case, so check accepts the program.
+    [Theory]
+    [InlineData("x: uniq/(s/T during a) during b", "let y = x@follow\n    _ = y@move")]
+    [InlineData("x: s/(s/T during a) during b", "let o = Option<s/T during a>.Some(x@follow)\n    _ = o@move")]
+    public void APairLayersReborrowThroughExclusiveLayersIsAccepted(string parameters, string use)
+        => Assert.Empty(DiagnosticCorpus.Check($"func f<s/T>({parameters})\n    s is ref or uniq\n    {use}\npublic func main() => ()\n").Diagnostics);
+
     // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
     // through `ref` in the uniq case, an owned `q` at `uniq/i32`) whose Origin also misfits has both records, each twin one of them; a
     // misfit only in Origins is the relation at the payload, a structural one the construction's mismatch with no acquisition record.
-    // A value call's Origin relation is the old path's, lost beside Binding's rejection until R6-check and H3 (DECISIONS BU-45). Each row:
+    // A value call's Origin relation at an argument Binding rejects is not published beside the rejection (DECISIONS BU-45). Each row:
     // Binding's errors.
     [Theory]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
