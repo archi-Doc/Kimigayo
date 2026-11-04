@@ -17,7 +17,10 @@ public sealed partial class Binding
     {
         for (var current = node; current is not null; current = current.Parent)
         {
-            if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } ||
+            // SPEC 15.3.4: a set named in a Constraint is its declaration's; a conditional conformance owns its `when` list's and its
+            // implementation block's, and a Contract-wide clause its own (a Contract has no Origins).
+            if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } or
+                IsKoto { Parent: ContractKoto } or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto } ||
                 current is VariableKoto || current.Akind is KotoKind.EnumCase or KotoKind.AssociatedType)
             {
                 // SPEC 15.3.3, 15.3.4: a Case's payload list is an inner form of the same kind; the Case, which the clauses attach to,
