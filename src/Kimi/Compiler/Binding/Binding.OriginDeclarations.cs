@@ -103,7 +103,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var clauses = OriginClauses.Get(function);
+        var clauses = declaration.Clauses;
         for (var i = 0; i < clauses.Count; i++)
         {
             var clause = clauses[i];
@@ -148,9 +148,9 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            if (OriginClauses.Get(node).Count != 0)
+            if (OriginClauses.Get(node) is { Count: > 0 } clauses)
             {
-                this.OriginDeclarationFor(node);
+                this.OriginDeclarationFor(node).Clauses = clauses;
             }
 
             if (node is not TypeSemanticsKoto annotation || OriginOwner(node) is not { } owner)
@@ -402,7 +402,7 @@ public sealed partial class Binding
             return;
         }
 
-        var clauses = OriginClauses.Get(declaration.Owner);
+        var clauses = declaration.Clauses;
         for (var i = 0; i < clauses.Count; i++)
         {
             var clause = clauses[i];
@@ -429,6 +429,11 @@ public sealed partial class Binding
         var visitor = this.originRewriteVisitor ??= new(this);
         visitor.Declaration = declaration;
         visitor.Visit(declaration.Owner);
+        for (var i = 0; i < (declaration.Members?.Count ?? 0); i++)
+        {
+            visitor.Visit(declaration.Members![i]);
+        }
+
         visitor.Declaration = null;
         for (var i = 0; i < declaration.Relations.Count; i++)
         {

@@ -281,7 +281,7 @@ public sealed partial class Binding
                 incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");
             }
 
-            var clauses = OriginClauses.Get(function);
+            var clauses = this.originDeclarations.GetValueOrDefault(function)?.Clauses ?? [];
             for (var i = 0; i < clauses.Count; i++)
             {
                 var clause = clauses[i];

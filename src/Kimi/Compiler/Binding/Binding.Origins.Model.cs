@@ -527,6 +527,13 @@ public sealed partial class Binding
 
         internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
 
+        // The clauses its completion binds, filed each pass by PrepareOriginDeclarations; every reader reads them, never the owner's
+        // syntax list directly.
+        internal IReadOnlyList<OriginRelationKoto> Clauses { get; set; } = [];
+
+        // The nodes besides Owner whose Types its completion rewrites; null or empty when Owner is the only one.
+        internal List<Koto>? Members { get; set; }
+
         internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal List<PendingOriginSlot> Pending { get; } = new(2);
@@ -547,6 +554,8 @@ public sealed partial class Binding
             this.Scope = null;
             this.Body = default;
             this.Sets.Clear();
+            this.Clauses = [];
+            this.Members?.Clear();
             this.Replacements.Clear();
             this.Pending.Clear();
             this.Relations.Clear();
