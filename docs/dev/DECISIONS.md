@@ -9876,10 +9876,17 @@ resumed by R4-M86 (2026-10-20).
     input's own value (R4-M154's grain), a sound over-approximation of the wrapped pointer. "Its own pointee" is read per input. Each
     entry records whether it is the input's own layer. Hold's R′ arm reads only those entries: R′ is a separate rule, and SPEC's text for
     it says "the raw arguments". Over every raw source, R′ rejected MirBorrowsTest's valid `iterRaw` (an iterator's Type argument read as
-    held by value) and moved 8 rows (BU's ruling (i) on the unit's second STOP). `retentionFills` holds carriers only, since every fill applied to every raw input. Open as part B: a concrete
-    nominal's stored Fields and Case payloads. The atom walk walks Components, and BU-30's rejection of a stored-content walk there
-    stands; part B is a per-instance fact published by the stored-parts owner, with its own design. The rows that moved are listed in
-    the landing commit.
+    held by value) and moved 8 rows (BU's ruling (i) on the unit's second STOP). `retentionFills` holds carriers only, since every fill
+    applied to every raw input. Open as part B: a concrete nominal's stored Fields and Case payloads. The atom walk walks Components,
+    and BU-30's rejection of a stored-content walk there stands; part B is a per-instance fact published by the stored-parts owner, with
+    its own design. The rows that moved are listed in the landing commit.
+  - Amended 2026-11-04, A2 (PLAN G413; the owner, verbatim 「A2 を Chain の案でGO」; the review of part A, its section 3): the grain is
+    per source. Each entry carries what the hold walk keeps: null at a raw argument's own layer (the only entries R′ reads), Value where
+    the input holds the layer by value, Chain past an exclusive borrow (what a chain of reads through the input carries, never the
+    borrow's own Loans; Storages puts Chain over Content). Held's arms and the fills apply it (`Kind ?? Value`), and an input's sources
+    join. On dev's MIR, tiedExclOk, tiedExclOk2 and writerExclOk become valid, and tiedExclBad errs at `y = 5` and S's end only. The
+    remaining over-approximation is R4-M154's grain at a by-value source: an argument that also holds a borrow beside the raw layer,
+    `(ref/i32, raw/u8)`, keeps that Loan, so writerPairOk errs at `var k` (the owner's precision line accepts it).
 
 - **BU-70 A published row names the Callable input an operation calls: `PublishedRow.Calls`; `truncate` and `removeAll` have rows**
   (2026-10-27, chosen 2026-10-31; PLAN G264 U0′, a Full change under WORKFLOW Q11: BU's design-first candidate `claude/bu-u0p-design`
@@ -10582,6 +10589,29 @@ resumed by R4-M86 (2026-10-20).
     "TryResolveFormattingCallback's (H11)".
   - X2 (adopted): `BindingFailure.VirtualEffectBound` (no producer since F), its code arm and description row stay to H11: the
     ledger row `MirDifferenceLedger.ComparedSet` reads it until H10a, and removing it shifts the requirement catalog.
+- **BU-91 Raw storage a value holds holds any Type in retention's fits** (2026-11-04; PLAN G415, found by R4: `r4-notes\post-exit\
+  state-pun-verify.md`; BU's design note `bu\g415-pun\design.md`) SPEC 15.6.4 ("a borrow formed through it", "a result the call forms
+  within the argument's storage"), 5.7 (a `during self` pointee is stored content of the holding value; raw storage holds what is
+  written there), 5.2 (a punned Place of a punnable Type over raw bytes). Refines R4-M154's fit; supersedes nothing.
+  - Cause: `Holds` read a raw layer's pointee by its declared Type, so `at(self: ref/Self) -> ref/i32` returning
+    `(*(self.buffer@raw/i32))@ref` over `buffer: raw/u8 during self` (or `raw/u8`) kept only `{0 Content}`: the receiver's Loan ended
+    at the call and A5 accepted `let r = b.at(); b.free(); inspect(r)`, which the `raw/i32` twin and dev's old analysis reject.
+  - Rule: `HeldParts` places an unstated raw layer's owned pointee `Admitted`, as `during self` content is (raw storage the value
+    holds), and `Holds` takes an Admitted part as holding any value: one more row of its "holds any" list (abstract, unbound, Opaque).
+    Origins still decide every fit (the premise closure), so the kind is R4-M154's Value of a borrow formed through the input's
+    layer, as the twin's: Content and Chain never carry the borrow's own Loans (BU-66 A2), and G413's grain is the raw sources'.
+    Both Holds readers take it (Borrows' referent, CanHold's position: 5.7 Calls bounds a `during self` store by Origins only).
+    BU-91 is the fit only: what a `during self` layer admits at positions (`SelfAdmitted`, R4-M154's Q2 (a) "Type arguments by their
+    actual Types") is unchanged.
+  - Moves: the referent side, `at` over a punned buffer, `{0 Content}` -> `{0 Value}`; the position side, `make(x: ref/i64 during a,
+    y: ref/i32 during a) -> HolderA during a` (`HolderA {a}` holding `r: ref/i32 during a` and `raw/u8 during self`), `{0 Content,
+    1 Value}` -> `{0 Value, 1 Value}`, so A5 errs at `big = 3` while `h` lives (G415's review B1; dev's old analysis rejects both).
+  - Unchanged: `KimiLibraryCatalog.WithinRows` (Raw.slice): a raw input has no source and its own layer no Origin a fit reaches,
+    so the row is a published Origin relation (D14, also Binding.CallRelations'), not a case of this rule. No existing row of
+    RetentionTest, FixedOriginRetentionTest, MirBorrowsTest, MirOriginsTest, MirEffectsTest or KimiLibraryShapeTest moves; the
+    ledger: see the landing commit.
+  - Rejected: a fit by punnable Types only (raw storage also holds what `Raw.initialize` places through a cast); a referent-side
+    parameter for Holds (a bool steering one rule); an A5-side widening (A5 derives no retention).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

@@ -327,3 +327,20 @@ units of an hour or less. Amendments:
   - StorageBinding pair, deep and deepArgument are 1x and 4: limits only, G128.
 - **The merge of dev 4835adddf into the branch** surfaced one semantic conflict: G222's MirInitTest rows against H1. T-30 re-pointed
   it to Binding's TransferRequired_Kd.
+- **After W-6 and W-7 (2026-11-04).** The branch merged dev 5c880f010: S0, Q-16, S1′, U-T2 and U-W.
+  - spec-cases: S0's three cases are kept without their Old sides.
+  - A full run at 134c798f2 had 39 failures, every one owned by a unit.
+  - **T-29b:** the F-c rows. Every `loan` is U-T2's fact, the holder's declaration (A6 `Store`) where its slot has no use in the chain.
+    S1′ removes BorrowingIteration's `added` self-Loan.
+  - **T-29c:** AWellFormedness keeps two records. The fit moves to the declaration (T45, as T-17's local-annotation rows), and U-W's
+    wellFormed stays at the Type occurrence.
+  - **T-29d:** EachFailedChain's TypeMeet row reads U-W's wellFormed.
+  - **T-29e:** AValueCall's `pinned` evidence is pinned as R4 ruled (`ut2-witness-q.md`): the in-chain NextUse Use of g's result temp.
+    U-T1's delivery source makes the span the whole function; G311 owns that coarseness. This departs from the F-b form above by R4's
+    direction.
+- **T-14 is split.** T-14a takes CallableEffectBound and EffectBoundReport (17 rows; BU reviews). T-14b takes MirEffectsTest ×8 and
+  waits for S2, which R4 holds for GXS's 15.6.4 sentence (an owner question).
+- **D3 departure:** `Compilation.Ownership` is deleted rather than made private; its field's only reader is the transitional entry. D3
+  also takes B-del's orphans (`TemplateBody`, `MovePaths`' members, `InterpretationContext.Root`).
+- **T63's last row** (`AFailureBodyInARejectedExpressionIsJudgedOnItsOwn`): R4 found it over the hour. Binding's HIR publisher keeps
+  no resolved part under an Error (R5-M63's residual line). It is the owner's question O-5; (e) is recommended.

@@ -225,3 +225,21 @@ part is not Copy. They are counted by code.
 
 R5's ruling: U-T1, U-T2 and U-W are H5 blockers under the owner's third answer (fixes of an hour or less). Pinning wrong evidence would
 weaken the stopped tests, so they stay failing until the fixes land, and then they are re-pointed.
+
+### T63's last row goes on the (e) list (the owner, 2026-11-04)
+
+R4 found `RequireRecoveryDiagnosticTest.AFailureBodyInARejectedExpressionIsJudgedOnItsOwn` over the hour: Binding's HIR publisher keeps no
+resolved part under an Error (R5-M63's residual line), so a `require` inside a Binding-rejected `do` is never built and A3 has nothing to
+judge. The program stays rejected; the independent `RequireFallthrough_Kd` is lost (Q13 (3)). The owner answered board O-5, verbatim
+「(a) H5 の (e) 一覧に加える」. The row joins H5's (e) list until the kept-body unit (PLAN G414) lands; a T-unit re-points it to the head's
+records, naming this decision and G414.
+
+### GXS first; twoLent and replTOk go on the (e) list (the owner, 2026-11-04, in R4's dialog, relayed verbatim)
+
+- The owner answered R4, verbatim 「GXS first」: GXS's SPEC 15.6.4 sentence (G148 (2)) and its A5 unit go before S2, then S4. H5 waits for
+  S2 and S4: without S2 (G264 U1) the flip's MIR would accept G264's invalid programs that dev rejects partly through the old analysis
+  (Q13 (1); R5's ruling).
+- The owner answered R4, verbatim 「Add both to (e)」: replTOk and twoLent are on H5's (e) list until their own units.
+  - replTOk: valid on dev, rejected by S2 by the letter (a destruction's stores into the destroyed part's own storage); its fix is a
+    SPEC 16.3.1 sentence and its unit.
+  - twoLent: it needs the Origin form of GXS's E-as-one-node extension; GXS's phase A records it, with its own unit.

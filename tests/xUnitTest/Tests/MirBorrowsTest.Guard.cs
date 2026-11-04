@@ -456,6 +456,35 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
+    // The same retention per raw source (DECISIONS BU-66, A2; the owner's 「A2 を Chain の案でGO」): a raw layer past an exclusive borrow
+    // keeps what a chain of reads through the input carries, never the borrow's own Loan, so tiedExclBad errs at `y = 5` and S's end as
+    // tiedRawBad does, while tiedExclOk, tiedExclOk2 and writerExclOk, which keep the borrowed `m` past the call, are valid (fail before: `r`,
+    // `m = …` and `var m`). A by-value input keeps its own value whole (R4-M154's grain, the owner's precision line, which accepts the
+    // over-approximation): writerPairOk's `t` keeps the `ref` Loan on `k` beside the raw layer, the accepted false error at `var k`.
+    [Theory]
+    [InlineData("tiedExclBad", "<S>(s: S)\n    S is Mk\n", "var y: i32 = 1\nvar w: ref/i32 = y@ref\nvar m: raw/u8 = Raw.allocate<u8>(1)\nvar r = s.opn()\nr.absorbX(m@uniq)\nr.setQ(w@raw@raw/u8)\nconsume(r@move)\ny = 5", "tiedExclBad: y = 5|tiedExclBad: S")]
+    [InlineData("tiedExclOk", "<S>(s: S)\n    S is Mk\n", "var m: raw/u8 = Raw.allocate<u8>(1)\nvar r = s.opn()\nr.absorbX(m@uniq)\nconsume(r@move)", "")]
+    [InlineData("tiedExclOk2", "<S>(s: S)\n    S is Mk\n", "var m: raw/u8 = Raw.allocate<u8>(1)\nvar r = s.opn()\nr.absorbX(m@uniq)\nm = Raw.allocate<u8>(1)\nconsume(r@move)", "")]
+    [InlineData("writerExclOk", "<T>(t: uniq/T)\n    T is Abs\n", "var m: raw/u8 = Raw.allocate<u8>(1)\nt.absorbX(m@uniq)", "")]
+    [InlineData("writerPairOk", "<T>(t: uniq/T)\n    T is Abs\n", "var k: i32 = 1\nvar m: raw/u8 = Raw.allocate<u8>(1)\nt.absorbP((k@ref, m))", "writerPairOk: var k: i32 = 1")]
+    public void ATiedAbstractValueRetainsARawLayerPastAnExclusiveBorrowByItsChain(string name, string head, string body, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            contract Mk
+                associate R(source) is Abs for ref/Self during source
+                func opn(self: ref/Self during source) -> Self.R(source)
+            contract Abs
+                func absorbX(self: uniq/Self, v: uniq/(raw/u8))
+                func absorbP(self: uniq/Self, v: (ref/i32 during a, raw/u8))
+                func setQ(self: uniq/Self, q: raw/u8)
+            func consume<T>(x: T) => ()
+
+            """ + $"func {name}{head}" + string.Concat(body.Split('\n').Select(static x => $"    {x}\n")));
+        Assert.Equal(
+            expected.Length == 0 ? [] : expected.Split('|'),
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147; the owner's Q2 (a) and 「進める (推奨)」): a stored raw layer is read by its step on the
     // instance holding it. `during self` admits the instance's Type arguments by their actual Types, so a bag erasing its element to
     // raw/u8 writes past itself as its typed twin does (erased, typed), and the write fact where the instance has an Origin argument (P1:
