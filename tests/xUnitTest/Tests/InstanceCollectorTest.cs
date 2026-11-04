@@ -2645,6 +2645,6 @@ public sealed partial class InstanceCollectorTest
 
         public readonly bool Deep(BoundType type) => false;
 
-        public bool Below(BoundType? part, int depth) => MirTypes.Destruction(part, ref this, depth + 1);
+        public bool Declared(BoundType instance, int depth) => MirTypes.Entered(instance, ref this, depth);
     }
 }

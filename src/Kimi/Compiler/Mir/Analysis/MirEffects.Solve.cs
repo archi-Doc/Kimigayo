@@ -210,19 +210,10 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A node's current summary composed through a substitution into the current evaluation; a reading node records the reader.
+    // A node's current summary composed through a substitution into the current evaluation (Fold, then its atoms).
     private void Read(int node, Subst? subst)
     {
-        if (this.reader >= 0 && this.readers[node] != this.reader)
-        {
-            this.readers[node] = this.reader;
-            MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
-            this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node]);
-            this.dependentHeads[node] = this.dependentCount++;
-        }
-
-        this.found |= this.classes[node];
-        _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.keyWords), this.keys.AsSpan(node * this.keyWords, this.keyWords));
+        this.Fold(node);
         var (below, declaration) = (this.below, node >= this.bodyNodes);
         this.below |= declaration; // A declaration's atoms are parts of a value below an indirection.
         for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
@@ -237,6 +228,21 @@ internal sealed partial class MirEffects
         }
 
         this.below = below;
+    }
+
+    // A node's classes and keys folded into the current evaluation; a reading node records the reader, so the node's growth queues it.
+    private void Fold(int node)
+    {
+        if (this.reader >= 0 && this.readers[node] != this.reader)
+        {
+            this.readers[node] = this.reader;
+            MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
+            this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node]);
+            this.dependentHeads[node] = this.dependentCount++;
+        }
+
+        this.found |= this.classes[node];
+        _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.keyWords), this.keys.AsSpan(node * this.keyWords, this.keyWords));
     }
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
@@ -399,7 +405,10 @@ internal sealed partial class MirEffects
             }
 
             this.found |= payload is null ? Unknown : (byte)0;
-            _ = new Glue(this).Below(payload, depth);
+            var (below, glue) = (this.below, new Glue(this));
+            this.below = true;
+            _ = MirTypes.Below(payload, ref glue, depth + 1);
+            this.below = below;
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
@@ -507,13 +516,13 @@ internal sealed partial class MirEffects
             return enters && !owner.Declaration(type);
         }
 
-        public bool Below(BoundType? part, int depth)
+        public bool Declared(BoundType instance, int depth)
         {
             var (below, glue) = (owner.below, this);
             owner.below = true;
-            MirTypes.Destruction(part, ref glue, depth + 1);
+            var stops = !owner.Declaration(instance) && MirTypes.Entered(instance, ref glue, depth);
             owner.below = below;
-            return false;
+            return stops;
         }
 
         public bool Visit(BoundType type, int depth)

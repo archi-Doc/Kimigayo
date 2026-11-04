@@ -3,7 +3,7 @@
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations); per struct or enum declaration met below an indirection, its
-// destruction's summary in its own parameters, which an instance there composes through its arguments (PLAN G349; MirTypes' Below).
+// destruction's summary in its own parameters, which an instance there composes through its arguments (PLAN G349; MirTypes.Below).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // (MirProgram.Drops), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).

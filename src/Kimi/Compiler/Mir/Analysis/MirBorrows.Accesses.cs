@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Mir;
 // what it does (KindOf, MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
 // (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
 // also read by MirBorrows.OwnSteps' MayDepart, Dropping by MirBorrows.Holders (drop slots), Dropping and Destruction by MirBorrows.Liveness
-// and MirBorrows.Activations, and Dropping by MirBorrows.Destructions' receivers.
+// and MirBorrows.Activations, and Dropping by MirBorrows.Destructions' receivers. It owns the observation (Observation, its Observer over
+// MirTypes' destruction walk; SPEC 15.6.6, 16.3.3), whose one product reader is Destruction.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -17,6 +18,25 @@ internal sealed partial class MirBorrows
     private (BindingSymbol? Definition, ulong Version) destructionsOf; // The definition and program version the destructions are for.
     private Access[] accesses = [];
     private int accessCount;
+
+    /// <summary>Gets what destroying a value of a Type may observe of the Origins and Loans it holds (SPEC 15.6.6, 16.3.3), as the walks'
+    /// answer (<see cref="MirOutcome"/>): its <see cref="MirTypes.Destruction"/> reaches a struct that declares a drop, which observes all it
+    /// reaches, a Function value, whose destruction is unknown, or an owning handle whose payload is not proven Sealed, or is and observes,
+    /// since any rc or arc release may be final (decided, where the walk stops); an abstract part not proven Copy, whose instance decides
+    /// (Limit, DECISIONS R4-M147); and a part past the walk's bound (Deep, DECISIONS R4-M153). The answer is the Join of its parts' (the
+    /// walk goes on past Limit and Deep), so it is the same in every order of the parts: decided whatever an unknown part is, and Limit
+    /// beside a part past the bound. A payload is walked below its handle: a recursive Type ends, exactly where it repeats and at the walk's
+    /// bound where it grows.</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="definition">The definition whose premises prove Copy and Sealed.</param>
+    /// <returns>What the destruction may observe.</returns>
+    internal MirOutcome Observation(BoundType? type, BindingSymbol? definition)
+    {
+        this.entered.Clear();
+        var observer = new Observer(this, types, definition);
+        MirTypes.Destruction(type, ref observer);
+        return observer.Answer;
+    }
 
     // What a use of a Place at a location does (A3 5's access, E13 (1)), none for a use that accesses nothing: Copy, FakeRead,
     // Discriminant, Len and an index read; Move; a Ref borrows (Borrowing), as a Reborrowing PairAcquire does, which its reader passes as a
@@ -65,7 +85,7 @@ internal sealed partial class MirBorrows
         return this.Destruction(cases.Type(this.body.TypeOf(place)!));
     }
 
-    // How destroying a value of a case Type accesses it, read off the walks' answer (MirTypes.Observation): observing where decided or Limit,
+    // How destroying a value of a case Type accesses it, read off the walks' answer (Observation): observing where decided or Limit,
     // unclassified where Deep (past the walk's bound), else shallowly; once per case Type for the body's definition and the program version
     // (Observation reads the definition's Copy and Sealed proofs).
     private AccessKind Destruction(BoundType type)
@@ -79,7 +99,7 @@ internal sealed partial class MirBorrows
         ref var observation = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
         if (!known)
         {
-            observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.entered);
+            observation = this.Observation(type, this.body.Key.Decl);
         }
 
         if (observation.IsDeep)
@@ -174,6 +194,53 @@ internal sealed partial class MirBorrows
                 taking = known == AccessKind.Observe ? TakesValue : reborrows || (access & MirAccess.Borrows) != 0 ? TakesParents : taking;
                 owner.Accessed(new(place, known, reborrows, taking));
             }
+        }
+    }
+
+    // Observation's visitor: the Join of the reported parts' outcomes, a part that may observe decided (the walk stops), an abstract part
+    // not proven Copy Limit, after which the walk goes on, since another part may decide, and Deep where a part past the walk's depth
+    // bound has a Type the walk never enters within it (MirDepths). A string's or a sequence's own release observes nothing; its elements
+    // are parts of their own.
+    private struct Observer(MirBorrows owner, TyCtxt types, BindingSymbol? definition) : IMirDestruction
+    {
+        internal readonly MirOutcome Answer => this.Outcome.Join(owner.entered.ContainsValue(MirDepths.Past) ? MirOutcome.Deep : MirOutcome.None);
+
+        private MirOutcome Outcome { get; set; }
+
+        public readonly bool First(BoundType type, int depth)
+            => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.entered, type, out _), depth);
+
+        public bool Visit(BoundType type, int depth)
+        {
+            if (type.IsAbstract)
+            {
+                this.Outcome = this.Outcome.Join(types.Copy(definition, type) ? MirOutcome.None : MirOutcome.Limit);
+                return false;
+            }
+
+            if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)
+            {
+                return this.Decide();
+            }
+
+            return type.Kind == BoundTypeKind.Semantics &&
+                (MirTypes.SealedPayload(type, types, definition) is { } payload ? MirTypes.Below(payload, ref this, depth + 1) : this.Decide());
+        }
+
+        public readonly bool Deep(BoundType type)
+        {
+            MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.entered, type, out _));
+            return false;
+        }
+
+        // PLAN G349 U2: the Observer keeps no declaration summary yet; it walks the instance (R4-M153's bound below an indirection).
+        public bool Declared(BoundType instance, int depth) => MirTypes.Entered(instance, ref this, depth);
+
+        // A part known to observe: the decided answer, the Join's top, where the walk stops.
+        private bool Decide()
+        {
+            this.Outcome = this.Outcome.Join(MirOutcome.Decided);
+            return true;
         }
     }
 }

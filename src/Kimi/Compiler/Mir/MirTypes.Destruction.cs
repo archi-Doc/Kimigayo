@@ -2,7 +2,6 @@
 
 #pragma warning disable SA1402 // The walk's visitor belongs to the Type facts.
 
-using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -30,18 +29,19 @@ internal interface IMirDestruction
     /// <returns>Whether the walk stops.</returns>
     bool Deep(BoundType type);
 
-    /// <summary>The one step of every destruction walk below an indirection (SPEC 16.3.3, 8.15.3): a Sealed handle's payload, which the
-    /// visitor's own <see cref="Visit"/> passes here, and an Array's or a Dictionary's element (<see cref="MirTypes.Parts"/>). Only an
-    /// indirection lets a declaration's instances grow (inline storage is finite), so a visitor that keeps declarations' destruction
-    /// summaries composes each struct or enum instance below it through the instance's arguments, a fixed point per declaration that needs
-    /// no depth (15.3.5, 15.6.4); a visitor that keeps none yet walks the part one level deeper (<see cref="MirTypes.Destruction"/>).</summary>
-    /// <param name="part">The payload or element; null destroys nothing.</param>
-    /// <param name="depth">The indirection's depth in the walk.</param>
+    /// <summary>A struct or enum instance the walk entered below an indirection (<see cref="MirTypes.Below"/>), whose Fields, Cases and
+    /// base the walk never reads there: only an indirection lets a declaration's instances grow (inline storage is finite), so a reader of
+    /// declarations' destruction summaries composes the instance through its arguments, a fixed point per declaration that needs no depth
+    /// (SPEC 16.3.3, 15.3.5, 15.6.4); any other visitor walks its parts from the inline position (<see cref="MirTypes.Entered"/>).</summary>
+    /// <param name="instance">The instance, which <see cref="First"/> entered.</param>
+    /// <param name="depth">Its depth in the walk.</param>
     /// <returns>Whether the walk stops.</returns>
-    bool Below(BoundType? part, int depth);
+    bool Declared(BoundType instance, int depth);
 }
 
-// The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds.
+// The destruction walk, its two positions (inline, and below an indirection, entered only by Below, where a struct or enum instance is
+// Declared to the visitor and never walked by its storage; Entered, the dispatch after First, walks one from the inline position), and the
+// fact over it whether a value may need a drop. What a destruction may observe is A5's (MirBorrows.Accesses), which reads A4's summaries.
 internal static partial class MirTypes
 {
     /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
@@ -56,27 +56,6 @@ internal static partial class MirTypes
         return Destruction(type, ref any);
     }
 
-    /// <summary>Gets what destroying a value of a Type may observe of the Origins and Loans it holds (SPEC 15.6.6, 16.3.3), as the walks'
-    /// answer (<see cref="MirOutcome"/>): its <see cref="Destruction"/> reaches a struct that declares a drop, which observes all it reaches,
-    /// a Function value, whose destruction is unknown, or an owning handle whose payload is not proven Sealed, or is and observes, since
-    /// any rc or arc release may be final (decided, where the walk stops); an abstract part not proven Copy, whose instance decides
-    /// (Limit, DECISIONS R4-M147); and a part past the walk's bound (Deep, DECISIONS R4-M153). The answer is the Join of its parts' (the
-    /// walk goes on past Limit and Deep), so it is the same in every order of the parts: decided whatever an unknown part is, and Limit
-    /// beside a part past the bound. A payload is walked below its handle: a recursive Type ends, exactly where it repeats and at the walk's
-    /// bound where it grows.</summary>
-    /// <param name="type">The Type.</param>
-    /// <param name="types">The Type context, whose Copy and Sealed proofs Binding publishes.</param>
-    /// <param name="definition">The definition whose premises prove Copy and Sealed.</param>
-    /// <param name="entered">Scratch for the depth each Type was entered at (<see cref="MirDepths"/>), cleared first.</param>
-    /// <returns>What the destruction may observe.</returns>
-    internal static MirOutcome Observation(BoundType? type, TyCtxt types, BindingSymbol? definition, Dictionary<BoundType, byte> entered)
-    {
-        entered.Clear();
-        var observer = new Observer(types, definition, entered);
-        Destruction(type, ref observer);
-        return observer.Answer;
-    }
-
     /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
     /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
     /// handle, a Function value (its environment), a string, an Array or a Dictionary, a struct that declares a drop (whose destructor body
@@ -86,7 +65,8 @@ internal static partial class MirTypes
     /// pointers, Slices, scalars and an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release
     /// nothing. Within the bound the visitor decides whether it enters a Type (<see cref="IMirDestruction.First"/>): once per query, or
     /// once per shallower meeting (<see cref="MirDepths"/>, at most once per depth), so the walk is linear in the distinct Types it meets,
-    /// and a growing Type, new at each level, still ends at the bound.</summary>
+    /// and a growing Type, new at each level, still ends at the bound. A value's parts lie in its position, one level deeper; a sequence's
+    /// elements and a Sealed payload lie below an indirection (<see cref="Below"/>).</summary>
     /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
     /// <param name="type">The Type.</param>
     /// <param name="visitor">The visitor.</param>
@@ -94,41 +74,36 @@ internal static partial class MirTypes
     /// <returns>Whether the visitor stopped the walk.</returns>
     internal static bool Destruction<TVisitor>(BoundType? type, ref TVisitor visitor, int depth = 0)
         where TVisitor : struct, IMirDestruction
-    {
-        if (type is null)
-        {
-            return false;
-        }
+        => Walk(type, ref visitor, depth, indirect: false);
 
-        if (depth > Bound)
-        {
-            return visitor.Deep(type);
-        }
+    /// <summary>Walks a value of a Type that lies below an indirection, at a depth (SPEC 16.3.3, 6.x): a Sealed handle's payload, which
+    /// each visitor's <see cref="IMirDestruction.Visit"/> passes here one level below its handle, an Array's or a Dictionary's element one
+    /// level below its sequence (<see cref="Parts"/>), and a composed summary's atom at its instance's depth. The one entry to the walk's
+    /// indirect position, which the walk's own recursion carries: there each struct or enum instance <see cref="IMirDestruction.First"/>
+    /// enters goes to <see cref="IMirDestruction.Declared"/>, and the walk reads none of its Fields, Cases or base.</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="type">The Type; null destroys nothing.</param>
+    /// <param name="visitor">The visitor.</param>
+    /// <param name="depth">The value's depth in the walk.</param>
+    /// <returns>Whether the visitor stopped the walk.</returns>
+    internal static bool Below<TVisitor>(BoundType? type, ref TVisitor visitor, int depth)
+        where TVisitor : struct, IMirDestruction
+        => Walk(type, ref visitor, depth, indirect: true);
 
-        if (!visitor.First(type, depth))
-        {
-            return false;
-        }
-
-        if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
-        {
-            return visitor.Visit(type, depth);
-        }
-
-        if (type.Kind == BoundTypeKind.Semantics)
-        {
-            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
-        }
-
-        var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
-        var destructor = AdtDef.Destructor(type) is not null;
-        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
-        {
-            return true;
-        }
-
-        return !destructor && !AdtDef.IsInlineStorage(type) && Parts(type, ref visitor, depth);
-    }
+    /// <summary>Walks a Type the walk has entered (<see cref="IMirDestruction.First"/>) from the inline position: <see cref="Destruction"/>'s
+    /// dispatch after <c>First</c>, extracted once (PLAN G349 U2): <see cref="IMirDestruction.Visit"/> for an abstract part, a Function
+    /// value, an owning handle, a string, a sequence or a struct with a drop, else its <see cref="Parts"/>. Its callers are
+    /// <see cref="Destruction"/> and a visitor's <see cref="IMirDestruction.Declared"/> that walks an instance per instance (A5's Composer
+    /// until PLAN G349 U3, and test visitors); a reader of declarations' summaries composes instead and never calls it (its premise: no
+    /// atom's instance is walked by its storage).</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="type">The entered Type.</param>
+    /// <param name="visitor">The visitor.</param>
+    /// <param name="depth">The Type's depth in the walk.</param>
+    /// <returns>Whether the visitor stopped the walk.</returns>
+    internal static bool Entered<TVisitor>(BoundType type, ref TVisitor visitor, int depth)
+        where TVisitor : struct, IMirDestruction
+        => Dispatch(type, ref visitor, depth, indirect: false);
 
     /// <summary>Gets the payload an owning handle's destruction walks on (SPEC 16.3.3): its View Target where Binding proves it Sealed,
     /// whose own destruction runs; otherwise null, an erased destruction, whatever the View Target is: an abstract one too, proven Copy or
@@ -152,13 +127,65 @@ internal static partial class MirTypes
     /// <returns>Whether the visitor stopped the walk.</returns>
     internal static bool Parts<TVisitor>(BoundType type, ref TVisitor visitor, int depth)
         where TVisitor : struct, IMirDestruction
+        => Descend(type, ref visitor, depth, indirect: false);
+
+    // The one walk: null destroys nothing, past the bound Deep, then First; in the indirect position a struct or enum instance is Declared,
+    // else the dispatch.
+    private static bool Walk<TVisitor>(BoundType? type, ref TVisitor visitor, int depth, bool indirect)
+        where TVisitor : struct, IMirDestruction
+    {
+        if (type is null)
+        {
+            return false;
+        }
+
+        if (depth > Bound)
+        {
+            return visitor.Deep(type);
+        }
+
+        if (!visitor.First(type, depth))
+        {
+            return false;
+        }
+
+        return indirect && (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) ? visitor.Declared(type, depth) : Dispatch(type, ref visitor, depth, indirect);
+    }
+
+    // An entered Type: the part Visit reports, then its parts unless a declared drop destroys them (R4-M6b) or it is an InlineStorage.
+    private static bool Dispatch<TVisitor>(BoundType type, ref TVisitor visitor, int depth, bool indirect)
+        where TVisitor : struct, IMirDestruction
+    {
+        if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
+        {
+            return visitor.Visit(type, depth);
+        }
+
+        if (type.Kind == BoundTypeKind.Semantics)
+        {
+            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
+        }
+
+        var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
+        var destructor = AdtDef.Destructor(type) is not null;
+        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
+        {
+            return true;
+        }
+
+        return !destructor && !AdtDef.IsInlineStorage(type) && Descend(type, ref visitor, depth, indirect);
+    }
+
+    // A value's parts one level deeper, in its position; a sequence's elements below an indirection.
+    private static bool Descend<TVisitor>(BoundType type, ref TVisitor visitor, int depth, bool indirect)
+        where TVisitor : struct, IMirDestruction
     {
         var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // Its elements lie below an indirection.
         var parts = sequence || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
             ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
-            if (sequence ? visitor.Below(parts[i], depth) : Destruction(parts[i], ref visitor, depth + 1))
+            if (Walk(parts[i], ref visitor, depth + 1, sequence || indirect))
             {
                 return true;
             }
@@ -166,13 +193,13 @@ internal static partial class MirTypes
 
         for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
         {
-            if (Destruction(AdtDef.FieldType(type, i), ref visitor, depth + 1))
+            if (Walk(AdtDef.FieldType(type, i), ref visitor, depth + 1, indirect))
             {
                 return true;
             }
         }
 
-        return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
+        return AdtDef.Base(type) is { } parent && Walk(parent, ref visitor, depth + 1, indirect);
     }
 
     // MayNeedDrop's visitor: any reported part, each Type once per query, past the bound too (a Type met before reports nothing). It
@@ -185,53 +212,7 @@ internal static partial class MirTypes
 
         public bool Deep(BoundType type) => seen.Add(type);
 
-        public bool Below(BoundType? part, int depth) => true;
-    }
-
-    // Observation's visitor: the Join of the reported parts' outcomes, a part that may observe decided (the walk stops), an abstract part
-    // not proven Copy Limit, after which the walk goes on, since another part may decide, and Deep where a part past the walk's depth
-    // bound has a Type the walk never enters within it (MirDepths). A string's or a sequence's own release observes nothing; its elements
-    // are parts of their own.
-    private struct Observer(TyCtxt types, BindingSymbol? definition, Dictionary<BoundType, byte> entered) : IMirDestruction
-    {
-        internal readonly MirOutcome Answer => this.Outcome.Join(entered.ContainsValue(MirDepths.Past) ? MirOutcome.Deep : MirOutcome.None);
-
-        private MirOutcome Outcome { get; set; }
-
-        public readonly bool First(BoundType type, int depth)
-            => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _), depth);
-
-        public bool Visit(BoundType type, int depth)
-        {
-            if (type.IsAbstract)
-            {
-                this.Outcome = this.Outcome.Join(types.Copy(definition, type) ? MirOutcome.None : MirOutcome.Limit);
-                return false;
-            }
-
-            if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)
-            {
-                return this.Decide();
-            }
-
-            return type.Kind == BoundTypeKind.Semantics &&
-                (SealedPayload(type, types, definition) is { } payload ? this.Below(payload, depth) : this.Decide());
-        }
-
-        public readonly bool Deep(BoundType type)
-        {
-            MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _));
-            return false;
-        }
-
-        // PLAN G349 U2: the Observer keeps no declaration summary yet; it walks the instance (R4-M153's bound below an indirection).
-        public bool Below(BoundType? part, int depth) => Destruction(part, ref this, depth + 1);
-
-        // A part known to observe: the decided answer, the Join's top, where the walk stops.
-        private bool Decide()
-        {
-            this.Outcome = this.Outcome.Join(MirOutcome.Decided);
-            return true;
-        }
+        public bool Declared(BoundType instance, int depth)
+            => throw new InvalidOperationException("MayNeedDrop's walk stops at an indirection's handle or sequence.");
     }
 }

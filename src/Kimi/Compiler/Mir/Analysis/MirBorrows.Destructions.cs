@@ -126,7 +126,7 @@ internal sealed partial class MirBorrows
         {
             if (MirTypes.SealedPayload(type, types, definition) is { } payload)
             {
-                return composer.Below(payload, depth);
+                return MirTypes.Below(payload, ref composer, depth + 1);
             }
 
             erased = type.Components[0];
@@ -161,7 +161,8 @@ internal sealed partial class MirBorrows
             return false;
         }
 
-        // PLAN G349 U3: the Composer keeps no declaration summary yet; it walks the instance (R4-M153's bound below an indirection).
-        public bool Below(BoundType? part, int depth) => MirTypes.Destruction(part, ref this, depth + 1);
+        // PLAN G349 U3: the Composer keeps no declaration summary yet; it walks the instance by its storage, the staged exception to the
+        // indirect position (R4-M153's bound below an indirection), which no summary's atom reaches.
+        public bool Declared(BoundType instance, int depth) => MirTypes.Entered(instance, ref this, depth);
     }
 }

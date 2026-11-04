@@ -3,7 +3,7 @@
 namespace Kimi.Compiler.Mir;
 
 // A4's declaration destruction nodes (PLAN G349; SPEC 16.3.3, 15.3.5, 15.6.4): per struct or enum declaration met below an indirection (a
-// Sealed handle's payload, an Array's or a Dictionary's element: MirTypes' IMirDestruction.Below, Glue.Below), one node of the run's worklist
+// Sealed handle's payload, an Array's or a Dictionary's element: MirTypes.Below, Glue.Declared), one node of the run's worklist
 // whose summary is the destruction of the declaration's Type in its own parameters (TyCtxt.DeclarationType), evaluated under no definition's
 // premises (Evaluate): classes and atoms over its own parameters, Drop(X) for an abstract part and Drop(obj/X) for a handle over an abstract
 // payload, whose Sealed is decided at use (8.7.2; Destroy).
