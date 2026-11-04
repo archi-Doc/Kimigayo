@@ -315,30 +315,52 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 
 | Name owner | Visible in |
 | --- | --- |
-| Callable signature Origin or set | Signature, clauses and body |
+| Callable signature Origin or set, or a set named in a Constraint, Function Type or Callable | Its declaration's signature, clauses and body, in any order |
 | Type slot | Type declaration and inherited members |
 | Field, Case or associated-specification set | That declaration and its clauses |
 | Base occurrence set | The Constraint region of the fragment that writes the base clause ([§6.1.2](06-declarations-and-containers.md#612-container-fragments)) |
-| Constraint set | Exactly the Constraint region that contains the Constraint ([§8.2.1](08-generics-constraints-and-contracts.md#821-constraint-clauses)), not the signature or the body. A set named inside a Function Type or a Callable signature in the Constraint follows Nested signatures below and belongs to the enclosing declaration |
 | Associated-Type Origin parameter | Its right-hand side, formation Type and clauses ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)) |
 | Local set | Its Type, clauses and the following scope |
 | Container alias set | Its clauses and the document's alias scope |
 
 - Lookup searches scopes inside out and stops at the first scope with an Origin-context candidate; a same-scope conflict among value, Origin and set roles is an error, and a wrong-role match never falls back outward. Bare Fields are no candidates without a receiver. Type-parameter names are a separate namespace.
-- A new Origin or set name cannot hide a visible Origin, set, parameter or local; duplicates are errors, but mutually invisible Field-local names may repeat. Resolution does not depend on declaration order.
-- A set named in a Constraint is visible to every Constraint and `origin` relation of its region, written before or after it. A set that no relation of the region relates quantifies every choice of its Origins, and a second `{k}` in the region is a duplicate.
+- A new Origin or set name cannot hide a visible Origin, set, parameter or local; duplicates are errors, but mutually invisible names may repeat (Field-local sets, the sets of two `when` lists). Resolution does not depend on declaration order.
+- A set named in a Constraint belongs to the declaration whose Constraint it is ([§8.2.1](08-generics-constraints-and-contracts.md#821-constraint-clauses)):
+  - a function's, constructor's, accessor's or function requirement's: its signature, clauses and body;
+  - a struct's or enum's: its clauses and the members of every fragment, and nested Types lexically, as a Type slot is seen. In a Field Type the set's slot is valid only where a relation makes it a public Origin, as `origin s.at == h` does; an unrelated one is a hidden Origin, which storage completion rejects ([§15.3.2](#1532-type-schemas-and-storage));
+  - a `when` list's: that conditional conformance and its implementation block ([§8.8.1](08-generics-constraints-and-contracts.md#881-conditions-and-implementation-blocks));
+  - a Contract-wide clause's: that clause alone, since a Contract has no Origins.
+
+  A set that no relation relates quantifies every choice of its Origins.
 - A named nested function's signature may name visible Origins of enclosing functions. Such a name is a fixed Origin of the nested function, not a new universal one, and captures nothing at run time; a function value of the nested function depends on those Origins like any value whose Type names them.
 
 ```kimi
-// Source and Cursor as in §15.3.1.
+// Source and Cursor as in §15.3.1; Marker and Shown are Contracts without members.
 func check<T, U>(value: ref/T, other: ref/U, y: ref/i32) -> i32
     origin k.at == y                            // k is the set of the Constraint below.
     T is Source
     U is Source
     T.(Source).Item is (Cursor{k}).Item
-    // U.(Source).Item is (Cursor{k}).Item      // Error: a second set k in this region.
-    // let z: ref/i32 during k.at = y           // Error: k is not visible in the body.
+    // U.(Source).Item is (Cursor{k}).Item      // Error: a second set k of check.
+    let z: ref/i32 during k.at = y              // The body sees k.
     return 0
+
+struct Holder<T, U> {h}
+    origin s.at == h
+    T is Source
+    U is Source
+    T.(Source).Item is (Cursor{s}).Item
+    U.(Source).Item is (Cursor{j}).Item         // No relation relates j.
+    Self is Marker when T is (Cursor{m}).Item   // This m belongs to this conformance,
+    Self is Shown when U is (Cursor{m}).Item    // so this one is no duplicate.
+    public let w: ref/i32 during s.at           // Valid: s.at is h.
+    // public let v: ref/i32 during j.at        // Error: j.at is a hidden Origin.
+    public func item(self: ref/Self) -> ref/i32 during s.at => self.w
+
+contract Lens
+    associate Item
+    Self.Item is (Cursor{n}).Item               // n belongs to this clause alone.
+    // func read(self: ref/Self) -> ref/i32 during n.at  // Error: n is not visible here.
 ```
 
 **Nested signatures.** Function Types, Callable and anonymous functions introduce no named Origins: they keep per-call direct-input quantification and their own result elision ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)), and their set names belong to the enclosing declaration. Each nested aggregate input slot is fixed by a complete Type or an outer Origin expression, except that in a local's initialized Type and an anonymous function's parameters an omitted one, or an omitted Origin of a nested borrow layer, is a body inference variable, fixed once ([§15.3.6](#1536-origin-inference)). Inner per-call Origins cannot escape their binder. A nested signature's result Type, written or inferred, is a Type of the declaration that contains it: it must be well-formed where it occurs, under that declaration's premises and the nested signature's own well-formed inputs, for every choice of its per-call Origins. Its well-formedness is never a premise of the containing body. A relation that it needs among the enclosing Origins is declared with an `origin` clause; a relation of a per-call Origin must follow from the nested signature's inputs.
