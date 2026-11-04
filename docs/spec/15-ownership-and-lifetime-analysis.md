@@ -235,7 +235,7 @@ A **binding set** maps a Type occurrence's schema slots to Origins. There are no
 `ref/T during o` sets the Origin of one borrow layer, attached as in [§3.3.2](03-types-and-values.md#332-nested-semantics-and-origin-annotations). `during` is accepted only on `ref`, `uniq`, `objref`, `objuniq`, `raw` and a pair binder; on a pair binder it is a conditional slot, present only in the borrow cases of its admitted set ([§8.1.2](08-generics-constraints-and-contracts.md#812-pair-reconstruction-and-origin-annotations)), and on `raw` it states which storage the pointer addresses ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). Its argument is one Origin atom (a name, `value.slot`, `set.slot`, `static` or a parenthesized expression, so `during (a and b)`); on `raw` it is no intersection and may be `self`. An annotation creates no Loan, extends no lifetime and performs no acquisition or conversion.
 
 - **Binding sets.** `{name}` after a named Type names that occurrence's set. The Type's schema must be nonempty and known at definition; a duplicate name, empty braces and a set used as a scalar Origin are errors. Braces only name a set: they never apply Origins, positionally or by mapping such as `{source => x}`, and there is no whole-set equality or call-site application such as `f{a}(...)`. Positional Origin application exists only for associated Types ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)). Unused set names change no contract.
-- **Single-slot binding.** For a Type whose known schema has exactly one slot, `Slice<T> during source` means `Slice<T>{v}` with `origin v.source == source`. It adds no borrow layer; in a signature, an unbound name there is quantified ([§15.3.4](#1534-names-scope-and-quantification)). Other Types reject it.
+- **Single-slot binding.** For a Type whose known schema has exactly one slot, `Slice<T> during source` means `Slice<T>{v}` with `origin v.source == source`. It adds no borrow layer; in a signature, an unbound name there is quantified ([§15.3.4](#1534-names-scope-and-quantification)). Other Types reject it. A bound container qualifier `(P during o)` is this binding in a qualifier ([§F.5](appendices/F-syntax-summary.md#f5-types)): `(S during y).Item` means `(S{v}).Item` with `origin v.s == y`, under the same rules, so a qualifier Type without exactly one slot rejects it. It is a Type form; in a body, `let c: S during y = S.init(a)` fixes the slot.
 - **Projection.** `value.source` selects a declared slot of the value's Type, peeling only consecutive safe-borrow layers, never Fields, Type arguments or raw pointers; `set.source` selects a slot of the named occurrence. An unknown slot is an error. A projection reads Type information only.
 
 ```kimi
@@ -245,6 +245,36 @@ func identity<T>(value: View<T>) -> View<T>{result}
 
 func tail<T>(values: Slice<T> during source) -> Slice<T> during source
     return values[1..]
+```
+
+```kimi
+contract Source
+    associate Item
+
+struct Cursor {at}
+    Self is Source
+    associate Item is ref/i32 during at
+    public let item: ref/i32 during at
+    public init(item: ref/i32 during at) => self.item = item
+
+struct Pair {a, b}
+    Self is Source
+    associate Item is ref/i32 during a
+
+struct Window {w}
+    Self is Source
+    associate Item is (Cursor during w).Item     // (Cursor{v}).Item with origin v.at == w.
+
+func peek<T>(value: ref/T, bound: ref/i32) -> i32
+    T is Source
+    T.(Source).Item is (Cursor during bound).Item
+    // T.(Source).Item is (Pair during bound).Item   // Error: Pair has two slots.
+    return 0
+
+func start(r: ref/i32) -> i32
+    let c: Cursor during r = Cursor.init(r)      // The body's form of a fixed slot.
+    // let d = (Cursor during r).init(r)          // Error: an expression qualifier takes only a binding set.
+    return 0
 ```
 
 ### 15.3.2. Type schemas and storage
@@ -289,13 +319,26 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 | Type slot | Type declaration and inherited members |
 | Field, Case or associated-specification set | That declaration and its clauses |
 | Base occurrence set | The Constraint region of the fragment that writes the base clause ([§6.1.2](06-declarations-and-containers.md#612-container-fragments)) |
+| Constraint set | Exactly the Constraint region that contains the Constraint ([§8.2.1](08-generics-constraints-and-contracts.md#821-constraint-clauses)), not the signature or the body |
 | Associated-Type Origin parameter | Its right-hand side, formation Type and clauses ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)) |
 | Local set | Its Type, clauses and the following scope |
 | Container alias set | Its clauses and the document's alias scope |
 
 - Lookup searches scopes inside out and stops at the first scope with an Origin-context candidate; a same-scope conflict among value, Origin and set roles is an error, and a wrong-role match never falls back outward. Bare Fields are no candidates without a receiver. Type-parameter names are a separate namespace.
 - A new Origin or set name cannot hide a visible Origin, set, parameter or local; duplicates are errors, but mutually invisible Field-local names may repeat. Resolution does not depend on declaration order.
+- A set named in a Constraint is visible to every Constraint and `origin` relation of its region, written before or after it. A set that no relation of the region relates quantifies every choice of its Origins, and a second `{k}` in the region is a duplicate.
 - A named nested function's signature may name visible Origins of enclosing functions. Such a name is a fixed Origin of the nested function, not a new universal one, and captures nothing at run time; a function value of the nested function depends on those Origins like any value whose Type names them.
+
+```kimi
+// Source and Cursor as in §15.3.1.
+func check<T>(value: ref/T, y: ref/i32) -> i32
+    origin k.at == y                            // k is the set of the Constraint below.
+    T is Source
+    T.(Source).Item is (Cursor{k}).Item
+    // (Cursor{k}).Item is Copy                 // Error: a second set k in this region.
+    // let z: ref/i32 during k.at = y           // Error: k is not visible in the body.
+    return 0
+```
 
 **Nested signatures.** Function Types, Callable and anonymous functions introduce no named Origins: they keep per-call direct-input quantification and their own result elision ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)), and their set names belong to the enclosing declaration. Each nested aggregate input slot is fixed by a complete Type or an outer Origin expression, except that in a local's initialized Type and an anonymous function's parameters an omitted one, or an omitted Origin of a nested borrow layer, is a body inference variable, fixed once ([§15.3.6](#1536-origin-inference)). Inner per-call Origins cannot escape their binder. A nested signature's result Type, written or inferred, is a Type of the declaration that contains it: it must be well-formed where it occurs, under that declaration's premises and the nested signature's own well-formed inputs, for every choice of its per-call Origins. Its well-formedness is never a premise of the containing body. A relation that it needs among the enclosing Origins is declared with an `origin` clause; a relation of a per-call Origin must follow from the nested signature's inputs.
 
