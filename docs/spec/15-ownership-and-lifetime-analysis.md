@@ -319,7 +319,7 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 | Type slot | Type declaration and inherited members |
 | Field, Case or associated-specification set | That declaration and its clauses |
 | Base occurrence set | The Constraint region of the fragment that writes the base clause ([§6.1.2](06-declarations-and-containers.md#612-container-fragments)) |
-| Constraint set | Exactly the Constraint region that contains the Constraint ([§8.2.1](08-generics-constraints-and-contracts.md#821-constraint-clauses)), not the signature or the body |
+| Constraint set | Exactly the Constraint region that contains the Constraint ([§8.2.1](08-generics-constraints-and-contracts.md#821-constraint-clauses)), not the signature or the body. A set named inside a Function Type or a Callable signature in the Constraint follows Nested signatures below and belongs to the enclosing declaration |
 | Associated-Type Origin parameter | Its right-hand side, formation Type and clauses ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)) |
 | Local set | Its Type, clauses and the following scope |
 | Container alias set | Its clauses and the document's alias scope |
