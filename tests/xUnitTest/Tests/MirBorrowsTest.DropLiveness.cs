@@ -154,17 +154,18 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["value = 99 ComparisonLoanConflict_Kd"], DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
     }
 
-    // SPEC 23.1.1, 23.1.2 (R4-M147, R4-M153's revision 3, implementation review 3's B3 (ii)): at a referent store whose referent's
-    // destruction holds an abstract part not proven Copy (Limit) and a part past the bound (Deep), the one answer is Limit, so `a.clear()`
-    // is the located Unsupported_Kd, as at depth 10 and for clearGenOk (the abstract part alone; ADestructionAReferentMayObserveKeepsW).
-    // At depth 40 a's own guard is Deep (R4-M170: the abstract part gives the named fact, not the write fact, the owner's G264 (S)
-    // instruction of 2026-11-04 overriding the owner's Q1 (a), so the part past the bound decides it): W does not pass a, and the step it
-    // leaves out would change what W writes, so `a.clear()` is the depth limit instead, a limit record still.
+    // SPEC 23.1.1, 23.1.2, 16.3.3, 15.6.4 (R4-M153's revision 3, implementation review 3's B3 (ii); R4-M150, R4-M170): at a referent
+    // store whose referent's destruction holds an abstract part not proven Copy and a part past the bound, `a.clear()` composes the
+    // abstract part's erased destruction (BU-47's `0 Content store 0`), which stores what the part carries within its reach: slot's address
+    // and w's Loan of y (SPEC 15.6.4's reach rule), so `y = 5` errs, as clearGenOk (AReferentsDestructionIsComposedAtItsCall). R4-M147's
+    // located Unsupported_Kd is gone with the composition (the owner's G264 (S) instruction of 2026-11-04). At depth 40 a's own guard is
+    // Deep (R4-M170: the part past the bound decides it), so W does not pass a and the store is the depth limit at the call, a limit
+    // record in place of `y = 5`'s.
     [Theory]
-    [InlineData("deep", 40, "OwnershipDepthLimit_Kd")]
-    [InlineData("deep", 10, "Unsupported_Kd")]
-    [InlineData("alone", 0, "Unsupported_Kd")]
-    public void AnAbstractPartBesideAPartPastTheBoundIsUnsupportedAtAReferentStore(string form, int depth, string code)
+    [InlineData("deep", 40, "a.clear() OwnershipDepthLimit_Kd")]
+    [InlineData("deep", 10, "y = 5 ComparisonLoanConflict_Kd")]
+    [InlineData("alone", 0, "y = 5 ComparisonLoanConflict_Kd")]
+    public void AnAbstractPartBesideAPartPastTheBoundIsComposedAtAReferentStore(string form, int depth, string expected)
     {
         var (element, value) = form == "deep"
             ? ($"(T, {NestedType(depth)})", $"(T.make(p: slot@raw, q: w@raw@raw/u8), {Nested("0", depth)})")
@@ -172,7 +173,7 @@ public sealed partial class MirBorrowsTest
         var c = CompileDepthForm(Prelude + RawShapes + ReferentShapes + "func clearGen<T>()\n    T is MakeW\n    var y: i32 = 1\n" +
             $"    var w: ref/i32 = y@ref\n    var slot: raw/u8 = null\n    var a: Array<{element}> = []\n    a.append({value})\n    a.clear()\n" +
             "    consume(a@move)\n    usep(slot)\n    y = 5\n");
-        Assert.Equal([$"a.clear() {code}"], DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
+        Assert.Equal(expected.Split('|'), DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
     }
 
     // SPEC 23.1.2 (R4-M153's revision 3, implementation review 3's N1): a limit record is one failure's, so independent checks at one

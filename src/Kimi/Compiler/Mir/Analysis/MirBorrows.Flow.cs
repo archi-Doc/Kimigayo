@@ -4,9 +4,10 @@ namespace Kimi.Compiler.Mir;
 
 // A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
 // checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
-// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, and a Call's are MirBorrows.Calls'. A store into a
-// holder's own Place changes its Placed part, one through a reference joins its Shared part (MirBorrows.States, DECISIONS R4-M160). A
-// store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7).
+// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, a Call's are MirBorrows.Calls' and a Drop's
+// MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
+// (MirBorrows.States, DECISIONS R4-M160). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued
+// into a guard candidate H (E7).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -34,6 +35,10 @@ internal sealed partial class MirBorrows
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
                 this.Call(state, data.Terminator, checks);
+            }
+            else if (data.Terminator.Kind == MirTerminatorKind.Drop)
+            {
+                this.Destroyed(state, data.Terminator, block, checks);
             }
 
             return;

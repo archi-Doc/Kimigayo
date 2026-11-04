@@ -8,8 +8,8 @@ namespace XunitTest;
 
 /// <summary>The shared acceptance tests of PLAN G264 U0′ (WORKFLOW Q11; written from the problem statement before either candidate):
 /// A5's records at Array <c>truncate</c> and <c>removeAll</c> calls whose elements' destruction stores through a raw layer (SPEC 4.9.6,
-/// 15.6.4, 16.3.1). U0′ publishes the two rows and changes no A5 verdict: the referent guard (DECISIONS R4-M143) keeps W at every call
-/// whose referent may observe a destruction until U2 (R4-M150), so every row here is a guard that a candidate must keep.</summary>
+/// 15.6.4, 16.3.1). U0′ published the two rows; A5 composes the destruction each row lists at the call (G264 U1, DECISIONS R4-M150,
+/// which removed R4-M143's referent guard), and every row here holds before and after it.</summary>
 public sealed partial class MirBorrowsTest
 {
     // The problem statement's prelude: a Writer whose drop stores its q through its raw slot p (SPEC 15.6.4's example), a maker of one
@@ -310,19 +310,19 @@ public sealed partial class MirBorrowsTest
 
         """;
 
-    // SPEC 4.9.6, 15.6.4, 16.3.1 (PLAN G264 U0′; DECISIONS R4-M143, R4-M147): at a `truncate` or `removeAll` call whose referent may
-    // observe a destruction, A5's records stay today's until U2 composes the destruction's retention (R4-M150): each Bad form errs at
-    // `y = 5` (SPEC's verdict: slot may retain q, which addresses w, which carries y's Loan), and each Ok twin errs there too, whichever
-    // argument form, a Closure, a function item (Item) or a capturing Closure (Cap, whose Bad is b's Loan), and whatever the length
-    // argument (truncateFull: the row names no count); `clear`'s twins are the comparison. Over an abstract `T` not proven Copy (Gen), the
-    // call is the located Unsupported_Kd and Bad keeps its true `y = 5` (R4-M147's abstract-referent rule, as clearGen's).
+    // SPEC 4.9.6, 15.6.4, 16.3.1 (PLAN G264 U0′ and U1; DECISIONS R4-M147, R4-M150): a `truncate` or `removeAll` call composes the
+    // destruction of the elements it removes: each Bad form errs at `y = 5` (SPEC's verdict: slot may retain q, which addresses w, which
+    // carries y's Loan), and each Ok twin errs there too, whichever argument form, a Closure, a function item (Item) or a capturing Closure
+    // (Cap, whose Bad is b's Loan), and whatever the length argument (truncateFull: the row names no count); `clear`'s twins are the
+    // comparison. Over an abstract `T` not proven Copy (Gen), the element's erased destruction (16.3.3, BU-47's `0 Content store 0`) may
+    // store y's Loan past it (an abstract part may be an exclusive reference, the owner's Q1 (a)), so Bad and Ok err at `y = 5`, as
+    // clearGen's (no longer the located Unsupported_Kd at the call).
     // Every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok, removeAllItemOk, removeAllCapOk), once
     // R4-M143's known false errors, is a correct error under SPEC 15.6's whole-holder text (DECISIONS BU-67, R4-M143's note; the Array
     // holding x is consumed, as consumeDrop2Ok's x). removeAllElemBad's second record, its MIR-only `y = 5` beside the activation
-    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline does not report it. Guards: U0′ changes no A5 verdict,
-    // so each row holds today and must hold after.
+    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline does not report it.
     [Fact]
-    public void ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW()
+    public void ATruncateOrRemoveAllComposesItsElementsDestruction()
     {
         var c = MirBuildTest.Compile(DestructionShapes + Forms);
         Assert.Equal(
@@ -330,9 +330,7 @@ public sealed partial class MirBorrowsTest
                 "removeAllDrop2Bad: y = 5", "removeAllDrop2Ok: y = 5", "truncateDrop3Bad: y = 5", "truncateDrop3Ok: y = 5",
                 "truncateFullBad: y = 5", "truncateFullOk: y = 5", "clearDrop2Bad: y = 5", "clearDrop2Ok: y = 5",
                 "removeAllItemBad: y = 5", "removeAllItemOk: y = 5", "removeAllCapBad: y = 5", "removeAllCapOk: y = 5",
-                "truncateGenBad: a.truncate(0) Unsupported_Kd", "truncateGenBad: y = 5", "truncateGenOk: a.truncate(0) Unsupported_Kd",
-                "removeAllGenBad: a.removeAll(matching: func (v) => true) Unsupported_Kd", "removeAllGenBad: y = 5",
-                "removeAllGenOk: a.removeAll(matching: func (v) => true) Unsupported_Kd",
+                "truncateGenBad: y = 5", "truncateGenOk: y = 5", "removeAllGenBad: y = 5", "removeAllGenOk: y = 5",
                 "removeAllCapPlainBad: y = 5", "removeAllCapArrBad: a.removeAll(matching: func [v](e) => v@follow.length > 0) CallActivationConflict_Kd",
                 "removeAllElemBad: a.removeAll(matching: func (v) => true) CallActivationConflict_Kd", "removeAllElemBad: y = 5",
             ],
@@ -374,15 +372,16 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: {records}", $"{form}: {Records(source)}");
     }
 
-    // Kept apart (scored apart; PLAN G266's cause, not a row's): SPEC 15.6.4, storage reached through a Closure's captures may retain an
-    // argument by the instantiated contract: `removeAll`'s callback stores q, which addresses w, which carries y's Loan, into slot through
-    // its captured p, so removeAllWriteBad errs at `y = 5` and its Ok twin, which uses slot before, is valid. Today both are accepted: the
-    // Closure is a by-value input whose raw layer the callee writes through (consumeDrop2Bad's class). The Bad row fails on dev by design,
-    // so it is Explicit until PLAN G266 lands (its expectation unchanged; G264 U0′'s kept-apart row, WORKFLOW Full step 2).
+    // Kept apart (scored apart; PLAN G264's open point, not a row's): SPEC 15.6.4, storage reached through a Closure's captures may retain
+    // an argument by the instantiated contract: `removeAll`'s callback stores q, which addresses w, which carries y's Loan, into slot
+    // through its captured p, so removeAllWriteBad errs at `y = 5` and its Ok twin, which uses slot before, is valid. Both are accepted
+    // today: the store is the callback's call inside `removeAll`, no destruction, so G264 U1's composition (a Drop's and a published
+    // row's destruction, DECISIONS R4-M150) does not reach it (U1's head: no record). The Bad row fails by design, so it is Explicit until
+    // PLAN G264 decides it (its expectation unchanged; G264 U0′'s kept-apart row, WORKFLOW Full step 2; BU's note of 2026-11-01).
     [Theory]
     [InlineData("removeAllWriteBad", "removeAllWriteBad: y = 5", Explicit = true)]
     [InlineData("removeAllWriteOk", "")]
-    public void ARemoveAllCallbackStoringThroughItsCapturesRetainsAsTheCallDoesPendingG266(string form, string expected)
+    public void ARemoveAllCallbackStoringThroughItsCapturesRetainsAsTheCallDoesPendingG264(string form, string expected)
     {
         var c = MirBuildTest.Compile(DestructionShapes + Form(WriteForms, form));
         Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(c, Analyze(c), LoanCodes));
