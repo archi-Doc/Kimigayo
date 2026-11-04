@@ -258,3 +258,14 @@ records, naming this decision and G414.
     H5's (e) list with STATUS limits, S4 follows, then H5. Otherwise H5 waits for the holdings unit and the owner is told.
 - The audit's D1 (G334 (a)) and D6 are pre-existing soundness holes on both pipelines, not H5 blockers (no old-rejects/MIR-accepts row);
   Rec records them in STATUS as known limits.
+
+### S2 alone is not clean by the letter; its last row goes on the (e) list (the owner, 2026-11-04, O-9)
+
+- R4's S2-alone run on dev dced914e8 (`r4-notes\post-exit\s2-alone.md`): no library or milestone rejection, nothing newly accepted,
+  every moved test row on the list, but one valid program outside it, `UserArithmeticUpdateTest.GenericUpdateRetainsThePublishedContract`
+  (ledger 778c6e6ebc84, a native fixture: a composed erased destruction around a self-row, GXS S1's family by R4's inspection).
+- The owner answered O-9, verbatim 「(a) 加えて着地」: that program joins H5's (e) list with count<S> (`15.6.4-abstract-reach/0`, the
+  census, TheGuardReadsEachPart's count<S> rows), the 17 ForKoto programs and BlockEscapeLoanTest's show<C> ×2, all restored by G416;
+  S2 lands without GXS after BU's review, in R5's window; S4, then H5.
+- D5 (the same run's probe): a write through a punned exclusive reference in a `during self` raw buffer is accepted on both pipelines,
+  a pre-existing hole like D1 and D6 (G416); Rec records it in STATUS as a known limit.
