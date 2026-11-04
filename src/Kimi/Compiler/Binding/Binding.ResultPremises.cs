@@ -123,8 +123,8 @@ public sealed partial class Binding
         }
     }
 
-    // A signature Origin that no bound mentions yet is known too, and becomes a variable (BoundOrigins).
-    private static bool KnownToInference(OriginInference inference, BoundOrigin origin)
+    // With `discover`, a signature Origin that no bound mentions yet is known too, and becomes a variable (BoundOrigins).
+    private static bool KnownToInference(OriginInference inference, BoundOrigin origin, bool discover = true)
     {
         if (origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto })
         {
@@ -138,7 +138,7 @@ public sealed partial class Binding
 
         if (ReferenceEquals(origin.Binder, inference.Binder) && origin.Kind is OriginKind.Parameter or OriginKind.Input)
         {
-            if (origin.Kind == OriginKind.Parameter)
+            if (origin.Kind == OriginKind.Parameter && discover)
             {
                 return true; // A signature Origin, also a result-only one, is solved as under a declared relation (Discover).
             }
@@ -156,7 +156,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < origin.Operands.Count; i++)
         {
-            if (!KnownToInference(inference, origin.Operands[i]))
+            if (!KnownToInference(inference, origin.Operands[i], discover))
             {
                 return false;
             }
@@ -168,19 +168,16 @@ public sealed partial class Binding
     private static bool CarriesResultPremises(FunctionKoto function)
         => !function.IsConstructor && !function.IsAnonymous && function.BoundSymbol?.Type is { StoresOrigin: true };
 
-    // As SolveOriginInference does for a declared relation, a premise's relation makes each signature Origin it names a variable, also
-    // one only a position without evidence names (SPEC 15.3.6, R2': DECISIONS BU-95); a result premise's relation is then a bound, and an
-    // input's shortens its shorter end (OriginInference.WellFormed). A relation over an Origin that this inference does not solve is no
-    // bound.
+    // As SolveOriginInference does for a declared relation, a result premise's relation is a bound, and a signature Origin becomes a
+    // variable, also a result-only one. An input's relation shortens only Origins that the call already solves (OriginInference.WellFormed).
+    // A relation over an Origin that this inference does not solve is no bound.
     private static void BoundOrigins(OriginInference inference, BoundOrigin longer, BoundOrigin shorter, bool result)
     {
-        if (OriginOutlives(longer, shorter) || !KnownToInference(inference, longer) || !KnownToInference(inference, shorter))
+        if (OriginOutlives(longer, shorter) || !KnownToInference(inference, longer, result) || !KnownToInference(inference, shorter, result))
         {
             return;
         }
 
-        inference.Discover(longer, 0);
-        inference.Discover(shorter, 0);
         if (!result)
         {
             if (!inference.WellFormed.Contains((longer, shorter)))
@@ -191,6 +188,8 @@ public sealed partial class Binding
             return;
         }
 
+        inference.Discover(longer, 0);
+        inference.Discover(shorter, 0);
         inference.Add(longer, shorter);
     }
 
@@ -199,6 +198,22 @@ public sealed partial class Binding
 
     // Whether a query of VisitWellFormedPremises meets a pattern part beside these parts for the first time; a leaf, or a part that
     // stores no Origin, is cheaper to visit again than to record.
+    // Whether an evidence position's pattern names the callee's Origin parameter `slot`: an Evidence root row's or the receiver's
+    // (DiscoverPremiseOrigins).
+    private static bool EvidenceNames(in SlotSolution solution, int slot)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            if (solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } && MentionsOriginSlot(pattern, solution.Binder, slot))
+            {
+                return true;
+            }
+        }
+
+        return solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern && MentionsOriginSlot(receiverPattern, solution.Binder, slot);
+    }
+
     private static bool FirstMet(TypeMemo<(BoundType Result, BoundType? Actual)> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
     {
         if (pattern.Components.Count == 0 || !pattern.StoresOrigin)
@@ -253,6 +268,47 @@ public sealed partial class Binding
         {
             var visit = new WellFormedVisit(WellFormedSubject.NamedResult, function, use, WellFormedAction.Require);
             this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, visit);
+        }
+    }
+
+    // R2' (SPEC 15.3.6; DECISIONS BU-95): a position that gives no evidence, a Signature leaf row or a default the call uses, makes each
+    // Origin of the callee that its instantiated Type `type` names and no evidence position's pattern names (EvidenceNames) a variable of
+    // the solve with no evidence polarity (0), which its premise then bounds from above (SolveOriginInference's WellFormed step); an
+    // Origin that evidence fixes, also after this solve, keeps its polarity's rule.
+    private void DiscoverPremiseOrigins(in SlotSolution solution, OriginInference inference, BoundType type)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return;
+        }
+
+        DiscoverPremiseOrigin(solution, inference, type.Origin);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            DiscoverPremiseOrigin(solution, inference, type.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.DiscoverPremiseOrigins(solution, inference, type.Components[i]);
+        }
+
+        static void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
+        {
+            if (origin is null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                DiscoverPremiseOrigin(solution, inference, origin.Operands[i]);
+            }
+
+            if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !EvidenceNames(solution, origin.Slot))
+            {
+                inference.Discover(origin, 0);
+            }
         }
     }
 

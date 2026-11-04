@@ -71,6 +71,7 @@ public sealed partial class Binding
         if (row is { Contribution: Contribution.Signature, Pattern: { StoresOrigin: true } pattern, Type: { } type })
         {
             solution.OriginInference ??= this.BeginOriginInference(solution.Call, solution.Binder);
+            this.DiscoverPremiseOrigins(solution, solution.OriginInference, type);
             this.CollectInputPremises(pattern, type, solution.OriginInference, solution.Call);
         }
     }

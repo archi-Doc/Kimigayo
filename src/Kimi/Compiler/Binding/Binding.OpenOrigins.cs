@@ -140,6 +140,56 @@ public sealed partial class Binding
         }
     }
 
+    // Whether `type` names the Origin parameter `slot` of `binder` (OpenResultOnlyOrigins, DiscoverPremiseOrigins).
+    private static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return false;
+        }
+
+        if (NamesSlot(type.Origin, binder, slot))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (NamesSlot(type.OriginArguments[i], binder, slot))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (MentionsOriginSlot(type.Components[i], binder, slot))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool NamesSlot(BoundOrigin? origin, Koto binder, int slot)
+    {
+        if (origin is null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (NamesSlot(origin.Operands[i], binder, slot))
+            {
+                return true;
+            }
+        }
+
+        return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
+    }
+
     // SPEC 15.3.6, 15.6.4 step 1: a callee's own Origin that no supplied parameter's Type and no relation clause mentions, such as the
     // result-only `s` of `constant() -> ref/i32 during s` or one only the Types of the `defaults` the call uses name (SPEC 10.1.1: a
     // default gives no evidence), has no evidence at a call that no expected result fixes. It is a local region of the call, solved with
@@ -176,55 +226,6 @@ public sealed partial class Binding
         }
 
         return opened;
-
-        static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
-        {
-            if (!type.CarriesOrigin)
-            {
-                return false;
-            }
-
-            if (NamesSlot(type.Origin, binder, slot))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (NamesSlot(type.OriginArguments[i], binder, slot))
-                {
-                    return true;
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (MentionsOriginSlot(type.Components[i], binder, slot))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        static bool NamesSlot(BoundOrigin? origin, Koto binder, int slot)
-        {
-            if (origin is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (NamesSlot(origin.Operands[i], binder, slot))
-                {
-                    return true;
-                }
-            }
-
-            return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
-        }
     }
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)

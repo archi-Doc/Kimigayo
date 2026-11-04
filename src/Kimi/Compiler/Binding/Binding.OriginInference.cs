@@ -166,13 +166,14 @@ public sealed partial class Binding
 
                 // An input's well-formedness only shortens the meet of a covariant variable that other bounds already limit, where they do
                 // not prove it: an Origin that no argument bounds, such as a receiver Borrow formed later, stays open, and a redundant
-                // operand would make the solution name an Origin it does not depend on.
-                for (var i = 0; upper is not null && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
+                // operand would make the solution name an Origin it does not depend on. A variable only a premise discovered (polarity 0,
+                // DiscoverPremiseOrigins; SPEC 15.3.6, DECISIONS BU-95) takes the meet of its premises' longer ends as its upper bound.
+                for (var i = 0; (upper is not null || variable.Polarity == 0) && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
                 {
                     if (ReferenceEquals(inference.WellFormed[i].Shorter, variable.Origin) && Resolve(inference.WellFormed[i].Longer, true) is { } stored &&
-                        !this.ProvesOriginOutlives(stored, upper, use, inference.Comparison))
+                        (upper is null || !this.ProvesOriginOutlives(stored, upper, use, inference.Comparison)))
                     {
-                        upper = this.Meet(upper, stored);
+                        upper = upper is null ? stored : this.Meet(upper, stored);
                     }
                 }
 

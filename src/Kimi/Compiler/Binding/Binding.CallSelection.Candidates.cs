@@ -672,6 +672,7 @@ public sealed partial class Binding
             if (defaults.Contains(i) && function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
                 this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
             {
+                this.DiscoverPremiseOrigins(solution, inference, instantiated);
                 this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
             }
         }
