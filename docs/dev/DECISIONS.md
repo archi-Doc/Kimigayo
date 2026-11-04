@@ -1498,6 +1498,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pre-enumerate theories by default, so a row's trait reaches neither discovery, `-trait` selection nor the result file);
   the old verdict in `Expected` with a `Mir` entry (the corpora state the SPEC in `Expected`); `Run` on the row (the SPEC
   rejects its program). Temporary: removed at R6-check with R4-M50's traits.
+  - Superseded by R5-M187 (2026-11-05, H5): S removed the `Old` entries at H5; a pair-cases row's MIR difference is its `Mir`
+    member, judged `Mir ?? Expected`.
 - **R4-M52** (owner, 2026-10-17, choosing the recommended option of each of the planning session's questions on A5 step
   1: 「(b2) 折り畳み」, 「assumed completion + α」, 「(c) base なしで採用」, 「別セッションで実施」, and for unit 1a
   「固定 Origin を関係ありと扱う」; supersedes R4-M39's ending rule and parts of R4-M37) The choices of
@@ -10962,6 +10964,8 @@ structure is recorded here by the unit that first implements it.
   MIR records (PD7), so PLAN10 §7's "P11–P12 → Emission" yields for them (K4's OD4 entry). Under sel, collector records
   publish from K4 (MIR construction and validator records already do under `mir`, R3-1). Rejected: publishing PD12 refusals
   at `check` before H5.
+  - Superseded in part by R5-M187 (2026-11-05, H5): generation's step 2, the PD12 refusal at generation between G2 and H5, is
+    gone; the gate is `Accepts`.
 - **R5-M5 `AnalyzeInstance`** (owner, 2026-10-18; OQ6, option (e)) The two definition-level holes `AnalyzeInstance` covers,
   PLAN10-X1 (abstract destruction) and abstract temporaries, are reproduced (Q1) and fixed in the old definition run as D5
   miscompile fixes (Q2, Q3; DEC O3 applies if a library or milestone program is rejected); then Q4 writes the entry
@@ -16727,6 +16731,18 @@ structure is recorded here by the unit that first implements it.
     Completion is not `Diverges`, the guess rule's own first test (the same structural completion), so nested requires whose outer
     failure bodies cannot complete cost no walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay
     quadratic in the walk (BU's 100/392/1552 at N = 8/16/32); the old check paid it only per falling require.
+- **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, R5; the H5 split plan's
+  row Rec; T-27's review N1; G's commit 44ddf5a15) Minor.
+  - pair-cases.json: a row whose MIR verdicts differ from the SPEC's keeps the SPEC's verdicts in `Expected` and `Run` and states
+    the MIR's per-case verdicts in a `Mir` member (`Expected` in the row's form and a `Note` naming its (e) row and the PLAN row that
+    restores it); `GenericOwnershipCaseTest` judges `Mir ?? Expected`, the contract S gave spec-cases (`VerifiedSpecExampleTest`).
+    Unlike spec-cases' `SpecDifference` it carries no `Category` or `Clause`: the Note states the class. A row's `Mir` member goes
+    with the unit that restores its acceptance (A4-box-ok and A4-field-ok: G147 (8)). Supersedes R4-M60's `Old` entry, which S
+    removed at H5.
+  - Generation's gate is `Accepts` alone (H5 G): R5-M4's step 2, a PD12 refusal reported at generation as a typed
+    Emission-partition record between G2 and H5 (only A1's and A2's problems refusing), is gone, since every Error row rejects at
+    check (R5-M185); an inexact body that reaches generation is `InternalInvariant_Kd` (R5-M96's amendment). Supersedes R5-M4's
+    step 2.
 
 ## R7, R8 and R9 (adopted 2026-11-03)
 
