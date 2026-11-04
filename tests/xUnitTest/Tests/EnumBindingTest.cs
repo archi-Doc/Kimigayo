@@ -267,11 +267,21 @@ public class EnumBindingTest
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
     [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
     [InlineData("func f()\n    let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
-    [InlineData("struct S\n    public let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     public void ACaseConstructionReportsItsOwnFailure(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch. The MIR also records the
+    // Field its failed initializer leaves unset, at the struct (DECISIONS R5-M184; H3b T51, class 4: both reject, an added record, Q13).
+    [Fact]
+    public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
+    {
+        const string Source = "struct S\n    public let x = Option<bool>.Some(1)\npublic func main() -> () => ()\n";
+        var errors = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
+        Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 10.8, 3.8 (DECISIONS BU-2, R11): a Never element is no evidence, while a Never component of a typed part's Type is.

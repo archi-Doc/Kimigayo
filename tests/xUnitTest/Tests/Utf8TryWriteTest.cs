@@ -96,10 +96,6 @@ public class Utf8TryWriteTest
         NativeAllocationAudit.WriteFixture("Utf8TryWriteReturn", Source + "\n" + Print, 0, 0, 0, "prefix\n");
     }
 
-    // SPEC 14.10.3, 15.6.4 (H3b F14): a Never writer operand forms no argument, so the formatting row keeps a declared atom no argument
-    // replaces and A2 records its located limit; the MIR rejects this valid program and generation refuses it (the old analysis accepted and
-    // ran it). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1, question 3; BU's PLAN G410): G410's Binding fix restores the
-    // acceptance and re-points this test back to its run.
     [Fact]
     public void FirstOperandCanTransferControlWithoutAcquiringAWriter()
     {
@@ -108,11 +104,7 @@ public class Utf8TryWriteTest
                 _ = $tryWrite(do => return 7, "\(42)")
             require run() == 7 else => $abort("first operand")
             """;
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.False(c.Accepts);
-        MirTargetSide.Check(c, (DiagnosticCode.Unsupported_Kd, new("$tryWrite(do => return 7, \"\\(42)\")")));
-        Assert.False(c.Generate(TextWriter.Null));
+        ScalarEmissionTest.EmitFixture("Utf8TryWriteFirstNever", Source, string.Empty);
     }
 
     [Fact]
