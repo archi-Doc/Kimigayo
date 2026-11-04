@@ -83,7 +83,7 @@ public sealed class MirAnalysisTest
             public func keep(self: uniq/Self, value: i32) -> i32
                 _ = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39)
                 return value
-        func deep(n: Nest<ref/i32 during a>)
+        func deep(n: ((((((((((((((((((((((((((((((((((((((((ref/i32 during a, i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32))
             let r = n@ref
         func unset(flag: bool) -> i32
             var n: i32
@@ -565,7 +565,7 @@ public sealed class MirAnalysisTest
                 "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
-                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a>",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd ((((((((((((((((((((((((((((((((((((((((ref/i32 during a, i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32)",
                 "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store",
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
@@ -590,7 +590,7 @@ public sealed class MirAnalysisTest
                 "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
                 "IncompatibleContractImplementation_Kd Self is Sink -",
                 "MovedPlace_Kd r moved",
-                "MovedPlace_Kd var box = Box.init(make()) layer", "OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep",
+                "MovedPlace_Kd var box = Box.init(make()) layer", "OwnershipDepthLimit_Kd ((((((((((((((((((((((((((((((((((((((((ref/i32 during a, i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32) deep",
                 "OwnershipDepthLimit_Kd Self is Store -",
                 "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
