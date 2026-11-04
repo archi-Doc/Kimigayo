@@ -677,7 +677,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   codes in R4 (duplicate records and test churn twice).
 - **R4-M2** Layout: `Mir/Analysis/` in namespace `Kimi.Compiler.Mir`: `MirAnalysis` (driver), `MirDataflow`,
   `MirMoveData`, `MirInit` (A1), `MirDrops` (A2), `MirLints` (A3), `MirEffects` (A4), `MirBorrows` with `.Regions`,
-  `.Conflicts` and `.Origins` (A5), `MirReport` (A6). Its stub clause is superseded by R4-M2a.
+  `.Conflicts` and `.Origins` (A5), `MirReport` (A6). Its stub clause (the first unit creates all of them as stubs, so
+  parallel units never edit the driver) is superseded by R4-M2a.
 - **R4-M3** `MirProblem`: one `MirReport.Add` applies the derived rule (R4-M10); Core's `Problem(Code, Subject)` is unchanged
   until R6. Its fields are superseded by R4-M3a.
 - **R4-M4** The first unit fixes the compared code set of each analysis: A1 initialization and moves; A3
@@ -726,12 +727,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   methods or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and
   record landing with the first analysis unit (parallel units would invent the same files).
 - **R4-M3a** (2026-10-12; supersedes R4-M3's fields) `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`, with the
-  requirement its recording rule names (R4-M67, R5-M23) and its body (R4-M71). `MirReport` merges by (code, subject, body) (R4-M71;
-  first the canonical `Problem` key (Code, Subject)), OR-ing Views into the first problem; a merged problem is derived only when
-  every report it groups is, its causes the union (R4-M132). Construction records, with the collector's, are folded into
-  `MirReport` (R6-check H3-1, R5-M182's amendment of 2026-11-03). No Requirement through the legacy `OwnershipFailure` (KR1001):
-  moving that enum into a shared area would make old-path vocabulary a shared concept; Diagnostics owns the kinds as
-  `OwnershipRequirement` (R5-M24). No Related: related sites are facts (a site and its kind's typed value, R4-M132), and fact rows
+  requirement its recording rule names (R4-M67, R5-M23) and its body (R4-M71). `MirReport` merges by the key of R4-M71 and
+  R4-M113 (code, subject, body, Reason; first the canonical `Problem` key (Code, Subject)), OR-ing Views into the first problem; a
+  merged problem is derived only when every report it groups is, its causes the union (R4-M132). Construction records, with the
+  collector's, are folded into `MirReport` (R6-check H3-1, R5-M182's amendment of 2026-11-03). Its requirement is an
+  `OwnershipRequirement` kind that Diagnostics owns (R5-M24, 2026-10-18, which replaced the no-Requirement clause). No Related: related sites are facts (a site and its kind's typed value, R4-M132), and fact rows
   (pooled, with their own index on the problem) are added by their first producer. A MIR problem's ledger row names its own
   requirement (R5-M56). Rejected: design A's (Code, Subject, Related, Requirement, Views) keyed by (requirement, code, subject); a
   Requirement through a moved legacy enum; an `int Fact` field before anything produces or reads it.
@@ -1217,8 +1217,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   local facts and their composition. Under P6 there are no per-result anchors. Open (the classes resolved by R4-M91): `unknown`
   merges Unknown, Limit and Derived, which A5's effect rule must tell apart (a Limit is `Unsupported_Kd`, a Derived site reports
   nothing, R4-M10), so A3 §4.2's `bool` should become the classes; the key storage needs a measured check on a large program
-  (PLAN G93). Rejected: keys grown inside the worklist (a chain whose callers come first gains one key per pass, quadratic
-  evaluations); a stored record per site (far more cold A4 allocation than the query); open keys and owner Type arguments on `MirStatic` (needed only without P5); a key list per node (union and growth
+  (PLAN G93). Rejected: keys grown inside the worklist (the probe: a chain whose callers come first gains one key per pass,
+  quadratic evaluations); a stored record per site (far more cold A4 allocation than the query); open keys and owner Type arguments on `MirStatic` (needed only without P5); a key list per node (union and growth
   checks per element); A4 re-deriving reads and writes from access flags (a second copy of MirUses' rule). Not temporary.
 - **R4-M39** (owner: adopted on 2026-10-17, 「S1採用します」; its ending rule, the base before the last dereference, is superseded by
   R4-M52) The A5 plan's S1,
