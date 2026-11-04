@@ -17,8 +17,9 @@ namespace Kimi.Compiler;
 // position's Type can hold a source.
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
-// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and a library Type
-// keeping no part hold any; the input fold's walks and the fits stop at the depth bound (StorageBound).
+// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind, a library Type
+// keeping no part and raw storage a value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound
+// (StorageBound).
 // Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {

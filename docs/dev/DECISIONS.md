@@ -10499,6 +10499,11 @@ resumed by R4-M86 (2026-10-20).
     Origins still decide every fit (the premise closure), so the kind is R4-M154's Value of a borrow formed through the input's
     layer, as the twin's: Content and Chain never carry the borrow's own Loans (BU-66 A2), and G413's grain is the raw sources'.
     Both Holds readers take it (Borrows' referent, CanHold's position: 5.7 Calls bounds a `during self` store by Origins only).
+    BU-91 is the fit only: what a `during self` layer admits at positions (`SelfAdmitted`, R4-M154's Q2 (a) "Type arguments by their
+    actual Types") is unchanged.
+  - Moves: the referent side, `at` over a punned buffer, `{0 Content}` -> `{0 Value}`; the position side, `make(x: ref/i64 during a,
+    y: ref/i32 during a) -> HolderA during a` (`HolderA {a}` holding `r: ref/i32 during a` and `raw/u8 during self`), `{0 Content,
+    1 Value}` -> `{0 Value, 1 Value}`, so A5 errs at `big = 3` while `h` lives (G415's review B1; dev's old analysis rejects both).
   - Unchanged: `KimiLibraryCatalog.WithinRows` (Raw.slice): a raw input has no source and its own layer no Origin a fit reaches,
     so the row is a published Origin relation (D14, also Binding.CallRelations'), not a case of this rule. No existing row of
     RetentionTest, FixedOriginRetentionTest, MirBorrowsTest, MirOriginsTest, MirEffectsTest or KimiLibraryShapeTest moves; the

@@ -200,6 +200,20 @@ public sealed partial class RetentionTest
         Assert.Equal("result {0 Value}", Declared(c, "at"));
     }
 
+    // The same rule at a position (SPEC 5.7 Calls: through `during self` a call may store what the holder's Type admits, an Origin bound):
+    // a result whose `during self` storage `x` reaches by its Origin can hold `x`'s own value, so `make` keeps it by Value; without the
+    // raw layer, Content (PLAN G415's review B1). Fails on dev a788e14d5: `{0 Content, 1 Value}` with the layer.
+    [Theory]
+    [InlineData("raw/u8 during self", "null", "result {0 Value, 1 Value}")]
+    [InlineData("i32", "0", "result {0 Content, 1 Value}")]
+    public void AResultHoldingRawStorageCanHoldAnInputOfAnyType(string buffer, string initial, string expected)
+    {
+        var c = Bind($"struct H {{a}}\n    public var r: ref/i32 during a\n    public var buffer: {buffer}\n" +
+            $"    public init(r: ref/i32 during a)\n        self.r = r\n        self.buffer = {initial}\n" +
+            "func make(x: ref/i64 during a, y: ref/i32 during a) -> H during a => H.init(y)\n");
+        Assert.Equal(expected, Declared(c, "make"));
+    }
+
     // SPEC 15.6, 15.6.4, 15.3.5: an input written through an exclusive or raw layer, also one an owned aggregate holds (an invariant slot),
     // is an output; another input whose Origin outlives the written positions is stored there, the target's own content too. An exclusive
     // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read

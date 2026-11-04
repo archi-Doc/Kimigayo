@@ -1165,6 +1165,37 @@ public sealed partial class MirBorrowsTest
             Problems(Source));
     }
 
+    // The same rule at a position (PLAN G415's review B1; DECISIONS BU-91): `make`'s result holds `during self` storage that `x` reaches
+    // by its Origin, so it keeps `big`'s Loan: posUse errs at `big = 3` while `h` lives, posOk writes after its last use. Fails on dev
+    // a788e14d5: posUse valid.
+    [Fact]
+    public void AResultHoldingRawStorageKeepsAnInputOfAnyType()
+        => Assert.Equal(
+            ["posUse: big = 3"],
+            Problems("""
+                struct HolderA {a}
+                    public var r: ref/i32 during a
+                    public var buffer: raw/u8 during self
+                    public init(r: ref/i32 during a)
+                        self.r = r
+                        unsafe => self.buffer = Raw.allocate<u8>(8)@(raw/u8 during self)
+                func make(x: ref/i64 during a, y: ref/i32 during a) -> HolderA during a
+                    return HolderA.init(y)
+                func posUse()
+                    var one = 1
+                    var big: i64 = 2
+                    let h = make(big@ref, one@ref)
+                    big = 3
+                    inspect(h.r)
+                func posOk()
+                    var one = 1
+                    var big: i64 = 2
+                    let h = make(big@ref, one@ref)
+                    inspect(h.r)
+                    big = 3
+
+                """));
+
     // Content rows stay one read (SPEC 15.6.4's premises; R4-M138 keys the closure on the row's kind only): an Array iterator's `next`
     // (its premise result row), a Dictionary `remove`'s key borrow and a Utf8Writer `write<T>` (a store untied only by `static`) keep what
     // one read carries, valid where the borrowed values are not used after `y = 5`; the twins use them after it.
