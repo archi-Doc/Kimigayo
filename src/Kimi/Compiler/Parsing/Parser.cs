@@ -3487,6 +3487,20 @@ CloseParameters:
                 return ParseRequire(ref reader);
             }
 
+            if (IsEffectStart(ref reader, specification: false))
+            {
+                // A single item is an expression or a statement and has no leading region (SPEC F.10.1, 7.5), so an effect item
+                // there is misplaced in every body; the body holds the Error it rests on, as a missing body does.
+                var misplaced = ParseBodyEffect(ref reader, null);
+                var supplied = reader.NewErrorKoto();
+                if (misplaced is { } cause)
+                {
+                    reader.CodeContext.RecordRecovery(supplied, cause);
+                }
+
+                return supplied;
+            }
+
             return IsBlockStatementStart(ref reader) ? ParseBlockStatement(ref reader) : ParseRequiredExpression(ref reader);
         }
         finally

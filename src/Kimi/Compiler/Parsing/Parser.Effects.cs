@@ -63,11 +63,14 @@ public static partial class Parser
         return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon);
     }
 
-    /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.11.1).</summary>
+    /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.11.1). The item
+    /// ends with its line in an indented list; in a single-item body it ends where the enclosing construct's own syntax, such as
+    /// a closer, <c>,</c> or <c>else</c>, continues the line (SPEC 14.2.1, F.4.4).</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns>The item. A missing or unknown bound reports the Error and leaves the item as its recovery.</returns>
     internal static EffectBoundKoto ParseEffectBound(ref TokenReader reader)
     {
+        var single = reader.SingleBodyRegion;
         var start = reader.Read().Span.Start;
         Koto? selector = null;
         Koto? name = null;
@@ -87,10 +90,13 @@ public static partial class Parser
         }
         else
         {
-            // The vocabulary is closed; the rest of the line belongs to the rejected bound.
+            // The vocabulary is closed; the rest of the item belongs to the rejected bound.
             var missing = reader.Expect(SyntaxForm.EffectBound);
             cause ??= missing;
-            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+            while (reader.CanRead && !(single ? IsExpressionBoundary(ref reader) : reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock))
+            {
+                reader.Advance();
+            }
         }
 
         var effect = new EffectBoundKoto(ref reader, SourceSpan.FromBounds(start, reader.PreviousSyntaxEnd), selector, name);
@@ -99,7 +105,11 @@ public static partial class Parser
             reader.CodeContext.RecordRecovery(effect, recovery);
         }
 
-        reader.ExpectLineEnd();
+        if (!single)
+        {
+            reader.ExpectLineEnd();
+        }
+
         return effect;
     }
 
@@ -108,18 +118,22 @@ public static partial class Parser
     /// misplaced and, as a misplaced <c>origin</c> clause, introduces nothing.</summary>
     /// <param name="reader">The token reader, at <c>effect</c>.</param>
     /// <param name="leading">The function whose leading region holds the item, or <see langword="null"/>.</param>
-    internal static void ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
+    /// <returns>The key of the misplaced item's Error, or <see langword="null"/> when the item is kept or reports nowhere.</returns>
+    internal static DiagnosticKey? ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
     {
         ReportPendingAttributes(ref reader);
         var effect = ParseEffectBound(ref reader);
         if (leading is null)
         {
-            effect.Unexpected(SyntaxForm.EffectItem);
+            return effect.Unexpected(SyntaxForm.EffectItem);
         }
-        else if (!reader.InExcludedSyntax)
+
+        if (!reader.InExcludedSyntax)
         {
             leading.AddEffectBound(effect);
         }
+
+        return null;
     }
 
     // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The last
