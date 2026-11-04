@@ -670,21 +670,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
 
 ## R4 (accepted 2026-10-11)
 
-- **R4-M1** (superseded for generation-time refusals under sel by R5-M96; for construction records, validator findings and collector
-  records by R5-M156: they join acceptance at check on every pipeline, the MIR analysis problems staying unpublished until H3) Shadow: under `mir` the old path still decides acceptance,
-  Problems and diagnostics. The analyses run once
-  per program version after build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); MIR problems stay
-  unpublished on `MirProgram` until R6 unit a; an analysis exception fails the test. Rejected: MIR deciding codes in R4
-  (duplicate records and test churn twice).
-  - Superseded in part by R5-M185 (2026-11-04, H5): the MIR decides acceptance on every pipeline; the old path runs only for the
-    transitional entry's readers until H10b.
+- **R4-M1** Shadow, superseded in part: the MIR decides acceptance on every pipeline, and the old path runs only for the
+  transitional entry's readers until H10b (R5-M185, 2026-11-04; before it R5-M156 for construction records, validator findings
+  and collector records, and R5-M96 for generation-time refusals under sel). The analyses run once per program version after
+  build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); an analysis exception fails the test. Rejected: MIR deciding
+  codes in R4 (duplicate records and test churn twice).
 - **R4-M2** Layout: `Mir/Analysis/` in namespace `Kimi.Compiler.Mir`: `MirAnalysis` (driver), `MirDataflow`,
   `MirMoveData`, `MirInit` (A1), `MirDrops` (A2), `MirLints` (A3), `MirEffects` (A4), `MirBorrows` with `.Regions`,
-  `.Conflicts` and `.Origins` (A5), `MirReport` (A6). The first unit creates all of them as stubs, so parallel units never
-  edit the driver. The stub clause is superseded by R4-M2a.
-- **R4-M3** `MirProblem(Code, Subject, Related, Requirement, Views, Fact)` with pooled fact rows; one `MirReport.Add`
-  applies the derived rule (R4-M10). Core's `Problem(Code, Subject)` is unchanged until R6. The fields are superseded by
-  R4-M3a.
+  `.Conflicts` and `.Origins` (A5), `MirReport` (A6). Its stub clause is superseded by R4-M2a.
+- **R4-M3** `MirProblem`: one `MirReport.Add` applies the derived rule (R4-M10); Core's `Problem(Code, Subject)` is unchanged
+  until R6. Its fields are superseded by R4-M3a.
 - **R4-M4** The first unit fixes the compared code set of each analysis: A1 initialization and moves; A3
   `RequireFallthrough`; A4 effect bounds and the effect-limit Unsupported; A5 Loan conflicts, default-argument access,
   Origin relations and `OwnershipStorageLimit_Kd`; every old Ownership-partition `Unsupported_Kd`. Control-flow lints,
@@ -711,46 +706,36 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; A1 and A2
   at 2g-6).
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
-  as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
-  places the merge across bodies at publication.
+  as the case fact. Views are never collapsed. R4-M71 keys `MirReport` by (code, subject, body) and places the merge across
+  bodies at publication.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
   except an (a) row whose library fix lands in the same unit. Suspended until the joint core lands (R4-M35).
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
-  residue). Ratchets: control-flow structure reads at most 1, `Ownership.Bodies` reads at most 110. The numbers are superseded
-  by R4-M13a.
+  residue), under ratchets on control-flow structure reads and `Ownership.Bodies` reads; the numbers are R4-M13a's.
 - **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena. The
   arena scope is superseded by R4-M15a.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
   rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`. R4-M35 adds a SPEC-clause column for (d) rows,
   which R4-M46 refines.
-- **R4-M2a** (2026-10-12, planning session; design A of two independent U0b designs; supersedes R4-M2's stub clause, its
-  layout stays). U0b creates only `MirAnalysis`, the driver whose contract fixes the pass order (A3 per body; per body and
-  view A1, A2, A4's local facts; A4 over the program; A5 per view; A6 inside `MirReport`), and `MirReport`; each analysis
-  unit creates its own files and adds one field and one pass row at its position. R4-M2's reason no longer holds: unused
-  parameters and members are build errors (CR-A7), and AGENTS (2026-10-12) admits no structure without behavior; parallel
-  units' driver edits are line-level, resolved at rebase. The three-consecutive-units restructuring of `MirAnalysis.cs` is
-  deferred to the R4 exit (stage ledger). Rejected: stubs (unused parameters or fake uses, edited anyway); partial methods
-  or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and record
-  landing with the first analysis unit (parallel units would invent the same files). R4-M35 moves the restructuring to before the R5
-  split.
-- **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields; its fields amended by
-  R4-M67: the requirement each recording rule names, and by R4-M71: the body; its key superseded by R4-M71: (code, subject, body)).
-  `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
-  `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
-  (code, subject, Reason)); a merge keeps the first problem's facts (superseded by R4-M132: a merged problem is derived only when
-  every report it groups is, its causes the union). Construction records keep their own merge in
-  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger; done, with the collector's records, by R6-check H3-1,
-  R5-M182's amendment of 2026-11-03).
-  No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
-  make old-path vocabulary a shared concept (this naming clause is superseded by R5-M24: Diagnostics owns the kinds as
-  `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
-  derivation clause is superseded by R5-M23: each recording rule names the requirement; revised ask A-5). No
-  Related: related sites are facts (a fact a site and its kind's typed value since R4-M132), and fact rows (pooled, with their own index
-  on the problem) are added by their first
-  producer. The ledger fills its requirement column from the old side only (superseded by R5-M56: a MIR problem's row names
-  its own requirement). Rejected: design A's (Code, Subject, Related, Requirement, Views) keyed by (requirement, code,
-  subject); a Requirement through a moved legacy enum; an `int Fact` field before anything produces or reads it.
-- **R4-M17** (2026-10-12, planning session; design A of two independent U0b designs) The difference harness.
+- **R4-M2a** (2026-10-12; supersedes R4-M2's stub clause, its layout stays) U0b creates only `MirAnalysis`, the driver whose
+  contract fixes the pass order (A3 per body; per body and view A1, A2, A4's local facts; A4 over the program; A5 per view; A6
+  inside `MirReport`), and `MirReport`; each analysis unit creates its own files and adds one field and one pass row at its
+  position. R4-M2's reason no longer holds: unused parameters and members are build errors (CR-A7), and AGENTS (2026-10-12)
+  admits no structure without behavior; parallel units' driver edits are line-level, resolved at rebase. The restructuring of
+  `MirAnalysis.cs` comes before the R5 split (R4-M35). Rejected: stubs (unused parameters or fake uses, edited anyway); partial
+  methods or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and
+  record landing with the first analysis unit (parallel units would invent the same files).
+- **R4-M3a** (2026-10-12; supersedes R4-M3's fields) `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`, with the
+  requirement its recording rule names (R4-M67, R5-M23) and its body (R4-M71). `MirReport` merges by (code, subject, body) (R4-M71;
+  first the canonical `Problem` key (Code, Subject)), OR-ing Views into the first problem; a merged problem is derived only when
+  every report it groups is, its causes the union (R4-M132). Construction records, with the collector's, are folded into
+  `MirReport` (R6-check H3-1, R5-M182's amendment of 2026-11-03). No Requirement through the legacy `OwnershipFailure` (KR1001):
+  moving that enum into a shared area would make old-path vocabulary a shared concept; Diagnostics owns the kinds as
+  `OwnershipRequirement` (R5-M24). No Related: related sites are facts (a site and its kind's typed value, R4-M132), and fact rows
+  (pooled, with their own index on the problem) are added by their first producer. A MIR problem's ledger row names its own
+  requirement (R5-M56). Rejected: design A's (Code, Subject, Related, Requirement, Views) keyed by (requirement, code, subject); a
+  Requirement through a moved legacy enum; an `int Fact` field before anything produces or reads it.
+- **R4-M17** (2026-10-12; its MIR side amended by R4-M45) The difference harness.
   `Compilation.BuildMir` builds, validates and analyzes (`MirAnalysis.Run`), once per Binding pass. The Transitional
   internal static event `Compilation.Analyzed`, raised at the end of every `Analyze` on both pipelines when both paths'
   records of the version are final, is the ledger's one observation point: observers only read, no compiler code
@@ -761,29 +746,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
   sha`) and each source go to that directory; one aggregation (fixture disposal, or `MirDifferenceTest.RequestedLedger`
   with `KIMI_MIR_LEDGER`) pairs an unmatched old and new row of one code in one body into a `location` difference, counts
   the rest `missing` or `new`, adds an `acceptance` difference when a comparison's A-owned records are on one side only,
-  and classifies signatures (section, kind, analysis, code, requirement, form; R5-M56 adds `side` after `kind`) by the
-  tracked table into `ledger.tsv` and `summary.md` (P9: the unclassified signatures). The compared set (R4-M4) is a table in
-  the fixture of requirements, each with every code it reports and the owning analysis: ownership failures except
-  TransferRequired and Internal (A1, A4, A5; U for the Unsupported gates; - for the expansion limit), ControlFlow
-  `RequireFallthrough_Kd` (A3), `Binding.VirtualEffectBound` (A4) and `Binding.OriginRelation` (A5); a MIR problem takes its
-  code's analysis (superseded by R5-M56: its pair's analysis in the compared set), a MIR construction record is B.
-  `Binding.IncompatibleImplementation` and the effect-limit `Binding.Unsupported` also carry non-effect records and are
-  compared only from U6, which names how the effect subset is identified. The construction
-  records keep their own merge until R6 unit a folds them into `MirReport` (R4-M3a). Tier 1:
+  and classifies signatures (section, kind, side (R5-M56), analysis, code, requirement, form) by the tracked table into
+  `ledger.tsv` and `summary.md` (the unclassified signatures). The compared set (R4-M4) is a table in the fixture of
+  requirements, each with every code it reports and the owning analysis: ownership failures except TransferRequired and
+  Internal (A1, A4, A5; U for the Unsupported gates; - for the expansion limit), ControlFlow `RequireFallthrough_Kd` (A3),
+  `Binding.VirtualEffectBound` (A4) and `Binding.OriginRelation` (A5); a MIR problem takes its pair's analysis in the compared
+  set (R5-M56), a MIR construction record is B. `Binding.IncompatibleImplementation` and the effect-limit `Binding.Unsupported`
+  also carry non-effect records and are compared only where an effect check made them (R4-M23). Tier 1:
   `MirDifferenceTest.RequestedCorpus` checks the diagnostic corpus and every `kimi` block of docs/spec through the check
   entry; tier 2: the Functional suite under mir with the ledger; the Allocation tests run under mir without it, since the
-  observer allocates. Rejected: the driver called by `MirBuilder` (construction would own the P7–P9 order); analyzing
-  inside `Analyze` (dumps and tests calling `BuildMir` would see unanalyzed programs); a hook inside `MirAnalysis` (the old
-  analysis runs after `BuildMir`); capture in test helpers (571 `Analyze` calls; the check entry's compilations unreachable);
-  a per-compilation sink (the same static, or 277+ `CreateForTest` edits that still miss the check entry);
-  compiler-written evidence (product file output by an environment variable); a DiagnosticListener (more code, same role);
-  a ModuleInitializer with ProcessExit (no lifecycle guarantee); a Python aggregator (an untracked second
-  implementation); design B's content-hash fast path (the Functional/Allocation split is simpler), its positional split
-  of `Compilation.Problems` (order-dependent; computing SourceRefs numbers unnumbered nodes under the observer) and its
-  shipping only the hook in U0b (two parallel analysis units would invent the driver and record). R4-M35 ends its role as an exit
-  gate, and tier 1 gains expected codes for the SPEC examples.
-- **R4-M18** (2026-10-12, main session; two independent designs: A chosen with B's table-free report, publication rule and
-  dependent adaptations; revised after the independent review for SPEC 23.1) The Semantics case bound (`PairBinder.CaseBound`,
+  observer allocates. R4-M35 ends its role as an exit gate, and tier 1 gains expected codes for the SPEC examples. Rejected:
+  the driver called by `MirBuilder` (construction would own the P7–P9 order); analyzing inside `Analyze` (dumps and tests
+  calling `BuildMir` would see unanalyzed programs); a hook inside `MirAnalysis` (the old analysis runs after `BuildMir`);
+  capture in test helpers (hundreds of `Analyze` calls; the check entry's compilations unreachable); a per-compilation sink (the
+  same static, or hundreds of `CreateForTest` edits that still miss the check entry); compiler-written evidence (product file
+  output by an environment variable); a DiagnosticListener (more code, same role); a ModuleInitializer with ProcessExit (no
+  lifecycle guarantee); a Python aggregator (an untracked second implementation); design B's content-hash fast path (the
+  Functional/Allocation split is simpler), its positional split of `Compilation.Problems` (order-dependent; computing SourceRefs
+  numbers unnumbered nodes under the observer) and its shipping only the hook in U0b (two parallel analysis units would invent
+  the driver and record).
+- **R4-M18** (2026-10-12) The Semantics case bound (`PairBinder.CaseBound`,
   64; SPEC 8.15, 23.1.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
   signature and before the parts are bound: a function or Property whose defaults, base initializer, body, initializer or accessor
   bodies would be verified over `PairBinder.CaseProduct` > 64 cases fails with CaseLimit (only as its first failure) and reports
@@ -796,12 +778,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   normally. A definition without parts is never bounded; Closures, templates and accessors share their definition's binders, so an
   adaptation inside a definition within the bound has at most 64 rows and no cap of its own. `MirValidator` rejects a body with
   more views (`Binder`, `InternalInvariant_Kd`) and the analyses trust it (R4-M11). R4-M4's pass-through of `OwnershipCaseLimit` no
-  longer applies; the code is a Binding record. Deleted: the old analysis's check, `OwnershipFailure.CaseLimit` and
-  `OwnershipAnalysis.CaseBound`, the `Ownership.CaseLimit` requirement, and the adaptation product check, 64-row cap and cause map.
-  Rejected: a driver skip or assertion (a consumer deciding a producer's contract); leaving the parts unbound (design A's first
-  form: it hides their independent errors, SPEC 23.1); MIR deciding the bound; a non-form failure (order-dependent caller
+  longer applies; the code is a Binding record.
+  Rejected: a driver skip or assertion (a consumer deciding a producer's contract); leaving the parts unbound (it hides their
+  independent errors, SPEC 23.1); MIR deciding the bound; a non-form failure (order-dependent caller
   records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
-  Diagnostic sets change only in already-rejected programs; acceptance does not change.
 - **R4-M45** (2026-10-17, tooling session; plan §8 of the Complete Polonius A5 Plan, R4-M35; amends R4-M17's MIR side) The
   SPEC-example oracle, which gives R4-M17's tier 1 its expected codes as an always-on theory beside `RequestedCorpus`.
   `tests/diagnostics/spec-cases.json` gives SPEC examples the Error records the SPEC gives them: the code DIAGNOSTICS names, else the
@@ -841,9 +821,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   and precision losses are counted from the step-0 audit tables and plan §10 OD13 (design A3 §9), which are draft records, not tracked
   test inputs (Verify's manifest excludes `draft/`). Rejected: blocking by kind alone (code and location choices would block); a
   milestone flag in the raw row (a second R4-M17 row shape); a tracked metrics table.
-- **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
+- **R4-M19** (owner O1, 2026-10-12) An explicit case
   adaptation (SPEC 8.14, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
-  `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
+  `MirRvalueKind.Adapt` (KR1003). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
   operand 1 is the TypeToken of Binding's source Type, since `ExplicitAdaptationPlan.Select` decides by interned identity and
   the operand Place's MIR Type may differ from Binding's in Origins. Place is the payload one implicit layer below the operand
   (`Follow(P, 1)`), so object borrows and borrowing upcasts borrow the whole object, never a base; Type is Binding's target;
@@ -861,47 +841,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
   statement masks (plan §5.6.1); the source taken from the operand Place's MIR Type; a MirBody plan table (a table, adder,
   reset, range rules and folding); analyses querying MirCases per Adapt (every analysis would special-case it); moving
   `Select` into TyCtxt (it edits frozen call sites, D5); a MIR copy of `Select` modulo Origins (a second copy). Not temporary.
-- **R4-M7a** (2026-10-12, main session; supersedes R4-M7's row shape): A3's fact is `MirBody.MustNotComplete`, rows
+- **R4-M7a** (2026-10-12; supersedes R4-M7's row shape): A3's fact is `MirBody.MustNotComplete`, rows
   `(Entry, End, Subject)`: a require's failure body, entered at Entry, whose end End (an Unreachable without a check
   target) no runtime path from Entry may reach; Subject the failure body. The builder adds a row where it finishes a
   require; the validator checks both blocks and End's terminator (`TargetRange`); the dump prints one line per row; a
   default copy has no rows (A3 judges the template once, SPEC 7.2.3). A3 (`MirLints`) walks runtime edges only with
   `MirReach`, the one reachability walk (the validator walks all edges), seeding each row's Entry from the last row to the
-  first, so each verdict is exact and each block is visited once per body. Reason R4-M7's `(block, SourceRef)` no longer
-  holds: a walk from the body's entry cannot assume entry to a failure body that only the checks reach (SPEC 14.11,
+  first, so each verdict is exact and each block is visited once per body. Reason (against R4-M7's `(block, SourceRef)`): a walk from the body's entry cannot assume entry to a failure body that only the checks reach (SPEC 14.11,
   14.10.3). Still rejected: inferring the end from Unreachable. Derived A3 problems (an end reached only through an Opaque
   site whose completion is undecided: an unselected `#switch`, a Binding failure whose Type may be Never) need a
   published fact and are left to U11/R6; rejected: a body-level `#switch` rule (syntax ancestry, SPEC 23.1.2; a KR1006
   row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
   Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
-- **R4-M20** (2026-10-12, planning session; design A of two independent U1 designs, with design B's three lanes; its union join and
-  backward clause superseded by R4-M34, its ring worklist by R4-M65) MIR dataflow.
+- **R4-M20** (2026-10-12; its union join and backward clause superseded by R4-M34, its ring worklist by R4-M65) MIR dataflow.
   `MirDataflow` solves forward bit-set problems over flow heads: a block whose only edge is a runtime edge into a block with no
   other predecessor that is not the entry continues into it, so a chain of blocks shares one state, stored only at its head. One
   pooled arena of heads × stored words, word-major (the lanes of 64 paths per word group); only flow paths are stored, and
   chain-local paths (a root whose events all lie in one chain from its StorageLive, such as a statement's temporaries; a
   StorageDead in another chain is no event, since it kills whatever state arrives) live in the scratch. Reverse postorder once
-  per body from the one traversal owner `MirReach`; a ring worklist seeded with every head in reverse postorder, with queued
-  bits; union join. P1 follows runtime edges from the entry; P2 follows runtime and CheckTarget edges and writes only heads P1
-  did not reach, P1's states frozen (a P1 head passes its state once along its CheckTarget); `Replay` gives each reached chain
-  its converged state for the checks and later readers (A2). The backward direction (liveness; superseded by R4-M24 for liveness: a
-  chain P1 reached joins its runtime successors only) arrives with U7, its
-  first reader. The arena is dense: linear in blocks at fixed flow paths and in flow paths at fixed blocks (V16's reading),
-  quadratic where long-lived locals cross many heads (`MirBuildTest.BodiesScaleLinearly` prints its words). Rejected: a state
-  per block (design B; O(blocks × paths/64) arena and time when calls split blocks while locals grow, quadratic in V16's
-  straight shape and in `MirBuildTest.BodiesScaleLinearly`, which measures `BuildMir` and so the analysis); porting the old
-  solver (OwnershipBody's five lanes, two slots per path, N7); one pass over all edges (SPEC 14.10.3 ¶4); gen/kill block
-  summaries reused across views (a second arena; reverse postorder converges acyclic code in one sweep; views above one are
-  rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second or third block walk beside
-  `MirReach`.
-- **R4-M21** (2026-10-12, planning session; design A with design B's path keys, lanes and transparent PairLayer) Move paths and
+  per body from the one traversal owner `MirReach`. P1 follows runtime edges from the entry; P2 follows runtime and CheckTarget
+  edges and writes only heads P1 did not reach, P1's states frozen (a P1 head passes its state once along its CheckTarget);
+  `Replay` gives each reached chain its converged state for the checks and later readers (A2). The arena is dense: linear in
+  blocks at fixed flow paths and in flow paths at fixed blocks (V16's reading), quadratic where long-lived locals cross many
+  heads. Rejected: a state per block (O(blocks × paths/64) arena and time when calls split blocks while locals grow, quadratic in
+  V16's straight shape); porting the old solver (OwnershipBody's five lanes, two slots per path, N7); one pass over all edges
+  (SPEC 14.10.3 ¶4); gen/kill block summaries reused across views (a second arena; reverse postorder converges acyclic code in
+  one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
+  or third block walk beside `MirReach`.
+- **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
   case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
   Deref, SPEC 13.5.5); Deref and Index end a path (an access through them is an access of the prefix's path; a Move through
   them has no Move Path, except through a raw pointer: an untracked Take, SPEC 5.2.3). Paths are numbered in pre-order without a
   stack, so a subtree is a range; a constructor's `_0` (`AdtDef.IsConstructor`) has a child per Field and its base. `MirInit`
-  (A1) keeps three lanes, joined by union: MaybeUninit, MaybeMoved, EverInit (MaybeInit joins with A2, U5, its first reader). A
+  (A1) joins its lanes by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (R4-M6a). A
   definition needs each strict ancestor's own bit (its construction fact) initialized, reports ReassignedLet when a path
   admitting one placement was ever initialized in the binding lifetime (the paths of a `let` Var, and of a constructor's Field
   that `AdtDef.PlacedOnce` names: a `let` Field or one with a custom `set`, SPEC 11.7), then initializes the subtree; a Move
@@ -918,47 +892,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
   a Field; a Return checks nothing (every path into a constructor's Return passes an exit request, and an ordinary function's
   `_0` at its Return would show only a builder defect). A1 reads each view's uses through `MirUses.ForEach(MirCases, …)`, which
   resolves an Adapt per view (R4-M19); a body without a case-dependent access (`MirAccess.CaseDependent`: a PairLayer step, a
-  PairAcquire, an Adapt) is analyzed once, for every view. PreparedInput (DefaultArgumentMove), Opaque-root and Inlined rules
-  stay MirReport's (R4-M10, U11). Rejected: interning analysis projections as keys (an analysis must not intern, and a
-  constructor's unplaced Fields have no chain); two slots per path and recursive child walks (the old path); covered paths whose
-  own bit is left out of a use (design A: a whole use then skips the construction fact) and PairLayer paths (design A: the
-  covered-path, layer-step and owner-view parent rules they need); a MirBody constructor flag or a new MirLocalRole member
+  PairAcquire, an Adapt) is analyzed once, for every view. Opaque-root and Inlined rules stay MirReport's (R4-M10). Rejected:
+  interning analysis projections as keys (an analysis must not intern, and a constructor's unplaced Fields have no chain); two
+  slots per path and recursive child walks (the old path); covered paths whose own bit is left out of a use (a whole use then
+  skips the construction fact) and PairLayer paths (the covered-path, layer-step and owner-view parent rules they need); a MirBody constructor flag or a new MirLocalRole member
   (vocabulary for a declaration fact Binding publishes); a constructor recognized by MIR shape (an empty struct's constructor
   writes nothing); MoveData per view (only PairLayer ends differ, resolved per access); collapsing views (R4-M11);
-  DefaultArgumentMove decided in A1 (R4-M10's rule); reporting on temporaries (false problems in check-only code,
-  `artifacts/verify/mir-diff/r4-u1-exp-temps`); a completeness check at the Return (after the defers, which cannot place a
-  Field, and a second record of an early return's missing Field); a vocabulary member or a role for the exit request (a FakeRead
-  is the analyses' read). The first-placement rule, the exit request, the reporting rule, the whole-subtree use and the delivery
-  rule were added after U1's ledger and its independent review (main session, 2026-10-12). Its three lanes are superseded by
-  R4-M6a (five lanes). Its rejection of DefaultArgumentMove decided in A1, and the PreparedInput rule left to MirReport, are
-  superseded by R4-M69.
-- **R4-M15a** (2026-10-12, planning session; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
+  reporting on temporaries (false problems in check-only code); a completeness check at the Return (after the defers, which
+  cannot place a Field, and a second record of an early return's missing Field); a vocabulary member or a role for the exit
+  request (a FakeRead is the analyses' read).
+- **R4-M15a** (2026-10-12; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
   Resource code; it is decided at the one place that sizes analysis arenas, `MirDataflow.Prepare` (A1's state arena now, A5's
   Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.2's text changes in R6). An
   over-limit body records the code once at the body's subject and A1 does not analyze it; the driver owns that skip once A2 and
   A5 read the arena (U5, U7). Reason: the dense arena is O(heads × paths/64), and a body bounded only by the 65,536-statement
   expansion limit could otherwise exhaust memory.
-- **R4-M6a** (2026-10-12, main session; design A of two independent U5 designs, with design B's problem code; refines R4-M6's
-  shape, supersedes R4-M21's "three lanes" and implements R4-M15a's driver skip for A2; its table amended by R4-M67: each body's
-  completed views) Drop elaboration (A2). `MirDrops` judges
+- **R4-M6a** (2026-10-12; refines R4-M6's shape, supersedes R4-M21's three lanes and implements R4-M15a's driver skip for A2;
+  its table amended by R4-M67: each body's completed views; its input for a destructor body refined by R4-M6b) Drop elaboration
+  (A2). `MirDrops` judges
   each Drop the runtime edges reach from the state A1's checks replay holds before it and writes `MirProgram.Drops`
   (`MirDropTable`, per program version by body ordinal); MIR is not rewritten. A Drop only check edges reach has no row (plan
   5.6.3; the R4 rewrite of SPEC 14.10.3, plan §16-4, states that drop elaboration and its destructor rule apply to runtime paths
   only). A1's transfer keeps five lanes: for A2 MaybeInit and MaybePartial (a non-root path a Move or a Drop took out of its
   parent, cleared with the subtree by any event of an ancestor-or-self), so the state is exact under union joins for the programs
   A1 accepts; A1 hands A2 the paths its entry initializes (the arguments'; a constructing `_0`'s own bit has no subtree event,
-  so no point, decision risk 6). Five lanes are kept for every body (decision 1): the 64 MiB arena limit (R4-M15a) now trips at
-  3/5 of U1's heads × words (about 23% smaller N in the N-heads × N-paths shape); V17 shows no affected program; a per-body lane
-  count is reconsidered at V18. Per view: Elide where the case Type needs no drop (`MirTypes.MayNeedDrop`) or nothing is initialized on any path;
+  so no point). Five lanes are kept for every body, though the arena limit (R4-M15a) then trips at 3/5 of a three-lane body's
+  heads × words; no measured program was affected. Per view: Elide where the case Type needs no drop (`MirTypes.MayNeedDrop`) or nothing is initialized on any path;
   Keep where the whole is initialized on every path or the Place has no Move Path (a static, a Place through a reference or an
   index); Flag where it is complete or wholly absent on every path, the flag mirroring the path's own bit; Open where a part may
   be missing: the components without a child path follow the own bit, each child path its own verdict. A layer whose Type
   declares a `drop` and that may be incomplete at a Drop is `MovedPlace_Kd` at the Drop (SPEC 15.1.3, 16.3.2), any root (an
   UninitializedPlace variant at a Drop needs a producer of part Drops of a maybe-uninitialized layer; none exists (the
   replacement Drop's Define clears it; U5b's receiver parts are initialized at entry) — add it with that producer), replacing the old path's Unsupported gate on a partial Move through a drop-bearing
-  ancestor; check-only code is not judged (plan Appendix B C3). Rows `MirDropRow(Block, Views, Verdict, Flag, Depth, Step, Arg, Path)`
-  (Path, a part row's move path, -1 at Depth 0, added by U7 for A5: removed with U7 by R4-M33's discard, `0d989e68`; no later A5
-  reads it),
+  ancestor; check-only code is not judged (plan Appendix B C3). Rows `MirDropRow(Block, Views, Verdict, Flag, Depth, Step, Arg)`,
   one group per Drop and view class (a group equal but for its views to the Drop's previous group is merged into it): the dropped
   Place, then under Open its child paths in pre-order with their steps (`MirMovePath` carries Kind and Arg). A body's rows are
   ordered by block, and `MirDropTable.Group(body, block, view)` is the one lookup of a Drop's group under a view, which R5 code
@@ -970,8 +936,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   B: one Type decision in A4, A5 and R5); a second forward problem or replay; four lanes with Open for any mixed subtree (correct
   drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
   the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
-  code. Not temporary. Its input for a destructor body is refined by R4-M6b.
-- **R4-M6b** (2026-10-12, main session; U5b, NEW-F9; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
+  code. Not temporary.
+- **R4-M6b** (2026-10-12; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
   builder registers its end cleanup as the layer's field cleanup (SPEC 16.3.2) through `Cleanup.Fields` (`FieldCleanup`): after the
   body's Scope Exit, on the normal end and in every return's drop tree, a Drop of each own Field whose Type may need drop, last to
   first, then of `_1.base1`, by the one presence rule `MirTypes.MayNeedDrop`; no Drop of the whole receiver. A1, A2, A4, A5 and R5
@@ -982,32 +948,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `AdtDef.IsInlineStorage`, and the old path's `AggregateLayout.cs:353` until R6). Rejected: a parts-only Drop or a receiver local
   role (O1; a second meaning of Drop in every consumer); A2 recognizing the receiver (a consumer deciding what the builder
   publishes); field cleanup in R5's glue (cannot skip moved Fields). Not temporary.
-- **R4-M13a** (2026-10-12, planning session; U3 design; supersedes R4-M13's numbers, not its migration kinds) A test method
-  migrates once, at the stage of its latest assertion kind; lookups and failure messages migrate in every method. Control-flow
-  structure reads: 1 (`LegacyRecords`, the harness's and the snapshot's one reader, until R6). `Ownership.Bodies` reads: 183
-  after U3, about 174 after U10; the rest is R5 (emission pairing 40, defect injection into old plans and graphs 87, library
-  reach 23: the MIR builds every library body and IR names are numbered, so reach has no public observable before R5's
-  emission roots) and R6 (old internals, old storage and plan reuse, the probe tool and three class helpers, 24), each site
-  tagged with its stage in the commit that leaves it. A ratchet row counts the test calls of the old control-flow entries
-  (`AnalyzeControlFlow()`, `ControlFlowAnalysis.Analyze(`), so direct calls cannot grow; the A3 old-against-MIR helper
-  `ControlFlowAnalysisTest.RequireFallthroughs` (R4-M7a) is the one shared reader, whose old half R6 deletes for its three
-  callers. Reason R4-M13's numbers no longer hold: they assumed a residue of about 110, and the inventory shows that reaching it
-  in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
-  Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
+- **R4-M13a** (2026-10-12; supersedes R4-M13's numbers, not its migration kinds; amended by R5-M161) A test method migrates once,
+  at the stage of its latest assertion kind; lookups and failure messages migrate in every method. Control-flow structure reads:
+  1 (`LegacyRecords`, the harness's and the snapshot's one reader, until R6). `Ownership.Bodies` reads: R6's 22 (old internals,
+  old storage and plan reuse, the probe tool and three class helpers) and U10's 8 (OwnershipJoinTest's, left with G4's pinned
+  tests), each site tagged with its stage in the commit that leaves it. The R5 reads are gone (R5-M161): library reach at K12
+  (the MIR builds every library body and IR names are numbered, so reach had no public observable before R5's emission roots),
+  the defect-injection reads into old plans and graphs at G4, the rest and the emission-pairing reads at G5 and G6. A ratchet
+  row counts the test calls of the old control-flow entries (`AnalyzeControlFlow()`, `ControlFlowAnalysis.Analyze(`), so direct
+  calls cannot grow; the A3 old-against-MIR helper `ControlFlowAnalysisTest.RequireFallthroughs` (R4-M7a) is the one shared
+  reader, whose old half R6 deletes for its three callers. Reason R4-M13's numbers no longer hold: reaching its residue of about
+  110 in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
+  Rejected: deleting the injection tests in R4; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
-  - Amended by R5-M161 (G5, G6): the R5 reads are gone (library reach at K12, 75 injection reads at G4, the other 12 and the 40 pairing
-    reads at G5 and G6); R6's are 22 (VirtualPlanReuseTest's two, which compared old-body storage around MIR code generation, are
-    deleted) and U10's 8 (OwnershipJoinTest's left with G4's pinned tests).
-- **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; superseded by Q5) Binding's token cap rises from 375,051 to
-  377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
-  measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
-  callable signature, U9 universal relations) and U11's internal reporter in Core, against 2,997 Binding and 0 Core tokens of
-  headroom at 046efcf1 (848,182 of the 894,362 ceiling). Gate: Mir is re-projected at the U8 and U9 designs; a projection above
-  90,000 is consolidated first or returns to the owner. Per-unit Binding-line exceptions stay owner decisions (U6 about 240
-  lines, R4-M23; U7 about 150 lines, R4-M9b). Rejected: cutting R4 scope (Q1 through-reference replacement, U9's preserves
-  witnesses) to R5, which would leave (b) rows at the R4 exit; raising the stage ceiling (not needed by the projection).
-- **R4-M22** (superseded in part by R4-M153: a part past the depth bound is the class Deep) (2026-10-12, planning session; design B of two independent U6 designs, with design A's classification of the
-  Binding-rejected virtual functions) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
+- **R4-M25** (owner, 2026-10-12) Area caps rebalanced within the R4 stage ceiling: superseded by Q5 (2026-10-16); full text:
+  c4b48f11c.
+- **R4-M22** (2026-10-12; superseded in part by R4-M153: a part past the depth bound is the class Deep; amended 2026-11-03, H3b
+  T32b, by the planning session with BU's consent C-11) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
   union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
   abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
   raw pointer read from an immutable static are Environment; an Opaque site's Unknown is Derived) and the terminators: a call of a
@@ -1020,10 +977,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Replace` also destroying what lies below their first argument. A Requirement callee is either an unresolved requirement or Binding's
   resolved built-in target: a closed Self with a user witness is a Fn callee of the witness. A Requirement or dynamic Virtual call
   takes the bounds of the caller's own premises (`TyCtxt.DispatchBounds`, plan Appendix B X2, SPEC 8.11.4): X2 governs the
-  requirement calls on a generic body's abstract Types that no published summary governs. A requirement of a closed Contract (Position,
-  PositionRange) has no effect (SPEC 8.7: every bound); a SPEC 4.9.6 operation contributes its published row (`K` equality and
-  destruction) through the call's substitution, never its body, which A4 does not do yet: it enters the body, so confined code calling
-  Dictionary's published operations is rejected until U6b (ledger (b)). Without confined the call is Unknown, and it may destroy what
+  requirement calls on a generic body's abstract Types that no published summary governs. A Requirement call whose Self is not
+  abstract (an inline default copy's instance, SPEC 7.2.3) is decided by Solve's `Require` through the instance's witnesses,
+  resolved under the Contract reference the call recorded (`MirCallee.Contract` with `Subst.Declaring`, through
+  `Binding.InstanceContract`, as `TyCtxt.Witness` does; a `Requires` atom carries the recorded Contract): a virtual witness is
+  judged by its slot's bound (SPEC 6.4.6), not by its body, an accessor-call Property witness runs its accessor, and a standard
+  Property witness stays a limit. A requirement of a closed Contract (Position, PositionRange) has no effect (SPEC 8.7: every
+  bound); a SPEC 4.9.6 operation contributes its published row (`K` equality and destruction) through the call's substitution,
+  never its body (R4-M28). Without confined the call is Unknown, and it may destroy what
   is moved into it (rule 1); a call through a value calls its Callable input: a Closure or function item enters each body it may run
   through its substitution, a common Function Type is Unknown (erasure keeps no bound), an abstract input is nothing where its one
   Callable signature's premises declare confined (`TyCtxt.CallableBounds`), a Limit where it has several signatures (Binding chose
@@ -1065,14 +1026,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
   slot tables when it reads them. Not temporary. Its SPEC 4.9.6 sentence, `ArrayClear`/`Replace` clause and composite Limit are
   refined by R4-M28.
-  - Amendment (2026-11-03, H3b T32b, unit U-B2; the planning session): a Requirement call whose Self is not abstract (an inline
-    default copy's instance, SPEC 8.13) is decided by Solve's `Require` through the instance's witnesses; a virtual witness is judged
-    by its slot's bound (SPEC 6.4.6), not by the witness body; an abstract Self keeps the caller-premise path (X2).
-  - Amendment (2026-11-03, H3b T32b, unit U-B2 split; the planning session, BU's consent C-11): the inline default copy's rule is
-    SPEC 7.2.3 (Default evaluation), not 8.13. `Require` resolves the witnesses under the Contract reference the call recorded
-    (`MirCallee.Contract` with `Subst.Declaring`, through `Binding.InstanceContract`, as `TyCtxt.Witness` does; a `Requires` atom carries
-    the recorded Contract) and runs an accessor-call Property witness's accessor; a standard Property witness stays a limit.
-- **R4-M23** (2026-10-12, planning session; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
+- **R4-M23** (2026-10-12; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
   listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or
   whose premises judge the Callable. Each witness of a conformance whose Contract or an ancestor declares confined for its requirement
@@ -1087,8 +1041,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   through it, and Owner where an owner acquisition of a Closure with another receiver also destroys its environment. One premise scope
   per definition, `Binding.EffectPremises` (an override's inherited implementation premises where present), serves both bounds, the
   Callable premises, `Copy` and `Sealed` (the scope-taking `ProveCopy` and `ProveSealed`, which Binding's other Copy and Sealed proofs
-  use too). No program tells it from the declaration scope: an override's implementation premises share its body scope's constraint
-  environment (`PrepareVirtualOverridePremises`), so the inherited-premise test passes either way. `TyCtxt.DispatchBounds(definition,
+  use too); an override's implementation premises share its body scope's constraint environment
+  (`PrepareVirtualOverridePremises`). `TyCtxt.DispatchBounds(definition,
   callee, self, contract)`: a requirement's or virtual slot's available bounds under those premises, every bound for a requirement of a
   closed Contract (SPEC 8.7, kept out of `AvailableEffectBounds`, which the old path shares), null for a callee that does not
   dispatch; a requirement function item dispatches through its own Contract reference (`TyCtxt.ItemContract`).
@@ -1101,8 +1055,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `TyCtxt.Implementation(function, subst, index)`: the bodies a call may run, over `Binding.SelectSpecialization`'s key rule and
   `MaySelect`, which the old summary shares. `TyCtxt.Copy`, `Sealed` and `AdtDef.DestructorSymbol` complete the facts.
   `EffectObligation` and `CompilerFunctionEffect` join the mir allow list (owner approval, `Code-Rules-Approved` trailer). Owner
-  exception (user, 2026-10-12): Binding ≈ +240 lines in U6, above the 30-line rule; raised from ≈ 110 after the measured design-B
-  facts; F6 consolidation applied. The ledger compares Binding's `IncompatibleImplementation` and `Unsupported` records only where an
+  exception (2026-10-12): Binding ≈ +240 lines in U6, above the 30-line rule. The ledger compares Binding's `IncompatibleImplementation` and `Unsupported` records only where an
   effect check made them (`Binding.IsEffectRecord`, Transitional, removed in R6 with the old checks);
   `ValidateVirtualDestructionEffects` no longer clears the Binding pass's virtual violations (the pass resets them), so a Binding-pass
   virtual limit stays identifiable. A virtual function the Binding pass rejects with VirtualEffectBound has no published body (R4-M18),
@@ -1114,71 +1067,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   input's premises (a third enumeration of the Callable facts beside `SelectValueCall` and `TryCallable`; carrying the selected
   signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
   signature). `Bodyless`' composite clause is refined by R4-M28.
-- **R4-M24** (2026-10-12, main session; superseded by R4-M33; option P of two independent redo designs, `u7r-decision.md`: design B's positions and
-  liveness with design A's core) A5-1, regions and Loans (SPEC 15.6), `MirBorrows` (`.Regions`, `.Liveness`, `.Flows`) per body and
-  view in the driver's step 4, after A4:
-  - Positions: a cell is a move path (R4-M21) whose case Type carries Origins in its own storage (a leaf all its Type's; an inner
-    path those of each storage step without a child path and its Phantom Origins); a table's unwritten borrow-layer Origins are its
-    one null atom. Holders are (definition, cell): the entry of an Arg's or the return local's cells, each whole write of the cell or
-    an ancestor (def 0 the first), numbered cell-major in path order, so a subtree's holders and reaching bits are one range; a
-    one-holder cell has no bit; the holders are placed in one pass as (cell, location) pairs (`MirDataflow.Index`), and so are the
-    Loans' order. A static is a run of escape variables (K11). `Replaced` is the one location decoder (K3).
-  - Precision rule (planning session): a Place that is its path covers the subtree [p, End(p)), through an Index too; through a
-    reference, an object handle or a raw pointer, only p's own cell (no path lies under it).
-  - Flows: only actual flows add edges: `TyCtxt.Relate` (variance by `ComponentVariance` and `ComposeVariance`) from the covered
-    reaching holders into the holders a whole write defines, else into every covered reaching holder; a relation links the
-    variables holding its longer end to those holding its shorter end, through one junction where both are several (N3); an end no
-    variable holds is counted (`Unmapped`, 0 by test over library, milestones and corpus) unless it is `BoundOrigin.Static` (N2). A
-    borrow relates its Place into the referent (equal unless shared), its Loan into the outer Origin, each parent's outer Origin into
-    the Loan up to the first shared layer (S15:852). A call with a signature (`MirTypes.Parameter`; function items and Closures by
-    `TyCtxt.Callable`) relates its arguments into fresh call variables, their well-formedness, the callee's clauses (a function
-    item's under its own substitution) and its result into the destination, and forms a caller-side Loan on an Arg's referent for
-    each unsupplied outer Origin (S15:881). A call without one relates every argument and the callee value into the destination and
-    into every variable behind a writable layer of every argument, sound for any callee. An Upcast is invariant only where the
-    handle is (`TyCtxt.InvariantTarget`, N1).
-  - Liveness: backward on path numbers; a chain P1 reached joins its runtime successors only, a P2 chain every successor (SPEC 14.9:
-    Loans follow runtime paths, continuations add none; 14.10.3 paragraph 4: their states never merge into reachable paths;
-    supersedes R4-M20's "liveness, all edges"); a use makes live what its Place covers; a whole write, StorageLive, StorageDead and
-    EndBorrow end what they cover (EndBorrow ends liveness only, F2); a Drop whose destruction may observe an Origin
-    (`MirTypes.Observes`, a visitor of the one `MirTypes.Destruction` walk, R4-M22) uses what A2 keeps (each row's own path, the rows
-    by `MirBody.Ordinal`): an Elide group nothing, Open its own cell then its child rows by their verdicts, any other verdict what it
-    covers; a Drop without a group, which only the checks reach, nothing (plan 16-4: drop elaboration and destructors on runtime
-    paths only). The driver skips a body A1 stopped (R4-M15a).
-  - Active Loans: forward P1/P2 over [flow holder bits | Loans | chain-local holder bits]. Each Loan's count of reaching and live
-    holders is exact by differences: a holder's status change adds ±1 over the Loans it carries; a chain's head takes the difference
-    to the chain advanced last (reaching bits against that exit's, kept by `MirDataflow.Tail`; liveness against `AtEntry`). A Loan
-    ends at count 0 unless it escaped (caller storage, a static), and where its borrowed storage ends (Loans ordered flow, then
-    chain-local, each by the path it borrows, so a subtree's end is one range per group; never through a reference).
-  - Bound (V16, planning session): Θ(size + holders + holder pairs + Σ status changes × |carried|) counted by `Work`, plus the dense
-    word terms counted by `Dense`: heads × width/64, Σ storage ends × Loan words/64 and Σ whole writes and accesses × the holder words
-    of the written or read cells; holders are Σ whole writes × the cells of the written subtree. Linear on V16's shapes 1-3, 3b, 5 and
-    one local reassigned N times; Q4 and shape 4 are Θ(N²), the output (active Loans per location). Work beyond input size + output
-    size is a defect for an analysis whose output is per location.
-  - Interface and limits: `MirDataflow.Prepare` sizes the forward and backward arenas under one limit (R4-M15a); a view where no
-    Loan can form is not solved (N7); `Replay<IMirLoans>` gives A5-2 the Loans active before each location.
-  - Open: Q1-ref (a complete replacement through a reference keeps the referent's earlier Loans, 2 agreement rows; U8b after U8
-    builds provenance, SPEC 15.6.2 :824). Conservative residue: aggregate parts sharing one atom (an aggregate's operands relate into
-    every cell holding it), Q2, Q6. A5-closure (a Closure's internal call contract: receiver, captures, inferred relations; unit U7b,
-    before U8).
-  - Rejected: option L (whole-local holders, a holder unit later: a unit revising the previous unit's rule); liveness over every
-    edge and a check-only Drop's whole use (reachable code kept Loans for continuation uses); A2 verdicts for check-only Drops (a
-    second publication for a path that by SPEC uses nothing); a lazy per-chain recount with
-    edge-death candidates (quadratic on shape 3b); design A's narrow through-reference strong update (one form of an open family);
-    design B's claim that no IntrinsicId writes through a safe exclusive argument (a cross-component claim); cells without own
-    parts, complete child paths, per-root liveness, bit rows, NLL regions per slot and region SCCs (design B's (c)-(h)); holder scans
-    (`Alive`/`Recheck`, cubic on Q4); `Release` (unsound, F2); entry anchors before U8, their first reader (K7).
-- **R4-M9b** (2026-10-12, main session; supersedes R4-M9's view list and placement; superseded by R4-M33) Binding views are built by their first reader
-  (R2b-D3). U7 builds `TyCtxt.Relate` (`Binding/TyCtxt.Relations.cs`; U7a moved MIR's structural agreement there, U7 adds its Origin
-  relations), `TyCtxt.ComponentVariance` and `InvariantTarget` (U7k: SPEC 15.3.5's one component rule, `obj` invariant, shared with
-  `Binding.ComposeVariance` and Binding's local Origin inference), `TyCtxt.Clauses` (a callee's declared relations through
-  `Binding.SubstituteClauseOrigin`; `OriginClauses.Of` folded in) and `TyCtxt.Callable` (U7c: a callable value's signature, which
-  replaces the unused `Binding.ValueSignature`). `OriginAtom.Of` and `UniversalRelations.For` move to U9, their first reader. R7
-  converges `FitsTypeCore`, `CheckTypeUse`, `CollectCallRelations`, `FailedOriginRelation`, the sign variance of
-  `OriginInference`/`TypeOrigins` and `IsInvariantLayer` (no `obj`, Q3) on these views, and `Binding.CallableProofs` and
-  `Binding.Constraints`' signature selection on `Callable` (stage ledger). Owner exception (user, 2026-10-12): the 30-Binding-lines
-  guideline is waived for U7 up to about 150 lines (from about 70); measured +140 lines, +924 tokens (U7a +54, U7k +17, U7c +1,
-  U7 +68). Its view list where it applies (`OriginAtom.Of`, `UniversalRelations.For`): the C1-F4 view of R4-M94 (2a0-2).
-- **R4-M26** (2026-10-12, planning session; U6c) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
+- **R4-M24** (2026-10-12) A5-1, regions and Loans: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
+- **R4-M9b** (2026-10-12; superseded R4-M9's view list and placement) Binding views built by their first reader: superseded by
+  R4-M33 (2026-10-16), its view list where it applies by R4-M94's C1-F4 view; full text: 0d9492185.
+- **R4-M26** (2026-10-12) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
   slot, parallel to their Type arguments, the Implementation Selection Key's form (SPEC 8.13.3, IMPL 21.3). Their constructors
   (`CallPlan.Set`, `TyCtxt.Intern`) establish it: a producer passes no lengths (the target has no length slot) or one per slot, and a
   span of another length is a broken contract (`Debug.Assert`). A function item's call context (`FunctionItemContext`), the
@@ -1187,64 +1079,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
   padding in each producer (an open family; this was its second fix), a key rule accepting an empty span (two forms, and the entry,
   closure-context and default-call identity probes still split one instance), the empty form for calls and keys (two shapes for a
   per-slot fact), per-slot lengths in Item Types (every BoundType keeps LengthArguments empty without a length argument).
-- **R4-M30** (owner, 2026-10-12; superseded by Q5) The missing-fact allowance counts tokens: a unit may add at most 200 non-trivia Binding tokens
-  (A1 count; the former "30 Binding lines" at Binding's measured 6.57 tokens per line, CR-A1) for a fact the MIR side lacks; more
-  needs an owner exception stated in tokens. Forecasts and overruns are stated in tokens per area, lines for reference. Reason: the
-  budget has counted tokens since CR-A1, and lines overstated growth (R4 U6b: +107 lines, of which 72 were formatting with no tokens —
-  KR3001 wrapping of changed long lines, braces, blank lines, comments). Exceptions granted in lines before this entry keep their
-  recorded meaning (U6 R4-M23, U7 R4-M9b); units not yet landed restate theirs in tokens. Rejected: keeping the line rule.
-- **R4-M28** (2026-10-12, planning session; design B of two U6b designs with design A's witness probe) SPEC 4.9.6's published rows
+- **R4-M30** (owner, 2026-10-12) The missing-fact allowance in Binding tokens: superseded by Q5 (2026-10-16); full text:
+  c4b48f11c.
+- **R4-M28** (2026-10-12) SPEC 4.9.6's published rows
   for A4: `PublishedRow(Runs, On, Destroys)` catalog data (`KimiLibraryCatalog.Row`, `TyCtxt.Published`) replaces
   `PublishedSummary`; A4 adds a row through the call's substitution, never the private body. A row's requirement is a `Requires`
   atom on an abstract Type (nothing where the premises declare it confined, else composed at the callers like a destruction); any
   other Type runs what `TyCtxt.Witnesses` resolves (comparison-plan leaves, a built-in target, the shared
-  `Binding.ConformanceWitness`'s witness), else a Limit. Ratified departure from design B: a Type with an implementation has its
-  effects, not its premises' bounds (SPEC 8.11.4). A requirement call written in a generic body keeps X2 (SPEC 4.9.6 clarified).
+  `Binding.ConformanceWitness`'s witness), else a Limit. A Type with an implementation has its effects, not its premises' bounds
+  (SPEC 8.11.4). A requirement call written in a generic body keeps X2 (SPEC 4.9.6 clarified).
   HIR publishes a body no instance applies (checked, never generated). Refines R4-M22 and R4-M23. Rejected: per-effect flags, X2 at
   the composing node, Witnesses over RequirementImplementation only, open Types by the premises, an inapplicable override owing
   nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the
   table keep X2; composites with an abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
-- **R4-M31** (owner, 2026-10-13; completion budget option C; withdrawn by R4-M33) R4 caps are Mir 155,000, Binding 432,000, Core 15,000 and total
-  1,020,000 non-trivia C# tokens, including conditional late coexistence. Supersedes R4-M25's numeric caps and 90,000 Mir
-  planning trigger for the priced R4 scope: the revised forecast includes common producer/transfer contracts omitted earlier
-  (946,606 central; 1,017,696 conditional late peak). Reforecast at each selected design and landing; an area/stage overrun
-  requires consolidation or renewed owner approval. Keep the per-unit 20% overrun rule, M30 exceptions and technical gates.
-  Other area/template caps and R5 onward ceilings stay unchanged; reforecast R5 before implementation. No vocabulary,
-  baseline, frozen-path feature, scope deferral or per-unit Binding approval is granted. Rejected: old caps (no demonstrated
-  complete fit), net-only option B (conditional late peak exceeds it), and crediting R6 deletions during R4.
-- **R4-M32** (2026-10-13, planning session; independent C1a designs compared and reviewed; superseded by R4-M33) Binding.OriginProof owns
-  `OriginFit`: the normalized fit answer and an optional initializer contribution, identified by its Local. Classification
-  changes no inference, declaration or obligation state; canonical interning and proof scratch retain their lifecycle.
-  Existing committed-fit and selected-collector adapters apply the contribution immediately, before the next relation;
-  candidate observation applies none. The existing traversal and mutation order stays unchanged. Deleted: duplicated
-  normalization/open-initializer classification and the collector-only bound wrapper. Reject whole-call deferred commit,
-  a second shadow proof rule and unused publication state. This does not make contextual expression completion pure.
+- **R4-M31** (owner, 2026-10-13) R4 caps by completion budget option C: withdrawn by R4-M33 (2026-10-16); full text: 0d989e685.
+- **R4-M32** (2026-10-13) Binding.OriginProof owns `OriginFit`: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M33** (owner, 2026-10-16; supersedes R4-M9b, R4-M24, R4-M31 and R4-M32) R4 keeps A1–A4 (U0–U6 with U1b, U3n, U4b,
   U5b, U6b, U6c and the T1 test migration) and discards the work after them: A5-1 (U7) with its preparatory units U7a, U7a2,
-  U7k and U7c, C1a, the MIR probe tool and the completion plan and budget. Reason: the implementation stalled (P9 143 at
+  U7k and U7c, C1a, the MIR probe tool and the completion plan and budget. Reason: the implementation stalled (P9 unchanged at
   every 2026-10-13 checkpoint, the O5 trigger); the MIR plan continues and R4's remaining scope is replanned. R4-M25's caps
   apply again; R4-M30 and the other R4 decisions stand. Removed with the units, for the replan: the validator's signature
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
-- **R4-M34** (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
-  step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause; its backward ring
-  superseded by R4-M65, its backward clause by R4-M158) MIR dataflow, forward and
+- **R4-M34** (2026-10-17; design A3 §4.1 G1, owner approval of A3 §9 item 9 on 2026-10-17; supersedes R4-M20's union join and
+  its backward clause; its backward ring superseded by R4-M65, its backward clause by R4-M158) MIR dataflow, forward and
   backward. `IMirFlow.Join(target, incoming)` is the transfer's join and says whether the state grew: A1 keeps union (`MirDataflow.Union`),
   A5's Loan sets will join by node union. `MirDataflow.Begin` decides each chain's phase once per body, P1 where `MirReach`'s runtime walk
   from the entry reaches it, else P2, and records each block's predecessor edges; `Forward` keeps R4-M20's phases, and A4 reads
-  `Runtime` instead of its own runtime walk (deleted). `Backward` solves on the same chains, restating R4-M24's liveness rule (that entry
-  went with R4-M33): a chain's state before its head is its blocks applied, last first, to the boundary state (`Entry`, the least state)
+  `Runtime`, not a runtime walk of its own. `Backward` solves on the same chains: a chain's state before its head is its blocks applied, last first, to the boundary state (`Entry`, the least state)
   joined with its successors' stored states, a P1 chain's runtime successors only and a P2 chain's every successor (SPEC 14.9, 14.10.3:
   uses on continuations never merge into runtime paths); a ring seeded in postorder queues a grown head's predecessors' heads.
   `ReplayBackward` gives each chain its converged state, last block first. `Prepare(backward, forward, width)` sizes one arena row per
-  head, the backward words then the forward ones, under R4-M15a's one limit, so one body view can hold both problems; the shape of A5's
-  replay is step 1's (unit 1b). The plan's step 0 lands it before its first reader, A5's holder liveness; `MirDataflowTest` checks it
-  against a per-block fixed point. Rejected: a second arena or limit for the backward pass (two Resource decisions); per-block backward
+  head, the backward words then the forward ones, under R4-M15a's one limit, so one body view can hold both problems. Rejected: a second arena or limit for the backward pass (two Resource decisions); per-block backward
   states (R4-M20's reason); sweeps without predecessor edges (rounds grow with loop nesting); a fixed union join (A5's node union is no
   word OR); one solve with a direction parameter. Not temporary.
-- **R4-M35** (owner: the plan's direction and its step 0 on 2026-10-16, with OD1–OD7 and OD12, as the plan's status line records;
-  OD8–OD11 and OD13's first list on 2026-10-17, as plan §10 records them, and A3 §9 item 10 later that day; supersedes the parts named
-  below; plan §7's M39 Binding part void after OD8's and OD9's non-adoption: R4-M74 OQ6 (a), and A5-F9 landed without it, R4-M90)
-  R4's remaining scope
+- **R4-M35** (owner: the plan's direction, its step 0, OD1–OD7 and OD12 on 2026-10-16; OD8–OD11, OD13's first list and A3 §9
+  item 10 on 2026-10-17; supersedes the parts named below; plan §7's M39 Binding part void after OD8's and OD9's non-adoption:
+  R4-M74 OQ6 (a), R4-M90) R4's remaining scope
   follows the [Complete Polonius A5 Plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): the Binding facts A5 reads
   first, then A5 deciding the SPEC rules of plan Appendix A as facts and a fixed set of rules that a C# evaluator runs, then A6 and
   the R4 exit tasks.
@@ -1252,8 +1122,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     SPEC change the owner rejects leaves its rule Unsupported only by an owner exception, O4); OD2 Binding publishes each fact A5 reads
     before A5 uses it, in R7's target shape and out of R7's scope (plan §7); OD3 plan §8 replaces the R4 exit, PLAN10 §18 P9, O5 and
     G-Diff's blocking rule, and R4-M12 is suspended until the joint core (step 1) lands; OD4 R5 starts in parallel under plan §9.1's
-    conditions, instance collection running before acceptance (its entry, with the target pipeline's change, comes with its first
-    implementing commit); OD5 SPEC changes are implemented on MIR only, with plan §9.2's departure from AGENTS "Diagnostics" until
+    conditions (its "both measured" superseded by R5-M3 and its forwarding properties at R6-check by R5-M9, 2026-10-18; the parallel
+    run suspended by R4-M77, restored by R4-M78, suspended by R4-M79, 2026-10-19, and restored by R4-M86, 2026-10-20), instance collection running
+    before acceptance; OD5 SPEC changes are implemented on MIR only, with plan §9.2's departure from AGENTS "Diagnostics" until
     R6-check (owner exception); OD6 review and records as plan §9.3, in force once AGENTS "Review weight" is revised on the owner's
     instruction (until then AGENTS and Q5 govern); OD7 each rule the audit finds not finitely expressible gets its own SPEC proposal
     (O3 and O4 apply); OD10 R6 runs in two stages, R6-gen after R5 and R6-check after R4 and R6-gen, with `AnalyzeInstance` a
@@ -1263,7 +1134,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     as plan §5.3 states, which is the owner's request for the resulting SPEC revisions; OD13 each list of precision losses is approved
     as one decision. Not adopted: OD8 (no Case terminator; case dependence stays per view, R4-M19) and OD9 (the inline default fold
     and the SETTLED entry stay; no closed defaults).
-  - Step 0 (plan §6.2) produced design A3 (`draft/Sketches/A5 Step 0/design-A3.md`, confirmed by its third review). The owner chose the
+  - Step 0 (plan §6.2) produced design A3 (`draft/Sketches/A5 Step 0/design-A3.md`). The owner chose the
     representation for the access-check family (A3's transit clause) and approved A3 §9 as recommended on 2026-10-17: A3's losses P1,
     P3, P4, P10 and P11, the optional P5, P6 and P9, and S1's `within` kill; relaxations (a) and (b); S1's additions; clarifications
     c1 and c2; V16 as A3 §6.3 restates it; the Origin boundary of A3 §7; the MIR contracts of A3 §4.1; the DEC and DIAGNOSTICS
@@ -1272,7 +1143,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Path), A3 governs.
     Until the SPEC revisions land, before the R4 exit, a violation of an approved loss is a located `Unsupported_Kd`. Each
     representation, contract or phase move gets its own entry in the commit that first implements it (R4-M34 onward).
-  - Superseded: PLAN10 §12.1's "R3–R6 run alone" and its single D5 end (now per stage), §12.2's R4 exit, R5 start condition and R6 row
+  - Superseded: PLAN10 §12.1's "R3–R6 run alone" and its single D5 end (now per stage: D5's Emission half ended on 2026-10-31 with
+    R6-gen, the Analysis half and its exceptions continue until R6-check, R5-M167), §12.2's R4 exit, R5 start condition and R6 row
     (the single switch), §12.3's stop rule, §13.1 G-Diff and §18 P9; R4-M2a's deferral of the `MirAnalysis` restructuring to the R4
     exit (now before the R5 split, with `MirDump`'s); R4-M4's compared set and R4-M17's harness as an exit gate (the ledger stays as
     information, plan §8), and R4-M17's tier 1, which only compares the two paths, gains expected codes for the SPEC examples; R4-M5's
@@ -1281,12 +1153,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     two consecutive working sessions on the plan that land no unit.
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
-  - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
-    R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19), and restored
-    by R4-M86 (2026-10-20).
-  - Amended by R5-M167 (R6-gen's exit, the owner's row 12): D5's Emission half ended on 2026-10-31 with R6-gen; the Analysis half and
-    its exceptions continue until R6-check.
-- **R4-M36** (superseded in part by R4-M153: the bound's answer and record) (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
+- **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of A3 §9 item 8 on 2026-10-17; superseded in part by R4-M153: the
+  bound's answer and record) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
   an owning handle's payload, Type arguments); a raw pointer and a function item hold none (a raw layer holds since R4-M120). Two
@@ -1298,13 +1166,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   whose payload is not proven Sealed, or is and observes (any rc or arc release may be final), under the definition's premises
   (`TyCtxt.Copy`, `Sealed`). Each walks a Type, or for Observes a payload below its handle, once per query through the caller's set: a
   repeating recursive Type ends exactly, a growing one (SPEC 15.3.5) at the bound of 32, where HoldsLoans answers yes and Observes sets
-  deep, the caller's located `Unsupported_Kd` as A4's Limit is. The Destruction walk cuts no cycle through a sequence, so a recursive
-  Type holding itself in an Array is deep (PLAN G91; superseded by R4-M58). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
+  deep, the caller's located `Unsupported_Kd` as A4's Limit is. A recursive Type holding itself in an Array: R4-M58. Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
-- **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
+- **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of A3 §9 item 8 on 2026-10-17;
   G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
-  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
+  replaced by A3 §12 E7; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1322,11 +1189,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `(*$w)`, so the write activates the reservation (SPEC 13.7.2). Guard: each guard candidate's cleanup registers an `EndBorrow` before
   its `StorageDead`, so its guard-local Origin ends on every path, a transfer's drop tree included (SPEC 14.8.3); candidates no longer
   sit among the pending operands. `EndBorrow` is restated as a use of the local after which every Loan issued into it must be dead, its
-  carrying ended, and never an activation; `TwoPhaseUniq` activates at its Call or at the write through it. No vocabulary entry. Not
-  done, for the planning session: A3's `RawSlice` backing operand (arity 2→3 breaks the written `Raw.slice(storage, length)` calls,
-  which have no backing; a SPEC and library revision or an O1 intrinsic); C8, deferred to the unit whose `Retains` reads it (step 1):
-  a Value callee's selected Callable signature needs a form there (a `TypeToken` constant or a `MirCallee` field), and a Virtual callee
-  is named by its `Symbol` and `Subst` already, so `MirBody`'s "a Virtual one's slot in Arg" does not hold today. Open: A3's mode rule
+  carrying ended, and never an activation; `TwoPhaseUniq` activates at its Call or at the write through it. No vocabulary entry. A3's
+  `RawSlice` backing operand and C8 are R4-M40 and R4-M41. Open: A3's mode rule
   makes a reserved Loan `ref` only in its reservation holder, so a parent reservation reborrowed by a child one (the G5 Place path) is
   uniq in the child before the call, which `holder@uniq.items.append(x)` (SPEC 15.6.7: the same call as `holder.items.append(x)`)
   needs refined in step 1; which values exist on assumed paths (a continued call's result dropped by the `Never` operand; an update
@@ -1335,9 +1199,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: a builder field marking the current input (hidden state); a second copy of the Borrow row in `Operand`; a writeback
   through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
-  The `RawSlice` backing and C8 landed later (R4-M40, R4-M41).
-- **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of its §9 item 8 on 2026-10-17; its `(Field, Write)` list and
-  `bool` superseded by R4-M89 and R4-M91 (unit 2b-1: the key row per view, classes as R4-M74 OQ6)) A4's static keys for A5.
+- **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of A3 §9 item 8 on 2026-10-17; its `(Field, Write)` list and
+  `bool` superseded by R4-M89 and R4-M91: the key row per view, classes as R4-M74 OQ6) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
   once and written where any access writes it, from the summaries the last `Run` solved; `unknown` where A4 does not classify what it
   runs (an Unknown effect, an atom left abstract under the body's premises, resolved at once as for an obligation, a Limit, or a
@@ -1351,34 +1214,30 @@ and migration obligations remain in force; no numeric cap changes are authorized
   its own static; its initializer's keys compose through its edge, which A5's effect rule (step 2b) refines if needed. Bound: the
   evaluations keep V16's linear bound; `Spread` is Θ((nodes + dependencies) × ⌈2F/64⌉) for F mutable static Fields and skipped
   without them, and the keys are nodes × ⌈2F/64⌉ words, quadratic where F grows with the program; a query costs its terminator's
-  local facts and their composition. Under P6 there are no per-result anchors. Open, for the planning session before step 2b:
-  `unknown` merges Unknown, Limit and Derived, which A5's effect rule must tell apart (a Limit is `Unsupported_Kd`, a Derived site
-  reports nothing, R4-M10), so A3 §4.2's `bool` should become the classes; the key storage needs a measured check on a large
-  program (PLAN G93). Rejected: keys grown inside the worklist (a chain whose callers come first gains one key per pass: 526,063 evaluations
-  at N = 1,024 against 3,310); a stored record per site (+36–60% cold A4 allocation in `SummariesScaleLinearly` against +3–6% for
-  the query); open keys and owner Type arguments on `MirStatic` (needed only without P5); a key list per node (union and growth
+  local facts and their composition. Under P6 there are no per-result anchors. Open (the classes resolved by R4-M91): `unknown`
+  merges Unknown, Limit and Derived, which A5's effect rule must tell apart (a Limit is `Unsupported_Kd`, a Derived site reports
+  nothing, R4-M10), so A3 §4.2's `bool` should become the classes; the key storage needs a measured check on a large program
+  (PLAN G93). Rejected: keys grown inside the worklist (a chain whose callers come first gains one key per pass, quadratic
+  evaluations); a stored record per site (far more cold A4 allocation than the query); open keys and owner Type arguments on `MirStatic` (needed only without P5); a key list per node (union and growth
   checks per element); A4 re-deriving reads and writes from access flags (a second copy of MirUses' rule). Not temporary.
-- **R4-M39** (owner: adopted on 2026-10-17, 「S1採用します」; its SPEC revision landed at `4372b058`; its ending rule, the base
-  before the last dereference, is superseded by R4-M52) The A5 plan's S1,
+- **R4-M39** (owner: adopted on 2026-10-17, 「S1採用します」; its ending rule, the base before the last dereference, is superseded by
+  R4-M52) The A5 plan's S1,
   [Loan Identity by Base](../../draft/Proposals/2026-10-16%20Loan%20Identity%20by%20Base.md) as revised in `61b1abf2`, which states
   the additions from design A3 that the owner approved on 2026-10-17: a Loan is identified by its Borrow site and Semantics case, its
   Place named by its access path; a child Loan's base is the Place before the last borrow dereference of its path, and destroying in
   place (`=`, a storage end or a `replace` target) a Move Path that holds the base, with no borrow dereference between them, ends it,
   while a base reached through a reference never ends this way; a Move or a Borrow of a Place, shared Borrows included, reaches the
   Loans formed through the references stored in it (A3's P3); a Loan is checked where a value that carries it may be used, never
-  excused by its identity. Per plan §5.3 its SPEC revision (§3.5.1, §13.5.5, §15.6, §15.6.2, §15.6.3, §15.6.6 and Appendix E) lands
-  before the R4 exit. Until then a program valid under the current SPEC that S1 rejects is a located `Unsupported_Kd`, which becomes
-  the Language code when the SPEC adopts the rule, and tests of the affected SPEC examples expect `Unsupported_Kd`; nothing is
-  published before R6-check (shadow mode), and a library or milestone program that S1 rejects goes to O3. Not an integration: SPEC
+  excused by its identity. Per plan §5.3 its SPEC revision (§3.5.1, §13.5.5, §15.6, §15.6.2, §15.6.3, §15.6.6 and Appendix E)
+  landed at `4372b058`, before the R4 exit; until then a program valid under the SPEC that S1 rejected was a located
+  `Unsupported_Kd`. A library or milestone program that S1 rejects goes to O3. Not an integration: SPEC
   and INTEGRATED change only at that revision, SPECJ only on an explicit translation update, and the proposal stays open. Its
   companion S2 ([Preserves Results by Receiver Place](../../draft/Obsolete/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md))
   is not decided here.
-- **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of its §9 item 8 on 2026-10-17, implemented on the planning
-  session's instruction of the same day; its handle copy and Open amended by A3 §12 E10, G123 and G94, recorded with
-  their units) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
+- **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of A3 §9 item 8 on 2026-10-17; its handle copy and Open
+  amended by A3 §12 E10, G123 and G94) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
   retention (every operand to the result; R4-M63: the intrinsic table's row for it), so a Slice cannot outlive or alias a write
-  of what it views, which A3 found otherwise
-  accepted. A range selection's backing follows SPEC 4.8.1: an array (fixed or `Array`) lends its whole Place, a shared borrow made
+  of what it views. A range selection's backing follows SPEC 4.8.1: an array (fixed or `Array`) lends its whole Place, a shared borrow made
   with the call (`Borrow`); a Slice receiver's handle is copied first where it is located (SPEC 4.7.4), its length, element address
   and backing all read from that copy, so the reslice retains its source and borrows no handle variable. A written
   `Raw.slice(storage, length)` has nothing to back it (SPEC 5.6: the caller's obligation, a fresh anchor for its result), so its
