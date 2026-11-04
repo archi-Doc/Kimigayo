@@ -6589,7 +6589,9 @@ resumed by R4-M86 (2026-10-20).
     R11's at-depth half: `Infer` no longer skips a Never component (`h(u)` with `u: (Never, i64)` gives `T = Never`; a Never
     element is still no evidence, so `P.Pair(1, ((return 1), a))` gives `T = i64`). Deleted: the construction's three-pass
     loop and second adaptation loop, `PrepareContextualEnumInputs` and `ProbeContextualEnum`.
-  - Completion (U6): Rejected across the units: a temporary per-part evidence loop in the construction before U5 and a second source
+  - Completion (U6): G130 closes with U0 (SPEC 10.5.1 text), U1 (the component, behavior unchanged), U2 (Literal timing), U3
+    (one evidence and one fit walk), U4 and U4b (control-flow arguments; the parts of a call that completes none) and U5 (Case
+    construction; contextual Case waits). Rejected across the units: a temporary per-part evidence loop in the construction before U5 and a second source
     walk for control flow. Open: a construction's unbound slot reports `MissingType` while a call's reports `UnboundTypeArgument_Kd`
     (above); the survey's limit (PLAN G152), which G129's late fit removes.
   - U7a, restructuring (behavior unchanged): `SlotSolution` holds one datum, its `Binder`; `SlotOwner`, `Constructor` and `OriginCount`
@@ -6654,7 +6656,7 @@ resumed by R4-M86 (2026-10-20).
   stays the old path's `Unsupported_Kd` until R6-check. Why: Unknown for a closed Type was the old analysis's `InternalInvariant_Kd`
   (`var t = (1, stop())`, an `Option<Never>` local or parameter) and Binding's Move for SPEC 3.1.3's own `let b = a; let c = a`
   (`TransferRequired_Kd`, A1 `MovedPlace_Kd`). The rest of G129 (Never fitting at the root, the late fit, R4-M59's removal) follows
-  G130. Rejected: design A's MIR Copy for every Never Place (it would hide `g(x@move, x)`); keeping Never's Unknown leaf (SPEC 3.1.3).
+  G130. Rejected: design A's MIR Copy for every Never Place (it would hide `g(x@move, x)`; the MIR Never-Place acquisition moved to R5, PLAN G139); keeping Never's Unknown leaf (SPEC 3.1.3).
   Open: generic uses with a Never-holding Type argument that now pass Binding under `T is Copy` (`let r = id<Never>`,
   `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old Emission's existing `GenerationFailed_Kd` rather than a located
   `Unsupported_Kd`, as the same programs without the Constraint already did, until R6. Not temporary.
@@ -6860,7 +6862,7 @@ resumed by R4-M86 (2026-10-20).
   (2b), only its layers count. Outside it, for example: `vals[0].n = 5`, `vals[0][1].n = 5`, `t.0[1].n = 5`, and the reads `t.0[0].n`,
   `h.vals[0].n`, `vals[0][0].n`. The guard goes with the old analysis at R6-check. Rejected: A, `IsBarePlace` reading the node's Type
   for a synthesized read (one form); B, no read for a layered element (drops the selection's dependency); C, Binding's predicates no
-  longer reading a recorded read (rewrites ten `ElementAccess` readers that the old path shares); D, a separate published element-Place
+  longer reading a recorded read (rewrites ten `ElementAccess` readers that the old path shares; the direction for R6-check and R7); D, a separate published element-Place
   fact (R7). Open: `let`-owned subscripts (BU-8; fixed by BU-13); a direct receiver through a built-in element's stored `uniq/`
   (`vals[0].bump()`) passes checking and fails generation, pre-existing and not a recorded read; a receiver through two stored layers
   stays `NoApplicableOverload_Kd` (BU-8); PLAN G147 (2) lists an `rc/` handle's PathAuthority and a false `InvalidAssignment_Kd` below
@@ -7358,7 +7360,9 @@ resumed by R4-M86 (2026-10-20).
   ends the analysis (`CheckFaulted_Kd`, Internal), since `Restep` has no node for a located `InternalInvariant_Kd`. Q-O3 is not moot
   (correcting C1a and C3 above): the old paths compare a stored Field's or Case's Type (`Holder`) with the read node's Type by
   reference, so legacy code generation of a `during self` layer, and of a comparison of pointers stating different Origins, is
-  `GenerationFailed_Kd` (Internal). Q-O3 (owner, directly, 2026-10-22): 「D5 例外を認める (推奨)」. D5 exception: the old paths read every Type
+  `GenerationFailed_Kd` (Internal). Measured (2026-10-22): no program the pre-C1b compiler emitted changed; 30 checked clean and
+  failed legacy emission; erasing at the three intakes below made all 30 emit and run with their expected output and changed no
+  other verdict or output; erasing at the Place intake alone broke 28 programs that emitted. Q-O3 (owner, directly, 2026-10-22): 「D5 例外を認める (推奨)」. D5 exception: the old paths read every Type
   through `Binding.WithoutRawOrigins` (one view: every raw layer's Origin dropped) at their Type intake: `OwnershipAnalysis.Place` and
   `OwnershipBody.Resolve` together (removed with the old analysis at R6-check) and Emission's `AdtDef.CaseTypes` reads in
   `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (deleted with instance shapes below). `RawStorageTest`'s
@@ -7579,9 +7583,11 @@ resumed by R4-M86 (2026-10-20).
   operator, index, compound-update and Erasure operands take no bare Reborrow. Validator's view: MirValidator compares a Ref's referent
   and Place modulo Origins and its mode with its Ref kind; only MirOrigins reads a Ref's Origin (its atom and Anchor; `Contain` reads
   the layers' stored Origins), so at a bare acquisition into a destination the Ref's atom and Anchor are the destination's, as for
-  every implicit borrow. Departure from R4-M50 (G226 is a wrong-code fix D5 permits): the old analysis takes its Loans from Binding's
+  every implicit borrow. Departure from R4-M50 (R4 agreeing; G226 is a wrong-code fix D5 permits): the old analysis takes its Loans from Binding's
   names, so the default pipeline gives SPEC 15.6.3's verdict on the S1 forms whose `found` is named through an index or `tryGet`
-  result. R1 also accepts the valid programs that read such a source as a Copy value before (`TransferRequired_Kd`: a stored `uniq` as
+  result. Tuple, Literal and LocalInputs keep OldRule (the old analysis' S1 limit). PublicConflict gains the inner indexUniq
+  receiver's record per call (15.6.2). Every verdict change is a SPEC-invalid program newly rejected (G192's p1 and
+  `var cur = a@follow@uniq` returned as the inner Origin, so G192 closes). R1 also accepts the valid programs that read such a source as a Copy value before (`TransferRequired_Kd`: a stored `uniq` as
   an `if`, `match`, `do` or `loop` result source or a jump's operand, a bare `objuniq` at any bare acquisition position) and names
   their leaks. Rejected: the outermost layer alone (equal under 15.6.1 only where well-formedness is a premise); a fresh region per
   Borrow with containment rows from Binding (a second copy of A5's E4 edges); MirOrigins skipping a containment edge whose head is
