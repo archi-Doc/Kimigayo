@@ -4953,7 +4953,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     examples both paths accept, the library and the milestones) pin that a program Binding accepts has no unset row there,
     `MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError` the derived reading beside an unresolved parameter Type. The rows'
     gate, a Place with no Adjust or a group's operand, is the builder's reach: a label wraps only a control-flow construct.
-  - Open (PLAN G233): `_ = h.link` and a bare statement `h.link` (`link: uniq/i32 during a`, `h: uniq/(H during a) during s`) still
+  - Open (PLAN G233; superseded by BU-95, which publishes the discarded value's Type): `_ = h.link` and a bare statement `h.link`
+    (`link: uniq/i32 during a`, `h: uniq/(H during a) during s`) still
     type their temporary and its Ref by HIR Meaning's stored `uniq/i32 @a`, the stored Type BU-27 says never, while `(h.link)` gets
     Binding's name `@(s & a)`: the Type depends on parentheses until the adapted Type is published to a discard. A5 reports
     `UnprovenOriginRelation_Kd` at those two forms on the MIR, a shadow false error the default pipeline does not report (probe
@@ -7886,7 +7887,8 @@ resumed by R4-M86 (2026-10-20).
   (no verdict changes on dev; the library and milestones are unaffected); no published channel carries Binding's name to a discard.
   Options, none taken in this unit (the planning session's ruling, 2026-10-23): (a) a fact in the Discard node's plan row, a new HIR
   fact for R4 and possibly the owner to decide; (b) publishing adaptation Types, A's rejected `ErasedTypes` column; (c) the builder
-  meeting the layers itself, a second copy of the rule. Not temporary. StoredReborrow is the one rule at bare acquisition
+  meeting the layers itself, a second copy of the rule. Not temporary. (Superseded by BU-95: option (a) in the discarded Place's own
+  plan row, `PlanRow.DiscardedType`.) StoredReborrow is the one rule at bare acquisition
   positions only: with a fixed expected Type, BindAndAdaptNode's clause (Binding.Expressions.cs:313) forces the Reborrow of a bare
   stored reference whose expected Type equals its own for `uniq` alone, so `return h.o` with a fixed expected `objuniq` Type keeps
   the stored Origin and the old analysis reports `TransferRequired_Kd` (no acceptance changes); that clause should read
@@ -10753,6 +10755,26 @@ resumed by R4-M86 (2026-10-20).
     then child rows).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
+- **BU-95 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; design revision 2
+  `G233\design.md`, design reviews 1 REVISE and 2 ACCEPT; R4's consent C-16 for the builder lines under hold H-4; supersedes BU-27's
+  Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC 14.2.2, 14.2.4, 15.6.3, 10.2.
+  - Cause: a discard drops the Type its operand supplies (`Binding.SuppliedType`: a stored `uniq`/`objuniq` Place's Reborrow by
+    Binding's name, BU-27), which a group's Meaning and every other consumer's Type carry, so `MirBuilder.Statement` and `Discard` held
+    the temporary at the Place's stored Meaning: `_ = h.link` and `h.link` got `@a`, `(h.link)` `@(s and a)`, and A5 reported a false
+    `UnprovenOriginRelation_Kd` (`s outlives a`) on valid programs, in every form a container or an explicit discard takes a Place.
+  - Representation: `PlanRow.DiscardedType`, at the Place a container or an explicit discard takes (`Binding.Discards`, outside any
+    group), written by the publisher's discard row (`DiscardRow`, beside R4-M145's Adjust, its gate wider by the explicit discard's
+    operand, whose Adjust is the column's) from the existing gated `SuppliedType`; null for a value item and a Place Binding did not
+    resolve. `MirBuilder.Held` = `DiscardedType ?? TypeOf(node)` is the only fallback (C-16); `Reborrowed` does not guard a missed
+    write, so `HirFormsTest`'s row tests do. `Discards` is the one discard predicate (IsBareAcquisitionPosition reads it).
+  - Class: Major by the adopted R7 plan's R7-Y3 row (this publication; ARCH's vocabulary unchanged); by WORKFLOW's table a shared
+    representation across phases, so the class relies on R7-Y3. G233 lands before R7-Y1 (C-16); Y3 keeps its adaptation-mode half.
+  - Cost: +8 B per plan row (48 to 56; about 1,182 rows for Milestone34 with the library); a dense column would be about 81 KB.
+  - Not this cause: pair layers acquired by case (G254), a discarded call (its Meaning carries the meet), G426. `AddBodyResult`'s
+    ungated copy of `SuppliedType` stays, PLAN's own row (design review 2's R-2).
+  - Rejected: a HirTables column or a generalized `ErasedTypes`; the builder meeting the layers (a second PlaceOrigins); the Place's
+    Meaning set to the adapted Type (SPEC gives the Place its stored Type); the DiscardKoto's own slot (no node for a bare statement:
+    two paths); a TyCtxt query over Binding's pass-local adaptations.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

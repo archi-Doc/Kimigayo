@@ -215,7 +215,15 @@ internal struct PlanRow
     /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
-    // An Int128 would align the row to 16 bytes; two halves keep it at 48.
+    /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-95), at the Place
+    /// it takes (the outermost group): the Type the Place supplies (<c>Binding.SuppliedType</c>), a stored exclusive reference's Reborrow
+    /// by Binding's name (DECISIONS BU-27), which no consumer states for a discard; written at each such Place of each pass, an explicit
+    /// discard's operand included, whose Adjust is the column's. Null for any other node (a value statement holds its Meaning) and for a
+    /// discarded Place Binding did not resolve. Read only for a node published with a Place Op: one check publishes twice and rows are
+    /// not cleared, so a node a later publish makes Error may keep an earlier Type, which no reader takes (its value is derived).</summary>
+    internal BoundType? DiscardedType;
+
+    // An Int128 would align the row to 16 bytes; two halves keep it at 56.
     private bool folded;
     private ulong foldedHigh;
     private ulong foldedLow;

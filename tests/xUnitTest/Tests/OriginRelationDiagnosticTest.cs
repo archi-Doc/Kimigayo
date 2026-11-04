@@ -36,6 +36,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Holder2 = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
+    private const string Discarding = Holder2 + "func f(h: uniq/(Holder2 during a) during s, c: bool) -> ()\n";
+
     private const string Box = "struct Box<T>\n    public var item: T\n";
 
     private const string Optional = "struct H {a}\n    public var o: uniq/Option<string> during a\n";
@@ -287,6 +289,53 @@ public partial class OriginRelationDiagnosticTest
     {
         var output = DiagnosticCorpus.Check(body + Main);
         Assert.True(output.Accepted, string.Join("\n", output.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-95, PLAN G233): a discarded stored `uniq` or `objuniq` Place is Reborrowed by Binding's
+    // name, the meet of the layers reaching it, which each contains, so a discard needs no Origin relation in any form a container or an
+    // explicit discard takes it, with or without parentheses (their twins), through a Field, a follow, a Tuple position or an element; a
+    // relation a fixed Type or a destination needs, and a conflict, keep their records (the invalid twins), and a false record beside a
+    // kept one is gone. Each row: the body, its records' codes in order (empty when accepted).
+    [Theory]
+    [InlineData(Discarding + "    _ = h.link\n    h.link\n", "")]
+    [InlineData(Discarding + "    (h.link)\n    _ = (h.link)\n", "")]
+    [InlineData(Discarding + "    if c\n        h.link\n", "")]
+    [InlineData(Discarding + "    if c => () else => h.link\n    let z = 0\n", "")]
+    [InlineData(Discarding + "    match c\n        true => h.link\n        false => ()\n    let z = 0\n", "")]
+    [InlineData(Discarding + "    while c\n        h.link\n", "")]
+    [InlineData(Discarding + "    loop\n        h.link\n        exit\n", "")]
+    [InlineData(Discarding + "    label w: do\n        h.link\n    label v: if c => h.link else => ()\n    let z = 0\n", "")]
+    [InlineData(Discarding + "    do => h.link\n    do\n        (h.link)\n    let z = 0\n", "")]
+    [InlineData(Discarding + "    defer\n        h.link\n    let z = 0\n", "")]
+    [InlineData(Discarding + "    var g = func [h] () -> ()\n        h.link\n    g()\n", "")]
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> () => h.link\n", "")]
+    [InlineData("struct Holder4 {a}\n    public var link: uniq/i32 during a\n    public func touch(self: uniq/Self during b) -> () => self.link\n", "")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a) during s) -> ()\n    _ = p@follow\n    p@follow\n    (p@follow)\n", "")]
+    [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> ()\n    _ = h.o\n    h.o\n    (h.o)\n", "")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a, i32) during s) -> ()\n    p.0\n    _ = p.0\n", "")]
+    [InlineData("struct Holder3 {a}\n    public var t: (uniq/i32 during a, i32)\nfunc f(h: uniq/(Holder3 during a) during s) -> ()\n    h.t.0\n    _ = h.t.0\n", "")]
+    [InlineData("func f(p: uniq/(Array<uniq/i32 during a>) during s, q: uniq/([2 of uniq/i32 during a]) during s) -> ()\n    p[0]\n    _ = p[0]\n    (p[0])\n    q[0]\n    (q[0])\n", "")]
+    [InlineData("func f(d: uniq/(Dictionary<i32, uniq/i32 during a>) during s) -> ()\n    _ = d[1]\n", "")]
+    [InlineData(Discarding + "    origin s outlives a\n    _ = h.link\n    h.link\n", "")]
+    [InlineData(Discarding + "    let x = h.link\n    _ = x\n", "")]
+    [InlineData(Holder2 + "func id(x: uniq/i32 during b) -> uniq/i32 during b => x\nfunc f(h: uniq/(Holder2 during a) during s) -> ()\n    id(h.link)\n    _ = id(h.link)\n", "")]
+    [InlineData("func f<s/T>(p: uniq/(s/T during a) during b) -> ()\n    s is uniq\n    p@follow\n    _ = p@follow\n    (p@follow)\n", "")]
+    [InlineData(Discarding + "    unsafe\n        h.link\n    let z = 0\n", "UnnecessaryUnsafeBlock_Kd")]
+    [InlineData(Discarding + "    let r = h.link\n    _ = h.link\n    r@follow = 1\n", "ComparisonLoanConflict_Kd")]
+    [InlineData(Discarding + "    let r = h.link\n    h.link\n    r@follow = 1\n", "ComparisonLoanConflict_Kd")]
+    [InlineData(Discarding + "    let r = h\n    _ = h.link\n    h.link\n    r.link@follow = 1\n", "ComparisonLoanConflict_Kd ComparisonLoanConflict_Kd")]
+    [InlineData(Discarding + "    let g = h@move\n    _ = h.link\n    h.link\n", "MovedPlace_Kd MovedPlace_Kd")]
+    [InlineData(Discarding + "    let x: uniq/i32 during a = h.link\n    _ = x\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a => h.link\n", "UnprovenOriginRelation_Kd")]
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s, g: uniq/(Holder2 during a) during t) -> ()\n    g.link = h.link\n", "UnprovenOriginRelation_Kd")]
+    [InlineData("struct Holder5 {a}\n    public var link: uniq/i32 during a\n    public func store(self: uniq/Self during b, x: uniq/i32 during a) -> () => self.link = x\nfunc f(h: uniq/(Holder5 during a) during s, g: uniq/(Holder5 during a) during t) -> ()\n    g.store(h.link)\n    _ = g.store(h.link)\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a, i32) during s) -> uniq/i32 during a => p.0\n", "UnprovenOriginRelation_Kd")]
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a\n    return label w: do => h.link\n", "UnprovenOriginRelation_Kd")]
+    [InlineData(Holder2 + "func f(h: ref/(Holder2 during a) during s) -> ()\n    _ = h.link\n    h.link\n", "TransferRequired_Kd TransferRequired_Kd")]
+    public void ADiscardedReborrowNeedsNoRelation(string body, string codes)
+    {
+        var output = DiagnosticCorpus.Check(body + Main);
+        Assert.Equal(codes, string.Join(" ", output.Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)));
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence whose nested Origin is not proven to outlive the outer one is a wellFormed record at

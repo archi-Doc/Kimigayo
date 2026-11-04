@@ -108,15 +108,9 @@ public sealed partial class Binding
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {
                     places[node.SyntaxId] = new(this.KindOf(node, op, res[node.SyntaxId]), this.Layers(node));
-
-                    // SPEC 14.2.2 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, its plan row's Adjust
-                    // (Discarded). No consumer takes such a Place but the group around it (Grouped's IsGroup), so only a Place with no
-                    // Adjust or a group's operand is asked for its context, the builder's reach, not every Place.
-                    if (places[node.SyntaxId].Kind != HirPlaceKind.Value && (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset || IsGroup(node.Parent)) &&
-                        !KotoHelper.IsValueContext(node))
+                    if (places[node.SyntaxId].Kind != HirPlaceKind.Value)
                     {
-                        var discarded = binding.Discarded(node);
-                        HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+                        this.DiscardRow(node);
                     }
                 }
             }
@@ -231,6 +225,28 @@ public sealed partial class Binding
                     return HirRes.Variant;
                 default:
                     return HirRes.Decl;
+            }
+        }
+
+        // SPEC 14.2.2, 14.2.4 (DECISIONS R4-M145, BU-95): a discarded Place's plan row. A Place in Discard Context is acquired by bare
+        // acquisition, its row's Adjust (Discarded); the Place a container or an explicit discard takes (Discards, outside any group) holds
+        // the value its acquisition supplies, its row's DiscardedType (SuppliedType), which no consumer states. No consumer takes such a
+        // Place but the group around it (Grouped's IsGroup) or the explicit discard, so only a Place with no Adjust, a group's operand or
+        // a discard's operand is asked for its context, the builder's reach, not every Place.
+        private void DiscardRow(Koto node)
+        {
+            var unset = HirTables.AdjustOf(node).Acquire == HirAcquire.Unset;
+            var grouped = IsGroup(node.Parent);
+            if ((unset || grouped) && !KotoHelper.IsValueContext(node))
+            {
+                var discarded = binding.Discarded(node);
+                HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+            }
+
+            if (!grouped && (unset || node.Parent is DiscardKoto) && Discards(node))
+            {
+                var type = binding.SuppliedType(node);
+                HirTables.PlanFor(node, type is not null).DiscardedType = type;
             }
         }
 

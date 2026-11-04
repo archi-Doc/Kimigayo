@@ -679,6 +679,35 @@ public sealed partial class HirFormsTest
         var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);
         Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
+        var held = HeldByTheirRow(c.Kotonoha).ToArray();
+        Assert.NotEmpty(held);
+        Assert.All(held, static x => Assert.NotNull(HirTables.PlanOf(x).DiscardedType));
+    }
+
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-95, PLAN G233): the Place a container or an explicit discard takes holds the Type its bare
+    // acquisition supplies in its plan row (DiscardedType), which no consumer states: a stored exclusive reference's Reborrow by Binding's
+    // name, the meet of the layers reaching it (BU-27), the same for `_ = h.link`, `h.link` and `(h.link)`, the last its group's Meaning; a
+    // Copy Place its own Type. A group's operand and a value statement have none (the builder holds a value statement's Meaning). Each row:
+    // the node, its row's Type.
+    [Fact]
+    public void ADiscardedPlaceHoldsTheTypeItsAcquisitionSupplies()
+    {
+        const string Source = "struct Holder2 {a}\n    public var link: uniq/i32 during a\nfunc id(x: i32) -> i32 => x\n" +
+            "func f(h: uniq/(Holder2 during a) during s, n: i32) -> ()\n    _ = h.link\n    h.link\n    (h.link)\n    _ = (h.link)\n    n\n    _ = n\n" +
+            "    id(n)\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var rows = Reachable(c.Kotonoha)
+            .Where(x => IsWithin(x, f) && x is not (FunctionKoto or DiscardKoto) && x.Parent is CodeBlockKoto or ParenthesizedKoto or DiscardKoto)
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(HirTables.PlanOf(x).DiscardedType is { } type ? Binding.HoverTypeName(type) : "-")}");
+        const string Name = "uniq/i32 during (s and a)";
+        Assert.Equal(
+            [$"h.link {Name}", $"h.link {Name}", $"(h.link) {Name}", "h.link -", $"(h.link) {Name}", "h.link -", "n i32", "n i32", "id(n) -"],
+            rows);
+        var group = Reachable(c.Kotonoha).First(x => IsWithin(x, f) && x is ParenthesizedKoto);
+        Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
     }
 
     // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
@@ -703,6 +732,8 @@ public sealed partial class HirFormsTest
         HirTables.Publish(module.Compilation);
         var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
         Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
+        var untyped = HeldByTheirRow(module).Where(static x => HirTables.PlanOf(x).DiscardedType is null);
+        Assert.Empty(untyped.Select(static x => $"{x.Span.Start} {x}"));
     }
 
     // The Places the MIR builder acquires by their plan row (MirBuilder.Into's Place case): a Place no consumer's Adjust takes (a
@@ -711,4 +742,10 @@ public sealed partial class HirFormsTest
         HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
         (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
+
+    // The Places the MIR builder holds by their row's Type (MirBuilder.Held, DECISIONS BU-95): a Place outside any group that a container
+    // discards (no consumer's Adjust takes it, in Discard Context) or an explicit discard takes, as the publisher writes them.
+    private static IEnumerable<Koto> HeldByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
+        HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && x.Parent is not ParenthesizedKoto &&
+        (x.Parent is DiscardKoto || (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset && !KotoHelper.IsValueContext(x))));
 }
