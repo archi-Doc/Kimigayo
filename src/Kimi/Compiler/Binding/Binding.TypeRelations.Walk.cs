@@ -50,7 +50,7 @@ public sealed partial class Binding
 
         // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
         // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
-        // the plain position's search records it (design-r2 Amendment 1, A1).
+        // the plain position's search records it (design-r2 Amendment 1, A1), never in a whole-contract comparison (OriginPart.Contract).
         Limit,
     }
 
@@ -87,11 +87,14 @@ public sealed partial class Binding
             this with { Path = this.Path | ((ulong)step << (8 * this.Depth)), Depth = (byte)(this.Depth + 1) };
     }
 
-    // Which Origin bindings a relation walk compares: every one (Judged), none outside Function Types (Structural, SPEC 15.6.1), or
-    // none at all (Everywhere, SPEC 10.4 step 2, since Origin bindings never rank candidates).
+    // Which Origin bindings a relation walk compares: every one (Judged), every one as a whole-contract comparison's Origin part, from the
+    // premises alone, so a member that only an inferred or body-local region decides is no limit (Contract, SPEC 15.6.1, 15.3.7: a
+    // Callable signature fit or a conversion's contract comparison; DECISIONS BU-93), none outside Function Types (Structural, SPEC
+    // 15.6.1), or none at all (Everywhere, SPEC 10.4 step 2, since Origin bindings never rank candidates).
     private enum OriginPart : byte
     {
         Judged,
+        Contract,
         Structural,
         Everywhere,
     }
@@ -131,7 +134,7 @@ public sealed partial class Binding
         internal bool Fits(
             BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
         {
-            if (ReferenceEquals(actual, expected))
+            if (this.Discharged(actual, expected))
             {
                 return true;
             }
@@ -141,7 +144,7 @@ public sealed partial class Binding
                 return this.End(instance);
             }
 
-            var structural = this.part != OriginPart.Judged;
+            var structural = this.part is OriginPart.Structural or OriginPart.Everywhere;
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
@@ -245,14 +248,20 @@ public sealed partial class Binding
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
+        // Whether identity decides the relation of two parts: always, except in a whole-contract comparison (Contract), where a part that
+        // carries an Origin may hold a Function Type whose Callable comparison has its own condition, the implementation's own
+        // well-formedness at the use (the owner's (a); DECISIONS BU-93), which no identity discharges.
+        private readonly bool Discharged(BoundType actual, BoundType expected)
+            => ReferenceEquals(actual, expected) && (this.part != OriginPart.Contract || !actual.CarriesOrigin);
+
         // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
         // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an
-        // inferred or body-local region) is the located limit.
+        // inferred or body-local region) is the located limit, except in a whole-contract comparison (Contract), which no region decides.
         private readonly ComparisonFailure OriginFailure(BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance)
         {
             var kind = instance.Expected is null ? ComparisonFailureKind.Position : ComparisonFailureKind.Origin;
             var (a, b) = instance.Actual is null ? (longer, shorter) : (instance.Instantiate(longer), instance.Instantiate(shorter));
-            if (kind == ComparisonFailureKind.Origin && this.binding is { } judge && this.use is { } at &&
+            if (kind == ComparisonFailureKind.Origin && this.part != OriginPart.Contract && this.binding is { } judge && this.use is { } at &&
                 judge.JudgeOriginRelation(a, b, at, judge.formingBody) is not (OriginJudgment.Refuted or OriginJudgment.Unknown))
             {
                 kind = ComparisonFailureKind.Limit;
@@ -300,9 +309,10 @@ public sealed partial class Binding
         // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
         // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
         // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly. Inside a Function
-        // Type only `Everywhere` treats Origin bindings as equal. Under the owner's (a), the implementation's own well-formedness, its
-        // inputs' and result's, is one of its conditions, proven from the required signatures' own well-formedness (the instance's
-        // premises) and the premises at the use (FailedSignatureWellFormedness); without a Binding no premise is visible.
+        // Type only `Everywhere` treats Origin bindings as equal, and `Contract` stays a whole-contract comparison. Under the owner's (a),
+        // the implementation's own well-formedness, its inputs' and result's, is one of its conditions, proven from the required
+        // signatures' own well-formedness (the instance's premises) and the premises at the use (FailedSignatureWellFormedness); without a
+        // Binding no premise is visible.
         private bool FunctionFits(BoundType actual, BoundType expected, bool invariant, in CallableInstance instance)
         {
             var actualInputs = actual.Components[0];
@@ -315,7 +325,7 @@ public sealed partial class Binding
 
             var outer = this.part;
             var everywhere = outer == OriginPart.Everywhere;
-            this.part = everywhere ? OriginPart.Everywhere : OriginPart.Judged;
+            this.part = outer is OriginPart.Everywhere or OriginPart.Contract ? outer : OriginPart.Judged;
             var fits = this.MembersFit(actual, expected, invariant, instance);
             this.part = outer;
             if (!fits || this.binding is null || everywhere || this.binding.FailedSignatureWellFormedness(actual, instance, this.use!) is not { } formed)
@@ -331,7 +341,7 @@ public sealed partial class Binding
         {
             var actualInputs = actual.Components[0];
             var expectedInputs = expected.Components[0];
-            for (var i = 0; !ReferenceEquals(actualInputs, expectedInputs) && i < actualInputs.Components.Count; i++)
+            for (var i = 0; !this.Discharged(actualInputs, expectedInputs) && i < actualInputs.Components.Count; i++)
             {
                 var input = actualInputs.Components[i];
                 if (!this.Fits(expectedInputs.Components[i], input, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance))
