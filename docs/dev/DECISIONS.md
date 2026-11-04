@@ -7,16 +7,19 @@ entries, responsibilities moved between phases, temporary structures and working
 decisions of its adoption; this log holds the later ones. [COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md) states the
 rules that result from them.
 
+Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the pre-compaction text of every entry is at commit 4fb6fcdb1.
+
 - An entry gives its id, date and decider, the decision, the options rejected and why, and the stage that removes a
-  temporary structure. It is added in the commit that first implements it. A superseded entry stays and names its
-  replacement.
+  temporary structure. It is added in the commit that first implements it. A fully superseded entry becomes a short line
+  naming its replacement and the commit with its full text.
 - This log is the authority. Planning and handoff files under `artifacts/` (ignored by Git) cite entries by id instead of
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
 
 ## Syntax edits
 
-- **AST1 Detached child replacements** (2026-10-23, planning session, implementing the owner's G169 design).
+- **AST1 Detached child replacements** (2026-10-23, the owner's G169 design; superseded for current ownership and root
+  provenance transfer by AST2).
   Snapshot-based AST edits (SPEC §23.5) preserve one owning child slot and its `Parent` link. `Koto.ReplaceChild`
   rejects an attached replacement before changing a slot, an attribute chain, source provenance or analysis state,
   matching `ReplaceAt`'s detached precondition. `KotoHelper.Replace` transfers source metadata only after success.
@@ -25,16 +28,9 @@ rules that result from them.
   one detached placeholder and three replacements. This removes fake `Parent` resets and two-call swaps, without
   compensating in the ledger. Rejected: a new general detachment API in `ChildSlots` (misses attribute ownership),
   and automatic stealing in `KotoHelper` (implicitly changes another tree). The successful production path adds one null
-  check and no allocation; the test setup explicitly represents the same ownership rule.
-  Superseded for current ownership and root provenance transfer by AST2 below. Original scope: a correctly detached compound subtree from another compilation already fails reanalysis before this
-  guard (G235). Semantic readers, including `HirTables.HasCurrentBinding`, confuse source provenance with its
-  current semantic owner. Fixing that predicate alone would leave other readers and edit invalidation inconsistent;
-  a consistent owner-publication design is a separate unit. The iteration-body and requirement-premise editing
-  tests use a donor source unit in the recipient compilation, reestablish verified analysis after donor preparation,
-  then retain their original edit, reanalysis, generation and diagnostic assertions. Cross-compilation syntax-ID
-  relocation tests remain; their passing cases do not certify compound-subtree reanalysis.
+  check and no allocation.
 
-- **AST2 Current ownership of transplanted syntax** (2026-10-24, planning session; G235).
+- **AST2 Current ownership of transplanted syntax** (2026-10-24; G235).
   Attachment establishes the current module and diagnostic target for the whole reachable subtree. A node's
   `CodeContext` carries that current ownership and its immutable source snapshot; descendants keep their documents
   and spans. `Koto.Ownership` admits a replacement, transfers the old slot's root provenance, then attaches it,
@@ -63,26 +59,26 @@ rules that result from them.
 
 ## Build artifacts
 
-- **B1 Library build records** (2026-10-15, planning session; owner decision in IMPL §20.3.2). `Project.Build` selects product checks or Application emission by OutputKind. `NativeToolchain` owns invalidation and atomic record publication; Library success is `status: checked`, with input and selected compilation metadata, and invokes no native tools. All artifact-producing calls retain the single Windows x64 target rule. Library manifests are rejected because they cannot establish source-check success. Rejected: record writing in Project (duplicates publication ownership), and a new record component (moves an already shared responsibility without removing duplication). No compiler phase, IR or generation contract changes.
+- **B1 Library build records** (2026-10-15; owner decision in IMPL §20.3.2). `Project.Build` selects product checks or Application emission by OutputKind. `NativeToolchain` owns invalidation and atomic record publication; Library success is `status: checked`, with input and selected compilation metadata, and invokes no native tools. All artifact-producing calls retain the single Windows x64 target rule. Library manifests are rejected because they cannot establish source-check success. Rejected: record writing in Project (duplicates publication ownership), and a new record component (moves an already shared responsibility without removing duplication). No compiler phase, IR or generation contract changes.
 
 ## Working process
 
-- **Q1 Quality mechanisms** (2026-10-12, owner).
-  - Adopted: the size budget counts logical size, non-trivia C# tokens (Code Rules Analyzer A1, before R4); restructuring
-    and behavior changes are separate commits (AGENTS, [VERIFICATION](VERIFICATION.md#behavior-preserving-commits)); design
+- **Q1 Quality mechanisms** (2026-10-12, owner; its size budget removed by Q5; its deferral of lighter commit records
+  superseded by Q6).
+  - Adopted: restructuring and behavior changes are separate commits (AGENTS, [VERIFICATION](VERIFICATION.md#behavior-preserving-commits)); design
     decisions are taken in the design step and recorded here (AGENTS); context stays small: from Code Rules Analyzer A1 each canonical
     component's entry file begins with its contract, and documents keep current rules and positions in short rows.
   - Deferred: metamorphic tests and fuzzing for shape-dependent code; consolidating tests into data-driven corpora;
-    per-phase performance budgets; per-session goal metrics, the sequencing of R7 and R8 with milestone work, and lighter
-    commit records.
-- **Q2 Code Rules Analyzer** (2026-10-11, owner). The
+    per-phase performance budgets; per-session goal metrics and the sequencing of R7 and R8 with milestone work.
+- **Q2 Code Rules Analyzer** (2026-10-11, owner; its enforcement retired by CR-R1). The
   [proposal](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) §9: rules KR1xxx–KR3xxx and the built-in unused-code
   rules as build errors over a shrinking baseline, units A0–A8 after R3 and before R4. The limits are in
   COMPILER_ARCHITECTURE (structure limits).
 - **Q3 Compiler allocations** (2026-10-11, owner, AGENTS `8071549f`). An allocation in the compiler is allowed when it
   makes equivalent work faster or reduces compiler code with a reasonable increase in memory, measured and recorded.
   Supersedes plan §18 P11 and §14-8. Native allocation counts and O2 run time may not regress.
-- **Q4 Design selection and root-cause method** (2026-10-12, owner; AGENTS Implementation Design).
+- **Q4 Design selection and root-cause method** (2026-10-12, owner; AGENTS Implementation Design; its order's wording
+  replaced by Q5).
   - Adopted: options and designs are compared by the AGENTS priorities: coherence first (one owning component per
     decision, one representation per fact, the dependency rules, contracts without modes), then net size over the
     affected scope with deletions, then compilation speed; this replaces "fewer concepts and less code" (AGENTS since
@@ -125,20 +121,13 @@ rules that result from them.
   - Rejected: an A5-only exception (the owner judged the three forms independent of A5); applying them without
     conditions, since a shared review must not let unreviewed code reach dev, and SPEC, IMPL, AGENTS, DECISIONS, SETTLED,
     STYLE and proposals are authority, not records.
-- **Q7 A mechanical one-argument propagation is not a change for the restructuring rule** (2026-10-19, owner; AGENTS
-  "Restructure a file changed by three consecutive units before its next change"; superseded by Q9).
-  - Adopted: a unit that only adds one argument to a signature and passes it through, adding no branch, state or
-    responsibility to the file, does not count as one of the three changes. Applied first to `MirInit.cs` and
-    `MirBorrows.Activations.cs`, whose third change, 1c-1, only passed a problem's requirement (R4-M67): 1c-5 changes
-    `.Activations.cs` and 1c-6 changes `MirInit.cs` without a split, and those changes count.
-  - Reason: the rule catches a file that accumulates responsibilities; a propagated argument adds none, and a split without
-    a responsibility boundary fails review (AGENTS).
-  - Rejected: counting it, which forces a split or a ruling for files whose responsibility did not change.
+- **Q7 A mechanical one-argument propagation is not a change for the restructuring rule** (2026-10-19, owner): superseded by
+  Q9 (2026-10-24); full text: 4fb6fcdb1.
 
-- **Q8 Allocation test isolation** (2026-10-23, planning session; G88). Formerly serial nested `AllocationTests`
+- **Q8 Allocation test isolation** (2026-10-23; G88). Formerly serial nested `AllocationTests`
   join one `AllocationIsolationCollection`, declared with xUnit's `CollectionDefinition(DisableParallelization = true)`.
   The existing `collections` runner mode ignores class-level `TestClass.DisableParallelization`; collection discovery
-  now publishes isolation where the scheduler consumes it. Replace all 24 ineffective class attributes. Functional
+  now publishes isolation where the scheduler consumes it. Replace the ineffective class attributes. Functional
   cases and allocation tests that already ran concurrently retain their collections. Rejected: removing isolation
   (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
   unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
@@ -160,13 +149,10 @@ rules that result from them.
     `CompilerFunctionKind` or `BindingFailure`) is a different decision and stands. The open AGENTS Restructuring proposal's C4
     moves only the stage-exit records.
   - Reason: the count measured activity, not accumulated responsibility. Most rulings under it found one responsibility in
-    files below the 5,000-token limit (`MirProblem.cs` about 75 tokens, `MirBorrows.Reports.cs` about 590, `DropGlue.cs` about
-    680; `MirInit.cs` and `MirDrops.cs` about half the limit); seven exemption and counting rulings grew around it (Q7's
-    propagated argument, comment-only and deletion-only edits, edits adding no responsibility, a copy replaced by a call, a
-    data table, units in flight), each refining what counts or restating the responsibility test review already applies; and
-    a count reset only by a split kept active files due, so splits made for the count alone left `TyCtxt.Raw.cs` at about
-    150 tokens and `MirBorrows.Groups.cs` at about 350 (after a second no-split ruling was refused), and the five RawOrigins
-    files, about 4,450 tokens together, were listed due again.
+    files below the 5,000-token limit; seven exemption and counting rulings grew around it (Q7's propagated argument,
+    comment-only and deletion-only edits, edits adding no responsibility, a copy replaced by a call, a data table, units in
+    flight), each refining what counts or restating the responsibility test review already applies; and a count reset only by
+    a split kept active files due.
   - Rejected: keeping the count as a review prompt that a one-responsibility ruling resets (it keeps per-unit counting across
     parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
     count or a size floor (another proxy for the same test).
@@ -191,8 +177,8 @@ rules that result from them.
     resetting the count on a design revision (the bound would never apply); a review count as a reason to ACCEPT.
 
 - **Q11 Full changes by shared acceptance tests and two candidates; a unit that does not converge goes to the owner**
-  (2026-10-27, owner; [WORKFLOW](WORKFLOW.md) "Full changes", "Repeated reviews" and "Owner decisions").
-  Amended by Q13: a unit that does not converge on record selection is the planning session's.
+  (2026-10-27, owner; [WORKFLOW](WORKFLOW.md) "Full changes", "Repeated reviews" and "Owner decisions"; amended by Q12 and
+  Q13).
   - Adopted (the owner, verbatim: 「そのように、WORKFLOW.mdを修正してください。いずれの場合も収束しない場合は、一時作業を停止して、
     オーナーに対応を質問するようにしてください。」, after 「G216 (a) の作り直しで試す」 and the owner's proposal of a design-first and
     an implementation-first lane): a Full change is a problem statement; shared acceptance tests written first by an author of
@@ -221,13 +207,13 @@ rules that result from them.
   - Rejected: the two-candidate flow for Major changes (two implementations and the test-first step cost more than they save
     for a local change); keeping the planning session's redo of the cause analysis without the owner (it let a third round run
     on a known shared cause); calling the candidates lanes (one name for two concepts).
-  - Units in flight (the planning session's reading, reported to the owner): a Full unit whose choice between designs was made
+  - Units in flight: a Full unit whose choice between designs was made
     before this entry finishes under the flow it started in; a Full unit with designs written but no choice made keeps one
     written design as its design-first candidate (G216 (a); BU's G206 B); the rule on units that do not converge applies at
     once, counting the reviews already made.
 
-- **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
-  independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
+- **G138-1 Native execution and verification evidence ownership** (2026-10-24). G138 needs execution progress distinguished
+  from scheduling delay and missing observations
   distinguished from program failures. Before changing that representation, test-scalar-process.ps1 owns one executable's
   launch, stream draining, oracle comparison and recovery; test-scalar-fixture.ps1 retains compilation and level aggregation.
   verification-native.ps1 owns the native success-line and pending-coverage predicates and their detail text; verify.ps1
@@ -236,10 +222,10 @@ rules that result from them.
   The process extraction reuses e3f7f35fa3348c7dcc8a49d529066ad6d0cc4ebb; verify's native evaluation is also split before its
   next change after three consecutive units. Rejected: expanding inline lifecycle/evidence logic, a generic process framework,
   new mode arguments or a build component without a new responsibility. The following G138 unit replaces wall-time
-  divergence observation and publishes incomplete verification through these existing owners; G138 remains open.
+  divergence observation and publishes incomplete verification through these existing owners.
 
-- **G138-2 Observed execution and incomplete native verification** (2026-10-24; planning session, independent A/B designs
-  and pre-code review). A nonterminating fixture requires a finite process CPU observation budget, not a short wall-time
+- **G138-2 Observed execution and incomplete native verification** (2026-10-24). A nonterminating fixture requires a finite
+  process CPU observation budget, not a short wall-time
   delay that may contain only launch or scheduling. The process owner publishes observed CPU, termination, output/exit
   violations and operational problems, then chooses passed, failed or incomplete once recovery and capture finish.
   The .observation sidecar and observationMilliseconds replace the elapsed-time .timeout oracle at every producer.
@@ -261,12 +247,10 @@ rules that result from them.
     six required inputs retain its expected result/count and deadline. The top-level PowerShell param block remains a CLI
     schema, not a member exception; its execution-deadline option is not propagated as an excess internal parameter.
   - Reused behavior from eb2d34be4261fda2d6997e632007d4b86bf1f7b9, adapted to G138-1's owners. Its catch converted a failed
-    executable launch into failed with no execution, letting a known pending row accept an unobserved program. A real
-    LLVM link followed by retaining our executable reproduces that gap; invalid UTF-8 is the definite-failure control.
+    executable launch into failed with no execution, letting a known pending row accept an unobserved program.
     Rejected: merely increasing 200 ms, all exceptions becoming failed or incomplete, consumer exception-text inference,
     a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
-    CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
-    and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
+    CPU polling and byte buffers add bounded verification work; completion may wait longer under load.
 - **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
   "Working-time limit", "Repeated reviews" and "Owner decisions").
   - The owner's draft (verbatim):
@@ -288,9 +272,7 @@ rules that result from them.
       cause shares a cause with it.
     - A unit that the limit stops after its work has already been split twice under the limit does not converge.
     Q11's other signals stand.
-  - Reason: large units took long and did not converge. G216 (a) went through five proposal revisions, three
-    implementation reviews and a redesign review round, and G264's option (A) lost its premise only at the SPEC draft's
-    review. Scoped design units of 2026-10-30 took 23 to 38 minutes of agent time, so one hour fits a small unit.
+  - Reason: large units took long and did not converge; one hour fits a small unit.
   - Rejected:
     - elapsed time: other sessions' builds and heavy runs load the machine;
     - resetting the clock per fix round: it lets repeated rounds escape the limit.
@@ -321,12 +303,8 @@ rules that result from them.
     (rule W on G216 (a) Part 1) removes FailedFit and PublishJudged before the joint landing. D2 (a re-entry as a limit)
     removes bu97's hop chain after it.
   - Reason:
-    - Since 2026-11-01, G216 (a) Part 1 and bu97 spent most of their effort keeping dependent records out: C16, B5, B7, B8 and
-      the lengths; the depth test, hops and mx2. SPEC 23.1.2 does not require that, and it cannot be decided exactly, so
-      each review found a new form.
-    - The owner gave 13 answers in about 36 hours, and about 480 source lines served record selection alone. The evidence
-      is BU's audits, `impl-audit.md` and `spec-audit.md` in the BU notes' `simplify` folder, and R4's
-      `simplification-view-20261102.md`.
+    - Since 2026-11-01, G216 (a) Part 1 and bu97 spent most of their effort keeping dependent records out. SPEC 23.1.2
+      does not require that, and it cannot be decided exactly, so each review found a new form.
   - Rejected:
     - revising SPEC 23.1.2 now, to define dependence by a check's inputs: rule W needs no SPEC change, and the revision
       stays an optional later SPEC unit;
@@ -338,7 +316,7 @@ CR-R1 supersedes only the analyzer enforcement, Report and approval requirements
 Underlying compiler decisions (including CR-A3a's HirTables ownership), token methodology, structure, size
 and migration obligations remain in force; no numeric cap changes are authorized by retirement.
 
-- **CR-R1 Analyzer workflow retirement** (2026-10-15, owner; independently reviewed).
+- **CR-R1 Analyzer workflow retirement** (2026-10-15, owner).
   - Cause: `2e341155` deleted the analyzer, policy/baseline, its tests and CompilerSizeBudgetTest, but Verify
     still required KR9000, injected the deleted test, and commit association demanded retired Reports.
     A warning-free whole-solution build therefore failed its verification wrapper before tests ran.
@@ -346,9 +324,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     project properties. ArchitectureRulesTest is the sole common Unit test. Keep warning-as-error builds,
     actual-assembly selector/nonzero checks, the full Session suite, native selections, stable input
     manifests and exact committed-input association. Existing attributes remain source-only review records.
-  - Rejected: restore ~8,495 deleted lines against the owner's removal direction; skip only the marker,
+  - Rejected: restore the deleted lines against the owner's removal direction; skip only the marker,
     leaving dead Report/approval paths and a nonexistent default test; conditionally bypass missing tools.
-    Removing the retired workflow deletes roughly 900 script/test lines and adds no modes or fallback.
   - The owner explicitly authorized aligning verification and related rules with the deletion. Existing
     architectural limits stay unchanged and are reviewed; no automated analyzer/size coverage is claimed.
 - **CR-R2 Constructors are exempt from the parameter-count limit** (2026-10-22, owner, direct, verbatim:
@@ -370,136 +347,98 @@ and migration obligations remain in force; no numeric cap changes are authorized
   rule. Compare diagnostics, semantic/HIR/MIR snapshots and generated IR, not DLL bytes (commit metadata differs).
   Intake changes architecture policy only; A1–A8 introduce implementation and enforcement.
 
-- **CR-A1** (planning session, independently reviewed; its caps superseded by Q5). CompilerSizeBudgetTest owns one file scan for all area and
+- **CR-A1** (its caps superseded by Q5). CompilerSizeBudgetTest owns one file scan for all area and
   total caps. Count parsed C# tokens without trivia, EOF or missing tokens; discard each tree after counting. Header
-  comments mark generated files; LLVM templates retain their newline cap. A0 measured 835,421 tokens / 128,885 C# lines,
-  excluding 1,687 generated lines and 2,335 template lines. Convert approved caps at fixed area ratios (future totals at
-  the whole-compiler ratio), rounding upward. Reject replacing each of the twelve scans with a parse: it repeats the
-  same work. No compiler behavior changes; add entry-file contracts required by Q1. The counter initially belongs to
-  the budget test; A2 moves it into the analyzer source owner and deletes the test copy. Reject a shared utility project
-  for this single operation. Only aggregate totals survive each file; no syntax-tree cache or whole-compiler tree graph.
+  comments mark generated files; LLVM templates retain their newline cap. Convert approved caps at fixed area ratios
+  (future totals at the whole-compiler ratio), rounding upward. Reject replacing each of the twelve scans with a parse: it
+  repeats the same work. No compiler behavior changes; add entry-file contracts required by Q1. The counter initially
+  belongs to the budget test; A2 moves it into the analyzer source owner and deletes the test copy. Reject a shared utility
+  project for this single operation. Only aggregate totals survive each file; no syntax-tree cache or whole-compiler tree
+  graph.
 
-- **CR-A2** (planning session, two independent designs compared). CodeRulesAnalyzer owns one compilation's immutable
-  configuration, file-local observations and one completion sort/merge with the baseline. Choose flat file batches,
-  published once, over concurrent dictionaries per key: fewer allocations, locks and state owners. CodeRule owns the
-  catalogue; CodeRulesConfiguration normalizes repository paths; CodeRulesSource owns counts and anchors;
-  CodeRulesBaseline owns matching and stale rows.
-  Move A1's counter into CodeRulesSource and delete its test copy. Pass the one globalconfig as both analyzer config
-  and AdditionalFile, using SourceText's byte checksum and algorithm; scripts share one SARIF reader with Verify.
-  Resolve suppression attributes semantically, including aliases; do not maintain an alias-name approximation.
-  Actual SDK 10.0.401 csc tests retained suppressed KR/IDE0052 records, including member/type/assembly and unconditional
-  attributes, and preserved BOM/CRLF checksums (A2 premise evidence). No fallback for incomplete Report or bad config.
-  Observe over-limit measurements only. A completely observed baseline row whose measurement no longer exceeds its
-  ordinary limit is redundant and is pruned, rather than retaining a smaller ineffective bound or resolving every
-  member's symbol. Report absence as absence, never as a measured zero. This normalizes proposal §3.5's minimum rule;
-  later approved lower limits do not restore deleted rows. Required exception/suppression checks are independent.
-  KimiCodeRulesLog sets ErrorLog only in Kimi.csproj, with SARIF 2.1 in the project: a solution-wide ErrorLog is
-  overwritten by later projects, and an unescaped command-line comma is an MSBuild property separator. Keep one
-  shared SARIF reader for reporting and Verify. Initialize requires the newly introduced rule IDs and cannot replace
-  existing keys. Static descriptor fields satisfy Roslyn release tracking; catalogue rows reference them without
-  repeating IDs or messages. LocalOwner chooses the closest declaration with a documentation ID, cached with source
-  identities; collection and name paths share that decision. This includes field declarators in initializers and
-  excludes unrelated members from top-level collisions. A declaration without an ID is not a file identity.
-  Incomplete declarations produce no member anchor; a successful compiler build remains mandatory for Report use.
+- **CR-A2** (2026-10-12) The analyzer's configuration, observations, baseline and Report: superseded by CR-R1 (2026-10-15);
+  full text: 4fb6fcdb1.
 
-- **CR-A3a** (planning session, two independent designs compared). A3's semantic dependency check exposed Koto's
-  direct reads of Binding.IsRunning/Result, missed by the old call-only regex. HirTables owns HasCurrentBinding's
-  existing fact: move the complete predicate there, using State(node), and keep Koto as an R6 forwarding property.
-  Binding.ObjectViews and SemanticQuery read the owner directly. Preserve the exact short-circuit order: do not obtain
-  Compilation.Binding before confirming Resolved, because that getter lazily allocates Binding. No state or cache is
-  added. Reject relaxing the dependency rule or moving the predicate into SemanticQuery, which requires a query-instance
-  access path from syntax. Prepare this behavior-preserving structure in a separate commit before A3 enforcement.
-  Delete the syntax-owned predicate and Binding's reads through it. Measured delta: Binding +48 tokens / +4 lines,
-  Parsing -25 tokens / -1 line. Verify rebind invalidation, SyntaxId/HIR reuse, allocation regressions and A0 snapshots.
+- **CR-A3a** A3's semantic dependency check exposed Koto's direct reads of Binding.IsRunning/Result, missed by the old
+  call-only regex. HirTables owns HasCurrentBinding's existing fact: move the complete predicate there, using State(node),
+  and keep Koto as an R6 forwarding property. Binding.ObjectViews and SemanticQuery read the owner directly. Preserve the
+  exact short-circuit order: do not obtain Compilation.Binding before confirming Resolved, because that getter lazily
+  allocates Binding. No state or cache is added. Reject relaxing the dependency rule or moving the predicate into
+  SemanticQuery, which requires a query-instance access path from syntax. Prepare this behavior-preserving structure in a
+  separate commit before A3 enforcement. Delete the syntax-owned predicate and Binding's reads through it.
 
-- **CR-A3** (planning session, two independent designs compared). CodeRulesArchitecture owns one immutable resolved
-  dependency/member/vocabulary policy per compilation. Configuration owns raw lists and locations. Enumerate source
-  types once and publish all declaration layers per original type; partial types cannot hide a forbidden declaration.
-  Resolve configured types once and cache each file's longest-prefix layer (compiler_root matches direct files only).
-  Choose layer arrays over a fixed-width mask: no extra layer-count concept or cap. Reject per-reference display names,
-  syntax reclassification and concurrent symbol caches. SimpleNameSyntax owns normal references; AttributeSyntax owns
-  its terminal name and shares its constructor symbol with suppression checking. Qualification types, type arguments
-  and attribute arguments keep their own references; XML documentation is not a dependency. This replaces the other
-  independent design's complete-name/member-access classifier with fewer syntax-shape decisions.
-  Member selectors match the configured type family, including derived Koto slots and overrides. Global child-walk
-  prohibitions use bare member names, including declarations: removed members need not exist to remain forbidden.
-  Resolve only candidate member names in unconstrained layers. Count each configured enum once, including aliases but
-  excluding implicit fields; a missing enum is located KR9002 (Warning in Enforce/Report, Error in Verify), not invalid
-  input that prevents Report completion. CodeRule owns stale severity and wording for both configuration and baseline.
-  Delete the two MIR dependency tests, vocabulary theory, three migrated source-pattern rows and their exclusive
-  helpers. Retain SemanticSlots only for the test-source ratchet, which is outside analyzer scope. Expected change:
-  350–500 analyzer lines, about 250 test lines and 90–110 deleted test lines; compiler source delta zero. Measure actual
-  csc/analyzer time; do not claim a speedup from replacing tests alone.
-  Actual csc exposed A2's list truncation: Roslyn treats semicolons as inline comments, including in globalconfig.
-  Choose the independent reviewer's comma-separated lists, verified with the actual parser, and replace all list
-  separators together. Reject a separate AdditionalFile parser and escaping/compatibility paths: one file must have
-  one grammar. Tests construct effective options through AnalyzerConfig.Parse/AnalyzerConfigSet from the same text
-  supplied as AdditionalFile; delete their line-splitting approximation. This also preserves both legacy exclusions.
-  Semantic checking then exposed 29 existing builder references to BoundArgumentOperation through CallPlan's published
-  ReceiverOperation/ArgumentOperations. Name that already-public result type in mir_build's allow list only; reject
-  transitive return-type allowance. The other two missed references were Koto's Binding-state decision, moved to its
-  existing fact owner in the separate behavior-preserving CR-A3a commit. Neither repair creates a new language rule.
+- **CR-A3** CodeRulesArchitecture owns one immutable resolved dependency/member/vocabulary policy per compilation.
+  Configuration owns raw lists and locations. Enumerate source types once and publish all declaration layers per original
+  type; partial types cannot hide a forbidden declaration. Resolve configured types once and cache each file's
+  longest-prefix layer (compiler_root matches direct files only). Choose layer arrays over a fixed-width mask: no extra
+  layer-count concept or cap. Reject per-reference display names, syntax reclassification and concurrent symbol caches.
+  SimpleNameSyntax owns normal references; AttributeSyntax owns its terminal name and shares its constructor symbol with
+  suppression checking. Qualification types, type arguments and attribute arguments keep their own references; XML
+  documentation is not a dependency. This replaces the other independent design's complete-name/member-access classifier
+  with fewer syntax-shape decisions. Member selectors match the configured type family, including derived Koto slots and
+  overrides. Global child-walk prohibitions use bare member names, including declarations: removed members need not exist
+  to remain forbidden. Resolve only candidate member names in unconstrained layers. Count each configured enum once,
+  including aliases but excluding implicit fields; a missing enum is located KR9002 (Warning in Enforce/Report, Error in
+  Verify), not invalid input that prevents Report completion. CodeRule owns stale severity and wording for both
+  configuration and baseline. Delete the two MIR dependency tests, vocabulary theory, three migrated source-pattern rows
+  and their exclusive helpers. Retain SemanticSlots only for the test-source ratchet, which is outside analyzer scope.
+  Roslyn treats semicolons as inline comments, including in globalconfig: choose comma-separated lists, verified with the
+  actual parser, and replace all list separators together. Reject a separate AdditionalFile parser and
+  escaping/compatibility paths: one file must have one grammar. Tests construct effective options through
+  AnalyzerConfig.Parse/AnalyzerConfigSet from the same text supplied as AdditionalFile. Semantic checking then exposed
+  existing builder references to BoundArgumentOperation through CallPlan's published ReceiverOperation/ArgumentOperations.
+  Name that already-public result type in mir_build's allow list only; reject transitive return-type allowance. The other
+  two missed references were Koto's Binding-state decision, moved to its existing fact owner in the separate
+  behavior-preserving CR-A3a commit. Neither repair creates a new language rule.
 
-- **CR-A4** (planning session, two independent designs compared and reviewed). Extend CodeRulesArchitecture in
-  .Structure with KR1004/1005/1006/1008, retaining one file walk and the existing observation/baseline pipeline.
-  Resolve Koto, KotoKind, collection definitions and System.Exception once per compilation. After out/pattern tests
-  exposed one declaration-ownership gap twice, both independent revisions replace the complete-type classifier with
-  declared symbols for all collection declarations. A variable declaration owns its shared type once; designations,
-  parameters (including inferred lambdas), foreach and members own their bindings/return type. Generic arguments,
-  typeof and alias definitions are not declarations. A3's SimpleName symbol still supplies explicit creation types;
-  implicit creations own their inferred type. Count declaration and creation separately, once each even if several
-  interfaces match. A designation uses its immediate declaration/pattern's type syntax, or its own syntax if absent,
-  never an outer pattern's type. Syntax-layer declarations are exempt; no collection-name approximation.
-  Actual Roslyn 4.14 tests contradict its XML description: parameter BaseType/AllInterfaces omit constrained types.
-  Both independent refinements choose ConstraintClosure only for nonempty type-parameter constraints: one local list
-  is the work queue and result, with a visited set at insertion. Consume published ConstraintTypes, then reuse named
-  InFamily and collection-interface checks. Named types allocate no traversal state. Reject recursive constraint
-  inference, delegate/iterator allocation per reference and a retained cache. Cover chained and cyclic constraints.
+- **CR-A4** Extend CodeRulesArchitecture in .Structure with KR1004/1005/1006/1008, retaining one file walk and the existing
+  observation/baseline pipeline. Resolve Koto, KotoKind, collection definitions and System.Exception once per compilation.
+  Both independent revisions replace the complete-type classifier with declared symbols for all collection declarations. A
+  variable declaration owns its shared type once; designations,
+  parameters (including inferred lambdas), foreach and members own their bindings/return type. Generic arguments, typeof and
+  alias definitions are not declarations. A3's SimpleName symbol still supplies explicit creation types; implicit creations
+  own their inferred type. Count declaration and creation separately, once each even if several interfaces match. A
+  designation uses its immediate declaration/pattern's type syntax, or its own syntax if absent, never an outer pattern's
+  type. Syntax-layer declarations are exempt; no collection-name approximation.
+  Actual Roslyn 4.14 tests contradict its XML description: parameter BaseType/AllInterfaces omit constrained types. Both
+  independent refinements choose ConstraintClosure only for nonempty type-parameter constraints: one local list is the work
+  queue and result, with a visited set at insertion. Consume
+  published ConstraintTypes, then reuse named InFamily and collection-interface checks. Named types allocate no traversal
+  state. Reject recursive constraint inference, delegate/iterator allocation per reference and a retained cache.
   The declaration check shares one symbol for collection type and Supports return checks. CodeRulesSource.RecordMember
-  publishes that symbol's identity only when observing a violation; delete eager ResolveDeclaration caching. Ordinary
-  locals never enter the identity cache. Reject separate explicit/inferred declaration rules or a per-node fact table.
+  publishes that symbol's identity only when observing a violation. Ordinary locals never enter the identity cache. Reject
+  separate explicit/inferred declaration rules or a per-node fact table.
   Atomic patterns own actual dispatch tests, including switch arms/cases; is/as expressions also count. Logical
   pattern wrappers, var/discard captures and casts do not add tests. KotoKind comparisons use semantic operand types.
   Catch checks first exclude configured boundaries and filters, then match bare catch or exact System.Exception.
   Change NodeAnchor's input to a token sequence: callers select ordinary nodes or body-free catch headers; retain one
   streaming UTF-8 FNV implementation. Reject a hash mode/optional parameter or a wrapper without semantics.
-  Both designs chose this existing owner; reject a second analyzer, per-node symbol cache and post-report deduplication.
-  Delete the two migrated regex rows; compare their 96/13 subsets and explain semantic inventory differences.
-  Initialize only these four rules through the complete Report path. Expected delta: 250–350 analyzer lines,
-  150–220 test lines; compiler areas zero tokens/lines. Verify aliases, inferred/derived types, patterns, boundaries,
-  header stability, snapshots and actual csc time. Later enforcement changes remain separate units.
+  Reject a second analyzer, per-node symbol cache and post-report deduplication. Delete the two migrated regex rows.
 
-- **CR-A5** (planning session, two independent designs compared and reviewed). CodeRulesDensity owns KR3001–3003
-  in the existing file walk. Physical lines use the existing SourceText once; only over-limit lines find a token.
-  Exclude a whole line only inside one multiline literal/text token, preserving checks in interpolation holes.
-  CodeRulesSource owns line scope, location and hash through the same observation append as syntax observations.
-  Reject a precomputed literal-span table, a second parse/walker and separate baseline or hash implementations.
-  The outermost conditional before a callable boundary owns one observation; stop a bounded descendant search at
-  the first nested conditional and prune anonymous/local functions. Reject observing each inner node then deduplicating.
-  Computed deconstruction covers only flat var declarations of new locals and tuple-literal values; existing writes,
-  discards and nested designations do not qualify. Simple operands are names, literals, this/default and member chains.
-  Parentheses are transparent for both tuple and simple-operand recognition through one unwrap operation; retain the
-  complete declaration anchor. Review found that separate shape checks would otherwise both flag and hide calculations.
+- **CR-A5** CodeRulesDensity owns KR3001–3003 in the existing file walk. Physical lines use the existing SourceText once;
+  only over-limit lines find a token. Exclude a whole line only inside one multiline literal/text token, preserving checks
+  in interpolation holes. CodeRulesSource owns line scope, location and hash through the same observation append as
+  syntax observations. Reject a precomputed literal-span table, a second parse/walker and separate baseline or hash
+  implementations. The outermost conditional before a callable boundary owns one observation; stop a bounded descendant
+  search at the first nested conditional and prune anonymous/local functions. Reject observing each inner node then
+  deduplicating. Computed deconstruction covers only flat var declarations of new locals and tuple-literal values;
+  existing writes, discards and nested designations do not qualify. Simple operands are names, literals, this/default and
+  member chains. Parentheses are transparent for both tuple and simple-operand recognition through one unwrap operation;
+  retain the complete declaration anchor. Separate shape checks would otherwise both flag and hide calculations.
   Mir rewrites preserve left-to-right evaluation, short-circuiting and target types; retain conditions to avoid changing
   KR1006 identities. Delete dense parallel declarations/nested conditionals, format long lines, then initialize KR3
-  outside Mir only. Both designs chose these owners; expected 130–180 analyzer lines and 120–180 test lines, Mir token
-  reduction from split declarations with reference-line growth. Prove semantic/HIR/MIR, diagnostics and representative
-  IR equality, review every changed MIR expression and measure cumulative analyzer time before completion.
-  Actual Report exposed null JSON cells: Select-Object cannot project ordered-dictionary keys as properties. Both
-  script row producers now publish PSCustomObject rows, preserving ordered keys and the single merge/write path.
-  Independent review chose this producer fix over another export adapter; test the public JSON and TSV roundtrips.
-  The first cumulative timing exceeded 10% (3.617 s / 35.862 s). Keep the failed measurement and remove unnecessary
-  declaration symbol queries at the existing owner: syntax-layer declarations need only the Supports check, and a
-  predefined declared type cannot be a syntax-keyed collection; predefined types other than bool cannot be either
-  kind of violation. Remaining method/local-function/property declarations retain the original semantic name and
-  return-type check, including explicit interface implementations; reject
-  copying the name rule into a syntax filter. Aliases, inferred types, user types and constraints keep the existing
-  declared-symbol path. Independent review accepted this bounded syntax filter over new symbol caches or weakening
-  rules. Re-measure and rerun the unit on the changed inputs.
+  outside Mir only. Select-Object cannot project ordered-dictionary keys as properties. Both script row producers now
+  publish PSCustomObject rows, preserving ordered keys and the single merge/write path. Independent review chose this
+  producer fix over another export adapter. Remove unnecessary declaration symbol queries at the existing owner:
+  syntax-layer declarations need only the Supports check, and a predefined declared type cannot be a syntax-keyed
+  collection; predefined types other than bool cannot be either kind of violation. Remaining method/local-function/property
+  declarations retain the original semantic name and return-type check, including explicit interface implementations;
+  reject copying the name rule into a syntax filter. Aliases, inferred types, user types and constraints keep the existing
+  declared-symbol path. Independent review accepted this bounded syntax filter over new symbol caches or weakening rules.
 
-- **CR-A6** (planning session, two independently written designs compared and reviewed). Analyzer.File owns one
-  CSharpSyntaxWalker with entry/exit measurement frames; CodeRulesAccretion owns KR2001–2010. Replace the existing
-  DescendantNodes loop, rejecting the root design's second reusable body walker and node-to-measurement tables.
+- **CR-A6** Analyzer.File owns one CSharpSyntaxWalker with entry/exit measurement frames; CodeRulesAccretion owns
+  KR2001–2010. Replace the existing DescendantNodes loop, rejecting the root design's second reusable body walker and
+  node-to-measurement tables.
   Save frames as call-stack values: methods, constructors, operators and local functions measure independently;
   properties, indexers and events combine accessor statements and reset accessor depth; field initializer lambdas
   belong to each variable. Local functions leave the parent count unchanged; lambda statements belong to the parent
@@ -523,37 +462,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   eliminate a short sequence whose cleanup obligations differ. Into's flat closed-HirOp dispatch may use the measured
   KR2006 exception rather than a second dispatch. Move the existing formatting concern out of Expansions. Additional
   MIR findings require the actual Report and a responsibility-based decision before edits; no new compiler vocabulary,
-  representation or side table is authorized. Expected tooling growth is roughly 350–550 analyzer and 200–350 test
-  lines; shared traversal/annotation integration may exceed the proposal's estimate. Measure cumulative csc time and
-  compiler token/line deltas, preserve evaluation order and allocation assertions, and prove snapshots/IR unchanged.
+  representation or side table is authorized. Preserve evaluation order and allocation assertions, and prove
+  snapshots/IR unchanged.
 
-- **CR-A6a** (planning session, independently reviewed against the A6 Report). Only Into exceeds the MIR statement
-  limit; Inline and Format do not require splitting. Remove Effect's second, syntax-based dispatch: Statement and
-  Into map published HirOps directly to Require, Register, Discard and Transfer. Discard owns acquisition into its
-  temporary; no new classification, gate or table is introduced. This removes three syntax tests and their baseline
-  entries. MirDescriptors uses one explicit row per enum kind in every Of overload; repeated row values are data,
-  not a new grouping concept or a logical predicate. Reject parenthesized chains and split case labels as evasion.
-  MirTypes.Agree compares the existing identity, shape and component facts in the same short-circuit order with early
-  returns. MirValidator.Unknown first rejects ineligible destinations, then checks the existing Opaque or operand
-  propagation rule with guarded bounds; retain its reusable array and fixed-point order. No limits or vocabularies
-  change. Re-measure Into's flat-dispatch exception after removing the redundant dispatch.
+- **CR-A6a** Only Into exceeds the MIR statement limit; Inline and Format do not require splitting. Remove Effect's
+  second, syntax-based dispatch: Statement and Into map published HirOps directly to Require, Register, Discard and
+  Transfer. Discard owns acquisition into its temporary; no new classification, gate or table is introduced. This removes
+  three syntax tests and their baseline entries. MirDescriptors uses one explicit row per enum kind in every Of overload;
+  repeated row values are data, not a new grouping concept or a logical predicate. Reject parenthesized chains and split
+  case labels as evasion. MirTypes.Agree compares the existing identity, shape and component facts in the same
+  short-circuit order with early returns. MirValidator.Unknown first rejects ineligible destinations, then checks the
+  existing Opaque or operand propagation rule with guarded bounds; retain its reusable array and fixed-point order. No
+  limits or vocabularies change.
 
-- **CR-A6b** (planning session, independently reviewed against csc/MSBuild evidence). Report's stale KR9002 is a
-  warning in SARIF, but MSBuild's warnaserror promotes it after compilation and prevents Prune from acquiring a
-  successful Report. Keep warnaserror and exempt only KR9002 from that logger promotion in the Report command.
-  Do not change descriptors, severities, suppression checks or thresholds. Actual MSBuild regressions cover Report
-  and Prune success, failure on another warning, and Verify's KR9002 remaining an error even with the logger exemption.
+- **CR-A6b** (2026-10-12) Report's stale KR9002 under MSBuild's warnaserror: superseded by CR-R1 (2026-10-15); full text:
+  4fb6fcdb1.
 
-- **CR-A7** (planning session, independent designs compared and reviewed). Source-authored transitional declarations
-  extend CR-A6's sparse annotation fact, constructor/constant resolution, canonical declaration key and sorted merge.
-  Configuration.Stages alone orders removal stages; current greater than removal is overdue, equality is permitted.
-  Complete Report includes every valid annotation with stage and ordinal value, including R0's zero. KR1007 never
-  enters the baseline. Generalize KR9005 to invalid code-rule annotations rather than add an operational rule.
-  Resolve annotations even in areas excluded from accretion checks; no second walk, inventory or alias resolver.
-  An exception outside its rule's configured scope is invalid: it cannot relax an inapplicable rule or silently
-  disappear from the audit used by approval checks. Transitional annotations still apply to the legacy areas.
-  KR9000 publishes annotationKinds=exception,transitional; the complete-Report reader requires this marker so
-  approval comparisons cannot mistake an older producer's missing annotations for an empty inventory.
+- **CR-A7** Source-authored transitional declarations extend CR-A6's sparse annotation fact, constructor/constant
+  resolution, canonical declaration key and sorted merge. Configuration.Stages alone orders removal stages; current
+  greater than removal is overdue, equality is permitted. Complete Report includes every valid annotation with stage and
+  ordinal value, including R0's zero. KR1007 never enters the baseline. Generalize KR9005 to invalid code-rule annotations
+  rather than add an operational rule. Resolve annotations even in areas excluded from accretion checks; no second walk,
+  inventory or alias resolver. An exception outside its rule's configured scope is invalid: it cannot relax an
+  inapplicable rule or silently disappear from the audit used by approval checks. Transitional annotations still apply to
+  the legacy areas. KR9000 publishes annotationKinds=exception,transitional; the complete-Report reader requires this
+  marker so approval comparisons cannot mistake an older producer's missing annotations for an empty inventory.
   Mark all direct and indirect Koto semantic forwarding properties (R7 since R5-M9) and the pipeline switch declarations for R6;
   HirPublisher, hirPublisher and HirPosition for R7; Capacity, FormatBuffer, FormatHint and FormatFinish for R8.
   Published version/cache entry points remain lasting contracts. LegacyRuntimeHelpers does not yet exist; its
@@ -561,70 +494,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Enable IDE0051/52/60 and remove the measured unread fields and unused parameters with their pure arguments:
   CLI constructors, documentation Cursor, BodyLowering and Binding's type/iteration routines. Frozen legacy changes
   are deletions only. Reject discarded underscore parameters, suppressions, token exemptions and lasting-type tags.
-  Expected analyzer growth is about 120 lines plus tests; compiler deletions offset annotation tokens, measured at
-  completion. Attribute resolution reuses the existing pass; product state and allocation behavior are unchanged.
+  Attribute resolution reuses the existing pass; product state and allocation behavior are unchanged.
 
-- **CR-A7a** (planning session, independently reviewed after A7's retained 10.515% timing failure). The file walker
-  already visits every token but also traverses all trivia, while KR2009 separately enumerates the same tokens.
-  Use token depth: count each token once with Source's shared missing/EOF predicate, and inspect trivia only on tokens
-  containing directives. The suppression owner alone consumes pragma-warning trivia, including on EOF and missing
-  tokens. Delete the extra KR2009 token walk and the structured-trivia node path. No cache, table, exclusion or
-  semantic candidate rule is added. Reject merely repeating timing and defer the separate conditional-expression
-  traversal optimization. Existing token-count, directive, suppression and complete-inventory comparisons verify
-  equivalence; matched Enforce measurement decides the gain. Expected net growth is below 20 analyzer lines.
+- **CR-A7a** (2026-10-12) The analyzer's single token walk: superseded by CR-R1 (2026-10-15); full text: 4fb6fcdb1.
 
-- **CR-A8** (planning session, two independent designs compared and reviewed). verify-commit owns approval orchestration
-  after exact verified-input matching; code-rules-approval owns Git trailer validation and relaxation comparison.
-  A real Code-Rules-Approved trailer names an approver, calendar date and reason. Without one, compare the exact
-  first parent and target: any globalconfig blob change, new/increased baseline key, new/increased exception or
-  postponed existing transitional key requires approval. Pruning, reduced bounds, earlier stages and partial-file
-  moves do not. Review still rejects removing only an attribute or renaming to evade policy.
-  Reuse baseline keys and the analyzer's complete annotation inventory. Extract the ordinary Report build into
-  code-rules-report's Invoke-KimiCodeRulesReport; both the command and commit audit use it. No second attribute
-  parser, source-change allowlist or historical report cache. The no-trailer audit builds fresh Reports in isolated
-  detached worktrees for both commits, verifies input stability and exact Git blobs, retains failure evidence and
-  validates cleanup paths. Missing/older/incomplete reports fail. A valid trailer bypasses only this comparison,
-  never Unit/Session input association. Reject the local text-diff patch (aliases, constants and partial moves) and
-  a cached snapshot protocol (more provenance state for infrequent commit checks). Two additional Report builds
-  occur only at unapproved commit association, outside ordinary compilation. Expected tooling growth is about
-  130 lines plus tests, deleting the command's duplicate build block; compiler tokens and product allocations do
-  not change.
+- **CR-A8** (2026-10-12) Code-rules approval in verify-commit: superseded by CR-R1 (2026-10-15); full text: 4fb6fcdb1.
 
-- **CR-A9** (review session after A8, 2026-10-12). The analyzer asked Compilation.GetSemanticModel for each tree from
-  a SyntaxTreeAction. That private model bound every inspected body again although the build's other analyzers had
-  bound it through the driver's shared model: Kimi.Analyzers took 3.32–3.84 s, 9.4–10.4% of csc. A
-  SemanticModelAction reuses the shared model. As plan §3.8 requires, KR1 resolves only names that can denote a
-  forbidden type or member: global and layer member names, aliases, `var`, `nint`, `nuint`, and the names and members
-  (GetMembers, which includes synthesized delegate methods) of denied types and of types declared in denied layers,
-  except allowed types. The complete Report is unchanged. Interleaved Release rebuilds: 1.36–1.86 s against
-  32.3–33.3 s of csc (4.1–5.7%), csc about 3 s shorter; a single-thread replay with all 467 build analyzers drops
-  from 3.1 s to 0.54 s. Rejected: counting only written KR1004 types to skip declaration symbols; CR-A4 counts
-  inferred declarations so `var` cannot evade the rule, and 18 occurrences would disappear.
+- **CR-A9** (2026-10-12) The analyzer's shared semantic model: superseded by CR-R1 (2026-10-15); full text: 4fb6fcdb1.
 
-- **CR-A9a** (review session; KR3003 scope by the owner, 2026-10-12). KR1006 counted `x is { } y` on a Koto input
+- **CR-A9a** (KR3003 scope by the owner, 2026-10-12). KR1006 counted `x is { } y` on a Koto input
   as a Koto type test because a typeless recursive pattern's matched type is its input type. It tests only null and
-  properties, like `x != null`, which was never counted; a pattern tests a Koto type only when it names one. Nine
-  MirBuilder rows become stale and Prune removes them. This narrows what the analyzer reports without a configuration,
-  baseline or annotation change, so CR-A8's approval comparison does not see it; it is stated for the owner's review.
+  properties, like `x != null`, which was never counted; a pattern tests a Koto type only when it names one.
   The owner extends KR3003 from CR-A0's `var (...)` to the same all-new-local deconstruction written as a tuple of
   declarations, `(var a, T b) = (...)`, which otherwise evades the rule; nested, discarded and existing targets stay
-  outside. The source has no such declaration, so the baseline is unchanged.
+  outside.
 
-- **CR-A9b** (review session, 2026-10-12). Verification trusted a successful build without evidence that the analyzer
-  ran on the checksummed policy. Verify now also emits KR9000 and verify reads its error log as a complete report, so a
-  build without the analyzer, or with other configuration or baseline bytes, fails; Enforce stays silent in ordinary
-  and IDE builds. Effective kimi_code_rules options must equal those parsed from the checksummed CodeRules.globalconfig
-  (KR9003 otherwise): a globalconfig with a higher level could relax policy outside CR-A8's comparison of that file.
-  Kimi no longer discovers .globalconfig files above the project, which could also change built-in severities that
-  analyzer options do not expose. Without discovery, Roslyn's targets stop passing GlobalAnalyzerConfigFiles items
-  (the first build failed KR9003 on every option), so CodeRules.globalconfig is an EditorConfigFiles item, as the SDK
-  passes its own analysis-level global configs. verify-commit resolves its evidence path once, and the approval
-  restore disables build servers before its checkout is removed. Rejected: case-insensitive suppression IDs (Roslyn
-  4.14 matches IDs case-sensitively; a lowercase ID suppresses nothing) and per-rule baseline anchor validation (a row
-  of the wrong kind cannot match and already fails as stale). The trailers of 755adbdd and f839642a predate CR-A8's
-  format; pushed history is not rewritten.
+- **CR-A9b** (2026-10-12) Verify's complete-report check on the checksummed policy: superseded by CR-R1 (2026-10-15); full
+  text: 4fb6fcdb1.
 
-## R2b (2026-10-11, main session, as recommended)
+## R2b (2026-10-11)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.
 - **R2b-D2** The HIR publisher runs lazily, at most once per Binding pass. R7 writes the columns inline and deletes it. Refined by BU-81: eager at the end of each Final pass.
@@ -634,20 +522,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R2b-D7** `HirAdjust` = `HirAcquire` + `HirAdaptation`: `@move` and `@copy` are operand Adjusts, `@ref`, `@uniq` and
   `@raw` are `Op = Borrow`, `@follow` is `Deref`, and numeric conversions are `Op = Convert`.
 - **R2b-D9** The HIR snapshot is a separate `.hir.txt` per case (`KIMI_SEMANTIC_HIR=1`).
-- D4, D6, D8, D10 and D11 set R2b's budget, published views and unit order; their results are in the stage ledger and
-  PLAN_HISTORY.
+- D4, D6, D8, D10 and D11 set R2b's budget, published views and unit order; their results are in the stage ledger at 4fb6fcdb1
+  and PLAN_HISTORY.
 
-## R3 (2026-10-11, main session as recommended; R3-9 and R3-10 by the owner)
+## R3 (2026-10-11; R3-9 and R3-10 by the owner)
 
 - **R3-1** MIR records (construction `Unsupported_Kd`, validator `InternalInvariant_Kd`) are published only under the
   `mir` pipeline, in the ControlFlow partition. Superseded by R5-M156 (R6-gen G2): they publish on every pipeline, still in the
   ControlFlow partition.
-- **R3-2** The R3-exit `-Pipeline mir` Session is a measurement, classified into `artifacts/verify/mir-diff/r3.tsv`; the
-  gate is the plan's R3 gate.
+- **R3-2** The R3-exit `-Pipeline mir` Session is a measurement; the gate is the plan's R3 gate.
 - **R3-3** Tests read analysis and generation through the `Compilation` entry points. `TryPrepare(out var module)` reads
   wait for R5, and `Ownership.Bodies` and control-flow structure reads for the R4 dump goldens, under ratchets.
   - Amended by R5-M161 (G5): the `TryPrepare(out var module)` reads are deleted; no test reads `Compilation.Emission`.
-- **R3-4** R3 budget: Mir 6,600, Binding 350 lines over its R2b-exit size, Core 1,820, the old paths unchanged (D5).
+- **R3-4** R3 budget: superseded by Q5 (2026-10-16); full text: 4fb6fcdb1.
 - **R3-5** A built-in form without an intrinsic row gets an interim row mapping it to an existing compiler function or
   legacy helper, each with its R8 disposition.
 - **R3-6** `MirDefKey` is keyed by `BindingSymbol` until R7's declaration table.
@@ -671,7 +558,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## R4 (accepted 2026-10-11)
 
 - **R4-M1** Shadow, superseded in part: the MIR decides acceptance on every pipeline, and the old path runs only for the
-  transitional entry's readers until H10b (R5-M185, 2026-11-04; before it R5-M156 for construction records, validator findings
+  transitional entry's readers until H10b (R5-M185, 2026-11-04, H5; before it R5-M156 for construction records, validator findings
   and collector records, and R5-M96 for generation-time refusals under sel). The analyses run once per program version after
   build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); an analysis exception fails the test. Rejected: MIR deciding
   codes in R4 (duplicate records and test churn twice).
@@ -723,7 +610,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   inside `MirReport`), and `MirReport`; each analysis unit creates its own files and adds one field and one pass row at its
   position. R4-M2's reason no longer holds: unused parameters and members are build errors (CR-A7), and AGENTS (2026-10-12)
   admits no structure without behavior; parallel units' driver edits are line-level, resolved at rebase. The restructuring of
-  `MirAnalysis.cs` comes before the R5 split (R4-M35). Rejected: stubs (unused parameters or fake uses, edited anyway); partial
+  `MirAnalysis.cs` comes before the R5 split (R4-M35; stage ledger at 4fb6fcdb1). Rejected: stubs (unused parameters or fake uses, edited anyway); partial
   methods or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and
   record landing with the first analysis unit (parallel units would invent the same files).
 - **R4-M3a** (2026-10-12; supersedes R4-M3's fields) `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`, with the
@@ -853,7 +740,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   published fact and are left to U11/R6; rejected: a body-level `#switch` rule (syntax ancestry, SPEC 23.1.2; a KR1006
   row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
   Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
-- **R4-M20** (2026-10-12; its union join and backward clause superseded by R4-M34, its ring worklist by R4-M65) MIR dataflow.
+- **R4-M20** (2026-10-12; U1; its union join and backward clause superseded by R4-M34, its ring worklist by R4-M65) MIR dataflow.
   `MirDataflow` solves forward bit-set problems over flow heads: a block whose only edge is a runtime edge into a block with no
   other predecessor that is not the entry continues into it, so a chain of blocks shares one state, stored only at its head. One
   pooled arena of heads × stored words, word-major (the lanes of 64 paths per word group); only flow paths are stored, and
@@ -892,7 +779,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   a Field; a Return checks nothing (every path into a constructor's Return passes an exit request, and an ordinary function's
   `_0` at its Return would show only a builder defect). A1 reads each view's uses through `MirUses.ForEach(MirCases, …)`, which
   resolves an Adapt per view (R4-M19); a body without a case-dependent access (`MirAccess.CaseDependent`: a PairLayer step, a
-  PairAcquire, an Adapt) is analyzed once, for every view. Opaque-root and Inlined rules stay MirReport's (R4-M10). Rejected:
+  PairAcquire, an Adapt) is analyzed once, for every view. Opaque-root and Inlined rules stay MirReport's (R4-M10, U11). Rejected:
   interning analysis projections as keys (an analysis must not intern, and a constructor's unplaced Fields have no chain); two
   slots per path and recursive child walks (the old path); covered paths whose own bit is left out of a use (a whole use then
   skips the construction fact) and PairLayer paths (the covered-path, layer-step and owner-view parent rules they need); a MirBody constructor flag or a new MirLocalRole member
@@ -907,7 +794,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   over-limit body records the code once at the body's subject and A1 does not analyze it; the driver owns that skip once A2 and
   A5 read the arena (U5, U7). Reason: the dense arena is O(heads × paths/64), and a body bounded only by the 65,536-statement
   expansion limit could otherwise exhaust memory.
-- **R4-M6a** (2026-10-12; refines R4-M6's shape, supersedes R4-M21's three lanes and implements R4-M15a's driver skip for A2;
+- **R4-M6a** (2026-10-12; U5; refines R4-M6's shape, supersedes R4-M21's three lanes and implements R4-M15a's driver skip for A2;
   its table amended by R4-M67: each body's completed views; its input for a destructor body refined by R4-M6b) Drop elaboration
   (A2). `MirDrops` judges
   each Drop the runtime edges reach from the state A1's checks replay holds before it and writes `MirProgram.Drops`
@@ -917,7 +804,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   parent, cleared with the subtree by any event of an ancestor-or-self), so the state is exact under union joins for the programs
   A1 accepts; A1 hands A2 the paths its entry initializes (the arguments'; a constructing `_0`'s own bit has no subtree event,
   so no point). Five lanes are kept for every body, though the arena limit (R4-M15a) then trips at 3/5 of a three-lane body's
-  heads × words; no measured program was affected. Per view: Elide where the case Type needs no drop (`MirTypes.MayNeedDrop`) or nothing is initialized on any path;
+  heads × words; V17 shows no affected program. Per view: Elide where the case Type needs no drop (`MirTypes.MayNeedDrop`) or nothing is initialized on any path;
   Keep where the whole is initialized on every path or the Place has no Move Path (a static, a Place through a reference or an
   index); Flag where it is complete or wholly absent on every path, the flag mirroring the path's own bit; Open where a part may
   be missing: the components without a child path follow the own bit, each child path its own verdict. A layer whose Type
@@ -937,7 +824,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
   the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
   code. Not temporary.
-- **R4-M6b** (2026-10-12; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
+- **R4-M6b** (2026-10-12; U5b, NEW-F9; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
   builder registers its end cleanup as the layer's field cleanup (SPEC 16.3.2) through `Cleanup.Fields` (`FieldCleanup`): after the
   body's Scope Exit, on the normal end and in every return's drop tree, a Drop of each own Field whose Type may need drop, last to
   first, then of `_1.base1`, by the one presence rule `MirTypes.MayNeedDrop`; no Drop of the whole receiver. A1, A2, A4, A5 and R5
@@ -948,7 +835,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `AdtDef.IsInlineStorage`, and the old path's `AggregateLayout.cs:353` until R6). Rejected: a parts-only Drop or a receiver local
   role (O1; a second meaning of Drop in every consumer); A2 recognizing the receiver (a consumer deciding what the builder
   publishes); field cleanup in R5's glue (cannot skip moved Fields). Not temporary.
-- **R4-M13a** (2026-10-12; supersedes R4-M13's numbers, not its migration kinds; amended by R5-M161) A test method migrates once,
+- **R4-M13a** (2026-10-12; U3; supersedes R4-M13's numbers, not its migration kinds; amended by R5-M161) A test method migrates once,
   at the stage of its latest assertion kind; lookups and failure messages migrate in every method. Control-flow structure reads:
   1 (`LegacyRecords`, the harness's and the snapshot's one reader, until R6). `Ownership.Bodies` reads: R6's 22 (old internals,
   old storage and plan reuse, the probe tool and three class helpers) and U10's 8 (OwnershipJoinTest's, left with G4's pinned
@@ -963,8 +850,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
 - **R4-M25** (owner, 2026-10-12) Area caps rebalanced within the R4 stage ceiling: superseded by Q5 (2026-10-16); full text:
   c4b48f11c.
-- **R4-M22** (2026-10-12; superseded in part by R4-M153: a part past the depth bound is the class Deep; amended 2026-11-03, H3b
-  T32b, by the planning session with BU's consent C-11) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
+- **R4-M22** (2026-10-12; U6; superseded in part by R4-M153: a part past the depth bound is the class Deep; amended 2026-11-03, H3b
+  T32b, unit U-B2, by the planning session with BU's consent C-11) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
   union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
   abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
   raw pointer read from an immutable static are Environment; an Opaque site's Unknown is Derived) and the terminators: a call of a
@@ -1070,7 +957,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M24** (2026-10-12) A5-1, regions and Loans: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M9b** (2026-10-12; superseded R4-M9's view list and placement) Binding views built by their first reader: superseded by
   R4-M33 (2026-10-16), its view list where it applies by R4-M94's C1-F4 view; full text: 0d9492185.
-- **R4-M26** (2026-10-12) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
+- **R4-M26** (2026-10-12; U6c) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
   slot, parallel to their Type arguments, the Implementation Selection Key's form (SPEC 8.13.3, IMPL 21.3). Their constructors
   (`CallPlan.Set`, `TyCtxt.Intern`) establish it: a producer passes no lengths (the target has no length slot) or one per slot, and a
   span of another length is a broken contract (`Debug.Assert`). A function item's call context (`FunctionItemContext`), the
@@ -1081,7 +968,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   per-slot fact), per-slot lengths in Item Types (every BoundType keeps LengthArguments empty without a length argument).
 - **R4-M30** (owner, 2026-10-12) The missing-fact allowance in Binding tokens: superseded by Q5 (2026-10-16); full text:
   c4b48f11c.
-- **R4-M28** (2026-10-12) SPEC 4.9.6's published rows
+- **R4-M28** (2026-10-12; U6b) SPEC 4.9.6's published rows
   for A4: `PublishedRow(Runs, On, Destroys)` catalog data (`KimiLibraryCatalog.Row`, `TyCtxt.Published`) replaces
   `PublishedSummary`; A4 adds a row through the call's substitution, never the private body. A row's requirement is a `Requires`
   atom on an abstract Type (nothing where the premises declare it confined, else composed at the callers like a destruction); any
@@ -1093,7 +980,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the
   table keep X2; composites with an abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
 - **R4-M31** (owner, 2026-10-13) R4 caps by completion budget option C: withdrawn by R4-M33 (2026-10-16); full text: 0d989e685.
-- **R4-M32** (2026-10-13) Binding.OriginProof owns `OriginFit`: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
+- **R4-M32** (2026-10-13; C1a) Binding.OriginProof owns `OriginFit`: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M33** (owner, 2026-10-16; supersedes R4-M9b, R4-M24, R4-M31 and R4-M32) R4 keeps A1–A4 (U0–U6 with U1b, U3n, U4b,
   U5b, U6b, U6c and the T1 test migration) and discards the work after them: A5-1 (U7) with its preparatory units U7a, U7a2,
   U7k and U7c, C1a, the MIR probe tool and the completion plan and budget. Reason: the implementation stalled (P9 unchanged at
@@ -1114,7 +1001,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   word OR); one solve with a direction parameter. Not temporary.
 - **R4-M35** (owner: the plan's direction, its step 0, OD1–OD7 and OD12 on 2026-10-16; OD8–OD11, OD13's first list and A3 §9
   item 10 on 2026-10-17; supersedes the parts named below; plan §7's M39 Binding part void after OD8's and OD9's non-adoption:
-  R4-M74 OQ6 (a), R4-M90) R4's remaining scope
+  R4-M74 OQ6 (a), and A5-F9 landed without it, R4-M90) R4's remaining scope
   follows the [Complete Polonius A5 Plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): the Binding facts A5 reads
   first, then A5 deciding the SPEC rules of plan Appendix A as facts and a fixed set of rules that a C# evaluator runs, then A6 and
   the R4 exit tasks.
@@ -1166,12 +1053,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   whose payload is not proven Sealed, or is and observes (any rc or arc release may be final), under the definition's premises
   (`TyCtxt.Copy`, `Sealed`). Each walks a Type, or for Observes a payload below its handle, once per query through the caller's set: a
   repeating recursive Type ends exactly, a growing one (SPEC 15.3.5) at the bound of 32, where HoldsLoans answers yes and Observes sets
-  deep, the caller's located `Unsupported_Kd` as A4's Limit is. A recursive Type holding itself in an Array: R4-M58. Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
+  deep, the caller's located `Unsupported_Kd` as A4's Limit is. A recursive Type holding itself in an Array: R4-M58 (PLAN G91). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of A3 §9 item 8 on 2026-10-17;
   G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
-  replaced by A3 §12 E7; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
+  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1200,7 +1087,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
 - **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of A3 §9 item 8 on 2026-10-17; its `(Field, Write)` list and
-  `bool` superseded by R4-M89 and R4-M91: the key row per view, classes as R4-M74 OQ6) A4's static keys for A5.
+  `bool` superseded by R4-M89 and R4-M91 (unit 2b-1: the key row per view, classes as R4-M74 OQ6)) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
   once and written where any access writes it, from the summaries the last `Run` solved; `unknown` where A4 does not classify what it
   runs (an Unknown effect, an atom left abstract under the body's premises, resolved at once as for an obligation, a Limit, or a
@@ -15759,7 +15646,7 @@ RQ1–RQ17, numbers that never collide with the R5 and R6 plan's PD and OQ). Uni
 R8-M* and R9-M* by the stage of the recording unit.
 
 - **R7-M1 Adoption** (owner, 2026-11-03, verbatim 「RQ1〜RQ17 を推奨どおりで承認します　他のエージェントに確認し、問題なければコミットしてください。」;
-  the plan's §0 and §2.2 record each outcome; the R4, R5 and BU sessions checked the plan before its commit, plan §13) The plan is the
+  the plan's §0 and §2.2 record each outcome) The plan is the
   formal plan for R7 (Binding consolidation), R8 (library algorithms in Kimigayo, 28 intrinsics) and R9 (the front-end remainder, the
   Documentation and toolchain moves, the final documents), with its exit gates (plan §10) and its arrangement (R7-M2). Outcomes, each
   as recommended:
@@ -15822,7 +15709,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     PLAN §3 keeps area ownership (RP10). Messages between sessions only when a board row needs an answer.
   - Rejected: sessions by stage (R7 and R6-check's Binding side would edit one file set from two sessions); per-session windows (the
     heavy set paid per unit); a PLAN hold line per unit (a commit per hold between windows).
-- **R7-M3 Unit rules of the plan** (planning session, 2026-11-03, with the owner's RQ6 and RQ8; plan §2.1; reason: the Q11 suspensions
+- **R7-M3 Unit rules of the plan** (2026-11-03, with the owner's RQ6 and RQ8; plan §2.1; reason: the Q11 suspensions
   of G216 (a), bu65, G159 (2), WK, G272, 2c-5, G264 U1 and revision B, plan §8.1)
   - RP5: an R7 unit that changes acceptance on the default pipeline lands after H5; a deletion of what the old Analysis or Parsing still
     read lands after H10 and H14 (RP4); until then R7 lands behavior-preserving units and record-only changes within Q13's classes.
